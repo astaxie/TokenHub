@@ -11,9 +11,11 @@ import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
 import { apiKeyUsageIDFromPath, uniqueUIID, viewFromPath } from "../domain/formatting";
+import { pluginDetailPath, pluginDetailRouteFromPath, type PluginDetailSection } from "../domain/plugin-detail-route";
 import { reportDatasetLabel } from "../domain/labels";
 import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
 import { pluginShellPresentation } from "../domain/plugin-theme";
+import { normalizePluginThemeOverrides, type PluginThemeOverrides, readPluginThemeOverrides, savePluginThemeOverrides } from "../domain/plugin-theme-overrides";
 import { resolveSIMSelection, type SIMSelectionResult } from "../domain/sim-selection";
 import { resourceCreateTarget } from "../domain/resource-create-target";
 import { simRegistryFromPlugins } from "../domain/sim-registry";
@@ -38,6 +40,7 @@ import { modelRoutePolicyPayload } from "../views/model-routing-policy";
 import { OverviewView } from "../views/overview";
 import { PlaygroundPage } from "../views/playground";
 import { PluginPageView } from "../views/admin-ui-plugin-pages";
+import { PluginDetailView } from "../views/plugin-detail";
 import { PluginsView } from "../views/plugins";
 import { ProviderUpsertModal } from "../views/provider-editor";
 import { ProjectWorkspace, type ProjectWorkspaceDraft, type ProjectWorkspaceMode, ProjectWorkspaceSaveError, saveProjectWorkspaceDraft } from "../views/project-workspace";
@@ -53,6 +56,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const router = useRouter();
   const routeView = viewFromPath(pathname);
   const apiKeyUsageID = apiKeyUsageIDFromPath(pathname);
+  const pluginDetailRoute = pluginDetailRouteFromPath(pathname);
   const [language, setLanguage] = useState<AppLanguage>(() => readSavedLanguage());
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [baseURL, setBaseURL] = useState(defaultBaseURL);
@@ -91,12 +95,18 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [resetToken, setResetToken] = useState("");
   const [simSelectionPreference, setSIMSelectionPreference] = useState<unknown>(null);
   const [simSelectionLoaded, setSIMSelectionLoaded] = useState(false);
+  const [themeOverrides, setThemeOverrides] = useState<PluginThemeOverrides>({});
+  const [themeOverridesLoaded, setThemeOverridesLoaded] = useState(false);
 
   const api = useMemo(() => ({ baseURL, adminToken }), [baseURL, adminToken]);
   const providerTypeOptions = useMemo(() => providerTypeOptionsFromData(data), [data]);
   const activeConfig = resourceConfigFor(activeView);
   const activeMeta = activeConfig ?? standaloneViewMeta[activeView] ?? standaloneViewMeta.overview!;
-  const shellState = useMemo(() => adminConsoleShellState(data, theme, simSelectionPreference), [data, simSelectionPreference, theme]);
+  const simRegistry = useMemo(() => simRegistryFromPlugins(data.plugins), [data.plugins]);
+  const shellState = useMemo(
+    () => adminConsoleShellState(data, theme, simSelectionPreference, themeOverrides),
+    [data, simSelectionPreference, theme, themeOverrides],
+  );
   setActiveLanguage(language);
 
   useEffect(() => {
@@ -108,6 +118,21 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (!simSelectionLoaded) return;
     saveAdminConsoleSIMSelectionPreference(shellState.simSelection);
   }, [shellState.simSelection, simSelectionLoaded]);
+
+  useEffect(() => {
+    if (simRegistry.themeTokens.length === 0) return;
+    setThemeOverrides(readPluginThemeOverrides(simRegistry.themeTokens));
+    setThemeOverridesLoaded(true);
+  }, [simRegistry.themeTokens]);
+
+  useEffect(() => {
+    if (!themeOverridesLoaded) return;
+    savePluginThemeOverrides(themeOverrides);
+  }, [themeOverrides, themeOverridesLoaded]);
+
+  function changeThemeTokenOverrides(themeKey: string, values: Record<string, string>) {
+    setThemeOverrides((current) => normalizePluginThemeOverrides({ ...current, [themeKey]: values }, simRegistry.themeTokens));
+  }
 
   function changeLanguage(nextLanguage: AppLanguage) {
     setLanguage(nextLanguage);
@@ -142,6 +167,10 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const selectPluginPage = useCallback((key: string) => {
     selectView("plugin-pages", { pluginPageKey: key });
   }, [selectView]);
+
+  const selectPluginDetail = useCallback((pluginID: string, section: PluginDetailSection = "overview") => {
+    router.push(pluginDetailPath(pluginID, section));
+  }, [router]);
 
   function openRoutes(model?: Model) {
     selectView("routes", { routeModelQuery: model?.name ?? "" });
@@ -924,7 +953,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         />
 
         <div className={activeView === "playground" ? "content-panel playground-content-panel" : "content-panel"}>
-          {activeView === "playground" || activeView === "overview" || apiKeyUsageID ? null : (
+          {activeView === "playground" || activeView === "overview" || apiKeyUsageID || pluginDetailRoute ? null : (
             <PageHeader activeView={activeView} data={data} meta={activeMeta} user={currentUser} />
           )}
 
@@ -935,7 +964,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             onClearNotice={() => setNotice("")}
           />
 
-          {activeView === "playground" || apiKeyUsageID ? null : <div className="divider" />}
+          {activeView === "playground" || apiKeyUsageID || pluginDetailRoute ? null : <div className="divider" />}
 
           {apiKeyUsageID ? (
             <APIKeyUsageView api={api} data={data} user={currentUser} keyID={apiKeyUsageID} onBack={() => selectView("api-keys")} />
@@ -963,13 +992,28 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           ) : activeView === "database-status" ? (
             <DatabaseStatusView api={api} isDark={theme === "dark"} />
           ) : activeView === "plugins" ? (
-            <PluginsView
-              api={api}
-              data={data}
-              onSIMSelectionPreferenceChange={setSIMSelectionPreference}
-              simSelectionPreference={simSelectionPreference}
-              theme={theme}
-            />
+            pluginDetailRoute ? (
+              <PluginDetailView
+                api={api}
+                activeThemeKey={shellState.simSelection.theme.capability?.key}
+                data={data}
+                pluginID={pluginDetailRoute.pluginID}
+                section={pluginDetailRoute.section}
+                themeOverrides={themeOverrides}
+                onBack={() => router.push("/plugins")}
+                onNavigate={selectPluginDetail}
+                onThemeTokenOverridesChange={changeThemeTokenOverrides}
+              />
+            ) : (
+              <PluginsView
+                api={api}
+                data={data}
+                onSelectPlugin={selectPluginDetail}
+                onSIMSelectionPreferenceChange={setSIMSelectionPreference}
+                simSelectionPreference={simSelectionPreference}
+                theme={theme}
+              />
+            )
           ) : activeView === "plugin-pages" ? (
             <PluginPageView activePageKey={activePluginPageKey} api={api} data={data} onSelectPage={selectPluginPage} />
           ) : activeView === "settings" ? (
@@ -1348,7 +1392,12 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   }
 }
 
-export function adminConsoleShellState(data: AppData, theme: "light" | "dark", preference: unknown) {
+export function adminConsoleShellState(
+  data: AppData,
+  theme: "light" | "dark",
+  preference: unknown,
+  themeOverrides: PluginThemeOverrides = {},
+) {
   const simSelection = resolveSIMSelection({ plugins: data.plugins, preference, themeMode: theme });
   return {
     simSelection,
@@ -1359,6 +1408,7 @@ export function adminConsoleShellState(data: AppData, theme: "light" | "dark", p
       activeThemeID: simSelection.theme.capability?.id,
       activeThemeKey: simSelection.theme.capability?.key,
       simRegistry: simRegistryFromPlugins(data.plugins),
+      themeTokenOverrides: simSelection.theme.capability ? themeOverrides[simSelection.theme.capability.key] : undefined,
     }),
   };
 }

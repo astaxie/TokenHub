@@ -5,6 +5,7 @@ import { modelDisplayName } from "./model-display-name";
 import { imageCapabilityCapableResources, modelHasImageCapability, routeImageCapabilityProfile, findProvider, findProviderResource, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
 import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime";
 import { preferredModelCategories, preferredModelCategoriesFromData } from "./model-categories";
+import { pluginDetailRouteFromPath } from "./plugin-detail-route";
 
 export function initialView(): ViewKey {
   if (typeof window === "undefined") return "overview";
@@ -15,6 +16,7 @@ export function viewFromPath(pathname: string): ViewKey {
   const normalized = pathname.replace(/^\/+|\/+$/g, "");
   if (!normalized) return "overview";
   if (apiKeyUsageIDFromPath(pathname)) return "api-keys";
+  if (pluginDetailRouteFromPath(pathname)) return "plugins";
   return routeViews[normalized] ?? "overview";
 }
 

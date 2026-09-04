@@ -114,6 +114,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/provider-catalog/", s.handleAdminProviderCatalogItem)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/provider-adapters", s.handleAdminProviderAdapters, s.adminMethodNotAllowed("providers", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugins", s.handleAdminPlugins, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugins/{plugin_id}/detail", s.handleAdminPluginDetailGet, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugins/{plugin_id}/file", s.handleAdminPluginFileGet, s.adminMethodNotAllowed("providers", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-marketplace", s.handleAdminPluginMarketplaceGet, s.adminMethodNotAllowed("providers", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/install", s.handleAdminPluginInstallPost, s.adminMethodNotAllowed("providers", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/permission-diff", s.handleAdminPluginPermissionDiffInstallPost, s.adminMethodNotAllowed("providers", http.MethodPost))

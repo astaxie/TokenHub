@@ -120,7 +120,7 @@ describe("PluginsView lifecycle controls", () => {
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
-    expect(screen.getByText("已启用")).toBeInTheDocument();
+    expect(screen.getAllByText("已启用").some((element) => element.matches(".pill"))).toBe(true);
     expect(screen.queryByRole("button", { name: "回滚" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "禁用" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "更新" })).not.toBeInTheDocument();

@@ -60,6 +60,21 @@ describe("plugin shell presentation", () => {
     })).toBeUndefined();
   });
 
+  it("applies only safe overrides for declared theme tokens", () => {
+    const style = pluginThemeStyle({
+      plugin_id: "tokenhub.sim",
+      id: "light",
+      slot: "theme.tokens",
+      schema: { tokens: { accent: "#2563eb", surface: "#ffffff" } },
+    }, {
+      accent: "#16a34a",
+      surface: "url(https://example.test/image.png)",
+      unknown: "#000000",
+    });
+
+    expect(style).toEqual({ "--accent": "#16a34a", "--surface": "#ffffff" });
+  });
+
   it("prefers parsed SIM presentation capabilities over legacy Admin UI contributions", () => {
     const presentation = pluginShellPresentation([
       {

@@ -56,7 +56,7 @@ export function PluginInstallDialog({
   );
 }
 
-function PluginInstallFields({
+export function PluginInstallFields({
   draft,
   permissionPreviewDraft,
   onInstall,

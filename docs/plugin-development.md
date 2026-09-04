@@ -4,12 +4,38 @@ Language: English | [简体中文](zh-CN/plugin-development.md) | [日本語](ja
 
 This guide describes the current TokenHub plugin direction and how to build against it. It is written for plugin authors, platform engineers, and operators.
 
+The guide starts with the smallest working plugin and then explains the complete contract. In the same way that WordPress discovers a plugin from its main-file header, TokenHub discovers, validates, and loads a package from `plugin.yaml` at the package root. TokenHub additionally requires every plugin to declare its placement, capabilities, and least-privilege permissions.
+
+> **Current implementation boundary:** This guide only documents behavior implemented by Plugin API v1 in this repository. UI templates are declarative theme and layout capabilities, not an arbitrary React or JavaScript extension mechanism. Installed plugins have detail, file-inventory, and settings routes. The settings route exposes inspectable template blocks and safe theme-token adjustments; source files remain read-only previews and plugin code cannot be edited in the admin console.
+
 TokenHub keeps the core small:
 
 - the core owns auth, routing, billing, auditing, compatibility, and upgrade safety
 - plugins own the parts that change more often
 - built-in plugins and external plugins use the same contract
 - UI templates, provider integrations, chain injection, background jobs, and admin UI contributions all come from explicit plugin metadata
+
+## Managing Installed Plugins
+
+TokenHub follows the useful part of the WordPress plugin-management pattern while separating management tasks from plugin types. Plugin Management has three primary destinations: **Installed Plugins** owns search, status filters, versions, updates, and lifecycle actions; **Install Plugin** contains marketplace access, URL installation, ZIP upload, checksum verification, and permission-diff preview; **Extension Types** uses secondary navigation for Provider, chain injection, UI template, and background-job plugins.
+
+In the installed list, the plugin name and **Details** open the overview, while **Settings** opens configuration directly. In the UI-template list, clicking the template body also opens Settings. Changing the active default remains a separate action, so opening configuration never changes the live interface by accident. This hierarchy follows the WordPress [installation, update, and management pattern](https://www.waimaob2c.com/wordpress-plugins), without copying online code editing or automatic-update behavior that does not fit an enterprise gateway.
+
+| Route | Purpose |
+| --- | --- |
+| `/plugins` | Installed plugin registry and lifecycle actions |
+| `/plugins/[pluginId]` | Metadata, trust, compatibility, capabilities, hooks, UI contributions, actions, jobs, and package totals |
+| `/plugins/[pluginId]/files` | Package-relative file inventory and safe text preview |
+| `/plugins/[pluginId]/settings` | Inspectable template blocks, safe theme-token adjustments, declared permissions, and plugin-owned UI/configuration schemas |
+
+The Files page intentionally differs from the WordPress Plugin File Editor. TokenHub never exposes absolute package paths and does not edit installed executable code. It skips symbolic links and blocks previews of binary, runtime-state, hidden, credential, secret, private, and oversized files. This keeps package inspection useful without turning the admin console into a remote-code-execution surface.
+
+The authenticated inspection API is read-only:
+
+- `GET /api/admin/plugins/{plugin_id}/detail`
+- `GET /api/admin/plugins/{plugin_id}/file?path={package-relative-path}`
+
+Built-in plugins have implementation metadata but no standalone package inventory. External packages can show their file count, total size, file kinds, and eligible source, configuration, and schema content. The conceptual reference is WordPress's [plugin management documentation](https://wordpress.org/documentation/article/manage-plugins/); TokenHub retains its own manifest, permissions, and security model.
 
 ## 1. Plugin Families
 
@@ -199,12 +225,134 @@ The marketplace repo includes a local harness:
 
 ```bash
 go test ./...
-go run ./cmd/tokenhub-plugin-test provider --package ./samples/provider-kimi-go
-go run ./cmd/tokenhub-plugin-test hook --package ./samples/hook-trace-go
-go run ./cmd/tokenhub-plugin-test background --package ./samples/background-heartbeat-go
+go run ./cmd/tokenhub-plugin-test provider --package "$PWD/samples/provider-kimi-go"
+go run ./cmd/tokenhub-plugin-test hook --package "$PWD/samples/hook-trace-go"
+go run ./cmd/tokenhub-plugin-test background --package "$PWD/samples/background-heartbeat-go"
 ```
 
 Replace `--package` with your plugin directory.
+
+### 4.5 Run your first plugin in five minutes
+
+The fastest starting point is the tracked heartbeat background-job sample:
+
+```text
+tokenhub-plugin-marketplace/
+├── cmd/tokenhub-plugin-test/          # Local contract test tool
+├── sdk/go/tokenhubplugin/             # Go protocol helpers
+└── samples/background-heartbeat-go/
+    ├── main.go
+    └── plugin.yaml
+```
+
+Build the executable, then run the contract test:
+
+```bash
+cd tokenhub-plugin-marketplace
+mkdir -p samples/background-heartbeat-go/bin
+go build -o samples/background-heartbeat-go/bin/background-heartbeat-go \
+  ./samples/background-heartbeat-go
+go run ./cmd/tokenhub-plugin-test background \
+  --package "$PWD/samples/background-heartbeat-go"
+```
+
+The sample manifest keeps the plugin identity and its callable TokenHub contract together:
+
+```yaml
+schema_version: 1
+id: tokenhub.background.heartbeat-go
+name: Heartbeat Go Background Job
+version: 1.0.0
+description: Reference background job plugin.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - background
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: bin/background-heartbeat-go
+capabilities:
+  background_jobs:
+    - id: heartbeat.ping
+      title: Heartbeat ping
+      capability: contract.heartbeat
+      subject: background-heartbeat-go
+      schedule: "@startup"
+      timeout_millis: 5000
+      max_concurrency: 1
+      retry:
+        max_attempts: 2
+        backoff_millis: 10
+      input_schema:
+        type: object
+        required: [resource_id]
+        properties:
+          resource_id:
+            type: string
+          count:
+            type: integer
+      output_schema:
+        type: object
+        required: [resource_id, heartbeat, trigger, actor_id]
+        properties:
+          resource_id:
+            type: string
+          heartbeat:
+            type: string
+          trigger:
+            type: string
+          actor_id:
+            type: string
+          count:
+            type: integer
+```
+
+`main.go` reads one JSON invocation from standard input and writes one JSON result to standard output. Logs and diagnostics must go to standard error; never mix them into standard output:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"tokenhub-plugin-marketplace/sdk/go/tokenhubplugin"
+)
+
+type payload struct {
+	ResourceID string `json:"resource_id"`
+	Count      int64  `json:"count"`
+}
+
+func main() {
+	os.Exit(tokenhubplugin.ServeBackgroundJob(
+		context.Background(), os.Stdin, os.Stdout, os.Stderr, handle,
+	))
+}
+
+func handle(_ context.Context, invocation tokenhubplugin.BackgroundJobInvocation) (tokenhubplugin.BackgroundJobResult, error) {
+	input, err := tokenhubplugin.DecodeBackgroundPayload[payload](invocation)
+	if err != nil {
+		return tokenhubplugin.BackgroundJobResult{}, err
+	}
+	if input.ResourceID == "" {
+		return tokenhubplugin.BackgroundJobResult{}, fmt.Errorf("resource_id is required")
+	}
+	return tokenhubplugin.BackgroundJobResult{Data: map[string]any{
+		"resource_id": input.ResourceID,
+		"heartbeat":   "ok",
+		"trigger":     invocation.Trigger,
+		"actor_id":    invocation.Actor.ID,
+		"count":       input.Count,
+	}, Metadata: map[string]string{"status": "ok"}}, nil
+}
+```
+
+Run the sample unchanged first. Then change the plugin ID, job ID, input/output schemas, and handler together. Identifiers in `plugin.yaml`, the handler, and contract fixture must stay synchronized.
 
 ## 5. Build Each Family
 
@@ -263,19 +411,71 @@ Good chain plugins are deterministic, narrow, and explicit about what they read 
 
 ### 5.3 UI template plugins
 
-UI template plugins are for visual identity and layout.
+UI template plugins provide visual identity and limited declarative layout. They do not need an executable; the smallest package contains only `plugin.yaml`:
 
-Typical contributions:
+```yaml
+schema_version: 1
+id: example.sim.operations
+name: Operations UI Template
+version: 1.0.0
+description: A compact operations template for TokenHub.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - sim
+placement:
+  - presentation
+capabilities:
+  sim:
+    theme_tokens:
+      - id: operations-light
+        mode: light
+        default: true
+        tokens:
+          bg: "#f5f7fa"
+          surface: "#ffffff"
+          ink: "#172033"
+          accent: "#1677ff"
+          border: "#d9d9d9"
+    shell_layouts:
+      - id: operations-shell
+        navigation: sidebar
+        density: compact
+        content_width: fluid
+        default: true
+    page_templates:
+      - id: provider-detail
+        target: provider.detail
+        layout: two_column
+        regions: [main, side]
+    dashboard_compositions:
+      - id: operations-dashboard
+        layout: grid
+        cards:
+          - contribution_id: cost-overview
+            region: main
+            size: wide
+            order: 100
+```
 
-- theme tokens
-- shell layout presets
-- navigation composition
-- dashboard composition
-- page templates
+Plugin API v1 currently supports four UI-template capabilities:
 
-UI template plugins should only affect `presentation`.
+| Capability | Currently declarable content |
+| --- | --- |
+| `theme_tokens` | Allowlisted color, text, border, status, and shadow tokens; mode is `light`, `dark`, or `all` |
+| `shell_layouts` | `sidebar` navigation; `compact`, `comfortable`, or `spacious` density; `fluid` or `comfortable` content width |
+| `page_templates` | Target, `single_column`, `two_column`, `grid`, or `detail` layout, and region names |
+| `dashboard_compositions` | `grid`, `operations`, or `compact_grid` layout plus card position, size, and order |
 
-If the change also needs backend behavior, it is no longer only a UI template plugin.
+Important limitations:
+
+- A plugin cannot inject arbitrary CSS, JavaScript, remote scripts, stylesheet URLs, `@import`, or `url(...)`.
+- After installation, operators can select a template and adjust only the safe, allowlisted theme tokens declared by that template. Adjustments are stored in the current browser and are not server-side or team-wide settings.
+- The Settings page expands `shell_layouts` into inspectable navigation, top-bar, global-search, account-area, and content blocks. It also exposes declared page templates, regions, dashboard compositions, cards, and plugin-owned Admin UI contributions.
+- Clicking a block opens its declaration and placement in the detail pane. Theme blocks additionally expose their declared token controls and a restore-default action.
+- Block inspection lives inside the plugin Settings secondary page; there is no separate URL per block. Draft preview, revision history, and server-side one-click rollback are not implemented.
+
+The publishable unit remains a structured theme/layout preset, not a complete page builder or arbitrary CSS editor. If a template also needs backend behavior, split that behavior into a Provider, Hook, background job, or management action and declare its permissions separately.
 
 ### 5.4 Background job plugins
 
@@ -294,6 +494,43 @@ Background job plugins should expose small inputs, predictable retries, and sani
 ### 5.5 Admin UI contributions
 
 Admin UI contributions are the declarative panels, tabs, cards, and route sections used to surface plugin state and operator controls.
+
+Reference a JSON schema file with a package-relative path in `plugin.yaml`:
+
+```yaml
+kinds: [admin_ui]
+placement: [presentation]
+entry:
+  frontend:
+    schema: ui/admin-ui.schema.json
+```
+
+The minimum `ui/admin-ui.schema.json` shape is:
+
+```json
+{
+  "schema_version": 1,
+  "contributions": [
+    {
+      "id": "provider-setup",
+      "slot": "provider.form.section",
+      "title": "Connection settings",
+      "provider_types": ["example_provider"],
+      "schema": {
+        "placement": "advanced",
+        "fields": [
+          {"name": "base_url", "type": "url", "target": "provider"},
+          {"name": "api_key", "type": "secret", "target": "plugin_options"}
+        ]
+      }
+    }
+  ]
+}
+```
+
+Available slots are `nav.section`, `dashboard.card`, `provider.catalog.card`, `provider.form.section`, `provider.model.panel`, `provider.resource.form.section`, `provider.resource.panel`, `route.detail.panel`, `settings.panel`, `report.template`, `theme.tokens`, `layout.preset`, `page.template`, and `dashboard.composition`.
+
+Schema control types include `text`, `secret`, `url`, `select`, `multi_select`, `switch`, `segmented`, `metric`, `table`, `log_viewer`, `code_viewer`, `action_button`, `oauth_button`, and `file_import`. Renderer support differs by slot, so test the contribution on its target page before publishing. A manifest passing validation alone does not mean every target renderer supports every control.
 
 Rules:
 
@@ -324,6 +561,22 @@ Distribution metadata should include:
 - compatibility metadata
 
 The plugin marketplace URL defaults to `https://plugins.betokenhub.com`. Operators can install a package from that marketplace or from a direct ZIP URL, validate the checksum, and restart the backend to activate it.
+
+The ZIP may place `plugin.yaml` at the archive root or inside one top-level plugin directory; exactly one manifest must be discoverable. Do not include symlinks. Preserve executable permissions on the runtime entry, and keep `entry.backend.command` relative to the plugin directory.
+
+For the heartbeat sample:
+
+```bash
+cd tokenhub-plugin-marketplace
+go build -o samples/background-heartbeat-go/bin/background-heartbeat-go \
+  ./samples/background-heartbeat-go
+cd samples/background-heartbeat-go
+zip -r ../../../background-heartbeat-go.zip plugin.yaml bin
+cd ../../..
+shasum -a 256 background-heartbeat-go.zip
+```
+
+In the admin console, open **Plugin Extensions** and upload the ZIP, or provide an HTTPS `download_url` and lowercase SHA-256 checksum. A newly installed package is `pending_restart`. Restart the TokenHub backend, then verify the plugin status, capability inventory, and any background-job or page contribution.
 
 ## 7. Versioning and Compatibility
 

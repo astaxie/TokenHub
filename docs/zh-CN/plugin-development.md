@@ -4,12 +4,38 @@ Language: [English](../plugin-development.md) | 简体中文 | [日本語](../ja
 
 这份文档说明当前 TokenHub 的插件方向，以及如何在这个方向上开发插件。它面向插件作者、平台工程师和运维人员。
 
+本文采用“先做出最小插件，再解释完整契约”的顺序。和 WordPress 通过插件主文件头发现插件类似，TokenHub 通过包根目录的 `plugin.yaml` 发现、校验和加载插件；区别是 TokenHub 插件必须显式声明运行位置、能力和最小权限。
+
+> **当前实现边界：** 本文只描述仓库中已经实现的 Plugin API v1。界面模板是声明式主题和布局能力，并不是任意 React/JavaScript 扩展机制。已安装插件已有详情、文件清单和配置二级路由；配置页提供可检查的模板块和安全主题 Token 调整，源码仍只供只读预览，管理后台不能修改插件代码。
+
 TokenHub 会把 core 保持得很小：
 
 - core 负责鉴权、路由、计费、审计、兼容性和升级安全
 - 变化更快的部分交给 plugin
 - built-in plugin 与 external plugin 使用同一套契约
 - 界面模板、Provider、链路注入、后台任务和 Admin UI 贡献都通过显式的插件元数据接入
+
+## 管理已安装插件
+
+TokenHub 采用 WordPress 插件管理模式中适合企业网关的部分，但将管理动作和插件类型分开。插件管理只有三个一级入口：“已安装插件”负责搜索、状态筛选、版本、更新和生命周期操作；“安装插件”集中提供市场入口、URL 安装、ZIP 上传、checksum 与权限差异预览；“扩展类型”再以二级导航展示 Provider、链路注入、界面模板和后台任务。
+
+已安装列表中的插件名称和“详情”进入概览页，“设置”直接进入配置页。界面模板列表点击模板主体也会进入该模板的“配置”页；“设为默认模板”是独立操作，因此打开配置不会意外切换当前生效界面。这个层级参考了 WordPress 的[安装、更新和管理模式](https://www.waimaob2c.com/wordpress-plugins)，但不会照搬在线代码编辑和不适合企业网关的自动更新行为。
+
+| 路由 | 用途 |
+| --- | --- |
+| `/plugins` | 已安装插件列表和生命周期操作 |
+| `/plugins/[pluginId]` | 元数据、信任、兼容性、能力、Hook、界面贡献、动作、任务和包统计 |
+| `/plugins/[pluginId]/files` | 包内相对路径文件清单和安全文本预览 |
+| `/plugins/[pluginId]/settings` | 可检查模板块、安全主题 Token 调整、声明权限及插件自己的 UI/配置 Schema |
+
+“文件”页有意不照搬 WordPress 的插件文件编辑器。TokenHub 不暴露包的绝对路径，也不允许在线修改已安装的可执行代码；符号链接会被跳过，二进制、运行状态、隐藏文件、凭证、secret、private 以及过大文件都不能预览。这样既能检查插件包的实现，又不会把管理后台变成远程代码执行入口。
+
+经过管理员认证的检查 API 都是只读的：
+
+- `GET /api/admin/plugins/{plugin_id}/detail`
+- `GET /api/admin/plugins/{plugin_id}/file?path={包内相对路径}`
+
+内置插件有实现元数据，但没有独立安装包文件清单。外部插件包可展示文件数、总大小、文件类型，以及符合安全条件的源码、配置和 Schema 内容。整体交互参考 WordPress 的[插件开发文档](https://codex.wordpress.org/zh-cn:%E5%BC%80%E5%8F%91%E4%B8%80%E4%B8%AA%E6%8F%92%E4%BB%B6)，但 TokenHub 保留自己的 manifest、权限和安全模型。
 
 ## 1. 插件家族
 
@@ -199,12 +225,134 @@ marketplace 仓库里提供了本地 harness：
 
 ```bash
 go test ./...
-go run ./cmd/tokenhub-plugin-test provider --package ./samples/provider-kimi-go
-go run ./cmd/tokenhub-plugin-test hook --package ./samples/hook-trace-go
-go run ./cmd/tokenhub-plugin-test background --package ./samples/background-heartbeat-go
+go run ./cmd/tokenhub-plugin-test provider --package "$PWD/samples/provider-kimi-go"
+go run ./cmd/tokenhub-plugin-test hook --package "$PWD/samples/hook-trace-go"
+go run ./cmd/tokenhub-plugin-test background --package "$PWD/samples/background-heartbeat-go"
 ```
 
 把 `--package` 换成你自己的插件目录。
+
+### 4.5 五分钟跑通第一个插件
+
+最快的起点是仓库中已经跟踪的 heartbeat 后台任务样例：
+
+```text
+tokenhub-plugin-marketplace/
+├── cmd/tokenhub-plugin-test/          # 本地契约测试工具
+├── sdk/go/tokenhubplugin/             # Go 协议辅助包
+└── samples/background-heartbeat-go/
+    ├── main.go
+    └── plugin.yaml
+```
+
+先构建可执行文件，再运行契约测试：
+
+```bash
+cd tokenhub-plugin-marketplace
+mkdir -p samples/background-heartbeat-go/bin
+go build -o samples/background-heartbeat-go/bin/background-heartbeat-go \
+  ./samples/background-heartbeat-go
+go run ./cmd/tokenhub-plugin-test background \
+  --package "$PWD/samples/background-heartbeat-go"
+```
+
+这个样例的 manifest 把“插件是什么”和“TokenHub 可以怎样调用它”写在一起：
+
+```yaml
+schema_version: 1
+id: tokenhub.background.heartbeat-go
+name: Heartbeat Go Background Job
+version: 1.0.0
+description: Reference background job plugin.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - background
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: bin/background-heartbeat-go
+capabilities:
+  background_jobs:
+    - id: heartbeat.ping
+      title: Heartbeat ping
+      capability: contract.heartbeat
+      subject: background-heartbeat-go
+      schedule: "@startup"
+      timeout_millis: 5000
+      max_concurrency: 1
+      retry:
+        max_attempts: 2
+        backoff_millis: 10
+      input_schema:
+        type: object
+        required: [resource_id]
+        properties:
+          resource_id:
+            type: string
+          count:
+            type: integer
+      output_schema:
+        type: object
+        required: [resource_id, heartbeat, trigger, actor_id]
+        properties:
+          resource_id:
+            type: string
+          heartbeat:
+            type: string
+          trigger:
+            type: string
+          actor_id:
+            type: string
+          count:
+            type: integer
+```
+
+`main.go` 只需要从标准输入读取一次 JSON invocation，并向标准输出写回一次 JSON result。日志和诊断信息必须写到标准错误，不能混入标准输出：
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"tokenhub-plugin-marketplace/sdk/go/tokenhubplugin"
+)
+
+type payload struct {
+	ResourceID string `json:"resource_id"`
+	Count      int64  `json:"count"`
+}
+
+func main() {
+	os.Exit(tokenhubplugin.ServeBackgroundJob(
+		context.Background(), os.Stdin, os.Stdout, os.Stderr, handle,
+	))
+}
+
+func handle(_ context.Context, invocation tokenhubplugin.BackgroundJobInvocation) (tokenhubplugin.BackgroundJobResult, error) {
+	input, err := tokenhubplugin.DecodeBackgroundPayload[payload](invocation)
+	if err != nil {
+		return tokenhubplugin.BackgroundJobResult{}, err
+	}
+	if input.ResourceID == "" {
+		return tokenhubplugin.BackgroundJobResult{}, fmt.Errorf("resource_id is required")
+	}
+	return tokenhubplugin.BackgroundJobResult{Data: map[string]any{
+		"resource_id": input.ResourceID,
+		"heartbeat":   "ok",
+		"trigger":     invocation.Trigger,
+		"actor_id":    invocation.Actor.ID,
+		"count":       input.Count,
+	}, Metadata: map[string]string{"status": "ok"}}, nil
+}
+```
+
+先原样跑通样例，再修改 `id`、job ID、输入输出 Schema 和 handler。`plugin.yaml`、handler 和 contract fixture 中的标识必须同时修改。
 
 ## 5. 各家族怎么做
 
@@ -263,19 +411,71 @@ Provider 插件把 TokenHub 接到某个模型服务或订阅账户上。
 
 ### 5.3 界面模板插件
 
-界面模板插件负责视觉识别和布局。
+界面模板插件负责视觉识别和有限的声明式布局。它不需要执行二进制文件，最小包可以只包含 `plugin.yaml`：
 
-典型贡献：
+```yaml
+schema_version: 1
+id: example.sim.operations
+name: Operations UI Template
+version: 1.0.0
+description: A compact operations template for TokenHub.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - sim
+placement:
+  - presentation
+capabilities:
+  sim:
+    theme_tokens:
+      - id: operations-light
+        mode: light
+        default: true
+        tokens:
+          bg: "#f5f7fa"
+          surface: "#ffffff"
+          ink: "#172033"
+          accent: "#1677ff"
+          border: "#d9d9d9"
+    shell_layouts:
+      - id: operations-shell
+        navigation: sidebar
+        density: compact
+        content_width: fluid
+        default: true
+    page_templates:
+      - id: provider-detail
+        target: provider.detail
+        layout: two_column
+        regions: [main, side]
+    dashboard_compositions:
+      - id: operations-dashboard
+        layout: grid
+        cards:
+          - contribution_id: cost-overview
+            region: main
+            size: wide
+            order: 100
+```
 
-- theme tokens
-- shell layout presets
-- navigation composition
-- dashboard composition
-- page templates
+Plugin API v1 当前支持四类界面模板能力：
 
-界面模板插件只能影响 `presentation`。
+| 能力 | 当前可声明内容 |
+| --- | --- |
+| `theme_tokens` | allowlist 中的颜色、文字、边框、状态色和阴影 token；mode 为 `light`、`dark` 或 `all` |
+| `shell_layouts` | `sidebar` 导航，`compact` / `comfortable` / `spacious` 密度，`fluid` / `comfortable` 内容宽度 |
+| `page_templates` | target、`single_column` / `two_column` / `grid` / `detail` 布局和 region 名称 |
+| `dashboard_compositions` | `grid` / `operations` / `compact_grid` 布局及卡片位置、尺寸和顺序 |
 
-如果还需要后台行为，那它就不只是界面模板插件了。
+这里有几个重要限制：
+
+- 不能注入任意 CSS、JavaScript、远程脚本、stylesheet URL、`@import` 或 `url(...)`。
+- 安装后可以选择模板，也可以调整该模板已声明且位于 allowlist 内的安全主题 Token。调整保存在当前浏览器，不是服务端或团队范围配置。
+- “配置”页会把 `shell_layouts` 展开为可检查的导航栏、顶部栏、全局搜索、账号区和内容区，同时展示页面模板、页面区域、仪表盘组合、卡片和插件自己的 Admin UI 贡献。
+- 点击任意模板块，会在右侧查看它的声明内容和位置；主题块还提供已声明 Token 的输入控件和“恢复默认”。
+- 模板块检查位于插件“配置”二级页内，不为每个块单独分配 URL。目前也没有草稿预览、版本历史或服务端一键回退。
+
+因此，当前能发布的是“结构化主题/布局预设”，不是完整的页面构建器或任意 CSS 编辑器。如果模板需要后台行为，应把行为拆成 Provider、Hook、后台任务或 management action，并分别声明权限。
 
 ### 5.4 后台任务插件
 
@@ -294,6 +494,43 @@ Provider 插件把 TokenHub 接到某个模型服务或订阅账户上。
 ### 5.5 Admin UI 贡献
 
 Admin UI 贡献是用来展示插件状态和运维控制的声明式面板、tab、卡片和路由区块。
+
+在 `plugin.yaml` 中用相对路径引用 JSON Schema 文件：
+
+```yaml
+kinds: [admin_ui]
+placement: [presentation]
+entry:
+  frontend:
+    schema: ui/admin-ui.schema.json
+```
+
+`ui/admin-ui.schema.json` 的最小结构如下：
+
+```json
+{
+  "schema_version": 1,
+  "contributions": [
+    {
+      "id": "provider-setup",
+      "slot": "provider.form.section",
+      "title": "Connection settings",
+      "provider_types": ["example_provider"],
+      "schema": {
+        "placement": "advanced",
+        "fields": [
+          {"name": "base_url", "type": "url", "target": "provider"},
+          {"name": "api_key", "type": "secret", "target": "plugin_options"}
+        ]
+      }
+    }
+  ]
+}
+```
+
+可用 slot 包括 `nav.section`、`dashboard.card`、`provider.catalog.card`、`provider.form.section`、`provider.model.panel`、`provider.resource.form.section`、`provider.resource.panel`、`route.detail.panel`、`settings.panel`、`report.template`、`theme.tokens`、`layout.preset`、`page.template` 和 `dashboard.composition`。
+
+Schema 可声明的 control type 包括 `text`、`secret`、`url`、`select`、`multi_select`、`switch`、`segmented`、`metric`、`table`、`log_viewer`、`code_viewer`、`action_button`、`oauth_button` 和 `file_import`。但是各个 slot 的 renderer 支持范围不同；发布前必须在目标页面做集成测试，不能只以 manifest 通过校验作为“已支持”的依据。
 
 规则：
 
@@ -324,6 +561,22 @@ TokenHub 对 built-in 和 external 插件使用同一种包形态。
 - 兼容性元数据
 
 插件市场地址默认是 `https://plugins.betokenhub.com`。运维可以从这个 marketplace 或直接 ZIP URL 安装插件包，校验 checksum，然后重启后端使其生效。
+
+ZIP 可以把 `plugin.yaml` 放在归档根目录，也可以只包一层插件目录；归档中必须且只能发现一个 `plugin.yaml`。不要包含 symlink。运行入口必须保留可执行权限，并且 `entry.backend.command` 必须是插件目录内的相对路径。
+
+以 heartbeat 样例为例：
+
+```bash
+cd tokenhub-plugin-marketplace
+go build -o samples/background-heartbeat-go/bin/background-heartbeat-go \
+  ./samples/background-heartbeat-go
+cd samples/background-heartbeat-go
+zip -r ../../../background-heartbeat-go.zip plugin.yaml bin
+cd ../../..
+shasum -a 256 background-heartbeat-go.zip
+```
+
+在管理后台打开“插件扩展”，可上传 ZIP，或提供 HTTPS `download_url` 与小写 SHA-256 checksum。安装完成后状态为 `pending_restart`；重启 TokenHub 后端后，再检查插件状态、能力清单和后台任务/页面贡献是否出现。
 
 ## 7. 版本与兼容性
 

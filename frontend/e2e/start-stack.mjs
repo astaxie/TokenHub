@@ -121,6 +121,7 @@ try {
       TOKENHUB_IMAGE_STORAGE_DIR: path.join(temporaryDirectory, "images"),
       TOKENHUB_MODEL_CATALOG_FILE: path.join(repositoryDirectory, "data/model-catalog.yaml"),
       TOKENHUB_PROVIDER_CATALOG_FILE: path.join(repositoryDirectory, "data/provider-catalog.json"),
+      TOKENHUB_PLUGIN_DIR: path.join(backendDirectory, "internal/plugin/testdata"),
       TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK: "true",
       TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS: "127.0.0.1/32",
       TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS: "1",

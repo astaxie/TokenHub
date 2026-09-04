@@ -76,3 +76,63 @@ test("admin can issue an API Key and open its usage page", async ({ page }) => {
   await expect(page.getByText("当前 Key 有效额度", { exact: true })).toBeVisible();
   await expect(page.getByText("所选条件下暂无请求", { exact: true })).toBeVisible();
 });
+
+test("admin can inspect plugin details, files, and settings", async ({ page }) => {
+  await login(page);
+  await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
+  await expect(page).toHaveURL(/\/plugins$/);
+
+  await page.getByRole("button", { name: "查看插件详情 External Trace Hook" }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace$/);
+  await expect(page.getByRole("heading", { name: "External Trace Hook" })).toBeVisible();
+  await expect(page.getByText("export", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "文件" }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace\/files$/);
+  await expect(page.getByRole("button", { name: /plugin\.yaml/ })).toBeVisible();
+  await page.getByRole("button", { name: /hook\.sh/ }).click();
+  await expect(page.locator(".plugin-file-preview pre")).toContainText("#!/bin/sh");
+
+  await page.getByRole("tab", { name: "配置" }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace\/settings$/);
+  await expect(page.getByText("audit", { exact: true })).toBeVisible();
+  await expect(page.getByText("usage", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "文件" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const fileListBox = await page.locator(".plugin-file-list").boundingBox();
+  const previewBox = await page.locator(".plugin-file-preview").boundingBox();
+  expect(fileListBox).not.toBeNull();
+  expect(previewBox).not.toBeNull();
+  expect(previewBox!.y).toBeGreaterThanOrEqual(fileListBox!.y + fileListBox!.height - 1);
+});
+
+test("admin can inspect and adjust UI template blocks", async ({ page }) => {
+  await login(page);
+  await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
+  await page.getByRole("tab", { name: "扩展类型" }).click();
+  await page.getByRole("tab", { name: "界面模板" }).click();
+  await page.getByRole("button", { name: "配置界面模板 TokenHub 默认界面模板" }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);
+  await expect(page.getByRole("heading", { name: "TokenHub 默认界面模板" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /导航栏/ })).toBeVisible();
+  await page.getByRole("button", { name: /全局搜索/ }).click();
+  await expect(page.locator(".plugin-template-block-detail")).toContainText("shell.topbar.search");
+
+  await page.getByRole("button", { name: /TokenHub 默认浅色/ }).click();
+  await page.getByRole("textbox", { name: "accent 当前值" }).fill("#16a34a");
+  await page.getByRole("button", { name: "应用调整" }).click();
+  await expect(page.getByRole("status")).toContainText("样式调整已应用");
+  await expect(page.locator(".app-shell")).toHaveAttribute("style", /--accent: #16a34a/);
+
+  await page.getByRole("button", { name: "恢复默认" }).click();
+  await expect(page.locator(".app-shell")).toHaveAttribute("style", /--accent: #3e7bf6/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const blockListBox = await page.locator(".plugin-template-block-list").boundingBox();
+  const blockDetailBox = await page.locator(".plugin-template-block-detail").boundingBox();
+  expect(blockListBox).not.toBeNull();
+  expect(blockDetailBox).not.toBeNull();
+  expect(blockDetailBox!.y).toBeGreaterThanOrEqual(blockListBox!.y + blockListBox!.height - 1);
+});

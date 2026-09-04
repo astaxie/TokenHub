@@ -38,8 +38,7 @@ describe("PluginsView", () => {
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
-    expect(screen.getByText("分发")).toBeInTheDocument();
-    expect(screen.getByText("已禁用")).toBeInTheDocument();
+    expect(screen.getAllByText("已禁用").some((element) => element.matches(".pill"))).toBe(true);
     expect(screen.getByText("许可证 Apache-2.0")).toBeInTheDocument();
     expect(screen.getByText("SHA-256 0123456789ab...cdef")).toBeInTheDocument();
     const titleCell = screen.getByText("Kimi Provider").closest(".plugin-title-cell");
@@ -51,7 +50,83 @@ describe("PluginsView", () => {
     expect(screen.getByRole("link", { name: /下载/ })).toHaveAttribute("href", "https://plugins.tokenhub.example/kimi/1.2.3.zip");
   });
 
-  it("renders repeated capability tags without duplicate key warnings", () => {
+  it("opens the selected plugin detail page from the registry", () => {
+    const onSelectPlugin = vi.fn();
+    const data = emptyData();
+    data.plugins = [{
+      id: "example.detail",
+      name: "Detail Example",
+      version: "1.0.0",
+      source: "local_file",
+      status: "enabled",
+      kinds: ["extension"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+    }];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} onSelectPlugin={onSelectPlugin} />);
+    fireEvent.click(screen.getByRole("button", { name: "查看插件详情 Detail Example" }));
+
+    expect(onSelectPlugin).toHaveBeenCalledWith("example.detail");
+  });
+
+  it("opens plugin settings directly from the installed list", () => {
+    const onSelectPlugin = vi.fn();
+    const data = emptyData();
+    data.plugins = [{
+      id: "example.settings",
+      name: "Settings Example",
+      version: "1.0.0",
+      source: "local_file",
+      status: "enabled",
+      kinds: ["extension"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+    }];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} onSelectPlugin={onSelectPlugin} />);
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+
+    expect(onSelectPlugin).toHaveBeenCalledWith("example.settings", "settings");
+  });
+
+  it("filters installed plugins by status and search query", () => {
+    const data = emptyData();
+    data.plugins = [
+      {
+        id: "example.enabled",
+        name: "Enabled Example",
+        version: "1.0.0",
+        source: "built_in",
+        status: "enabled",
+        kinds: ["provider"],
+        placements: ["gateway_chain"],
+        capabilities: [],
+      },
+      {
+        id: "example.disabled",
+        name: "Disabled Example",
+        version: "1.0.0",
+        source: "local_file",
+        status: "disabled",
+        kinds: ["extension"],
+        placements: ["background"],
+        capabilities: [],
+      },
+    ];
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "已禁用" }));
+    expect(screen.getByText("Disabled Example")).toBeInTheDocument();
+    expect(screen.queryByText("Enabled Example")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "全部插件" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索插件" }), { target: { value: "enabled" } });
+    expect(screen.getByText("Enabled Example")).toBeInTheDocument();
+    expect(screen.queryByText("Disabled Example")).not.toBeInTheDocument();
+  });
+
+  it("summarizes repeated capability declarations without duplicate key warnings", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const data = emptyData();
     data.plugins = [{
@@ -69,12 +144,13 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
 
-    expect(screen.getAllByText("model_category")).toHaveLength(2);
+    expect(screen.getByText("2")).toBeInTheDocument();
     expect(consoleError.mock.calls.some((call) => String(call[0]).includes("Encountered two children with the same key"))).toBe(false);
   });
 
-  it("counts plugin categories instead of capability declarations in metrics", () => {
+  it("counts plugin categories in the extension navigation", () => {
     const data = emptyData();
     data.plugins = [
       {
@@ -147,10 +223,13 @@ describe("PluginsView", () => {
       },
     ];
 
-    const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    const metrics = Array.from(container.querySelectorAll(".metric-card")).map((element) => element.textContent);
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
 
-    expect(metrics).toEqual(["已注册插件4", "Provider 插件1", "链路注入插件1", "界面模板插件1", "后台任务插件1"]);
+    expect(screen.getByRole("tab", { name: "Provider 插件" })).toHaveTextContent("1");
+    expect(screen.getByRole("tab", { name: "链路注入" })).toHaveTextContent("1");
+    expect(screen.getByRole("tab", { name: "界面模板" })).toHaveTextContent("1");
+    expect(screen.getByRole("tab", { name: "后台任务" })).toHaveTextContent("1");
     expect(screen.queryByText("Provider 能力")).not.toBeInTheDocument();
   });
 
@@ -168,6 +247,7 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "Provider 插件" }));
 
     expect(screen.getByText("Provider 插件清单")).toBeInTheDocument();
@@ -192,6 +272,7 @@ describe("PluginsView", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "Provider 插件" }));
     fireEvent.click(screen.getByRole("button", { name: "禁用" }));
 
@@ -243,6 +324,7 @@ describe("PluginsView", () => {
     ];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "链路注入" }));
 
     expect(screen.getByText("链路注入插件清单")).toBeInTheDocument();
@@ -275,7 +357,7 @@ describe("PluginsView", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("button", { name: /启用/ }));
+    fireEvent.click(screen.getByRole("button", { name: "启用" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -283,7 +365,7 @@ describe("PluginsView", () => {
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(String(init.body))).toEqual({ status: "enabled" });
     await waitFor(() => expect(screen.getByText("重启后生效")).toBeInTheDocument());
-    expect(screen.getByText("已启用")).toBeInTheDocument();
+    expect(screen.getAllByText("已启用").some((element) => element.matches(".pill"))).toBe(true);
   });
 
   it("installs a verified plugin package through the admin endpoint", async () => {
@@ -470,12 +552,13 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "后台任务" }));
 
     expect(screen.getByText("后台任务插件清单")).toBeInTheDocument();
     expect(screen.getAllByText("OpenAI Codex Subscription")).toHaveLength(1);
     expect(screen.getByText("任务数量")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getAllByText("2").length).toBeGreaterThan(0);
     expect(screen.getByText("1m")).toBeInTheDocument();
     expect(screen.getByText("10m")).toBeInTheDocument();
     expect(screen.getByText("credentials.refresh_due")).toBeInTheDocument();
@@ -521,6 +604,7 @@ describe("PluginsView", () => {
     ];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
 
     expect(screen.getByText("界面模板与主题贡献")).toBeInTheDocument();
@@ -537,6 +621,7 @@ describe("PluginsView", () => {
 
   it("sets a whole UI template package through the shell preference callback", () => {
     const onPreferenceChange = vi.fn();
+    const onSelectPlugin = vi.fn();
     const data = emptyData();
     data.plugins = [
       simPlugin("tokenhub.sim.default", [
@@ -553,19 +638,22 @@ describe("PluginsView", () => {
       <PluginsView
         api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
         data={data}
+        onSelectPlugin={onSelectPlugin}
         onSIMSelectionPreferenceChange={onPreferenceChange}
         simSelectionPreference={{}}
         theme="light"
       />,
     );
 
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
     expect(screen.getByLabelText("界面模板列表")).toBeInTheDocument();
     expect(screen.queryByLabelText("界面模板插件")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("主题 Token")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("布局预设")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /tokenhub\.sim\.enterprise/ }));
+    fireEvent.click(screen.getByRole("button", { name: /配置界面模板.*tokenhub\.sim\.enterprise/ }));
+    expect(onSelectPlugin).toHaveBeenCalledWith("tokenhub.sim.enterprise", "settings");
     fireEvent.click(screen.getByRole("button", { name: "设为默认模板" }));
 
     expect(onPreferenceChange).toHaveBeenCalledWith({
@@ -654,6 +742,7 @@ describe("PluginsView", () => {
     const { rerender } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} theme="light" />);
 
     expect(screen.getByText("Codex Subscription")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Extension Types" }));
     fireEvent.click(screen.getByRole("tab", { name: "UI Templates" }));
     fireEvent.click(screen.getByText("Developer Info"));
     expect(screen.getByText("Route Context")).toBeInTheDocument();
@@ -690,6 +779,7 @@ describe("PluginsView", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
     expect(screen.getByText("界面模板选择面板")).toBeInTheDocument();
     expect(pluginStyles()).toContain(".plugin-action-field select");
@@ -733,11 +823,11 @@ describe("PluginsView", () => {
     expect(container.querySelector('[data-plugin-manager-control="lifecycle"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-control="distribution"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-control="delete"]')).toBeInTheDocument();
-    expect(pluginStyles()).toContain(".plugins-view .metric-grid");
-    expect(pluginStyles()).toContain(".plugins-view .metric-card");
+    expect(pluginStyles()).toContain(".plugin-installed-row");
+    expect(pluginStyles()).toContain(".plugin-status-filters");
+    expect(pluginStyles()).toContain(".plugin-extension-nav");
     expect(pluginStyles()).toContain(".plugin-manager-topbar");
     expect(pluginStyles()).toContain(".plugin-manager-actions");
-    expect(pluginStyles()).toContain(".plugin-install-modal");
     expect(pluginStyles()).toContain(".plugin-install-runner");
     expect(pluginStyles()).toContain(".plugin-install-panel");
     expect(pluginStyles()).toContain(".plugin-install-file-button");

@@ -1,17 +1,26 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PlugZap, Save, ShieldCheck, Upload } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PackageOpen, Save, Search, Settings2, ShieldCheck, Upload } from "lucide-react";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type GatewayHookDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
 import { pluginActionKey, pluginBackgroundJobKey } from "../domain/plugin-actions";
-import { pluginManagerTabs, pluginMarketplaceWebsiteURL, type PluginManagerTabKey } from "../domain/plugin-management";
+import {
+  pluginExtensionCategories,
+  pluginManagerTabs,
+  pluginMarketplaceWebsiteURL,
+  pluginStatusFilters,
+  type PluginExtensionCategoryKey,
+  type PluginManagerTabKey,
+  type PluginStatusFilterKey,
+} from "../domain/plugin-management";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { localizedCapabilityTitle, localizedContributionTitle, localizedPluginName } from "../domain/plugin-localization";
+import { type PluginDetailSection } from "../domain/plugin-detail-route";
 import { type PluginPermissionDiffPreviewPayload } from "../domain/plugin-permission-diff";
 import { simRegistryFromPlugins, type SIMRegistry, type SIMShellLayout, type SIMThemeTokens } from "../domain/sim-registry";
 import { resolveSIMSelection, type SIMSelectionPreference } from "../domain/sim-selection";
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
-import { emptyInstallDraft, PluginInstallDialog, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
+import { emptyInstallDraft, PluginInstallFields, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
 import { PluginDeleteControl, PluginLifecycleControl, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
 import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
 
@@ -26,12 +35,14 @@ export function PluginsView({
   data,
   simSelectionPreference,
   onSIMSelectionPreferenceChange,
+  onSelectPlugin,
   theme = "light",
 }: {
   api: ApiContext;
   data: AppData;
   simSelectionPreference?: unknown;
   onSIMSelectionPreferenceChange?: (preference: SIMSelectionPreference) => void;
+  onSelectPlugin?: (pluginID: string, section?: PluginDetailSection) => void;
   theme?: "light" | "dark";
 }) {
   const plugins = data.plugins;
@@ -42,14 +53,15 @@ export function PluginsView({
   const [installPermissionPreview, setInstallPermissionPreview] = useState<PluginPermissionDiffPreviewDraft>(emptyPermissionPreviewDraft());
   const [pluginPermissionPreviews, setPluginPermissionPreviews] = useState<Record<string, PluginPermissionDiffPreviewDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
-  const [installDialogOpen, setInstallDialogOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<PluginManagerTabKey>("registry");
+  const [activeTab, setActiveTab] = useState<PluginManagerTabKey>("installed");
+  const [activeExtensionCategory, setActiveExtensionCategory] = useState<PluginExtensionCategoryKey>("provider");
+  const [statusFilter, setStatusFilter] = useState<PluginStatusFilterKey>("all");
+  const [pluginQuery, setPluginQuery] = useState("");
   const simRegistry = useMemo(() => simRegistryFromPlugins(plugins), [plugins]);
   const simSelection = useMemo(
     () => resolveSIMSelection({ plugins, preference: simSelectionPreference, themeMode: theme }),
     [plugins, simSelectionPreference, theme],
   );
-  const [selectedSIMPluginID, setSelectedSIMPluginID] = useState("");
   const uiContributions = data.pluginUI;
   const pluginActions = data.pluginActions;
   const backgroundJobs = data.pluginBackgroundJobs;
@@ -70,11 +82,32 @@ export function PluginsView({
   const chainInjectionPlugins = chainPluginList.length;
   const uiTemplatePlugins = plugins.filter((plugin) => plugin.kinds?.includes("sim")).length;
   const backgroundJobPlugins = backgroundJobPluginList.length;
+  const pluginCounts = useMemo(() => ({
+    all: plugins.length,
+    enabled: plugins.filter((plugin) => pluginManagerDisplayState({ plugin }).status !== "disabled").length,
+    disabled: plugins.filter((plugin) => pluginManagerDisplayState({ plugin }).status === "disabled").length,
+    updates: plugins.filter((plugin) => pluginManagerDisplayState({ plugin }).actions.update.available).length,
+  }), [plugins]);
+  const filteredPlugins = useMemo(() => {
+    const normalizedQuery = pluginQuery.trim().toLocaleLowerCase(locale);
+    return plugins.filter((plugin) => {
+      const lifecycle = pluginManagerDisplayState({ plugin });
+      const matchesStatus = statusFilter === "all"
+        || (statusFilter === "enabled" && lifecycle.status !== "disabled")
+        || (statusFilter === "disabled" && lifecycle.status === "disabled")
+        || (statusFilter === "updates" && lifecycle.actions.update.available);
+      if (!matchesStatus || !normalizedQuery) return matchesStatus;
+      const searchable = [
+        localizedPluginName(plugin, locale),
+        plugin.id,
+        plugin.version,
+        ...plugin.kinds,
+        ...plugin.capabilities.map((capability) => `${capability.kind} ${capability.name}`),
+      ].join(" ").toLocaleLowerCase(locale);
+      return searchable.includes(normalizedQuery);
+    });
+  }, [locale, pluginQuery, plugins, statusFilter]);
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
-  const selectedSIMTemplate =
-    simTemplates.find((template) => template.id === selectedSIMPluginID) ??
-    simTemplates.find((template) => template.id === simSelection.activeSIMPluginID) ??
-    simTemplates[0];
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
@@ -343,68 +376,65 @@ export function PluginsView({
             <ExternalLink size={14} />
             <span>{tx("插件市场")}</span>
           </a>
-          <button className="secondary-button plugin-local-install-button" onClick={() => setInstallDialogOpen(true)} type="button">
+          <button className="secondary-button plugin-local-install-button" onClick={() => setActiveTab("install")} type="button">
             <Upload size={14} />
             <span>{tx("安装本地插件")}</span>
           </button>
         </div>
       </div>
 
-      {installDialogOpen ? (
-        <PluginInstallDialog
-          draft={installDraft}
-          onClose={() => setInstallDialogOpen(false)}
-          onInstall={installPlugin}
-          onPermissionPreview={previewInstallPluginPermissions}
-          permissionPreviewDraft={installPermissionPreview}
-          setDraft={setInstallDraft}
-        />
-      ) : null}
-
-      <div className="metric-grid">
-        <PluginMetric icon={<PlugZap size={18} />} label={tx("已注册插件")} value={plugins.length} />
-        <PluginMetric icon={<Boxes size={18} />} label={tx("Provider 插件")} value={providerPlugins} />
-        <PluginMetric icon={<Layers3 size={18} />} label={tx("链路注入插件")} value={chainInjectionPlugins} />
-        <PluginMetric icon={<ShieldCheck size={18} />} label={tx("界面模板插件")} value={uiTemplatePlugins} />
-        <PluginMetric icon={<Clock3 size={18} />} label={tx("后台任务插件")} value={backgroundJobPlugins} />
-      </div>
-
-      {activeTab === "registry" ? (
-        <>
-      <section className="section" data-plugin-manager-section="registry">
-        <div className="section-header">
-          <h2>{tx("插件注册表")}</h2>
+      {activeTab === "installed" ? (
+      <section className="section plugin-installed-section" data-plugin-manager-section="registry">
+        <div className="section-header plugin-installed-header">
+          <div>
+            <h2>{tx("已安装插件")}</h2>
+            <span>{plugins.length}</span>
+          </div>
+          <label className="plugin-search-field">
+            <Search size={15} aria-hidden="true" />
+            <input
+              aria-label={tx("搜索插件")}
+              onChange={(event) => setPluginQuery(event.currentTarget.value)}
+              placeholder={tx("搜索插件名称或 ID")}
+              type="search"
+              value={pluginQuery}
+            />
+          </label>
+        </div>
+        <div className="plugin-status-filters" role="group" aria-label={tx("插件状态筛选")}>
+          {pluginStatusFilters.map((filter) => (
+            <button
+              aria-label={tx(filter.label)}
+              aria-pressed={statusFilter === filter.key}
+              className={statusFilter === filter.key ? "active" : ""}
+              key={filter.key}
+              onClick={() => setStatusFilter(filter.key)}
+              type="button"
+            >
+              <span>{tx(filter.label)}</span>
+              <strong>{pluginCounts[filter.key]}</strong>
+            </button>
+          ))}
         </div>
         <div className="section-body">
-          {plugins.length === 0 ? (
+          {filteredPlugins.length === 0 ? (
             <p className="empty-state">{tx("暂无插件")}</p>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{tx("插件")}</th>
-                    <th>{tx("来源")}</th>
-                    <th>{tx("状态")}</th>
-                    <th>{tx("类型")}</th>
-                    <th>{tx("运行位置")}</th>
-                    <th>{tx("分发")}</th>
-                    <th>{tx("能力")}</th>
-                    <th>{tx("操作")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plugins.map((plugin) => {
+            <div className="plugin-installed-list">
+                  {filteredPlugins.map((plugin) => {
                     const lifecycle = pluginManagerDisplayState({ plugin });
                     return (
-                      <tr key={plugin.id}>
-                        <td>
-                          <PluginTitle plugin={plugin} />
-                        </td>
-                        <td>
+                      <article className={`plugin-installed-row${lifecycle.status === "disabled" ? " disabled" : ""}`} key={plugin.id}>
+                        <div className="plugin-installed-main">
+                          <PluginTitle plugin={plugin} onSelect={onSelectPlugin} />
+                          <div className="plugin-installed-taxonomy">
+                            <TagList values={[...plugin.kinds.map(pluginKindLabel), ...plugin.placements.map(pluginPlacementLabel)]} />
+                          </div>
+                        </div>
+                        <div className="plugin-installed-source">
                           <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
-                        </td>
-                        <td>
+                        </div>
+                        <div className="plugin-installed-state">
                           <PluginLifecycleControl
                             draft={pluginStateDraft(plugin)}
                             lifecycle={lifecycle}
@@ -413,91 +443,9 @@ export function PluginsView({
                             plugin={plugin}
                             rollbackDraft={pluginRollbackDraft(plugin)}
                           />
-                        </td>
-                        <td>{plugin.kinds.map(pluginKindLabel).join(", ")}</td>
-                        <td>{plugin.placements.map(pluginPlacementLabel).join(", ")}</td>
-                        <td>
-                          <DistributionMetadata
-                            lifecycle={lifecycle}
-                            plugin={plugin}
-                            draft={pluginUpdateDraft(plugin)}
-                            onUpdate={updatePlugin}
-                            onPreview={(target) => previewPluginPermissions(target, "update")}
-                            previewDraft={pluginPermissionPreviewDraft(plugin)}
-                          />
-                        </td>
-                        <td>
-                          <CapabilityList plugin={plugin} />
-                        </td>
-                        <td>
-                          <PluginDeleteControl
-                            lifecycle={lifecycle}
-                            plugin={plugin}
-                            draft={pluginDeleteDraft(plugin)}
-                            onDelete={deletePlugin}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-
-        </>
-      ) : null}
-
-      {activeTab === "provider" ? (
-        <section className="section" data-plugin-manager-section="provider">
-          <div className="section-header">
-            <h2>{tx("Provider 插件清单")}</h2>
-          </div>
-          <div className="section-body">
-            {providerPluginList.length === 0 ? (
-              <p className="empty-state">{tx("暂无 Provider 插件")}</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{tx("插件")}</th>
-                      <th>{tx("来源")}</th>
-                      <th>{tx("状态")}</th>
-                      <th>{tx("类型")}</th>
-                      <th>{tx("运行位置")}</th>
-                      <th>{tx("分发")}</th>
-                      <th>{tx("能力")}</th>
-                      <th>{tx("操作")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {providerPluginList.map((plugin) => {
-                      const lifecycle = pluginManagerDisplayState({ plugin });
-                      return (
-                        <tr key={plugin.id}>
-                          <td>
-                            <PluginTitle plugin={plugin} />
-                          </td>
-                          <td>
-                            <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
-                          </td>
-                        <td>
-                          <PluginLifecycleControl
-                            allowBuiltInUpdates
-                            draft={pluginStateDraft(plugin)}
-                            lifecycle={lifecycle}
-                            onRollback={rollbackPlugin}
-                            onUpdate={updatePluginState}
-                            plugin={plugin}
-                            rollbackDraft={pluginRollbackDraft(plugin)}
-                          />
-                        </td>
-                          <td>{plugin.kinds?.map(pluginKindLabel).join(", ") || "-"}</td>
-                          <td>{plugin.placements?.map(pluginPlacementLabel).join(", ") || "-"}</td>
-                          <td>
+                        </div>
+                        <div className="plugin-installed-distribution">
+                          {plugin.distribution ? (
                             <DistributionMetadata
                               lifecycle={lifecycle}
                               plugin={plugin}
@@ -506,30 +454,147 @@ export function PluginsView({
                               onPreview={(target) => previewPluginPermissions(target, "update")}
                               previewDraft={pluginPermissionPreviewDraft(plugin)}
                             />
-                          </td>
-                          <td>
-                            <CapabilityList plugin={plugin} />
-                          </td>
-                          <td>
+                          ) : null}
+                        </div>
+                        <div className="plugin-installed-actions">
+                          {onSelectPlugin ? (
+                            <>
+                              <button className="secondary-button compact-button" onClick={() => onSelectPlugin(plugin.id)} type="button">
+                                <PackageOpen size={14} aria-hidden="true" />
+                                <span>{tx("详情")}</span>
+                              </button>
+                              <button className="secondary-button compact-button" onClick={() => onSelectPlugin(plugin.id, "settings")} type="button">
+                                <Settings2 size={14} aria-hidden="true" />
+                                <span>{tx("设置")}</span>
+                              </button>
+                            </>
+                          ) : null}
+                          {lifecycle.actions.uninstall.available ? (
                             <PluginDeleteControl
                               lifecycle={lifecycle}
                               plugin={plugin}
                               draft={pluginDeleteDraft(plugin)}
                               onDelete={deletePlugin}
                             />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+            </div>
+          )}
+        </div>
+      </section>
+      ) : null}
+
+      {activeTab === "install" ? (
+        <section className="section plugin-install-center" data-plugin-manager-section="install">
+          <div className="section-header">
+            <div>
+              <h2>{tx("安装插件")}</h2>
+              <span>{tx("URL 或 ZIP 插件包")}</span>
+            </div>
+            <a className="secondary-button plugin-marketplace-link" href={marketplaceWebsiteURL} rel="noreferrer" target="_blank">
+              <ExternalLink size={14} aria-hidden="true" />
+              <span>{tx("浏览插件市场")}</span>
+            </a>
+          </div>
+          <div className="section-body">
+            <PluginInstallFields
+              draft={installDraft}
+              onInstall={installPlugin}
+              onPermissionPreview={previewInstallPluginPermissions}
+              permissionPreviewDraft={installPermissionPreview}
+              setDraft={setInstallDraft}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      {activeTab === "extensions" ? (
+        <div className="plugin-extension-workspace">
+          <aside className="plugin-extension-nav" aria-label={tx("扩展类型")} role="tablist">
+            <div className="plugin-extension-nav-heading">
+              <strong>{tx("扩展类型")}</strong>
+              <span>{providerPlugins + chainInjectionPlugins + uiTemplatePlugins + backgroundJobPlugins}</span>
+            </div>
+            {pluginExtensionCategories.map((category) => (
+              <button
+                aria-label={tx(category.label)}
+                aria-selected={activeExtensionCategory === category.key}
+                className={activeExtensionCategory === category.key ? "active" : ""}
+                key={category.key}
+                onClick={() => setActiveExtensionCategory(category.key)}
+                role="tab"
+                type="button"
+              >
+                {extensionCategoryIcon(category.key)}
+                <span>{tx(category.label)}</span>
+                <strong>{extensionCategoryCount(category.key, { providerPlugins, chainInjectionPlugins, uiTemplatePlugins, backgroundJobPlugins })}</strong>
+              </button>
+            ))}
+          </aside>
+          <div className="plugin-extension-content">
+
+      {activeExtensionCategory === "provider" ? (
+        <section className="section" data-plugin-manager-section="provider">
+          <div className="section-header">
+            <h2>{tx("Provider 插件清单")}</h2>
+          </div>
+          <div className="section-body">
+            {providerPluginList.length === 0 ? (
+              <p className="empty-state">{tx("暂无 Provider 插件")}</p>
+            ) : (
+              <div className="plugin-type-list">
+                {providerPluginList.map((plugin) => {
+                  const lifecycle = pluginManagerDisplayState({ plugin });
+                  return (
+                    <article className="plugin-type-row" key={plugin.id}>
+                      <div className="plugin-type-main">
+                        <PluginTitle plugin={plugin} onSelect={onSelectPlugin} />
+                        <div className="plugin-type-meta">
+                          <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
+                          <span className="plugin-type-capability-count">
+                            <span>{tx("能力")}</span>
+                            <strong>{plugin.capabilities.length}</strong>
+                          </span>
+                        </div>
+                      </div>
+                      <div className="plugin-type-state">
+                        <PluginLifecycleControl
+                          allowBuiltInUpdates
+                          draft={pluginStateDraft(plugin)}
+                          lifecycle={lifecycle}
+                          onRollback={rollbackPlugin}
+                          onUpdate={updatePluginState}
+                          plugin={plugin}
+                          rollbackDraft={pluginRollbackDraft(plugin)}
+                        />
+                      </div>
+                      <div className="plugin-type-actions">
+                        {onSelectPlugin ? (
+                          <>
+                            <button className="secondary-button compact-button" onClick={() => onSelectPlugin(plugin.id)} type="button">
+                              <PackageOpen size={14} aria-hidden="true" />
+                              <span>{tx("详情")}</span>
+                            </button>
+                            <button className="secondary-button compact-button" onClick={() => onSelectPlugin(plugin.id, "settings")} type="button">
+                              <Settings2 size={14} aria-hidden="true" />
+                              <span>{tx("设置")}</span>
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </div>
         </section>
       ) : null}
 
-      {activeTab === "chain" ? (
+      {activeExtensionCategory === "chain" ? (
         <section className="section" data-plugin-manager-section="chain-plugins">
           <div className="section-header">
             <h2>{tx("链路注入插件清单")}</h2>
@@ -559,7 +624,7 @@ export function PluginsView({
                       const lifecycle = plugin ? pluginManagerDisplayState({ plugin }) : undefined;
                       return (
                         <tr key={item.pluginID}>
-                          <td>{plugin ? <PluginTitle plugin={plugin} /> : <span>{item.pluginID}</span>}</td>
+                          <td>{plugin ? <PluginTitle plugin={plugin} onSelect={onSelectPlugin} /> : <span>{item.pluginID}</span>}</td>
                           <td>
                             {plugin ? (
                               <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
@@ -621,7 +686,7 @@ export function PluginsView({
         </section>
       ) : null}
 
-      {activeTab === "ui" ? (
+      {activeExtensionCategory === "ui" ? (
         <>
       <section className="section" data-plugin-manager-section="template-selection">
         <div className="section-header">
@@ -632,74 +697,49 @@ export function PluginsView({
             <p className="empty-state">{tx("暂无可选界面模板")}</p>
           ) : (
             <div className="sim-template-selection-panel">
+              <div className="sim-template-active-summary">
+                <span>{tx("当前默认")}</span>
+                <strong>{activeSIMPlugin ? localizedPluginName(activeSIMPlugin, locale) : tx("自动选择")}</strong>
+                <small>
+                  {simSelection.theme.capability ? localizedCapabilityTitle(simSelection.theme.capability, locale) : tx("自动选择")} ·{" "}
+                  {simSelection.layout.capability ? localizedCapabilityTitle(simSelection.layout.capability, locale) : tx("自动选择")}
+                </small>
+              </div>
               <div className="sim-template-list" aria-label={tx("界面模板列表")}>
                 {simTemplates.map((template) => {
-                  const isSelected = selectedSIMTemplate?.id === template.id;
                   const isActive = simSelection.activeSIMPluginID === template.id;
                   return (
-                    <button
-                      key={template.id}
-                      aria-pressed={isSelected}
-                      className={isSelected ? "sim-template-item active" : "sim-template-item"}
-                      onClick={() => setSelectedSIMPluginID(template.id)}
-                      type="button"
-                    >
-                      <span className="sim-template-item-main">
-                        <strong>{template.name}</strong>
-                        <span>{template.id}{template.version ? ` · ${template.version}` : ""}</span>
-                      </span>
-                      <span className="tag-list">
-                        {isActive ? <span className="tag">{tx("当前默认")}</span> : null}
-                        <span className="tag">{template.theme?.title ?? tx("自动选择")}</span>
-                        <span className="tag">{template.layout?.title ?? tx("自动选择")}</span>
-                      </span>
-                    </button>
+                    <div className={isActive ? "sim-template-item-row active" : "sim-template-item-row"} key={template.id}>
+                      <button
+                        aria-label={`${tx("配置界面模板")} ${template.name}`}
+                        className="sim-template-item"
+                        onClick={() => onSelectPlugin?.(template.id, "settings")}
+                        type="button"
+                      >
+                        <span className="sim-template-item-main">
+                          <strong>{template.name}</strong>
+                          <span>{template.id}{template.version ? ` · ${template.version}` : ""}</span>
+                        </span>
+                        <span className="tag-list">
+                          {isActive ? <span className="tag">{tx("当前默认")}</span> : null}
+                          <span className="tag">{template.theme?.title ?? tx("自动选择")}</span>
+                          <span className="tag">{template.layout?.title ?? tx("自动选择")}</span>
+                        </span>
+                        <span className="sim-template-open-label"><Settings2 size={14} aria-hidden="true" />{tx("打开配置")}</span>
+                      </button>
+                      <button
+                        className="secondary-button sim-template-default-button"
+                        disabled={!onSIMSelectionPreferenceChange || isActive}
+                        onClick={() => setSIMTemplateDefault(template.id)}
+                        type="button"
+                      >
+                        <Save size={14} aria-hidden="true" />
+                        <span>{isActive ? tx("当前默认") : tx("设为默认模板")}</span>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
-
-              {selectedSIMTemplate ? (
-                <aside className="sim-template-detail-panel">
-                  <div className="stacked-cell">
-                    <strong>{tx("默认模板")}</strong>
-                    <span>
-                      {activeSIMPlugin ? localizedPluginName(activeSIMPlugin, locale) : tx("自动选择")} ·{" "}
-                      {simSelection.theme.capability ? localizedCapabilityTitle(simSelection.theme.capability, locale) : tx("自动选择")} ·{" "}
-                      {simSelection.layout.capability ? localizedCapabilityTitle(simSelection.layout.capability, locale) : tx("自动选择")}
-                    </span>
-                  </div>
-
-                  <div className="sim-template-detail-title">
-                    <strong>{selectedSIMTemplate.name}</strong>
-                    <span>{selectedSIMTemplate.id}</span>
-                  </div>
-
-                  <div className="sim-template-detail-grid">
-                    <div>
-                      <span>{tx("版本")}</span>
-                      <strong>{selectedSIMTemplate.version || tx("未声明")}</strong>
-                    </div>
-                    <div>
-                      <span>{tx("主题")}</span>
-                      <strong>{selectedSIMTemplate.theme?.title ?? tx("自动选择")}</strong>
-                    </div>
-                    <div>
-                      <span>{tx("布局")}</span>
-                      <strong>{selectedSIMTemplate.layout?.title ?? tx("自动选择")}</strong>
-                    </div>
-                  </div>
-
-                  <button
-                    className="secondary-button plugin-action-button"
-                    disabled={!onSIMSelectionPreferenceChange || simSelection.activeSIMPluginID === selectedSIMTemplate.id}
-                    onClick={() => setSIMTemplateDefault(selectedSIMTemplate.id)}
-                    type="button"
-                  >
-                    <Save size={14} />
-                    <span>{simSelection.activeSIMPluginID === selectedSIMTemplate.id ? tx("当前默认") : tx("设为默认模板")}</span>
-                  </button>
-                </aside>
-              ) : null}
             </div>
           )}
         </div>
@@ -794,7 +834,7 @@ export function PluginsView({
         </>
       ) : null}
 
-      {activeTab === "jobs" ? (
+      {activeExtensionCategory === "jobs" ? (
         <section className="section" data-plugin-manager-section="background-jobs">
           <div className="section-header">
             <h2>{tx("后台任务插件清单")}</h2>
@@ -825,7 +865,7 @@ export function PluginsView({
                       const lifecycle = plugin ? pluginManagerDisplayState({ plugin }) : undefined;
                       return (
                         <tr key={item.pluginID}>
-                          <td>{plugin ? <PluginTitle plugin={plugin} /> : <span>{item.pluginID}</span>}</td>
+                          <td>{plugin ? <PluginTitle plugin={plugin} onSelect={onSelectPlugin} /> : <span>{item.pluginID}</span>}</td>
                           <td>
                             {plugin ? (
                               <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
@@ -875,8 +915,28 @@ export function PluginsView({
           </div>
         </section>
       ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function extensionCategoryIcon(category: PluginExtensionCategoryKey) {
+  if (category === "provider") return <Boxes size={16} aria-hidden="true" />;
+  if (category === "chain") return <Layers3 size={16} aria-hidden="true" />;
+  if (category === "ui") return <ShieldCheck size={16} aria-hidden="true" />;
+  return <Clock3 size={16} aria-hidden="true" />;
+}
+
+function extensionCategoryCount(
+  category: PluginExtensionCategoryKey,
+  counts: { providerPlugins: number; chainInjectionPlugins: number; uiTemplatePlugins: number; backgroundJobPlugins: number },
+) {
+  if (category === "provider") return counts.providerPlugins;
+  if (category === "chain") return counts.chainInjectionPlugins;
+  if (category === "ui") return counts.uiTemplatePlugins;
+  return counts.backgroundJobPlugins;
 }
 
 function ContributionAction({ action, registered }: { action?: string; registered: boolean }) {
@@ -889,40 +949,22 @@ function ContributionAction({ action, registered }: { action?: string; registere
   );
 }
 
-function PluginMetric({ icon, label, value }: { icon: ReactNode; label: ReactNode; value: number }) {
-  return (
-    <section className="metric-card">
-      <div className="metric-icon" aria-hidden="true">{icon}</div>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </section>
-  );
-}
-
-function PluginTitle({ plugin }: { plugin: PluginDescriptor }) {
+function PluginTitle({ plugin, onSelect }: { plugin: PluginDescriptor; onSelect?: (pluginID: string) => void }) {
   const locale = languageLocale();
+  const name = localizedPluginName(plugin, locale);
   return (
     <div className="plugin-title-cell">
-      <strong className="plugin-title-name">{localizedPluginName(plugin, locale)}</strong>
+      {onSelect ? (
+        <button className="plugin-title-link" type="button" onClick={() => onSelect(plugin.id)} aria-label={`${tx("查看插件详情")} ${name}`}>
+          {name}
+        </button>
+      ) : (
+        <strong className="plugin-title-name">{name}</strong>
+      )}
       <div className="plugin-title-meta">
         <span className="plugin-title-id" title={plugin.id}>{plugin.id}</span>
         <span className="plugin-title-version">{plugin.version || tx("内置")}</span>
       </div>
-    </div>
-  );
-}
-
-function CapabilityList({ plugin }: { plugin: PluginDescriptor }) {
-  const visible = plugin.capabilities.slice(0, 6);
-  const remaining = plugin.capabilities.length - visible.length;
-  return (
-    <div className="tag-list">
-      {visible.map((capability, index) => (
-        <span className="tag" key={`${plugin.id}:${index}:${capability.kind}:${capability.subject ?? ""}:${capability.name}:${capability.value ?? ""}`}>
-          {capability.subject ? `${capability.subject}:` : ""}{capability.name}
-        </span>
-      ))}
-      {remaining > 0 ? <span className="tag">+{remaining}</span> : null}
     </div>
   );
 }

@@ -228,6 +228,12 @@ describe("Sidebar", () => {
       "--accent-weak": "#eaf2ff",
     });
     expect(shellState.shellPresentation.density).toBe("comfortable");
+    const customizedShellState = adminConsoleShellState(data, "light", {
+      simPluginID: "tokenhub.sim.knowledge-sidebar",
+    }, {
+      "tokenhub.sim.knowledge-sidebar:theme_tokens:knowledge-sidebar-light": { accent: "#16a34a" },
+    });
+    expect(customizedShellState.shellPresentation.style).toMatchObject({ "--accent": "#16a34a" });
     expect(templateStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-title');
     expect(templateStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-item.active');
     expect(responsiveStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"].sidebar-collapsed');

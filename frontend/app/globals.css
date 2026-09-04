@@ -25,6 +25,8 @@
 @import "./styles/redesign/shell.css";
 @import "./styles/redesign/templates.css";
 @import "./styles/redesign/plugins.css";
+@import "./styles/redesign/plugin-management.css";
+@import "./styles/redesign/plugin-template-settings.css";
 @import "./styles/redesign/version-status.css";
 @import "./styles/redesign/api-key-empty.css";
 @import "./styles/redesign/model-governance-empty.css";

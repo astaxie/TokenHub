@@ -4,12 +4,38 @@ Language: [English](../plugin-development.md) | [简体中文](../zh-CN/plugin-d
 
 このガイドは、現在の TokenHub のプラグイン方針と、その上でどう開発するかを説明します。プラグイン作者、プラットフォームエンジニア、運用担当者向けです。
 
+このガイドは、まず最小のプラグインを動かし、その後で完全な契約を説明する順序で構成しています。WordPress がメインファイルのヘッダーからプラグインを検出するのと同様に、TokenHub はパッケージルートの `plugin.yaml` からプラグインを検出、検証、読み込みます。TokenHub ではさらに、配置先、capability、最小権限を明示的に宣言する必要があります。
+
+> **現在の実装範囲:** このガイドは、このリポジトリで実装済みの Plugin API v1 だけを説明します。UI テンプレートは宣言的なテーマとレイアウトの capability であり、任意の React / JavaScript 拡張機構ではありません。インストール済みプラグインには詳細、ファイル一覧、設定の二次ルートがあります。設定ルートではテンプレート block の確認と安全な theme token 調整ができ、ソースファイルは引き続き読み取り専用プレビューです。管理画面からプラグインコードを編集することはできません。
+
 TokenHub は core を小さく保ちます。
 
 - core は認証、ルーティング、課金、監査、互換性、アップグレード安全性を担当する
 - 変化の速い部分は plugin に任せる
 - built-in plugin と external plugin は同じ契約を使う
 - UI テンプレート、Provider、チェーン注入、バックグラウンドジョブ、Admin UI 貢献はすべて明示的なメタデータから入る
+
+## インストール済みプラグインの管理
+
+TokenHub は WordPress のプラグイン管理パターンから企業ゲートウェイに適した部分を採用し、管理タスクとプラグイン種類を分離します。プラグイン管理の第 1 階層は 3 つです。**インストール済みプラグイン**では検索、状態フィルター、バージョン、更新、ライフサイクル操作を扱い、**プラグインをインストール**ではマーケットプレイス、URL インストール、ZIP アップロード、checksum、権限差分プレビューを扱います。**拡張タイプ**では Provider、チェーン注入、UI テンプレート、バックグラウンドジョブを第 2 階層のナビゲーションにまとめます。
+
+インストール済み一覧では、プラグイン名と **詳細** が概要を開き、**設定** が設定ページを直接開きます。UI テンプレート一覧でテンプレート本体をクリックした場合も設定ページを開きます。デフォルトの変更は別の操作なので、設定を開くだけで現在の UI が意図せず切り替わることはありません。この階層は WordPress の[インストール、更新、管理パターン](https://www.waimaob2c.com/wordpress-plugins)を参考にしていますが、企業ゲートウェイに適さないオンラインコード編集や自動更新はコピーしません。
+
+| ルート | 用途 |
+| --- | --- |
+| `/plugins` | インストール済みプラグイン一覧とライフサイクル操作 |
+| `/plugins/[pluginId]` | メタデータ、信頼性、互換性、capability、Hook、UI 貢献、action、job、パッケージ統計 |
+| `/plugins/[pluginId]/files` | パッケージ相対パスのファイル一覧と安全なテキストプレビュー |
+| `/plugins/[pluginId]/settings` | 確認可能なテンプレート block、安全な theme token 調整、宣言済み権限、プラグイン所有の UI / 設定 Schema |
+
+「ファイル」ページは WordPress の Plugin File Editor をそのまま再現しません。TokenHub はパッケージの絶対パスを公開せず、インストール済み実行コードを編集しません。symbolic link は除外し、binary、runtime state、hidden file、credential、secret、private、サイズ超過ファイルのプレビューを拒否します。これにより、管理画面をリモートコード実行面にせず、パッケージを確認できます。
+
+管理者認証が必要な inspection API は読み取り専用です。
+
+- `GET /api/admin/plugins/{plugin_id}/detail`
+- `GET /api/admin/plugins/{plugin_id}/file?path={package-relative-path}`
+
+組み込みプラグインには実装メタデータがありますが、独立パッケージのファイル一覧はありません。外部パッケージでは、ファイル数、合計サイズ、種類、および安全条件を満たすソース、設定、Schema を表示できます。概念上の参考は WordPress の[プラグイン管理ドキュメント](https://wordpress.org/documentation/article/manage-plugins/)ですが、TokenHub は独自の manifest、権限、セキュリティモデルを維持します。
 
 ## 1. プラグイン家族
 
@@ -199,12 +225,134 @@ marketplace repository にはローカル harness があります。
 
 ```bash
 go test ./...
-go run ./cmd/tokenhub-plugin-test provider --package ./samples/provider-kimi-go
-go run ./cmd/tokenhub-plugin-test hook --package ./samples/hook-trace-go
-go run ./cmd/tokenhub-plugin-test background --package ./samples/background-heartbeat-go
+go run ./cmd/tokenhub-plugin-test provider --package "$PWD/samples/provider-kimi-go"
+go run ./cmd/tokenhub-plugin-test hook --package "$PWD/samples/hook-trace-go"
+go run ./cmd/tokenhub-plugin-test background --package "$PWD/samples/background-heartbeat-go"
 ```
 
 `--package` は自分の plugin ディレクトリに置き換えてください。
+
+### 4.5 5 分で最初のプラグインを動かす
+
+最短の出発点は、リポジトリで管理されている heartbeat バックグラウンドジョブのサンプルです。
+
+```text
+tokenhub-plugin-marketplace/
+├── cmd/tokenhub-plugin-test/          # ローカル契約テストツール
+├── sdk/go/tokenhubplugin/             # Go プロトコル補助
+└── samples/background-heartbeat-go/
+    ├── main.go
+    └── plugin.yaml
+```
+
+実行ファイルをビルドしてから契約テストを実行します。
+
+```bash
+cd tokenhub-plugin-marketplace
+mkdir -p samples/background-heartbeat-go/bin
+go build -o samples/background-heartbeat-go/bin/background-heartbeat-go \
+  ./samples/background-heartbeat-go
+go run ./cmd/tokenhub-plugin-test background \
+  --package "$PWD/samples/background-heartbeat-go"
+```
+
+サンプルの manifest は、プラグインの識別情報と TokenHub から呼び出せる契約を一緒に定義します。
+
+```yaml
+schema_version: 1
+id: tokenhub.background.heartbeat-go
+name: Heartbeat Go Background Job
+version: 1.0.0
+description: Reference background job plugin.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - background
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: bin/background-heartbeat-go
+capabilities:
+  background_jobs:
+    - id: heartbeat.ping
+      title: Heartbeat ping
+      capability: contract.heartbeat
+      subject: background-heartbeat-go
+      schedule: "@startup"
+      timeout_millis: 5000
+      max_concurrency: 1
+      retry:
+        max_attempts: 2
+        backoff_millis: 10
+      input_schema:
+        type: object
+        required: [resource_id]
+        properties:
+          resource_id:
+            type: string
+          count:
+            type: integer
+      output_schema:
+        type: object
+        required: [resource_id, heartbeat, trigger, actor_id]
+        properties:
+          resource_id:
+            type: string
+          heartbeat:
+            type: string
+          trigger:
+            type: string
+          actor_id:
+            type: string
+          count:
+            type: integer
+```
+
+`main.go` は標準入力から JSON invocation を 1 件読み、標準出力へ JSON result を 1 件書きます。ログと診断は必ず標準エラーへ出力し、標準出力へ混在させないでください。
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"tokenhub-plugin-marketplace/sdk/go/tokenhubplugin"
+)
+
+type payload struct {
+	ResourceID string `json:"resource_id"`
+	Count      int64  `json:"count"`
+}
+
+func main() {
+	os.Exit(tokenhubplugin.ServeBackgroundJob(
+		context.Background(), os.Stdin, os.Stdout, os.Stderr, handle,
+	))
+}
+
+func handle(_ context.Context, invocation tokenhubplugin.BackgroundJobInvocation) (tokenhubplugin.BackgroundJobResult, error) {
+	input, err := tokenhubplugin.DecodeBackgroundPayload[payload](invocation)
+	if err != nil {
+		return tokenhubplugin.BackgroundJobResult{}, err
+	}
+	if input.ResourceID == "" {
+		return tokenhubplugin.BackgroundJobResult{}, fmt.Errorf("resource_id is required")
+	}
+	return tokenhubplugin.BackgroundJobResult{Data: map[string]any{
+		"resource_id": input.ResourceID,
+		"heartbeat":   "ok",
+		"trigger":     invocation.Trigger,
+		"actor_id":    invocation.Actor.ID,
+		"count":       input.Count,
+	}, Metadata: map[string]string{"status": "ok"}}, nil
+}
+```
+
+最初はサンプルを変更せずに動かしてください。その後、plugin ID、job ID、入出力 Schema、handler をまとめて変更します。`plugin.yaml`、handler、contract fixture の識別子は常に一致させます。
 
 ## 5. 各家族の作り方
 
@@ -263,19 +411,71 @@ subscription 型 Provider では、quota refresh と account sync を background
 
 ### 5.3 UI テンプレート plugin
 
-UI テンプレート plugin は見た目と layout を担当します。
+UI テンプレート plugin は、視覚的アイデンティティと限定的な宣言レイアウトを提供します。実行ファイルは不要で、最小パッケージは `plugin.yaml` だけで構成できます。
 
-典型的な貢献:
+```yaml
+schema_version: 1
+id: example.sim.operations
+name: Operations UI Template
+version: 1.0.0
+description: A compact operations template for TokenHub.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - sim
+placement:
+  - presentation
+capabilities:
+  sim:
+    theme_tokens:
+      - id: operations-light
+        mode: light
+        default: true
+        tokens:
+          bg: "#f5f7fa"
+          surface: "#ffffff"
+          ink: "#172033"
+          accent: "#1677ff"
+          border: "#d9d9d9"
+    shell_layouts:
+      - id: operations-shell
+        navigation: sidebar
+        density: compact
+        content_width: fluid
+        default: true
+    page_templates:
+      - id: provider-detail
+        target: provider.detail
+        layout: two_column
+        regions: [main, side]
+    dashboard_compositions:
+      - id: operations-dashboard
+        layout: grid
+        cards:
+          - contribution_id: cost-overview
+            region: main
+            size: wide
+            order: 100
+```
 
-- theme tokens
-- shell layout presets
-- navigation composition
-- dashboard composition
-- page templates
+Plugin API v1 は現在、4 種類の UI テンプレート capability をサポートします。
 
-UI テンプレート plugin は `presentation` のみに影響すべきです。
+| Capability | 現在宣言できる内容 |
+| --- | --- |
+| `theme_tokens` | allowlist にある色、テキスト、境界線、状態色、影の token。mode は `light`、`dark`、`all` |
+| `shell_layouts` | `sidebar` navigation、`compact` / `comfortable` / `spacious` density、`fluid` / `comfortable` content width |
+| `page_templates` | target、`single_column` / `two_column` / `grid` / `detail` layout、region 名 |
+| `dashboard_compositions` | `grid` / `operations` / `compact_grid` layout、および card の位置、サイズ、順序 |
 
-バックエンド挙動も必要なら、それはもはや UI テンプレート plugin だけではありません。
+重要な制限:
+
+- 任意の CSS、JavaScript、remote script、stylesheet URL、`@import`、`url(...)` は注入できません。
+- インストール後はテンプレートを選択し、そのテンプレートが宣言した allowlist 内の安全な theme token だけを調整できます。調整内容は現在のブラウザに保存され、server-side または team-wide の設定ではありません。
+- 設定ページは `shell_layouts` を navigation、top bar、global search、account area、content の確認可能な block に展開します。宣言済み page template、region、dashboard composition、card、プラグイン所有の Admin UI 貢献も表示します。
+- block をクリックすると、右側で宣言内容と配置を確認できます。theme block では宣言済み token の入力とデフォルト復元もできます。
+- block の確認はプラグイン設定の二次ページ内で行い、block ごとの URL はありません。draft preview、revision history、server-side one-click rollback は未実装です。
+
+したがって、現在公開できる単位は構造化された theme/layout preset であり、完全な page builder や任意の CSS editor ではありません。バックエンド動作も必要なら、Provider、Hook、background job、management action に分離し、それぞれの権限を宣言してください。
 
 ### 5.4 バックグラウンドジョブ plugin
 
@@ -294,6 +494,43 @@ UI テンプレート plugin は `presentation` のみに影響すべきです�
 ### 5.5 Admin UI 貢献
 
 Admin UI 貢献は plugin の状態や運用操作を見せる declarative な panel、tab、card、route section です。
+
+`plugin.yaml` から、パッケージ相対パスで JSON schema ファイルを参照します。
+
+```yaml
+kinds: [admin_ui]
+placement: [presentation]
+entry:
+  frontend:
+    schema: ui/admin-ui.schema.json
+```
+
+`ui/admin-ui.schema.json` の最小構造は次のとおりです。
+
+```json
+{
+  "schema_version": 1,
+  "contributions": [
+    {
+      "id": "provider-setup",
+      "slot": "provider.form.section",
+      "title": "Connection settings",
+      "provider_types": ["example_provider"],
+      "schema": {
+        "placement": "advanced",
+        "fields": [
+          {"name": "base_url", "type": "url", "target": "provider"},
+          {"name": "api_key", "type": "secret", "target": "plugin_options"}
+        ]
+      }
+    }
+  ]
+}
+```
+
+利用可能な slot は `nav.section`、`dashboard.card`、`provider.catalog.card`、`provider.form.section`、`provider.model.panel`、`provider.resource.form.section`、`provider.resource.panel`、`route.detail.panel`、`settings.panel`、`report.template`、`theme.tokens`、`layout.preset`、`page.template`、`dashboard.composition` です。
+
+Schema の control type には `text`、`secret`、`url`、`select`、`multi_select`、`switch`、`segmented`、`metric`、`table`、`log_viewer`、`code_viewer`、`action_button`、`oauth_button`、`file_import` があります。ただし renderer の対応範囲は slot ごとに異なります。公開前に対象ページで統合テストを行い、manifest の検証成功だけを全 control 対応の根拠にしないでください。
 
 ルール:
 
@@ -324,6 +561,22 @@ distribution metadata には少なくとも次を含めます。
 - compatibility metadata
 
 plugin marketplace の URL は既定で `https://plugins.betokenhub.com` です。運用者は marketplace あるいは直接の ZIP URL から package を導入し、checksum を確認し、backend を再起動して有効化します。
+
+ZIP では `plugin.yaml` をアーカイブルート、または 1 階層だけの plugin directory に置けます。検出される manifest は必ず 1 つだけにしてください。symlink は含めないでください。runtime entrypoint の実行権限を保持し、`entry.backend.command` は plugin directory からの相対パスにします。
+
+heartbeat サンプルの場合:
+
+```bash
+cd tokenhub-plugin-marketplace
+go build -o samples/background-heartbeat-go/bin/background-heartbeat-go \
+  ./samples/background-heartbeat-go
+cd samples/background-heartbeat-go
+zip -r ../../../background-heartbeat-go.zip plugin.yaml bin
+cd ../../..
+shasum -a 256 background-heartbeat-go.zip
+```
+
+Admin console の **Plugin Extensions** を開いて ZIP をアップロードするか、HTTPS `download_url` と小文字の SHA-256 checksum を指定します。新規インストール直後の状態は `pending_restart` です。TokenHub backend を再起動した後、plugin status、capability inventory、background job または page contribution が表示されることを確認します。
 
 ## 7. バージョンと互換性
 

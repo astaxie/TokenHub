@@ -11,6 +11,7 @@ export type PluginShellPresentationOptions = {
   activeThemeKey?: string;
   activeLayoutID?: string;
   activeLayoutKey?: string;
+  themeTokenOverrides?: Record<string, string>;
 };
 
 export type PluginShellPresentation = {
@@ -70,7 +71,11 @@ export function pluginShellPresentation(
   const themeContribution = themeCapability ? undefined : activeThemeContribution(contributions, theme, options);
   const layoutContribution = layoutCapability ? undefined : activeLayoutContribution(contributions, options);
   return {
-    style: themeCapability ? pluginThemeStyle(themeCapability) : themeContribution ? pluginThemeStyle(themeContribution) : undefined,
+    style: themeCapability
+      ? pluginThemeStyle(themeCapability, options.themeTokenOverrides)
+      : themeContribution
+        ? pluginThemeStyle(themeContribution)
+        : undefined,
     density: pluginLayoutDensity(layoutCapability ?? layoutContribution),
     themeContribution,
     layoutContribution,
@@ -79,15 +84,20 @@ export function pluginShellPresentation(
   };
 }
 
-export function pluginThemeStyle(contribution: AdminUIContribution | SIMThemeTokens): CSSProperties | undefined {
+export function pluginThemeStyle(
+  contribution: AdminUIContribution | SIMThemeTokens,
+  overrides: Record<string, string> = {},
+): CSSProperties | undefined {
   const tokens = themeTokenPayload(contribution);
   if (!tokens || typeof tokens !== "object" || Array.isArray(tokens)) return undefined;
   const style: Record<string, string> = {};
   for (const [rawName, rawValue] of Object.entries(tokens)) {
     const name = rawName.trim().replace(/^--/, "");
-    if (!tokenNames.has(name) || typeof rawValue !== "string") continue;
-    const value = rawValue.trim();
-    if (!safeCSSValue(value)) continue;
+    if (!isPluginThemeTokenName(name) || typeof rawValue !== "string") continue;
+    const override = overrides[name] ?? overrides[`--${name}`];
+    const normalizedOverride = typeof override === "string" ? override.trim() : "";
+    const value = normalizedOverride && isSafePluginCSSValue(normalizedOverride) ? normalizedOverride : rawValue.trim();
+    if (!isSafePluginCSSValue(value)) continue;
     style[`--${name}`] = value;
   }
   return Object.keys(style).length > 0 ? style as CSSProperties : undefined;
@@ -222,8 +232,12 @@ function compareNumber(left: number, right: number) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function safeCSSValue(value: string) {
+export function isPluginThemeTokenName(name: string) {
+  return tokenNames.has(name.trim().replace(/^--/, ""));
+}
+
+export function isSafePluginCSSValue(value: string) {
   if (!value || value.length > 180) return false;
   const normalized = value.toLowerCase();
-  return !["url(", "@import", "expression(", "javascript:", "<", ">", "{", "}", ";"].some((blocked) => normalized.includes(blocked));
+  return !["url(", "@import", "expression(", "javascript:", "<", ">", "{", "}", ";", "\\", "\"", "'"].some((blocked) => normalized.includes(blocked));
 }
