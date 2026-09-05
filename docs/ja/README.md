@@ -14,7 +14,7 @@ TokenHub のドキュメントは、エンタープライズ Token Governance �
 
 ## プラグインプラットフォーム
 
-- [プラグイン開発ガイド](plugin-development.md)：プラグインの種類、配置先、manifest 形状、実行時契約、セキュリティ、テスト、公開手順、built-in からの移行方法。
+- [プラグイン開発](plugin-development/README.md)：Plugin Devkit、Examples、Manifest リファレンス、ファミリー別ガイド、パッケージ公開、完全なアーキテクチャガイドの入口。
 
 ## ロールガイド
 

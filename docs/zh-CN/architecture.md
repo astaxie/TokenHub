@@ -127,7 +127,7 @@ flowchart LR
 
 三种 Compose 编排均将 `tokenhub-plugins` 挂载到 `/app/plugins`，并提供 `TOKENHUB_PLUGIN_DIR` 和 `TOKENHUB_PLUGIN_MARKETPLACE_URL`。插件文件与生命周期状态保存在文件系统，注册表和执行器则属于各进程。PostgreSQL 不负责分发插件二进制，也不会刷新所有副本的注册表。`plugin_runtime_reload.go` 通过集群操作串行执行重载，但只重建当前服务进程的运行时；部署时仍需协调插件版本，并逐副本重载或重启。当前包更新处理器替换文件后没有调用该重载路径，因此仅凭更新响应不能确认新运行时已经生效。
 
-安装与市场代码提供校验和验证、签名市场信任校验、权限审查、失败插件隔离和回滚路径。这些机制不代表已实现跨副本原子激活，也不提供宿主资源隔离。详细契约和生命周期操作见[插件开发指南](plugin-development.md)。
+安装与市场代码提供校验和验证、签名市场信任校验、权限审查、失败插件隔离和回滚路径。这些机制不代表已实现跨副本原子激活，也不提供宿主资源隔离。详细契约和生命周期操作见[插件开发指南](plugin-development/README.md)。
 
 ## 关键组件
 
@@ -233,6 +233,6 @@ SQLite 使用单连接和 5 秒 `busy_timeout`，适合单实例；不得让多�
 - [部署](deployment.md)：三种部署形态、环境变量、反向代理和健康检查。
 - [PostgreSQL 设置指南](../postgresql-setup.md)：PostgreSQL 配置、运维和迁移。
 - [管理员指南](administrator-guide.md)：Provider、路由、访问控制、审计和成本治理。
-- [插件开发指南](plugin-development.md)：插件家族、manifest 契约、运行时能力面和迁移清单。
+- [插件开发](plugin-development/README.md)：Plugin Devkit、Examples、插件家族、Manifest 契约、运行时能力面和迁移清单。
 - [普通用户指南](user-guide.md)：项目 API Key 与模型 API 调用方式。
 - [团队负责人指南](team-leader-guide.md)：团队、项目、成员和成本归因管理。

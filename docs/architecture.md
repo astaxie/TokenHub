@@ -127,7 +127,7 @@ Packages declare `plugin.yaml` with manifest schema `1` and Plugin API `v1`. Per
 
 All three Compose variants mount `tokenhub-plugins` at `/app/plugins` and expose `TOKENHUB_PLUGIN_DIR` and `TOKENHUB_PLUGIN_MARKETPLACE_URL`. Package files and lifecycle state live on the filesystem, while registries and runners are process-local. PostgreSQL does not distribute plugin binaries or refresh every replica's registry. `plugin_runtime_reload.go` serializes a reload through a cluster operation but rebuilds only the current server's runtime; deployments must coordinate package versions and reload/restart each replica. The package-update handler currently replaces package files without calling that reload path, so an update response alone does not establish that the new runtime is active.
 
-Installation and marketplace code provide checksum verification, signed-marketplace trust checks, permission review, failed-package quarantine, and rollback paths. These controls do not establish atomic fleet-wide activation or isolation from host resources. See the [Plugin Development Guide](plugin-development.md) for the detailed contract and lifecycle procedures.
+Installation and marketplace code provide checksum verification, signed-marketplace trust checks, permission review, failed-package quarantine, and rollback paths. These controls do not establish atomic fleet-wide activation or isolation from host resources. See the [Plugin Development Guide](plugin-development/README.md) for the detailed contract and lifecycle procedures.
 
 ## Components and Providers
 
@@ -228,6 +228,6 @@ The deployment has no Redis, message broker, or service mesh dependency. Synchro
 - [Deployment](deployment.md): deployment modes, environment variables, reverse proxying, and health checks.
 - [PostgreSQL Setup Guide](postgresql-setup.md): PostgreSQL configuration, operations, and migration.
 - [Administrator Guide](administrator-guide.md): providers, routes, access control, audit, and cost governance.
-- [Plugin Development Guide](plugin-development.md): plugin families, manifest contracts, runtime surfaces, and migration checklist.
+- [Plugin Development](plugin-development/README.md): Plugin Devkit, examples, plugin families, manifest contracts, runtime surfaces, and migration checklist.
 - [User Guide](user-guide.md): project API keys and model API calls.
 - [Team Leader Guide](team-leader-guide.md): teams, projects, members, and cost attribution.

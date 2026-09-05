@@ -1,0 +1,53 @@
+schema_version: 1
+id: tokenhub.action.echo-go
+name: Echo Go Action
+version: 1.0.0
+description: Reference management action plugin for the TokenHub stdio-json-v1 contract kit.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - management_action
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: bin/action-echo-go
+capabilities:
+  actions:
+    - id: echo.run
+      kind: test
+      title: Echo payload
+      capability: contract.echo
+      subject: action-echo-go
+      input_schema:
+        type: object
+        required:
+          - resource_id
+        properties:
+          resource_id:
+            type: string
+          message:
+            type: string
+          dry_run:
+            type: boolean
+      output_schema:
+        type: object
+        required:
+          - resource_id
+          - message
+          - dry_run
+          - actor_id
+        properties:
+          resource_id:
+            type: string
+          message:
+            type: string
+          dry_run:
+            type: boolean
+          actor_id:
+            type: string
+distribution:
+  repository_url: https://github.com/astaxie/TokenHub
+  homepage_url: https://github.com/astaxie/TokenHub/tree/main/plugin-devkit/examples/action-echo-go
+  license: Apache-2.0

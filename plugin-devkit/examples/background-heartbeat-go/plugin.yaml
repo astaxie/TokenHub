@@ -1,0 +1,58 @@
+schema_version: 1
+id: tokenhub.background.heartbeat-go
+name: Heartbeat Go Background Job
+version: 1.0.0
+description: Reference background job plugin for the TokenHub stdio-json-v1 contract kit.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - background
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: bin/background-heartbeat-go
+capabilities:
+  background_jobs:
+    - id: heartbeat.ping
+      title: Heartbeat ping
+      capability: contract.heartbeat
+      subject: background-heartbeat-go
+      schedule: "@startup"
+      timeout_millis: 5000
+      max_concurrency: 1
+      retry:
+        max_attempts: 2
+        backoff_millis: 10
+      input_schema:
+        type: object
+        required:
+          - resource_id
+        properties:
+          resource_id:
+            type: string
+          count:
+            type: integer
+      output_schema:
+        type: object
+        required:
+          - resource_id
+          - heartbeat
+          - trigger
+          - actor_id
+        properties:
+          resource_id:
+            type: string
+          heartbeat:
+            type: string
+          trigger:
+            type: string
+          actor_id:
+            type: string
+          count:
+            type: integer
+distribution:
+  repository_url: https://github.com/astaxie/TokenHub
+  homepage_url: https://github.com/astaxie/TokenHub/tree/main/plugin-devkit/examples/background-heartbeat-go
+  license: Apache-2.0

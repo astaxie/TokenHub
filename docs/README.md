@@ -14,7 +14,7 @@ TokenHub documentation is organized around the three roles used in enterprise To
 
 ## Plugin Platform
 
-- [Plugin Development Guide](plugin-development.md): plugin kinds, placements, manifest shape, runtime contracts, security, testing, release flow, and migration from built-ins.
+- [Plugin Development](plugin-development/README.md): start here for the Plugin Devkit, examples, manifest reference, family guides, packaging, and the complete architecture guide.
 
 ## Role Guides
 

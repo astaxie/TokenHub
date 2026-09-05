@@ -127,7 +127,7 @@ flowchart LR
 
 3 種類の Compose はいずれも `tokenhub-plugins` を `/app/plugins` にマウントし、`TOKENHUB_PLUGIN_DIR` と `TOKENHUB_PLUGIN_MARKETPLACE_URL` を提供します。ファイルとライフサイクル状態はファイルシステムに保存され、レジストリと実行器はプロセスごとに保持されます。PostgreSQL はプラグインバイナリの配布や全レプリカのレジストリ更新を行いません。`plugin_runtime_reload.go` はクラスタ操作でリロードを直列化しますが、再構築するのは現在のサーバープロセスだけです。デプロイではパッケージのバージョンを揃え、各レプリカをリロードまたは再起動する必要があります。現在のパッケージ更新ハンドラーはファイルを置換した後にこのリロード経路を呼ばないため、更新レスポンスだけでは新しいランタイムの有効化を確認できません。
 
-インストールとマーケットプレイスのコードには、チェックサム検証、署名付きマーケットプレイスの信頼検証、権限レビュー、失敗したパッケージの隔離、ロールバック経路があります。これらは全レプリカの原子的な有効化やホストリソースの隔離を保証しません。詳細な契約とライフサイクル操作は[プラグイン開発ガイド](plugin-development.md)を参照してください。
+インストールとマーケットプレイスのコードには、チェックサム検証、署名付きマーケットプレイスの信頼検証、権限レビュー、失敗したパッケージの隔離、ロールバック経路があります。これらは全レプリカの原子的な有効化やホストリソースの隔離を保証しません。詳細な契約とライフサイクル操作は[プラグイン開発ガイド](plugin-development/README.md)を参照してください。
 
 ## コンポーネントと Provider
 
@@ -228,6 +228,6 @@ SQLite は単一接続と 5 秒の `busy_timeout` を使用し、バックエン
 - [デプロイ](deployment.md)：デプロイ形態、環境変数、リバースプロキシ、ヘルスチェック。
 - [PostgreSQL 設定ガイド](../postgresql-setup.md)：PostgreSQL の設定、運用、移行。
 - [管理者ガイド](administrator-guide.md)：Provider、ルート、アクセス制御、監査、コスト統制。
-- [プラグイン開発ガイド](plugin-development.md)：プラグイン家族、manifest 契約、runtime 面、移行チェックリスト。
+- [プラグイン開発](plugin-development/README.md)：Plugin Devkit、Examples、プラグインファミリー、Manifest 契約、runtime 面、移行チェックリスト。
 - [利用者ガイド](user-guide.md)：Project API Key とモデル API 呼び出し。
 - [チームリーダーガイド](team-leader-guide.md)：チーム、Project、メンバー、コスト配賦。

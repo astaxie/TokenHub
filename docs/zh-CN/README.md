@@ -14,7 +14,7 @@ TokenHub 文档现在按企业 Token Governance 里的三种角色组织。默�
 
 ## 插件平台
 
-- [插件开发指南](plugin-development.md)：插件种类、运行位置、manifest 结构、运行时契约、安全、测试、发布流程，以及从内置能力迁移到插件的路径。
+- [插件开发](plugin-development/README.md)：从这里进入 Plugin Devkit、Examples、Manifest 参考、各类插件指南、打包发布和完整架构指南。
 
 ## 角色指南
 
