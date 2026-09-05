@@ -248,12 +248,16 @@ describe("PluginDetailView", () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  it("explains that built-in plugins have no standalone package", async () => {
+  it("hides the files tab and redirects old file links when no package exists", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(detailPayload(false)), { status: 200 })));
+    const onNavigate = vi.fn();
 
-    renderDetail("files");
+    render(<PluginDetailView api={api} data={appData()} pluginID="example.detail" section="files" onBack={vi.fn()} onNavigate={onNavigate} />);
 
-    expect(await screen.findByText("该内置插件没有独立安装包。")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
+    expect(onNavigate).toHaveBeenCalledWith("example.detail", "overview");
+    expect(screen.queryByRole("tab", { name: "文件" })).not.toBeInTheDocument();
+    expect(screen.queryByText("该内置插件没有独立安装包。")).not.toBeInTheDocument();
   });
 });
 

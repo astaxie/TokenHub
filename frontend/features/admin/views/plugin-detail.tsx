@@ -75,12 +75,17 @@ export function PluginDetailView({
     return simRegistryFromPlugins(hasPluginDescriptor || !detail?.plugin ? data.plugins : [...data.plugins, detail.plugin]);
   }, [data.plugins, detail?.plugin, pluginID]);
   const hasSettings = simRegistry.themeTokens.some((theme) => theme.pluginID === pluginID);
+  const hasPackage = Boolean(detail?.package);
   const pluginAvailable = Boolean(plugin);
-  const visibleSection = section === "settings" && !hasSettings ? "overview" : section;
+  const visibleSection = (section === "settings" && !hasSettings) || (section === "files" && detail && !hasPackage) ? "overview" : section;
 
   useEffect(() => {
     if (pluginAvailable && section === "settings" && !hasSettings) onNavigate(pluginID, "overview");
   }, [hasSettings, onNavigate, pluginAvailable, pluginID, section]);
+
+  useEffect(() => {
+    if (pluginAvailable && detail && section === "files" && !hasPackage) onNavigate(pluginID, "overview");
+  }, [detail, hasPackage, onNavigate, pluginAvailable, pluginID, section]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -176,7 +181,7 @@ export function PluginDetailView({
 
         <nav className="plugin-detail-tabs settings-tabs" role="tablist" aria-label={tx("插件详情页面")}>
           <DetailTab active={visibleSection === "overview"} icon={<Boxes size={15} />} label={tx("概览")} onClick={() => onNavigate(pluginID, "overview")} />
-          <DetailTab active={visibleSection === "files"} icon={<FolderOpen size={15} />} label={tx("文件")} onClick={() => onNavigate(pluginID, "files")} />
+          {hasPackage ? <DetailTab active={visibleSection === "files"} icon={<FolderOpen size={15} />} label={tx("文件")} onClick={() => onNavigate(pluginID, "files")} /> : null}
           {hasSettings ? <DetailTab active={visibleSection === "settings"} icon={<Settings size={15} />} label={tx("设置")} onClick={() => onNavigate(pluginID, "settings")} /> : null}
         </nav>
 
@@ -197,12 +202,12 @@ export function PluginDetailView({
               plugin={plugin}
             />
           ) : null}
-          {!loading && plugin && visibleSection === "files" ? (
+          {!loading && plugin && visibleSection === "files" && detail?.package ? (
             <PluginFiles
               content={fileContent}
               error={fileError}
               loading={fileLoading}
-              packageInspection={detail?.package}
+              packageInspection={detail.package}
               selectedPath={selectedPath}
               onSelect={setSelectedPath}
             />
@@ -231,10 +236,7 @@ function DetailTab({ active, icon, label, onClick }: { active: boolean; icon: Re
   );
 }
 
-function PluginFiles({ content, error, loading, packageInspection, selectedPath, onSelect }: { content: PackageFileContent | null; error: string; loading: boolean; packageInspection?: PackageInspection; selectedPath: string; onSelect: (path: string) => void }) {
-  if (!packageInspection) {
-    return <div className="plugin-detail-empty"><PackageOpen size={30} aria-hidden="true" /><strong>{tx("该内置插件没有独立安装包。")}</strong></div>;
-  }
+function PluginFiles({ content, error, loading, packageInspection, selectedPath, onSelect }: { content: PackageFileContent | null; error: string; loading: boolean; packageInspection: PackageInspection; selectedPath: string; onSelect: (path: string) => void }) {
   return (
     <div className="plugin-file-explorer">
       <aside className="plugin-file-list" aria-label={tx("文件清单")}>

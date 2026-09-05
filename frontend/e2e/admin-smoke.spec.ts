@@ -103,6 +103,12 @@ test("admin can inspect plugin details and files without fake settings", async (
   expect(detailBox!.width).toBeGreaterThanOrEqual(80);
   expect(settingsBox!.width).toBeGreaterThanOrEqual(80);
 
+  await page.getByRole("button", { name: "查看插件详情 TokenHub Core Provider Settings" }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.admin\.core-provider$/);
+  await expect(page.getByRole("tab", { name: "文件" })).toHaveCount(0);
+  await expect(page.getByText("该内置插件没有独立安装包。")).toHaveCount(0);
+  await page.getByRole("button", { name: "返回插件列表" }).click();
+
   await page.getByRole("button", { name: "查看插件详情 External Trace Hook" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace$/);
   await expect(page.getByRole("heading", { name: "External Trace Hook" })).toBeVisible();
