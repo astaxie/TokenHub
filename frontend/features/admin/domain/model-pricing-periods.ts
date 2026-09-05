@@ -25,12 +25,18 @@ function validPricingPeriod(period: Record<string, unknown>) {
     validClockPair(period.start_time, period.end_time) &&
     validRFC3339(period.effective_from) &&
     validRFC3339(period.effective_until) &&
+    validWeekdays(period.weekdays) &&
+    validEffectiveRange(period) &&
     validPriceOverrides(period);
 }
 
 const pricingPeriodPriceFields = [
   "input_price_usd_per_1m",
   "output_price_usd_per_1m",
+  "cache_read_price_usd_per_1m",
+  "cache_write_price_usd_per_1m",
+  "cache_write_5m_price_usd_per_1m",
+  "cache_write_1h_price_usd_per_1m",
 ];
 
 function validTimezone(value: unknown) {
@@ -61,4 +67,12 @@ function validPriceOverrides(period: Record<string, unknown>) {
     const value = period[field];
     return value == null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
   });
+}
+
+function validWeekdays(value: unknown) {
+  return value == null || (Array.isArray(value) && value.every((day) => Number.isInteger(day) && day >= 0 && day <= 6) && new Set(value).size === value.length);
+}
+
+function validEffectiveRange(period: Record<string, unknown>) {
+  return !period.effective_from || !period.effective_until || Date.parse(String(period.effective_from)) < Date.parse(String(period.effective_until));
 }

@@ -22,6 +22,15 @@
       "checksum": "5f48b7b59084c2a12f8f743d06c52cc9f14299679f07fb7ac09820ca694c937c",
       "lock_timeout_seconds": 30,
       "statement_budget": 50
+    },
+    {
+      "version": 4,
+      "name": "add-metering-evidence",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "4d282c33fb83adcf772a560ddb2b772116e9f6bbd3ecee0a68bda70fc447e50c",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 50
     }
   ]
 }

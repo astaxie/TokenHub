@@ -27,6 +27,7 @@ func (s *Server) registerBillingRoutes() {
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/billing/records", s.handleAdminBillingRecordsGet, s.adminMethodNotAllowed("billing", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/billing/sync-runs", s.handleAdminBillingSyncRunsGet, s.adminMethodNotAllowed("billing", http.MethodGet))
 	s.registerReconciliationRoutes()
+	s.registerMeteringRoutes()
 }
 
 func (s *Server) handleAdminBillingConnectorsGet(w http.ResponseWriter, r *http.Request) {

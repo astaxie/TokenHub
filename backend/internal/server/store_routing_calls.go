@@ -123,9 +123,7 @@ func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
 		if patch.SupportedParameters != nil {
 			model.SupportedParameters = patch.SupportedParameters
 		}
-		if patch.Metadata != nil {
-			model.Metadata = patch.Metadata
-		}
+		model.Metadata = modelPricingMetadata(model.Metadata, patch)
 		if patch.Status != "" {
 			model.Status = patch.Status
 		}
@@ -821,6 +819,9 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 		}).Create(&observation).Error; err != nil {
 			return err
 		}
+	}
+	if err := s.settleMeteringShadow(tx, call, usage, statusCode, now); err != nil {
+		return err
 	}
 	return s.deleteRequestConcurrencyLeases(tx, call.RequestID)
 }

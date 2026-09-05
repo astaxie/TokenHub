@@ -46,10 +46,10 @@ func TestAdminSchemaStatusEndpoint(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
-	if !payload.Ready || payload.SchemaVersion != 2 {
+	if !payload.Ready || payload.SchemaVersion != 4 {
 		t.Fatalf("expected ready expanded status, got %+v", payload)
 	}
-	if payload.Compatibility.TargetVersion != 2 || payload.Compatibility.MinCompatible != 1 || payload.Compatibility.MaxCompatible != 2 {
+	if payload.Compatibility.TargetVersion != 4 || payload.Compatibility.MinCompatible != 4 || payload.Compatibility.MaxCompatible != 4 {
 		t.Fatalf("unexpected compatibility manifest: %+v", payload.Compatibility)
 	}
 	if len(payload.Instances) != 1 || payload.Instances[0]["release"] != "v0.5.0-schema-test" {

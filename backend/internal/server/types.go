@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"tokenhub/backend/internal/metering"
 )
 
 const (
@@ -173,6 +174,7 @@ type QuotaPolicyUsage struct {
 }
 
 type Model struct {
+	pricingPatch              *modelPricePatch
 	ID                        string  `json:"id" gorm:"primaryKey"`
 	Name                      string  `json:"name" gorm:"uniqueIndex"`
 	Category                  string  `json:"category,omitempty" gorm:"index"`
@@ -431,29 +433,31 @@ type ModelRoutePolicy struct {
 }
 
 type Usage struct {
-	PromptTokens             int64       `json:"prompt_tokens"`
-	CachedInputTokens        int64       `json:"cached_input_tokens,omitempty"`
-	CacheWriteInputTokens    int64       `json:"cache_write_input_tokens,omitempty"`
-	CacheWrite5mInputTokens  int64       `json:"cache_write_5m_input_tokens,omitempty"`
-	CacheWrite1hInputTokens  int64       `json:"cache_write_1h_input_tokens,omitempty"`
-	InputAudioTokens         int64       `json:"input_audio_tokens,omitempty"`
-	CompletionTokens         int64       `json:"completion_tokens"`
-	ReasoningOutputTokens    int64       `json:"reasoning_output_tokens,omitempty"`
-	OutputAudioTokens        int64       `json:"output_audio_tokens,omitempty"`
-	AcceptedPredictionTokens int64       `json:"accepted_prediction_tokens,omitempty"`
-	RejectedPredictionTokens int64       `json:"rejected_prediction_tokens,omitempty"`
-	TotalTokens              int64       `json:"total_tokens"`
-	InputCostUSD             float64     `json:"input_cost_usd,omitempty"`
-	CacheReadCostUSD         float64     `json:"cache_read_cost_usd,omitempty"`
-	CacheWriteCostUSD        float64     `json:"cache_write_cost_usd,omitempty"`
-	OutputCostUSD            float64     `json:"output_cost_usd,omitempty"`
-	CostUSD                  float64     `json:"estimated_cost_usd,omitempty"`
-	ProviderCostUSD          float64     `json:"-"`
-	UpstreamRequestID        string      `json:"upstream_request_id,omitempty"`
-	ServedModel              string      `json:"served_model,omitempty"`
-	ModelETag                string      `json:"model_etag,omitempty"`
-	Transport                string      `json:"transport,omitempty"`
-	ResponseHeaders          http.Header `json:"-"`
+	MeteringRaw              *metering.Units `json:"-"`
+	MeteringInvalid          bool            `json:"-"`
+	PromptTokens             int64           `json:"prompt_tokens"`
+	CachedInputTokens        int64           `json:"cached_input_tokens,omitempty"`
+	CacheWriteInputTokens    int64           `json:"cache_write_input_tokens,omitempty"`
+	CacheWrite5mInputTokens  int64           `json:"cache_write_5m_input_tokens,omitempty"`
+	CacheWrite1hInputTokens  int64           `json:"cache_write_1h_input_tokens,omitempty"`
+	InputAudioTokens         int64           `json:"input_audio_tokens,omitempty"`
+	CompletionTokens         int64           `json:"completion_tokens"`
+	ReasoningOutputTokens    int64           `json:"reasoning_output_tokens,omitempty"`
+	OutputAudioTokens        int64           `json:"output_audio_tokens,omitempty"`
+	AcceptedPredictionTokens int64           `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int64           `json:"rejected_prediction_tokens,omitempty"`
+	TotalTokens              int64           `json:"total_tokens"`
+	InputCostUSD             float64         `json:"input_cost_usd,omitempty"`
+	CacheReadCostUSD         float64         `json:"cache_read_cost_usd,omitempty"`
+	CacheWriteCostUSD        float64         `json:"cache_write_cost_usd,omitempty"`
+	OutputCostUSD            float64         `json:"output_cost_usd,omitempty"`
+	CostUSD                  float64         `json:"estimated_cost_usd,omitempty"`
+	ProviderCostUSD          float64         `json:"-"`
+	UpstreamRequestID        string          `json:"upstream_request_id,omitempty"`
+	ServedModel              string          `json:"served_model,omitempty"`
+	ModelETag                string          `json:"model_etag,omitempty"`
+	Transport                string          `json:"transport,omitempty"`
+	ResponseHeaders          http.Header     `json:"-"`
 	// RateLimitTokens is the total metered across every invoked failover attempt.
 	// It is internal quota state: billing, request logs and provider attribution
 	// continue to use the usage reported by the final route only.
@@ -1205,11 +1209,12 @@ type EmbeddingsRequest struct {
 }
 
 type RouteSelection struct {
-	Provider      Provider
-	Resource      *ProviderResource
-	ProviderModel string
-	Route         ModelRoute
-	Runtime       RouteRuntimeStats
+	MeteringSnapshot *meteringAttemptSnapshot `json:"-"`
+	Provider         Provider
+	Resource         *ProviderResource
+	ProviderModel    string
+	Route            ModelRoute
+	Runtime          RouteRuntimeStats
 }
 
 type RouteRuntimeStats struct {

@@ -135,6 +135,8 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.breakdown = true;
       plan.users = appRole(user.role) === "team_leader";
 		if (appRole(user.role) === "admin") {
+			plan.overview = true;
+			plan.providerModels = true;
 			plan.billingConnectors = true;
 			plan.billingRecords = true;
 			plan.billingSyncRuns = true;

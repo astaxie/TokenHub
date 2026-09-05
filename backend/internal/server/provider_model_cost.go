@@ -72,7 +72,14 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 		return 0
 	}
 	var providerModel ProviderModel
-	if err := s.db.Where("provider_id = ? AND upstream_model = ?", providerID, upstreamModel).First(&providerModel).Error; err != nil {
+	if route.MeteringSnapshot != nil {
+		if route.MeteringSnapshot.LegacyModel == nil {
+			return 0
+		}
+		providerModel = route.MeteringSnapshot.LegacyModel.providerModelCost(ProviderModel{Modality: route.MeteringSnapshot.LegacyModel.Modality})
+		providerModel.PricingPeriods = route.MeteringSnapshot.LegacyModel.PricingPeriods
+		requestStartedAt = route.MeteringSnapshot.At
+	} else if err := s.db.Where("provider_id = ? AND upstream_model = ?", providerID, upstreamModel).First(&providerModel).Error; err != nil {
 		return 0
 	}
 	if usage.TotalTokens == 0 {

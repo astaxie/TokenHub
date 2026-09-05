@@ -56,7 +56,7 @@ func OpenRawDatabase(databaseURL string) (driver string, db *sql.DB, err error) 
 }
 
 // VerifySchemaSemantics compares the database against the reference snapshot
-// built from the frozen schema flow. It backs `tokenhub db verify` and allows
+// built from the frozen schema flow plus registered expansions. It backs `tokenhub db verify` and allows
 // extra objects left behind by earlier releases.
 func VerifySchemaSemantics(ctx context.Context, databaseURL string) error {
 	driver, dsn, err := parseDatabaseURL(databaseURL)
@@ -68,7 +68,7 @@ func VerifySchemaSemantics(ctx context.Context, databaseURL string) error {
 		return err
 	}
 	defer db.Close()
-	reference, err := schemaReferenceSnapshot(ctx, driver, dsn)
+	reference, err := buildSchemaReferenceWithExpansions(ctx, driver, dsn, true)
 	if err != nil {
 		return err
 	}
@@ -87,6 +87,7 @@ func VerifySchemaSemantics(ctx context.Context, databaseURL string) error {
 // receive every compatible schema expansion after the adoption baseline.
 func SchemaMigrationRegistry() []dbschema.Migration {
 	return []dbschema.Migration{
+		meteringMigration(),
 		{
 			Version:          2,
 			Name:             "add-granular-billing-columns-sqlite",

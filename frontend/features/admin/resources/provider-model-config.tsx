@@ -550,7 +550,7 @@ export function modelConfig(): ResourceConfig<Model> {
         label: "分时价格配置（JSON）",
         type: "textarea",
         placeholder: "[{\"timezone\":\"Asia/Shanghai\",\"start_time\":\"00:00\",\"end_time\":\"08:30\",\"input_price_usd_per_1m\":0.14,\"output_price_usd_per_1m\":0.28}]",
-        help: "按请求开始时间匹配；支持 timezone、start_time、end_time、effective_from、effective_until 以及输入/输出价格覆盖。",
+        help: "按请求开始时间匹配；weekdays 使用 0（周日）到 6（周六），省略表示每天。支持时区、生效区间及全部输入、缓存读写、输出价格覆盖；省略分项表示继承，0 表示免费。跨午夜按开始日匹配，时段不能重叠。",
         visible: (values) => values.modality !== "embedding",
       },
       { key: "capabilities", label: "能力标签，逗号分隔" },

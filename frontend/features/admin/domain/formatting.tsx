@@ -399,7 +399,7 @@ export function modelToForm(item: Model) {
   return {
     ...stringifyForm(item),
     display_name: modelDisplayName(item.metadata, ""),
-    cache_read_price_usd_per_1m: item.cache_read_price_usd_per_1m
+    cache_read_price_usd_per_1m: (item.cache_read_price_usd_per_1m || item.metadata?.cache_read_price_configured === "true")
       ? String(item.cache_read_price_usd_per_1m)
       : "",
     cache_write_price_usd_per_1m: configuredPriceFormValue(item.cache_write_price_usd_per_1m, item.cache_write_price_configured),

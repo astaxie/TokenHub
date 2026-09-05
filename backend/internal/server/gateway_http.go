@@ -725,6 +725,16 @@ func executeRoutedWithStore[T any](
 			// gateway here, and that backpressure is part of the attempt duration,
 			// not of the gateway overhead reported in overhead_seconds.
 			attemptStartedAt := time.Now()
+			if recorder, ok := store.(interface {
+				PrepareMeteringAttempt(string, int, RouteSelection, time.Time) (RouteSelection, error)
+			}); ok {
+				prepared, prepareErr := recorder.PrepareMeteringAttempt(routed.Call.RequestID, len(attempts)+1, route, attemptStartedAt.UTC())
+				if prepareErr != nil {
+					store.ReleaseProviderResourceCapacity(resourceID, leaseID)
+					return zero, route, Usage{RateLimitTokens: cumulativeTokens}, attempts, prepareErr
+				}
+				route = prepared
+			}
 			resp, usage, err := call(leaseCtx, route, omitReasoningEffort, len(attempts)+1)
 			cumulativeTokens = saturatingAddNonNegative(cumulativeTokens, meteredTokens(usage))
 			usage.RateLimitTokens = cumulativeTokens
