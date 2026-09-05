@@ -122,7 +122,6 @@ test("admin can inspect plugin details and files without fake settings", async (
 test("admin can adjust UI template settings", async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
-  await page.getByRole("tab", { name: "扩展类型" }).click();
   await page.getByRole("tab", { name: "界面模板" }).click();
   await page.getByRole("button", { name: "配置界面模板 TokenHub 默认界面模板" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);

@@ -1,6 +1,6 @@
 import { type AppData } from "../core/types";
 
-export type PluginManagerTabKey = "installed" | "install" | "extensions";
+export type PluginManagerTabKey = "installed" | "install";
 
 export type PluginExtensionCategoryKey = "provider" | "chain" | "ui" | "jobs";
 
@@ -11,7 +11,6 @@ export const defaultPluginMarketplaceWebsiteURL = "https://plugins.betokenhub.co
 export const pluginManagerTabs: Array<{ key: PluginManagerTabKey; label: string }> = [
   { key: "installed", label: "已安装插件" },
   { key: "install", label: "安装插件" },
-  { key: "extensions", label: "扩展类型" },
 ];
 
 export const pluginExtensionCategories: Array<{ key: PluginExtensionCategoryKey; label: string }> = [

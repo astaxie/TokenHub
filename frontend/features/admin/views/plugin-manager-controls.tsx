@@ -90,7 +90,7 @@ export function PluginLifecycleControl({
           <span>{tx(rollbackDraft.busy ? "回滚中" : "回滚")}</span>
         </button>
       ) : null}
-      {draft.restartRequired || effectiveLifecycle.restartRequired ? <span>{tx("重启后生效")}</span> : null}
+      {draft.restartRequired || effectiveLifecycle.restartRequired ? <span>{tx("需重启 TokenHub 服务")}</span> : null}
       {draft.error ? <span className="provider-quota-error">{draft.error}</span> : null}
       {rollbackDraft.error ? <span className="provider-quota-error">{rollbackDraft.error}</span> : null}
       {rollbackDraft.result ? <span>{rollbackDraft.result}</span> : null}
