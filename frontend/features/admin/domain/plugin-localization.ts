@@ -9,6 +9,7 @@ export type PluginLocalizationRecord = Record<string, {
 type LocalizablePlugin = {
   id?: unknown;
   name?: unknown;
+  kinds?: unknown;
   localizations?: unknown;
   marketplace?: {
     localizations?: unknown;
@@ -30,12 +31,25 @@ type LocalizableCapability = {
 };
 
 export function localizedPluginName(plugin: LocalizablePlugin | null | undefined, locale: string) {
+  if (pluginKinds(plugin).includes("sim")) {
+    return firstNonEmpty(
+      stringValue(plugin?.name),
+      localizedFields(plugin?.localizations, "en-US", ["name", "title"]),
+      localizedFields(plugin?.marketplace?.localizations, "en-US", ["name", "title"]),
+      stringValue(plugin?.id),
+    );
+  }
   return firstNonEmpty(
     localizedFields(plugin?.localizations, locale, ["name", "title"]),
     localizedFields(plugin?.marketplace?.localizations, locale, ["name", "title"]),
     stringValue(plugin?.name),
     stringValue(plugin?.id),
   );
+}
+
+function pluginKinds(plugin: LocalizablePlugin | null | undefined) {
+  if (!Array.isArray(plugin?.kinds)) return [];
+  return plugin.kinds.filter((kind): kind is string => typeof kind === "string");
 }
 
 export function localizedContributionTitle(contribution: LocalizableContribution | null | undefined, locale: string) {

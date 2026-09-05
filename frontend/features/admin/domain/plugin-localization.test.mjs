@@ -23,6 +23,23 @@ test("plugin localization resolves exact locale, language aliases, and fallback 
   assert.equal(localizedPluginName(plugin, "en-US"), "Codex Provider");
 });
 
+test("interface template plugins keep their English manifest names", () => {
+  const plugin = {
+    id: "tokenhub.sim.example",
+    name: "Example Interface Template",
+    kinds: ["sim"],
+    marketplace: {
+      localizations: {
+        "zh-CN": { name: "示例界面模板" },
+        "ja-JP": { name: "サンプルインターフェイステンプレート" },
+      },
+    },
+  };
+
+  assert.equal(localizedPluginName(plugin, "zh-CN"), "Example Interface Template");
+  assert.equal(localizedPluginName(plugin, "ja-JP"), "Example Interface Template");
+});
+
 test("plugin localization uses marketplace localizations for old descriptor payloads", () => {
   const plugin = {
     id: "tokenhub.provider.kimi",

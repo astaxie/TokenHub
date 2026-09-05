@@ -17,7 +17,7 @@ func registerBuiltinDefaultSIMPlugin(registry *pluginmeta.Registry) {
 		},
 		localizations: map[string]pluginmeta.MarketplaceLocalization{
 			"zh-CN": {
-				Name:        "TokenHub 默认界面模板",
+				Name:        "TokenHub Default Interface Template",
 				Summary:     "TokenHub 管理端内置的默认界面模板。",
 				Description: "提供默认主题 token、侧边栏布局和工作台编排，是第三方界面模板插件的基准实现。",
 			},
@@ -27,7 +27,7 @@ func registerBuiltinDefaultSIMPlugin(registry *pluginmeta.Registry) {
 				Description: "Provides the default theme tokens, sidebar layout, and workspace composition as the baseline implementation for third-party interface template plugins.",
 			},
 			"ja-JP": {
-				Name:        "TokenHub 既定インターフェイステンプレート",
+				Name:        "TokenHub Default Interface Template",
 				Summary:     "TokenHub 管理コンソール組み込みの既定インターフェイステンプレートです。",
 				Description: "既定のテーマ Token、サイドバーレイアウト、ワークスペース構成を提供し、サードパーティ製インターフェイステンプレートプラグインの基準実装になります。",
 			},
@@ -109,7 +109,7 @@ func registerBuiltinAntDSIMPlugin(registry *pluginmeta.Registry) {
 		},
 		localizations: map[string]pluginmeta.MarketplaceLocalization{
 			"zh-CN": {
-				Name:        "Ant Design 风格界面模板",
+				Name:        "Ant Design Style Interface Template",
 				Summary:     "基于 Ant Design 视觉语言的 TokenHub 管理端界面模板。",
 				Description: "提供 Ant Design 风格的主题 token、紧凑侧边栏布局和工作台编排，适合偏企业后台、表格和表单密集的管理场景。",
 			},
@@ -119,7 +119,7 @@ func registerBuiltinAntDSIMPlugin(registry *pluginmeta.Registry) {
 				Description: "Provides Ant Design style theme tokens, a compact sidebar layout, and workspace composition for enterprise admin scenarios with dense tables and forms.",
 			},
 			"ja-JP": {
-				Name:        "Ant Design スタイルインターフェイステンプレート",
+				Name:        "Ant Design Style Interface Template",
 				Summary:     "Ant Design の視覚言語に基づく TokenHub 管理コンソール用インターフェイステンプレートです。",
 				Description: "密度の高いテーブルやフォームを扱う企業管理画面向けに、Ant Design スタイルのテーマ Token、コンパクトなサイドバーレイアウト、ワークスペース構成を提供します。",
 			},
@@ -197,7 +197,7 @@ func registerBuiltinKnowledgeSidebarSIMPlugin(registry *pluginmeta.Registry) {
 		},
 		localizations: map[string]pluginmeta.MarketplaceLocalization{
 			"zh-CN": {
-				Name:        "知识库侧边栏界面模板",
+				Name:        "Knowledge Sidebar Interface Template",
 				Summary:     "面向知识库与运营后台的 TokenHub 管理端界面模板。",
 				Description: "提供深蓝圆角分组、浅蓝选中态、清爽白底和清晰层级的侧边栏视觉，适合知识资产、智能体编排和权限运营场景。",
 			},
@@ -207,7 +207,7 @@ func registerBuiltinKnowledgeSidebarSIMPlugin(registry *pluginmeta.Registry) {
 				Description: "Provides deep-blue rounded navigation groups, pale-blue selected items, a clean white shell, and a strong sidebar hierarchy for knowledge assets, agent orchestration, and access operations.",
 			},
 			"ja-JP": {
-				Name:        "ナレッジサイドバーインターフェイステンプレート",
+				Name:        "Knowledge Sidebar Interface Template",
 				Summary:     "ナレッジベースと運用プロダクト向けの TokenHub 管理コンソール用インターフェイステンプレートです。",
 				Description: "濃いブルーの角丸ナビゲーショングループ、淡いブルーの選択状態、白を基調にしたシェル、明確なサイドバー階層を提供します。",
 			},

@@ -88,7 +88,7 @@ test("admin can inspect plugin details and files without fake settings", async (
   await expect(page).toHaveURL(/\/plugins$/);
 
   const pluginSearch = page.getByRole("searchbox", { name: "搜索插件" });
-  await pluginSearch.fill("TokenHub 默认界面模板");
+  await pluginSearch.fill("TokenHub Default Interface Template");
   const configurableRow = page.locator(".plugin-installed-row").filter({
     has: page.getByRole("button", { name: "设置", exact: true }),
   }).first();
@@ -149,9 +149,9 @@ test("admin can adjust UI template settings", async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
   await page.getByRole("tab", { name: "界面模板" }).click();
-  await page.getByRole("button", { name: "配置界面模板 TokenHub 默认界面模板" }).click();
+  await page.getByRole("button", { name: "配置界面模板 TokenHub Default Interface Template" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);
-  await expect(page.getByRole("heading", { name: "TokenHub 默认界面模板" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "TokenHub Default Interface Template" })).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);
   await expect(page.getByRole("tab", { name: "TokenHub 默认浅色" })).toBeVisible();
