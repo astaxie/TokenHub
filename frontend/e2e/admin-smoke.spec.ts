@@ -106,7 +106,8 @@ test("admin can inspect plugin details and files without fake settings", async (
   await page.getByRole("button", { name: "查看插件详情 External Trace Hook" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace$/);
   await expect(page.getByRole("heading", { name: "External Trace Hook" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "这个插件做什么" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "主要功能" })).toBeVisible();
+  await expect(page.getByText("Contract fixture for an external trace export gateway hook.", { exact: true })).toBeVisible();
   await expect(page.getByText("请求处理", { exact: true })).toBeVisible();
   await expect(page.getByText("export", { exact: true })).not.toBeVisible();
   await page.getByText("开发者信息", { exact: true }).click();

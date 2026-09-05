@@ -78,6 +78,22 @@ test("plugin marketplace display accepts marketplace entries and locale fallback
   assert.equal(state.updateAvailable, true);
 });
 
+test("plugin marketplace display uses the manifest description", () => {
+  const state = pluginMarketplaceDisplay({
+    id: "tokenhub.extension.trace",
+    name: "Trace Export",
+    version: "1.0.0",
+    description: "Exports gateway traces to the configured destination.",
+    source: "local_file",
+    kinds: ["extension"],
+    placements: ["gateway_chain"],
+    capabilities: [],
+  });
+
+  assert.equal(state.summary, "Exports gateway traces to the configured destination.");
+  assert.equal(state.description, "Exports gateway traces to the configured destination.");
+});
+
 test("plugin marketplace links omit unsafe and malformed URLs", () => {
   const distribution = pluginMarketplaceDistributionLinks({
     id: "tokenhub.provider.kimi",

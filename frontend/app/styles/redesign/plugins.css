@@ -930,29 +930,21 @@
   gap: 26px;
 }
 
-.plugin-overview-about {
+.plugin-overview-purpose-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 28px;
 }
 
-.plugin-overview-about h2,
-.plugin-overview-about p,
 .plugin-overview-publisher span,
 .plugin-overview-publisher strong {
   margin: 0;
 }
 
-.plugin-overview-about h2 {
-  color: var(--ink);
-  font-size: 15px;
-  letter-spacing: 0;
-}
-
-.plugin-overview-about p {
+.plugin-overview-description {
   max-width: 780px;
-  margin-top: 7px;
+  margin: -4px 0 0;
   color: var(--ink-2);
   font-size: 13px;
   line-height: 1.6;
@@ -1373,9 +1365,10 @@
     min-height: 360px;
   }
 
-  .plugin-overview-about,
+  .plugin-overview-purpose-header,
   .plugin-overview-assurance {
     flex-direction: column;
+    align-items: flex-start;
     gap: 8px;
   }
 

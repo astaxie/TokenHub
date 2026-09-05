@@ -581,6 +581,7 @@ func (m Manifest) Descriptor() Descriptor {
 		ID:           m.ID,
 		Name:         m.Name,
 		Version:      m.Version,
+		Description:  strings.TrimSpace(m.Description),
 		Source:       SourceLocalFile,
 		Status:       StatusEnabled,
 		Distribution: m.Distribution.Descriptor(),

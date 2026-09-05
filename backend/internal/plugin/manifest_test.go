@@ -12,6 +12,7 @@ schema_version: 1
 id: tokenhub.openai-codex
 name: OpenAI Codex Subscription
 version: 1.0.0
+description: Connects an OpenAI Codex subscription to TokenHub.
 tokenhub:
   plugin_api: v1
 distribution:
@@ -131,6 +132,9 @@ permissions:
 	descriptor := manifest.Descriptor()
 	if descriptor.ID != "tokenhub.openai-codex" {
 		t.Fatalf("descriptor id = %q", descriptor.ID)
+	}
+	if descriptor.Description != "Connects an OpenAI Codex subscription to TokenHub." {
+		t.Fatalf("descriptor description = %q", descriptor.Description)
 	}
 	if len(descriptor.Kinds) != 3 {
 		t.Fatalf("descriptor kinds = %v, want 3 entries", descriptor.Kinds)
