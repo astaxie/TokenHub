@@ -1,5 +1,11 @@
 export const providerConnectionTranslations: Record<"en" | "ja", Record<string, string>> = {
   en: {
+    "被拒绝的 IP：{addresses}。{guidance}": "Blocked IPs: {addresses}. {guidance}",
+    "Provider 域名解析到被安全策略禁止的地址。如果后端主机使用 Fake-IP 代理，请前往「系统设置 → 基础设置 → 编辑配置」，开启「允许 Provider 使用 Synthetic DNS / Fake-IP」，在「Synthetic DNS / Fake-IP 网段」填写代理实际使用的地址池，保存后重试；未使用 Fake-IP 时请检查 Provider 地址和 DNS。": "The Provider hostname resolves to a blocked address. If the backend host uses a Fake-IP proxy, go to System Settings → General Settings → Edit Settings, enable Allow Providers to Use Synthetic DNS / Fake-IP, enter the proxy’s actual address pool in Synthetic DNS / Fake-IP Ranges, save, and retry. Otherwise, check the Provider address and DNS.",
+    "Provider 域名解析失败，请检查后端所在主机的 DNS 配置。": "Could not resolve the Provider hostname. Check DNS on the backend host.",
+    "连接上游模型目录超时。如果上游需要代理，请前往「系统设置 → 基础设置 → 编辑配置」，将「Provider 出口模式」设为「使用统一代理」，填写后端主机可访问的代理协议、Host 和端口，保存后重试；仅开启浏览器代理不代表后端已使用代理。": "The upstream model catalog connection timed out. If a proxy is required, go to System Settings → General Settings → Edit Settings, set Provider Egress Mode to Use Global Proxy, enter a proxy protocol, host, and port reachable from the backend host, save, and retry. A browser proxy does not mean the backend uses it.",
+    "上游 TLS 证书验证失败，请检查证书有效期、域名和信任链。": "Upstream TLS certificate verification failed. Check validity, hostname, and trust chain.",
+
     "正在测试": "Testing",
     "测试 Provider 连接": "Test Provider connection",
     "请填写 Base URL 和 API Key 后测试。": "Enter the Base URL and API key before testing.",
@@ -109,6 +115,12 @@ export const providerConnectionTranslations: Record<"en" | "ja", Record<string, 
     "完全收敛": "Full convergence",
   },
   ja: {
+    "被拒绝的 IP：{addresses}。{guidance}": "拒否された IP：{addresses}。{guidance}",
+    "Provider 域名解析到被安全策略禁止的地址。如果后端主机使用 Fake-IP 代理，请前往「系统设置 → 基础设置 → 编辑配置」，开启「允许 Provider 使用 Synthetic DNS / Fake-IP」，在「Synthetic DNS / Fake-IP 网段」填写代理实际使用的地址池，保存后重试；未使用 Fake-IP 时请检查 Provider 地址和 DNS。": "Provider の名前解決先がセキュリティポリシーで拒否されました。バックエンドホストで Fake-IP プロキシを使用している場合は「システム設定 → 基本設定 → 設定を編集」で Provider の Synthetic DNS / Fake-IP を許可し、対応する範囲にプロキシの実際のアドレスプールを入力して保存後に再試行してください。使用していない場合は Provider アドレスと DNS を確認してください。",
+    "Provider 域名解析失败，请检查后端所在主机的 DNS 配置。": "Provider の名前解決に失敗しました。バックエンドホストの DNS 設定を確認してください。",
+    "连接上游模型目录超时。如果上游需要代理，请前往「系统设置 → 基础设置 → 编辑配置」，将「Provider 出口模式」设为「使用统一代理」，填写后端主机可访问的代理协议、Host 和端口，保存后重试；仅开启浏览器代理不代表后端已使用代理。": "上流モデルカタログへの接続がタイムアウトしました。プロキシが必要な場合は「システム設定 → 基本設定 → 設定を編集」で Provider の出口モードを統一プロキシに設定し、バックエンドホストから接続可能なプロキシのプロトコル、ホスト、ポートを入力して保存後に再試行してください。ブラウザのプロキシ設定だけではバックエンドに適用されません。",
+    "上游 TLS 证书验证失败，请检查证书有效期、域名和信任链。": "上流 TLS 証明書の検証に失敗しました。有効期限、ホスト名、信頼チェーンを確認してください。",
+
     "正在测试": "テスト中",
     "测试 Provider 连接": "Provider 接続をテスト",
     "请填写 Base URL 和 API Key 后测试。": "テストする前に Base URL と API Key を入力してください。",

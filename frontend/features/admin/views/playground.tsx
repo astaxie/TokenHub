@@ -1,3 +1,4 @@
+import { providerBlockedAddressMessage } from "../resources/provider-network-errors";
 import {
   ArrowDown,
   Check,
@@ -433,7 +434,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
             requestID: event.request_id ?? candidate.requestID,
             mode: event.timing?.mode ?? candidate.mode,
             content: candidate.content || extractAssistantText(event) || (event.type === "completed" ? tx("模型没有返回可展示内容。") : candidate.content),
-            error: event.error,
+            error: providerBlockedAddressMessage(event.code, event.error_details) ?? event.error,
           }));
         }
       });

@@ -434,6 +434,8 @@ docker compose --env-file deploy/.env \
 
 当 TokenHub 所在主机的代理工作在 Fake-IP 模式时，在「系统设置 → 基础设置 → Synthetic DNS / Fake-IP 网段」中配置。该例外默认关闭，只作用于域名解析结果，不允许字面量 IP Provider URL。应填写代理实际使用的地址池，不要假设所有实现都使用 `198.18.0.0/15`：这个网段为基准测试保留，虽常被 Fake-IP 使用，但并非 Fake-IP 专属。普通模式仍禁止 RFC1918 私网和 IPv6 ULA；如果代理确实使用这些范围（例如 Xray 的 IPv6 Fake-IP 池），必须另行开启高风险私网信任。开启后，Provider 域名可能访问配置范围内的真实内网服务。loopback、link-local、metadata、multicast、NAT64 等范围在任何模式下仍会被拒绝。
 
+模型目录连接失败现在区分 DNS 地址被安全策略拒绝（`provider_models_address_blocked`）、域名解析失败（`provider_models_dns_failed`）、超时（`provider_models_timeout`）和 TLS 证书验证失败（`provider_models_tls_failed`）。若 Fake-IP 解析结果被拒绝，应核实代理实际地址池后配置现有兼容例外。错误响应使用固定文案，不暴露原始传输错误或凭据。 地址被拒绝的错误在 `error.details.blocked_ips` 中提供规范化的实际 IP；演练场失败事件通过 `error_details.blocked_ips` 提供相同信息。控制台同时显示被拒绝地址和配置入口。配置前应核实代理实际地址池，系统不会自动信任被拒绝的地址。
+
 ## 前端环境变量
 
 | 变量 | 默认值 | 说明 |
