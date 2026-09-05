@@ -111,7 +111,7 @@ jobs:
         env:
           TEST_POSTGRES_URL: postgresql://tokenhub:tokenhub-e2e-password@localhost:5432/tokenhub_e2e?sslmode=disable
         run: |
-          go test -tags=integration ./internal/server -run '^(TestMultiInstancePostgresE2E|TestPostgresBaselineSQLIsCurrent|TestPostgresFreshStoreAdoptsFromBaselineSQL|TestPostgresStartupSchemaLockWaitHonorsContext|TestQuotaBucketMigrationPostgresAddsAttributionColumnBeforeBackfill|TestUserQuotaIsAtomicAcrossPostgresInstances)$' -count=1 -v
+          go test -tags=integration ./internal/server -run '^(TestMultiInstancePostgresE2E|TestPostgresBaselineSQLIsCurrent|TestPostgresFreshStoreAdoptsFromBaselineSQL|TestPostgresMeteringSchemaVerification|TestPostgresStartupSchemaLockWaitHonorsContext|TestQuotaBucketMigrationPostgresAddsAttributionColumnBeforeBackfill|TestUserQuotaIsAtomicAcrossPostgresInstances)$' -count=1 -v
           go test -tags=integration ./internal/dbschema -run '^TestPostgres' -count=1 -v
 
       - name: Check out previous release tag
