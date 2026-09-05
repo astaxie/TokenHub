@@ -331,12 +331,9 @@ func providerCatalogEntryFromPluginCapability(plugin pluginmeta.Descriptor, adap
 		if capability.Subject != "" && capability.Subject != adapter.Type {
 			continue
 		}
-		entry, ok := providerCatalogEntryFromPluginCatalogCapability(plugin, capability, adapter)
+		entry, _ := providerCatalogEntryFromPluginCatalogCapability(plugin, capability, adapter)
 		if entry.ID != "" && entry.Type != "" {
 			return entry, true
-		}
-		if !ok {
-			continue
 		}
 	}
 	return ProviderCatalogEntry{}, false
@@ -452,10 +449,6 @@ func (entry pluginProviderCatalogEntry) providerCatalogEntry(plugin pluginmeta.D
 		ETag:           strings.TrimSpace(entry.ETag),
 		Models:         models,
 	}
-}
-
-func (model pluginProviderCatalogModel) providerCatalogModel() (ProviderCatalogModel, bool) {
-	return model.providerCatalogModelWithCategories(nil)
 }
 
 func (model pluginProviderCatalogModel) providerCatalogModelWithCategories(modelCategories []providerModelCategoryDefinition) (ProviderCatalogModel, bool) {

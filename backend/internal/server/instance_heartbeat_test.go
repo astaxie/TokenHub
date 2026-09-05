@@ -52,7 +52,7 @@ func TestInstanceHeartbeatStopsWhenStoreCloses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer maintenanceStore.Close()
+	defer func() { _ = maintenanceStore.Close() }()
 	heartbeats, err := maintenanceStore.ListInstanceHeartbeats(context.Background())
 	if err != nil {
 		t.Fatalf("list heartbeats after store close: %v", err)

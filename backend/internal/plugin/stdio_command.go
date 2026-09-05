@@ -46,7 +46,7 @@ func runCommandJSON(ctx context.Context, options CommandSandboxOptions, input an
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 	options.TempDir = tempDir
 	policy, err := BuildCommandSandboxPolicy(options)
 	if err != nil {

@@ -5,10 +5,6 @@ import (
 	"time"
 )
 
-func (s *GormStore) codexImageAllowedByPolicyLocked(project Project, key APIKey, policy *ScopedRoutingPolicy) bool {
-	return s.providerImageCapabilityAllowedByPolicyLocked(project, key, policy, codexImageCapabilityRouteProfile())
-}
-
 func (s *GormStore) providerImageCapabilityAllowedByPolicyLocked(project Project, key APIKey, policy *ScopedRoutingPolicy, profile providerImageCapabilityRouteProfile) bool {
 	profile.withDefaults()
 	var routes []ModelRoute
@@ -55,10 +51,6 @@ func (s *GormStore) providerImageCapabilityAllowedByPolicyLocked(project Project
 		}
 	}
 	return false
-}
-
-func (s *GormStore) codexImageResourceAvailable(resource ProviderResource) bool {
-	return s.providerImageCapabilityResourceAvailable(resource, codexImageCapabilityRouteProfile())
 }
 
 func (s *GormStore) providerImageCapabilityResourceAvailable(resource ProviderResource, profile providerImageCapabilityRouteProfile) bool {

@@ -106,10 +106,6 @@ func (s *Server) anthropicRouteBridge(route RouteSelection) (providerRouteBridge
 	return providerRouteBridgeForRoute(s.adapterRegistry, route, anthropicRouteBridgeSupported)
 }
 
-func (s *Server) streamAnthropicRouteBridge(route RouteSelection) (providerRouteBridge, bool) {
-	return providerRouteBridgeForRoute(s.adapterRegistry, route, streamAnthropicRouteBridgeSupported)
-}
-
 func (s *Server) geminiRouteBridge(route RouteSelection) (providerRouteBridge, bool) {
 	return providerRouteBridgeForRoute(s.adapterRegistry, route, geminiRouteBridgeSupported)
 }

@@ -268,16 +268,8 @@ func (s *Server) codexImageResource(resourceID string, requireActive bool, profi
 	return resource, provider, nil
 }
 
-func (s *Server) updateCodexImageCapability(resourceID string, capability string) (ProviderResource, error) {
-	return s.updateProviderImageCapability(resourceID, capability, codexImageCapabilityRouteProfile())
-}
-
 func codexImageRouteMatches(route ModelRoute, providerID string) bool {
 	return providerImageCapabilityRouteMatches(route, providerID, codexImageCapabilityRouteProfile())
-}
-
-func codexImageRouteHasSupportedResource(route ModelRoute, resources []ProviderResource) bool {
-	return providerImageCapabilityRouteHasSupportedResource(route, resources, codexImageCapabilityRouteProfile())
 }
 
 func providerImageCapabilityRouteHasSupportedResource(route ModelRoute, resources []ProviderResource, profile providerImageCapabilityRouteProfile) bool {
@@ -314,18 +306,6 @@ func activeProviderImageCapabilityRoute(routes []ModelRoute, providerID string, 
 		}
 	}
 	return nil
-}
-
-func (s *Server) ensureCodexImageRoute(providerID string) (ModelRoute, error) {
-	return s.ensureProviderImageCapabilityRoute(providerID, codexImageCapabilityRouteProfile())
-}
-
-func (s *Server) setCodexImageRoutesStatus(providerID string, status string) error {
-	return s.setProviderImageCapabilityRoutesStatus(providerID, codexImageCapabilityRouteProfile(), status)
-}
-
-func defaultCodexImageRoute(providerID string) ModelRoute {
-	return defaultProviderImageCapabilityRoute(providerID, codexImageCapabilityRouteProfile())
 }
 
 func codexImageCapabilityRouteProfile() providerImageCapabilityRouteProfile {
@@ -429,10 +409,6 @@ func backfillProviderImageCapabilityRoutesForProfile(store Store, profile provid
 	}
 }
 
-func codexImageRouteBackfillDone(resources []ProviderResource, providerID string) bool {
-	return providerImageCapabilityRouteBackfillDone(resources, providerID, codexImageCapabilityRouteProfile())
-}
-
 func providerImageCapabilityRouteBackfillDone(resources []ProviderResource, providerID string, profile providerImageCapabilityRouteProfile) bool {
 	profile.withDefaults()
 	for _, resource := range resources {
@@ -441,10 +417,6 @@ func providerImageCapabilityRouteBackfillDone(resources []ProviderResource, prov
 		}
 	}
 	return false
-}
-
-func providerHasSupportedCodexImageResource(resources []ProviderResource, providerID string) bool {
-	return providerHasSupportedImageCapabilityResource(resources, providerID, codexImageCapabilityRouteProfile())
 }
 
 func providerHasSupportedImageCapabilityResource(resources []ProviderResource, providerID string, profile providerImageCapabilityRouteProfile) bool {

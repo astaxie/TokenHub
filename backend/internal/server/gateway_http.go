@@ -431,32 +431,6 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) startRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, stream bool, requestPayload any) (RoutedCall, bool) {
-	return s.startRoutedCallWithAudit(w, r, project, key, model, stream, requestPayload, requestPayload)
-}
-
-func (s *Server) startRoutedCallWithAudit(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, stream bool, requestPayload any, auditPayload any) (RoutedCall, bool) {
-	admittedAt := time.Now().UTC()
-	call, err := s.admitRoutedCall(w, r, project, key, model, stream, requestTokenReservation(requestPayload))
-	if err != nil {
-		requestID := s.finishRejectedCall(r, admittedAt, project, key, model, stream, err, auditPayload)
-		w.Header().Set("x-request-id", requestID)
-		writeError(w, r, err)
-		return RoutedCall{}, false
-	}
-	if err := s.runGatewayAuthContextHooks(r.Context(), &call, r.Header); err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
-		writeError(w, r, err)
-		return RoutedCall{}, false
-	}
-	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, requestPayload, requestTokenReservation(requestPayload)); err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
-		writeError(w, r, err)
-		return RoutedCall{}, false
-	}
-	return s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
-}
-
 func (s *Server) admitRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, model string, stream bool, tokenReservation int64) (CallContext, error) {
 	call, err := s.store.StartCall(r.Context(), project, key, model, tokenReservation)
 	call.Stream = stream
@@ -1104,15 +1078,6 @@ func cacheDomainScoreFromHash(raw uint64, weight int) float64 {
 		unit = 0.99999999999999988
 	}
 	return float64(weight) / -math.Log(unit)
-}
-
-func routesContainAdapterType(routes []RouteSelection, adapterType string) bool {
-	for _, route := range routes {
-		if route.Provider.Type == adapterType {
-			return true
-		}
-	}
-	return false
 }
 
 func sortRouteGroupByStrategy(strategy string, routes []RouteSelection) {

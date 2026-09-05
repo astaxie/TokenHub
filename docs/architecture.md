@@ -8,6 +8,8 @@ This document describes the architecture implemented in this repository for deve
 
 The Go backend hosts the Admin API, OpenAI-compatible model API, routing, provider adapters, audit, and persistence in one process. The Next.js application is the admin console. Control plane and data plane are logical boundaries: they share one backend and database by default, while multi-instance deployments share state through PostgreSQL.
 
+The backend is organized as Core plus built-in and external plugins. Core retains public API compatibility, authentication, authorization, routing admission, persistence, metering, and audit. Plugins contribute declared provider capabilities, gateway hooks, background jobs, and presentation metadata; the backend invokes external executable plugins as child processes.
+
 ```mermaid
 flowchart TB
     admin["Administrators and team leaders"]
@@ -21,7 +23,10 @@ flowchart TB
         modelApi["Model API\n/v1/*"]
         governance["Access and governance\nKeys, RBAC, quotas, concurrency, IP allowlists"]
         routing["Routing\ncandidates, strategy, weight, failover, affinity"]
-        adapters["Adapter registry\ngeneral providers and OpenAI Codex"]
+        adapters["Adapter registry"]
+        builtin["Built-in provider plugins"]
+        plugins["Plugin registry and runtime"]
+        hooks["Gateway hooks and brokers"]
         operations["Operations and observability\nusage, audit, alerts, health"]
         store["GORM Store"]
 
@@ -31,7 +36,19 @@ flowchart TB
         modelApi --> operations --> store
         adminApi --> operations
         routing --> store
+        adminApi --> plugins
+        plugins --> adapters
+        adapters --> builtin
+        plugins --> hooks
+        routing <--> hooks
     end
+
+    external["External plugin processes\nstdio-json-v1"]
+    packages["Plugin packages and lifecycle state"]
+    packages --> plugins
+    plugins --> external
+    hooks --> external
+    adapters --> external
 
     subgraph persistence["Persistence and configuration"]
         sqlite[("SQLite\ndefault single instance")]
@@ -50,11 +67,14 @@ flowchart TB
     admin --> ingress --> frontend
     frontend -->|"TOKENHUB_API_BASE_URL"| backend
     app --> ingress -->|"/v1/*"| backend
-    adapters --> compatible
-    adapters --> azure
-    adapters --> anthropic
-    adapters --> gemini
-    adapters --> codex
+    external --> upstream
+    backend --> adminApi
+    backend --> modelApi
+    builtin --> compatible
+    builtin --> azure
+    builtin --> anthropic
+    builtin --> gemini
+    builtin --> codex
     store --> sqlite
     store --> postgres
     catalog --> store
@@ -91,6 +111,24 @@ The default Compose file has no reverse proxy and exposes frontend and backend p
 
 The default image uses the model catalog bundled at build time so the executable and catalog share a version. A custom catalog is an explicit override through `./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml`; it is not a default Compose mount.
 
+## Plugin Runtime and Boundaries
+
+`backend/internal/server/plugin_bootstrap.go` assembles the plugin registry, gateway chain and runner, admin UI registry, action broker, background-job broker/runner, and adapter registry. It registers built-in contributions, loads packages from `TOKENHUB_PLUGIN_DIR`, and attaches enabled external Provider adapters. Built-in and external plugins share metadata and capability contracts, but built-ins execute inside the Go process and external commands execute through `stdio-json-v1`.
+
+| Surface | Implementation entry points | Responsibility and boundary |
+| --- | --- | --- |
+| Package contract and loading | `backend/internal/plugin/manifest.go`, `runtime.go`, `registry.go` | Validate manifest schema, Plugin API compatibility, permissions, and package state before registration |
+| Provider | `backend/internal/server/provider_plugin_adapter.go`, `adapter_registry.go` | Invoke declared operations using provider/resource/credential projections; Core retains routing and accounting |
+| Gateway chain | `backend/internal/plugin/gateway_chain.go`, `gateway_runner.go`; `backend/internal/server/gateway_plugin_hooks.go` | Run stage-specific hooks with permitted data, validate structured results, and enforce stage mutation rules |
+| Background jobs and actions | `backend/internal/plugin/background_scheduler.go`, `background_job.go`, `action_broker.go` | Schedule declared jobs and broker operator actions; these are separate from durable background Responses jobs |
+| Presentation | `backend/internal/plugin/admin_ui.go`, `sim.go` | Declarative panels, settings, themes, and layouts rendered by the console; no arbitrary plugin React or JavaScript execution |
+
+Packages declare `plugin.yaml` with manifest schema `1` and Plugin API `v1`. Permissions constrain which Core data is projected into an invocation and which structured changes Core accepts. This is not an operating-system sandbox: the command policy currently reports network and resource enforcement as `unsupported`. External commands use a restricted environment, package-relative executable paths, bounded input/output, and timeouts. The generic command defaults are 30 seconds, 4 MiB input, and 1 MiB output; individual runtime surfaces can apply their own timeout, including a 5-second default gateway-hook timeout. Streaming support must be checked per adapter; the external Provider bridge currently decodes an event array from a command result rather than forwarding a live child-process stream.
+
+All three Compose variants mount `tokenhub-plugins` at `/app/plugins` and expose `TOKENHUB_PLUGIN_DIR` and `TOKENHUB_PLUGIN_MARKETPLACE_URL`. Package files and lifecycle state live on the filesystem, while registries and runners are process-local. PostgreSQL does not distribute plugin binaries or refresh every replica's registry. `plugin_runtime_reload.go` serializes a reload through a cluster operation but rebuilds only the current server's runtime; deployments must coordinate package versions and reload/restart each replica. The package-update handler currently replaces package files without calling that reload path, so an update response alone does not establish that the new runtime is active.
+
+Installation and marketplace code provide checksum verification, signed-marketplace trust checks, permission review, failed-package quarantine, and rollback paths. These controls do not establish atomic fleet-wide activation or isolation from host resources. See the [Plugin Development Guide](plugin-development.md) for the detailed contract and lifecycle procedures.
+
 ## Components and Providers
 
 | Component | Location | Responsibility |
@@ -99,20 +137,25 @@ The default image uses the model catalog bundled at build time so the executable
 | HTTP server | `backend/internal/server/http.go` | APIs, authentication, routed calls, responses, and health endpoints |
 | Routing | `backend/internal/server/http.go` | Candidate ordering by priority, resource priority, strategy, weight, and affinity |
 | Adapter registry and integration service | `adapter_registry.go`, `integration_service.go` | Declares provider capabilities and runs provider/resource probes |
-| Provider adapters | `providers.go`, `provider_account_codex.go` | Protocol translation; Codex subscription OAuth, refresh, and session affinity |
+| Provider adapters | `builtin_provider_plugins.go`, `provider_plugin_adapter.go`, `provider_account_codex.go` | Protocol translation; Codex subscription OAuth, refresh, and session affinity |
 | Store | `store.go` | GORM access, quotas, credential encryption, SQLite backups, PostgreSQL leases, and cluster locks |
+
+The following are representative built-in registrations, not a closed list of supported providers. Effective capabilities come from the enabled plugin and adapter descriptors, provider policy, and model/resource support. External plugins may add provider types.
 
 | Provider type | Adapter and capabilities |
 | --- | --- |
-| `openai`, `openai_compatible`, `qwen`, `local` | OpenAI compatible: Chat, streaming Chat, Responses, Embeddings, and probes |
-| `deepseek` | OpenAI compatible; Chat, streaming Chat, Embeddings, and probes. Responses and streaming Responses are model-scoped and enabled for `deepseek-v4-flash` and `deepseek-v4-pro` |
+| `openai` | Chat, streaming Chat, Responses, streaming Responses, Embeddings, probes, and image generation |
+| `openai_compatible`, `deepseek`, `qwen`, `local` | OpenAI-compatible operations; model and provider policy can narrow Responses support |
+| `kronk` | Chat, streaming Chat, Responses, streaming Responses, Embeddings, model discovery, and probes |
 | `azure_openai` | Chat, streaming Chat, Embeddings, and probes |
 | `anthropic` | Chat, streaming Chat, and probes |
 | `gemini` | Chat, streaming Chat, Embeddings, and probes |
-| `openai_codex` | OpenAI Codex Subscription: Responses, streaming Responses, models, quota, OAuth, session affinity, and Compact |
-| `mock` | Built-in adapter for local verification and tests |
+| `openai_codex` | Responses, streaming Responses, models, probes, quota, OAuth, session affinity, Compact, and image generation |
+| `mock` | Local verification and tests |
 
 ## Model Request Flow
+
+This sequence summarizes the Core request flow. At the applicable stages, the gateway runner projects permitted data to registered hooks and validates their results before Core continues. Hook stages cover privacy/guardrail processing, context and cache operations, candidate selection/ranking, request/response transforms, usage, settlement, and trace export. A declared stage does not mean every endpoint or installed plugin implements that capability; endpoint support and stage rules still apply.
 
 `Model` is the external API contract, `ProviderModel` is a persisted upstream inventory item for one Provider, and `ModelRoute` maps between them. External models carry an explicit persisted directory role, so removing their last route leaves them as drafts instead of turning them back into candidate templates. Route creation and editing require the selected `ProviderModel` to exist in inventory. The narrow exception is the subscription-backed virtual model `codex-gpt-image-2`: its route must target an OpenAI Codex Provider and the fixed upstream model `gpt-image-2`, which is an execution capability rather than a chat-model inventory item. This allows a same-name 1:1 mapping or a custom alias without exposing provider-specific model names to callers. `POST /v1/chat/completions`, `POST /v1/responses`, `POST /v1/responses/compact`, and `POST /v1/embeddings` share the same authentication, quota, and routing entry point.
 
@@ -121,6 +164,7 @@ sequenceDiagram
     participant C as Application
     participant G as TokenHub /v1
     participant S as Store and database
+    participant H as Gateway hooks
     participant A as Provider adapter
     participant U as Upstream model service
 
@@ -133,6 +177,11 @@ sequenceDiagram
     G->>S: Query active and healthy Provider / Resource / Route
     G->>G: Resolve API Key, Project, or Global policy; filter candidates
     G->>G: Plan attempts from strategy, weights, and session affinity
+    opt At applicable request stages: permitted data projection
+        G->>H: At applicable request stages: permitted data projection
+        H-->>G: Validated structured result
+    end
+    Note over G,A: Invoke enabled built-in adapter or external Provider bridge
     loop Failover-capable candidate routes
         G->>A: Normalized request and route selection
         A->>U: Provider protocol request
@@ -143,7 +192,7 @@ sequenceDiagram
     G-->>C: Compatible response and x-request-id
 ```
 
-Inactive or unhealthy providers, resources, and routes are skipped, with one exception: a resource whose cooldown has lapsed is readmitted as a half-open candidate. The first request that reaches it claims the trial by pushing its cooldown deadline forward, so concurrent requests are still rejected and a failed trial has already armed the next, longer window. Only that trial's own success closes the breaker and restores the resource without admin action — a request that was already in flight when the breaker tripped cannot resurrect it. Repeated failures widen the window exponentially up to `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS`. A resource an administrator disabled is never readmitted. Non-streaming calls try candidates in order. A stream cannot safely switch upstream after output has started; streaming Responses require an adapter with the `response_stream` capability. `openai_codex` routes can derive a session affinity key from the request and API key, then persist a resource binding for continuity.
+Inactive or unhealthy providers, resources, and routes are skipped, with one exception: a resource whose cooldown has lapsed is readmitted as a half-open candidate. The first request that reaches it claims the trial by pushing its cooldown deadline forward, so concurrent requests are still rejected and a failed trial has already armed the next, longer window. Only that trial's own success closes the breaker and restores the resource without admin action — a request that was already in flight when the breaker tripped cannot resurrect it. Repeated failures widen the window exponentially up to `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS`. A resource an administrator disabled is never readmitted. Non-streaming calls try candidates in order. A stream cannot safely switch upstream after output has started; streaming Responses require an adapter with the `responses_stream` capability. `openai_codex` routes can derive a session affinity key from the request and API key, then persist a resource binding for continuity.
 
 For `POST /v1/responses` with `background: true`, the synchronous request flow stops after authentication and durable submission. Every replica polls the durable queue even when it was empty at startup. A worker claims the job, revalidates its original authorization, and commits the admitted phase, request ID, quota counters, token reservation, and concurrency lease in one database transaction before entering the same guardrail, routing, provider, metering, audit, and tracing flow. A lease epoch fences stale workers. PostgreSQL uses row locks with `SKIP LOCKED` across replicas; SQLite uses an atomic claim in the supported single-backend deployment. Pre-admission lease loss is replayable, while post-admission lease loss is terminal rather than risking a duplicate provider request; an undispatched token reservation is refunded during recovery.
 

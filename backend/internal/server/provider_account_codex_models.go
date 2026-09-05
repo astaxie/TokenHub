@@ -308,10 +308,6 @@ func (s *Server) queryOpenAICodexModels(ctx context.Context, resourceID string) 
 	return s.queryProviderResourceModels(ctx, resourceID)
 }
 
-func (s *Server) persistCodexResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {
-	return s.persistProviderResourceModels(resourceID, models, fetchedAt)
-}
-
 func codexResourceCachedModels(resource *ProviderResource) ([]string, time.Time, bool) {
 	return providerResourceCachedModels(resource)
 }
@@ -337,33 +333,4 @@ func providerResourceModelOptionLegacyKeys(key string) []string {
 
 func (s *Server) filterCodexRoutesByModel(_ context.Context, modelName string, routes []RouteSelection) ([]RouteSelection, error) {
 	return s.filterProviderAccountRoutesByModel(modelName, routes)
-}
-
-func (s *Server) removeCodexResourceModel(resourceID string, modelName string) {
-	s.removeProviderResourceModel(resourceID, modelName)
-}
-
-func codexProviderCatalogFromModels(models []ProviderCatalogModel) ProviderCatalogEntry {
-	candidates := append([]ProviderCatalogModel(nil), models...)
-	for index := range candidates {
-		candidates[index].Category = "codex"
-	}
-	entry := customProviderCatalogFromModelsWithType(candidates, "codex", ProviderOpenAICodex)
-	entry.ID = codexProviderCatalogID
-	entry.Name = "OpenAI Codex"
-	entry.DisplayName = "OpenAI Codex"
-	entry.Type = ProviderOpenAICodex
-	entry.BaseURL = openAICodexBaseURL
-	entry.DocURL = "https://developers.openai.com/codex"
-	entry.Source = "openai-codex-live"
-	return entry
-}
-
-func (s *Server) codexProviderCatalogMetadata() ProviderCatalogEntry {
-	if s != nil {
-		if entry, ok := s.pluginProviderCatalogCapabilityEntryForType(ProviderOpenAICodex); ok {
-			return entry
-		}
-	}
-	return codexProviderCatalogFromModels(nil)
 }

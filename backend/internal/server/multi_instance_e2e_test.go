@@ -372,6 +372,7 @@ func (a *multiInstanceBlockingResponseAdapter) Responses(ctx context.Context, pr
 
 func testSharedResponseJobExecution(t *testing.T, storeA *GormStore, storeB *GormStore, config Config) {
 	t.Helper()
+	config.ResponseWorkerStartupEnabled = true
 	config.ResponseWorkerConcurrency = 1
 	config.ResponsePollIntervalMillis = 20
 	config.ResponseJobTimeoutSeconds = 5
@@ -1154,7 +1155,9 @@ func testSharedOAuthAndRefresh(t *testing.T, storeA *GormStore, storeB *GormStor
 
 	tokenRequests.Store(0)
 	suffix := NewID("oauth")
-	provider := storeA.AddProvider(Provider{ID: "prv_" + suffix, Name: "OAuth Provider", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	provider := storeA.AddProvider(Provider{ID: "prv_" + suffix, Name: "OAuth Provider", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+		Options: map[string]string{providerCredentialRefreshProfileOption: openAIAccountOAuthRefreshProfile},
+	})
 	resource, err := storeA.AddProviderResource(ProviderResource{
 		ID:           "rsrc_" + suffix,
 		ProviderID:   provider.ID,

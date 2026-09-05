@@ -52,10 +52,6 @@ type OpenAIAccountQuota struct {
 	FetchedAt             int64                               `json:"fetched_at"`
 }
 
-func (s *Server) queryOpenAIAccountQuota(ctx context.Context, resourceID string) (OpenAIAccountQuota, error) {
-	return s.queryOpenAIAccountQuotaCached(ctx, resourceID, false)
-}
-
 func (s *Server) queryOpenAIAccountQuotaCached(ctx context.Context, resourceID string, force bool) (OpenAIAccountQuota, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {

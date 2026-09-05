@@ -72,7 +72,18 @@ func testPostgresV040BootstrapUpgrade(t *testing.T, adminStore *GormStore, confi
 	parsedURL.RawQuery = query.Encode()
 	config.DatabaseURL = parsedURL.String()
 	config.ModelCatalogFile = filepath.Join(t.TempDir(), "model-catalog.yaml")
-	if err := os.WriteFile(config.ModelCatalogFile, []byte("version: 1\nmodels:\n  - name: postgres-upgrade-test-model\n"), 0o600); err != nil {
+	if err := os.WriteFile(config.ModelCatalogFile, []byte(`version: 1
+models:
+  - name: postgres-upgrade-test-model
+    category: custom
+    modality: chat
+    family: test
+    context_window: 4096
+    capabilities: [chat]
+    supported_parameters: []
+    input_modalities: [text]
+    output_modalities: [text]
+`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

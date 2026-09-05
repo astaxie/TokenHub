@@ -179,10 +179,6 @@ func providerResponsesSessionIdentifier(headers http.Header, request ResponsesRe
 	return "", sessionScopeNone
 }
 
-func codexRawStringField(request ResponsesRequest, key string) string {
-	return responsesRawStringField(request, key)
-}
-
 func responsesRawStringField(request ResponsesRequest, key string) string {
 	if request.raw == nil {
 		return ""

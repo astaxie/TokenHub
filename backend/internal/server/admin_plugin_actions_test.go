@@ -1145,11 +1145,7 @@ func TestAdminPluginBackgroundJobRunExecutesThroughRunner(t *testing.T) {
 		t.Fatalf("register background job: %v", err)
 	}
 
-	reqBody, err := json.Marshal(map[string]any{"resource_id": "rsrc_1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	reqBody, err = json.Marshal(map[string]any{
+	reqBody, err := json.Marshal(map[string]any{
 		"resource_id":   "rsrc_1",
 		"refresh_token": "request-refresh-secret",
 	})
