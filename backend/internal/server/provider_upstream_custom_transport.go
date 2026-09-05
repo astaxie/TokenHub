@@ -27,7 +27,7 @@ func guardCustomProviderTransport(next http.RoundTripper, allowed []*net.IPNet) 
 		dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 		dial = dialer.DialContext
 	}
-	guarded.DialTLS = nil
+	guarded.DialTLS = nil //nolint:staticcheck // Clear legacy injected hooks so they cannot bypass validated dialing.
 	guarded.DialTLSContext = nil
 	guarded.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 		return dialGuardedUpstream(ctx, network, address, allowed, nil, 30*time.Second, net.DefaultResolver.LookupIPAddr, dial)

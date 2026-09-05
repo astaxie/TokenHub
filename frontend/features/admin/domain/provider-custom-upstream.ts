@@ -30,7 +30,7 @@ export function providerAuthMode(values: Record<string, string>, providerTypeOpt
   return preferredProviderAuthMode(modes);
 }
 
-const providerConnectionTestFields = new Set(["base_url", "api_key", "type", providerAuthModeField, legacyProviderAuthModeField, "custom_headers"]);
+const providerConnectionTestFields = new Set(["base_url", "api_key", "clear_api_key", "type", providerAuthModeField, legacyProviderAuthModeField, "custom_headers"]);
 
 export function providerConnectionTestRunAfterUpdate(currentRun: number, key: string) {
   return providerConnectionTestFields.has(key) ? currentRun + 1 : currentRun;
@@ -83,6 +83,7 @@ export function customUpstreamDiscoveryPayload(
     type: providerTypeValue(values, providerTypeOptions),
     base_url: values.base_url,
     api_key: values.api_key,
+    ...(values.clear_api_key === "true" ? { clear_api_key: true } : {}),
     ...headers,
     [providerAuthModeField]: authMode,
     [legacyProviderAuthModeField]: authMode,
@@ -98,6 +99,7 @@ export function customUpstreamConnectionKey(values: Record<string, string>, prov
   return JSON.stringify([
     values.base_url,
     values.api_key,
+    values.clear_api_key === "true",
     providerTypeValue(values, providerTypeOptions),
     providerAuthMode(values, providerTypeOptions),
     values.custom_headers,

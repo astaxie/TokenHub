@@ -14,7 +14,7 @@ import (
 
 // validateProviderUpstreamBaseURL validates administrator-configured upstreams.
 // Auto mode permits local literals and defers HTTP hostname classification to
-// DNS preflight before saving or sending. Strict mode keeps literal-only local
+// DNS preflight before sending. Strict mode keeps literal-only local
 // exceptions. Public plaintext, embedded credentials and special-use addresses
 // remain blocked. Redirects must keep the original scheme and authority.
 func validateProviderUpstreamBaseURL(endpoint *url.URL, allowedPrivate []*net.IPNet, allowLocalhost bool) error {
@@ -73,11 +73,9 @@ func validateProviderUpstreamBaseURLString(raw string, allowedPrivate []*net.IPN
 	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
 		return NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
 	}
-	if err := validateProviderUpstreamBaseURL(endpoint, allowedPrivate, allowLocalhost); err != nil {
-		return err
-	}
-	_, err = prepareProviderHTTPRequest(&http.Request{URL: endpoint}, allowedPrivate, net.DefaultResolver.LookupIPAddr)
-	return err
+	// Persistence callers may hold the store mutex. Keep validation free of
+	// network I/O; request transports resolve and pin DNS before sending.
+	return validateProviderUpstreamBaseURL(endpoint, allowedPrivate, allowLocalhost)
 }
 
 // ValidateProviderUpstreamBaseURL also guards non-HTTP persistence callers,

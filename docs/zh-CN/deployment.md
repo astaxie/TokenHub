@@ -434,7 +434,9 @@ docker compose --env-file deploy/.env \
 
 默认自动模式下，管理员可以直接填写 `http://127.0.0.1:8000/v1`、私网 IPv4/IPv6 地址、`host.docker.internal`、Docker 服务名或企业内网域名，无需额外配置 CIDR 清单。地址须从后端所在环境可达；容器的回环地址指向容器自身。TokenHub 不会自动创建 DNS 记录、加入 Docker 网络或配置宿主机别名。
 
-HTTP 域名在保存和发送请求前都必须全部解析为获准的本地地址；公网或混合公网／私网结果会在发送凭据和请求体前被拒绝。实际直连使用已校验地址，不再次解析；代理请求保留原始 Host 与 TLS 服务名。metadata、link-local、multicast 等特殊危险目标继续禁止。同协议、同地址及端口的重定向可以继续，包括内网同源跳转；跨源跳转仍被拒绝。
+保存时校验 URL 语法和字面量地址，不查询 DNS，因此离线服务也可配置，且不会阻塞存储操作。发送请求前，HTTP 域名必须全部解析为获准的本地地址；公网或混合公网／私网结果会在发送凭据和请求体前被拒绝。实际直连使用已校验地址，不再次解析；代理请求保留原始 Host 与 TLS 服务名。metadata、link-local、multicast 等特殊危险目标继续禁止。同协议、同地址及端口的重定向可以继续，包括内网同源跳转；跨源跳转仍被拒绝。
+
+HTTP 域名走代理时，TokenHub 使用 CONNECT 连接已验证 IP，并在隧道内保留原始 Host。代理须允许 CONNECT 到模型服务端口；拒绝时不会回退为直连。
 
 已有非空私网清单继续限制访问范围。旧模板普遍包含 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK=false`，这一值单独存在时不再关闭自动模式。确实需要保留旧访问边界的部署可设置 `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=strict`，继续使用原字面量 CIDR 和回环开关；如本地流量也必须遵循所选代理，再设置 `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL=true`。这些部署配置需重启后端或重建容器生效。
 

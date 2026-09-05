@@ -184,7 +184,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				if req.BaseURL == "" {
 					req.BaseURL = provider.BaseURL
 				}
-				if req.APIKey == "" {
+				if req.APIKey == "" && !req.ClearAPIKey {
 					req.APIKey = provider.APIKey
 				}
 				if req.Headers == nil {

@@ -263,3 +263,12 @@ test("custom model discovery becomes visible in both create and edit flows", () 
   assert.equal(customUpstreamModelsVisible("edit", "models", false, "connect", 0), true);
   assert.equal(customUpstreamModelsVisible("edit", "advanced", false, "connect", 0), false);
 });
+
+
+test("clearing credentials invalidates discovery and connection results", () => {
+  const original = { type: "openai_compatible", base_url: "http://localhost:8000/v1", api_key: "" };
+  const cleared = { ...original, clear_api_key: "true" };
+  assert.notEqual(customUpstreamConnectionKey(original), customUpstreamConnectionKey(cleared));
+  assert.equal(customUpstreamDiscoveryPayload(cleared, "provider-local", "chat").clear_api_key, true);
+  assert.equal(providerConnectionTestRunAfterUpdate(5, "clear_api_key"), 6);
+});

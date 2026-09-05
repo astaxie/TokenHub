@@ -113,6 +113,10 @@ func TestLocalUpstreamProxyBypassAndExplicitProxy(t *testing.T) {
 	var proxyRequests atomic.Int32
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		proxyRequests.Add(1)
+		if r.Method == http.MethodConnect {
+			serveLocalHTTPReviewTunnel(t, w, r, nil)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer proxy.Close()

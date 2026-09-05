@@ -734,7 +734,7 @@ func TestAdminProviderURLValidationIgnoresAmbientProxy(t *testing.T) {
 				errorCode string
 			}{
 				{name: "metadata", baseURL: "http://169.254.169.254/latest/meta-data", errorCode: "provider_base_url_not_allowed"},
-				{name: "public HTTP", baseURL: "http://api.example.com/v1", errorCode: "provider_base_url_insecure_scheme"},
+				{name: "public HTTP literal", baseURL: "http://8.8.8.8/v1", errorCode: "provider_base_url_insecure_scheme"},
 			} {
 				response := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
 					"name":     "Ambient proxy " + test.name,

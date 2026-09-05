@@ -106,7 +106,9 @@ func (transport *providerEnvironmentProxyTransport) RoundTrip(request *http.Requ
 	if !synthetic && providerTargetsAreLocal(targets, allowedProviderUpstreamCIDRs()) && !getenvBool("TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL", false) {
 		return transport.direct.RoundTrip(pinProviderDirectTargets(request, targets))
 	}
-	if strings.EqualFold(request.URL.Scheme, "https") {
+	// Tunnel hostname targets even for HTTP: forward-proxy serialization uses
+	// Request.Host for the absolute URI and would otherwise undo IP pinning.
+	if strings.EqualFold(request.URL.Scheme, "https") || net.ParseIP(request.URL.Hostname()) == nil {
 		response, err := transport.proxyTunnelTransport(proxyURL, request.URL.Host, targetPort, targets).RoundTrip(request)
 		if err != nil {
 			if egressErr := providerEgressFailure(err); egressErr != nil {
