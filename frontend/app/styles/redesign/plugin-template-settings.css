@@ -281,6 +281,15 @@
   cursor: pointer;
 }
 
+.plugin-theme-token-hint {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 8px 0 0;
+  gap: 4px;
+  color: var(--ink-3, var(--muted));
+  font-size: 11px;
+}
+
 .plugin-theme-token-notice {
   margin: 9px 0 0;
   color: var(--pos);

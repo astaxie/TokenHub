@@ -323,6 +323,7 @@ export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
 export function pageRecordCount(view: ViewKey, data: AppData) {
   const config = resourceConfigFor(view);
   if (config) return config.list(data).length;
+  if (view === "plugins") return data.plugins.length;
   if (view === "alert-events") return data.alerts.length;
   if (view === "alert-deliveries") return data.alertDeliveries.length;
   if (view === "approvals") return data.approvals.length;

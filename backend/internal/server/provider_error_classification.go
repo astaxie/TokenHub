@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -117,14 +118,22 @@ func newProviderPolicyRefusal(message string) error {
 // provider account, and the bodies quote it: OpenAI echoes a masked API key,
 // Azure names the subscription key. Those go no further than the attempt log,
 // where the recorded upstream status already says what happened.
-func providerErrorMessage(class providerErrorClass, data []byte) string {
+func providerErrorMessage(class providerErrorClass, upstreamStatus int, data []byte) string {
 	switch class.code {
 	case "provider_auth_error":
 		return "The gateway's credential for this provider was rejected"
 	case "provider_payment_required":
 		return "The gateway's account with this provider cannot be billed"
 	}
-	return strings.TrimSpace(string(data))
+	message := strings.TrimSpace(string(data))
+	if message == "" {
+		// Some providers answer a failure with an empty body, and an empty
+		// message tells the caller nothing about what went wrong. The upstream
+		// status is reported rather than class.status, which is what the gateway
+		// decided to return and hides the status the provider actually sent.
+		return fmt.Sprintf("Upstream provider returned HTTP %d", upstreamStatus)
+	}
+	return message
 }
 
 // newProviderMisconfigured reports a provider that cannot be called at all. That
@@ -188,7 +197,7 @@ func newProfiledProviderHTTPError(profile providerErrorProfileDescriptor, upstre
 	if override, ok := profile.CodeClassOverrides[profileCode]; ok {
 		class = override
 	}
-	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, normalized))
+	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, upstreamStatus, normalized))
 	httpErr.UpstreamStatus = upstreamStatus
 	return &ProviderInvocationError{
 		Err:         httpErr,
@@ -381,7 +390,7 @@ func providerSecretRepresentations(value string) []string {
 // replaced by a fail-closed mask because its string boundaries are ambiguous.
 func newProviderHTTPError(upstreamStatus int, headers http.Header, data []byte) error {
 	class := classifyProviderStatus(upstreamStatus)
-	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, data))
+	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, upstreamStatus, data))
 	httpErr.UpstreamStatus = upstreamStatus
 	return &ProviderInvocationError{
 		Err:         httpErr,

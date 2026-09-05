@@ -54,3 +54,51 @@ describe("PluginTemplateSettings", () => {
     expect(onChange).toHaveBeenLastCalledWith(themeKey, {});
   });
 });
+
+describe("PluginTemplateSettings theme token allowlist", () => {
+  function registryWithTokens(tokens: Record<string, string>) {
+    return simRegistryFromPlugins([{
+      id: "example.sim",
+      name: "Example Template",
+      version: "1.0.0",
+      capabilities: [
+        { kind: "sim", name: "theme_tokens", value: JSON.stringify({ id: "light", title: "Example Light", mode: "light", tokens }) },
+      ],
+    }]);
+  }
+
+  function renderTokens(tokens: Record<string, string>) {
+    return render(
+      <PluginTemplateSettings
+        contributions={[]}
+        overrides={{}}
+        pluginID="example.sim"
+        registry={registryWithTokens(tokens)}
+      />,
+    );
+  }
+
+  it("hides tokens the override normalizer would discard", () => {
+    renderTokens({ "--accent": "#2563eb", "--not-a-real-token": "#000000" });
+
+    expect(screen.getByRole("textbox", { name: "accent 当前值" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "not-a-real-token 当前值" })).not.toBeInTheDocument();
+    expect(screen.getByText("只能调整模板已经声明的安全主题 Token。")).toBeInTheDocument();
+  });
+
+  it("renders a duplicated token once, showing the default the shell applies", () => {
+    renderTokens({ accent: "#2563eb", "--accent": "#16a34a" });
+
+    expect(screen.getAllByRole("textbox", { name: "accent 当前值" })).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "accent 当前值" })).toHaveValue("#16a34a");
+  });
+
+  it("offers no apply action when the template declares no adjustable token", () => {
+    renderTokens({ "--not-a-real-token": "#000000" });
+
+    expect(screen.getByText("只能调整模板已经声明的安全主题 Token。")).toBeInTheDocument();
+    expect(screen.getByText("调整保存在当前浏览器。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "应用调整" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "恢复默认" })).not.toBeInTheDocument();
+  });
+});

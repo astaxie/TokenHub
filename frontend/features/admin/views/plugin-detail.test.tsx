@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { PluginDetailView } from "./plugin-detail";
@@ -111,9 +111,8 @@ describe("PluginDetailView", () => {
     expect(await screen.findByText("package main")).toBeInTheDocument();
     const blocked = screen.getByRole("button", { name: /credentials.json/ });
     expect(blocked).toBeDisabled();
-    const previewRequests = fetchMock.mock.calls.filter(([input]) => String(input).includes("/file?")).length;
-    fireEvent.click(blocked);
-    await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/file?")).length).toBe(previewRequests));
+    const previewed = fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url.includes("/file?"));
+    expect(previewed.some((url) => url.includes(`path=${encodeURIComponent("credentials.json")}`))).toBe(false);
   });
 
   it("shows declared permissions and UI configuration schemas", async () => {
@@ -133,5 +132,80 @@ describe("PluginDetailView", () => {
     renderDetail("files");
 
     expect(await screen.findByText("该内置插件没有独立安装包。")).toBeInTheDocument();
+  });
+});
+
+describe("PluginDetailView file preview isolation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function packageWithFiles(files: Array<{ path: string; size: number; kind: string; viewable: boolean }>) {
+    return { file_count: files.length, total_size: files.reduce((total, file) => total + file.size, 0), files };
+  }
+
+  function stubDetailFetch(previewStatus: number) {
+    const packages: Record<string, ReturnType<typeof packageWithFiles>> = {
+      "example.detail": packageWithFiles([{ path: "src/main.go", size: 20, kind: "source", viewable: true }]),
+      "example.locked": packageWithFiles([{ path: "credentials.json", size: 12, kind: "configuration", viewable: false }]),
+    };
+    return vi.fn().mockImplementation((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/file?")) {
+        return Promise.resolve(new Response(JSON.stringify({ data: { path: "src/main.go", size: 20, kind: "source", content: "package main\n" } }), { status: previewStatus }));
+      }
+      const pluginID = url.includes("example.locked") ? "example.locked" : "example.detail";
+      const payload = detailPayload();
+      payload.data.plugin.id = pluginID;
+      payload.data.package = packages[pluginID];
+      return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }));
+    });
+  }
+
+  it("drops a failed preview when the next plugin has nothing to preview", async () => {
+    vi.stubGlobal("fetch", stubDetailFetch(500));
+
+    const { rerender } = render(
+      <PluginDetailView api={api} data={appData()} pluginID="example.detail" section="files" onBack={vi.fn()} onNavigate={vi.fn()} />,
+    );
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    rerender(
+      <PluginDetailView api={api} data={appData()} pluginID="example.locked" section="files" onBack={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("选择一个文件查看内容")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("正在读取插件文件")).not.toBeInTheDocument();
+  });
+
+  it("does not let a preview started for one plugin land on the next", async () => {
+    let deliverPreview = (_content: string) => undefined as void;
+    const preview = new Promise<Response>((resolve) => {
+      deliverPreview = (content: string) => resolve(new Response(JSON.stringify({ data: { path: "src/main.go", size: 20, kind: "source", content } }), { status: 200 }));
+    });
+    const detailFetch = stubDetailFetch(200);
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((input: string | URL | Request, init?: RequestInit) => {
+      return String(input).includes("/file?") ? preview : detailFetch(input, init);
+    }));
+
+    const { rerender } = render(
+      <PluginDetailView api={api} data={appData()} pluginID="example.detail" section="files" onBack={vi.fn()} onNavigate={vi.fn()} />,
+    );
+    expect(await screen.findByText("正在读取插件文件")).toBeInTheDocument();
+
+    rerender(
+      <PluginDetailView api={api} data={appData()} pluginID="example.locked" section="files" onBack={vi.fn()} onNavigate={vi.fn()} />,
+    );
+    expect(await screen.findByText("选择一个文件查看内容")).toBeInTheDocument();
+
+    await act(async () => {
+      deliverPreview("package main\n");
+      await preview;
+    });
+
+    expect(screen.queryByText("package main")).not.toBeInTheDocument();
+    expect(screen.getByText("选择一个文件查看内容")).toBeInTheDocument();
   });
 });

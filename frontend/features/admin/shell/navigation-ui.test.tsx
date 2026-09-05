@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { adminConsoleSIMSelectionPreference, adminConsoleShellState, adminConsoleSIMSelectionStorageKey, readAdminConsoleSIMSelectionPreference, saveAdminConsoleSIMSelectionPreference } from "./admin-console";
-import { Sidebar } from "./navigation-ui";
+import { pageRecordCount, Sidebar } from "./navigation-ui";
 
 describe("Sidebar", () => {
   it("keeps plugin nav section contributions out of the sidebar", () => {
@@ -237,6 +237,23 @@ describe("Sidebar", () => {
     expect(templateStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-title');
     expect(templateStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"] .nav-item.active');
     expect(responsiveStyles()).toContain('.app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"].sidebar-collapsed');
+  });
+});
+
+describe("pageRecordCount", () => {
+  it("counts installed plugins for the plugin management page", () => {
+    const data = emptyData();
+    data.plugins = [
+      { id: "example.first", name: "First", version: "1.0.0", source: "local_file", kinds: ["extension"], placements: ["gateway_chain"], capabilities: [] },
+      { id: "example.second", name: "Second", version: "1.0.0", source: "built_in", kinds: ["provider"], placements: ["gateway_chain"], capabilities: [] },
+    ];
+
+    expect(pageRecordCount("plugins", data)).toBe(2);
+  });
+
+  it("reports no records for a page without a countable list", () => {
+    expect(pageRecordCount("plugins", emptyData())).toBe(0);
+    expect(pageRecordCount("overview", emptyData())).toBe(0);
   });
 });
 

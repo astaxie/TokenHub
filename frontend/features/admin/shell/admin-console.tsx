@@ -995,6 +995,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             pluginDetailRoute ? (
               <PluginDetailView
                 api={api}
+                key={pluginDetailRoute.pluginID}
                 activeThemeKey={shellState.simSelection.theme.capability?.key}
                 data={data}
                 pluginID={pluginDetailRoute.pluginID}
@@ -1008,6 +1009,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               <PluginsView
                 api={api}
                 data={data}
+                onReload={() => load("plugins")}
                 onSelectPlugin={selectPluginDetail}
                 onSIMSelectionPreferenceChange={setSIMSelectionPreference}
                 simSelectionPreference={simSelectionPreference}

@@ -90,11 +90,15 @@ export function PluginDetailView({
     setDetail(null);
     setSelectedPath("");
     setFileContent(null);
+    setFileError("");
+    setFileLoading(false);
     adminFetch(api, `/api/admin/plugins/${encodeURIComponent(pluginID)}/detail`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(await readAdminError(response, tx("读取插件详情")));
         const payload = await response.json() as { data?: PluginDetailResponse };
         if (!payload.data?.plugin) throw new Error(tx("读取插件详情失败"));
+        // A response that resolves after the plugin changed belongs to the previous one.
+        if (controller.signal.aborted) return;
         setDetail(payload.data);
       })
       .catch((reason) => {
@@ -113,11 +117,16 @@ export function PluginDetailView({
   }, [detail?.package, section, selectedPath]);
 
   useEffect(() => {
-    if (section !== "files" || !detail?.package) return;
     const path = selectedPath;
-    if (!path) return;
-    const selected = detail.package.files.find((file) => file.path === path);
-    if (!selected?.viewable) return;
+    const selected = detail?.package?.files.find((file) => file.path === path);
+    // Every path that previews nothing has to clear the preview too, or the state left
+    // behind by the previous selection is read as belonging to the current one.
+    if (section !== "files" || !detail?.package || !path || !selected?.viewable) {
+      setFileLoading(false);
+      setFileError("");
+      setFileContent(null);
+      return;
+    }
     const controller = new AbortController();
     setFileLoading(true);
     setFileError("");
@@ -127,6 +136,8 @@ export function PluginDetailView({
         if (!response.ok) throw new Error(await readAdminError(response, tx("读取插件文件")));
         const payload = await response.json() as { data?: PackageFileContent };
         if (!payload.data) throw new Error(tx("读取插件文件失败"));
+        // A preview that resolves after the selection changed belongs to the old file.
+        if (controller.signal.aborted) return;
         setFileContent(payload.data);
       })
       .catch((reason) => {

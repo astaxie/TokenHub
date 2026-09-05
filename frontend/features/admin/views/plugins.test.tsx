@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type PluginCapabilityDescriptor } from "../core/types";
 import { emptyData } from "../domain/catalog";
@@ -146,7 +146,9 @@ describe("PluginsView", () => {
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
     fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
 
-    expect(screen.getByText("2")).toBeInTheDocument();
+    const capabilityCount = screen.getByText("能力").closest(".plugin-type-capability-count");
+    expect(capabilityCount).not.toBeNull();
+    expect(within(capabilityCount as HTMLElement).getByText("2")).toBeInTheDocument();
     expect(consoleError.mock.calls.some((call) => String(call[0]).includes("Encountered two children with the same key"))).toBe(false);
   });
 
@@ -330,8 +332,9 @@ describe("PluginsView", () => {
     expect(screen.getByText("链路注入插件清单")).toBeInTheDocument();
     expect(screen.getByText("Privacy Chain")).toBeInTheDocument();
     expect(screen.getByText("注入点")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("强制 1 · 可选 1")).toBeInTheDocument();
+    const injectionPoints = screen.getByText("强制 1 · 可选 1").closest(".stacked-cell");
+    expect(injectionPoints).not.toBeNull();
+    expect(within(injectionPoints as HTMLElement).getByText("2")).toBeInTheDocument();
     expect(screen.queryByText("privacy-pre")).not.toBeInTheDocument();
     expect(screen.queryByText("privacy-cache")).not.toBeInTheDocument();
     expect(screen.getByText("适用对象")).toBeInTheDocument();

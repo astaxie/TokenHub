@@ -1,5 +1,5 @@
 import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PackageOpen, Save, Search, Settings2, ShieldCheck, Upload } from "lucide-react";
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type GatewayHookDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
 import { pluginActionKey, pluginBackgroundJobKey } from "../domain/plugin-actions";
 import {
@@ -11,7 +11,7 @@ import {
   type PluginManagerTabKey,
   type PluginStatusFilterKey,
 } from "../domain/plugin-management";
-import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
+import { pluginManagerDisplayState, pluginManagerLifecycleState, type PluginManagerDisplayState } from "../domain/plugin-manager";
 import { localizedCapabilityTitle, localizedContributionTitle, localizedPluginName } from "../domain/plugin-localization";
 import { type PluginDetailSection } from "../domain/plugin-detail-route";
 import { type PluginPermissionDiffPreviewPayload } from "../domain/plugin-permission-diff";
@@ -21,7 +21,7 @@ import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 import { emptyInstallDraft, PluginInstallFields, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
-import { PluginDeleteControl, PluginLifecycleControl, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
+import { PluginDeleteControl, PluginLifecycleControl, pluginWithLifecycleDraft, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
 import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
 
 type PluginUpdateDraft = {
@@ -35,6 +35,7 @@ export function PluginsView({
   data,
   simSelectionPreference,
   onSIMSelectionPreferenceChange,
+  onReload,
   onSelectPlugin,
   theme = "light",
 }: {
@@ -42,6 +43,7 @@ export function PluginsView({
   data: AppData;
   simSelectionPreference?: unknown;
   onSIMSelectionPreferenceChange?: (preference: SIMSelectionPreference) => void;
+  onReload?: () => Promise<void>;
   onSelectPlugin?: (pluginID: string, section?: PluginDetailSection) => void;
   theme?: "light" | "dark";
 }) {
@@ -82,15 +84,21 @@ export function PluginsView({
   const chainInjectionPlugins = chainPluginList.length;
   const uiTemplatePlugins = plugins.filter((plugin) => plugin.kinds?.includes("sim")).length;
   const backgroundJobPlugins = backgroundJobPluginList.length;
+  // The console never polls the plugin list, so an enable or disable that has been
+  // accepted by the server is only visible through its draft until the reload lands.
+  const effectivePlugins = useMemo(
+    () => plugins.map((plugin) => pluginWithLifecycleDraft(plugin, pluginStateDrafts[plugin.id] ?? {})),
+    [plugins, pluginStateDrafts],
+  );
   const pluginCounts = useMemo(() => ({
-    all: plugins.length,
-    enabled: plugins.filter((plugin) => pluginManagerDisplayState({ plugin }).status !== "disabled").length,
-    disabled: plugins.filter((plugin) => pluginManagerDisplayState({ plugin }).status === "disabled").length,
-    updates: plugins.filter((plugin) => pluginManagerDisplayState({ plugin }).actions.update.available).length,
-  }), [plugins]);
+    all: effectivePlugins.length,
+    enabled: effectivePlugins.filter((plugin) => pluginManagerDisplayState({ plugin }).status !== "disabled").length,
+    disabled: effectivePlugins.filter((plugin) => pluginManagerDisplayState({ plugin }).status === "disabled").length,
+    updates: effectivePlugins.filter((plugin) => pluginManagerDisplayState({ plugin }).actions.update.available).length,
+  }), [effectivePlugins]);
   const filteredPlugins = useMemo(() => {
     const normalizedQuery = pluginQuery.trim().toLocaleLowerCase(locale);
-    return plugins.filter((plugin) => {
+    return effectivePlugins.filter((plugin) => {
       const lifecycle = pluginManagerDisplayState({ plugin });
       const matchesStatus = statusFilter === "all"
         || (statusFilter === "enabled" && lifecycle.status !== "disabled")
@@ -106,7 +114,24 @@ export function PluginsView({
       ].join(" ").toLocaleLowerCase(locale);
       return searchable.includes(normalizedQuery);
     });
-  }, [locale, pluginQuery, plugins, statusFilter]);
+  }, [effectivePlugins, locale, pluginQuery, statusFilter]);
+  // A draft only covers the gap between a state change and the reloaded list. Once the
+  // server reports the status the draft was holding, the descriptor owns both the status
+  // and the restart flag again. A draft that still disagrees is kept, so a failed reload
+  // cannot revert the row.
+  useEffect(() => {
+    setPluginStateDrafts((drafts) => {
+      const settled = Object.keys(drafts).filter((pluginID) => {
+        const status = drafts[pluginID].status;
+        const plugin = plugins.find((item) => item.id === pluginID);
+        return Boolean(status) && plugin !== undefined && pluginManagerLifecycleState(plugin).rawStatus === status;
+      });
+      if (settled.length === 0) return drafts;
+      const next = { ...drafts };
+      for (const pluginID of settled) next[pluginID] = { ...next[pluginID], status: undefined, restartRequired: false };
+      return next;
+    });
+  }, [plugins]);
   const activeSIMPlugin = simPlugins.find((plugin) => plugin.id === simSelection.activeSIMPluginID);
   const pluginStateDraft = (plugin: PluginDescriptor) => pluginStateDrafts[plugin.id] ?? {};
   const pluginUpdateDraft = (plugin: PluginDescriptor) => pluginUpdateDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
@@ -116,9 +141,11 @@ export function PluginsView({
 
   async function updatePluginState(plugin: PluginDescriptor, status: string) {
     const current = pluginStateDraft(plugin);
+    // The row shows the requested status while the request is in flight; the catch below
+    // restores the draft the click started from, so a rejected request rolls it back.
     setPluginStateDrafts((drafts) => ({
       ...drafts,
-      [plugin.id]: { ...current, busy: true, error: "", restartRequired: false },
+      [plugin.id]: { ...current, status, busy: true, error: "", restartRequired: false },
     }));
     try {
       const response = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(plugin.id)}/state`, {
@@ -129,7 +156,18 @@ export function PluginsView({
       const payload = await response.json() as { data?: { status?: string; restart_required?: boolean } };
       setPluginStateDrafts((drafts) => ({
         ...drafts,
-        [plugin.id]: { status: payload.data?.status ?? status, busy: false, error: "", restartRequired: Boolean(payload.data?.restart_required) },
+        [plugin.id]: { status: payload.data?.status ?? status, busy: true, error: "", restartRequired: Boolean(payload.data?.restart_required) },
+      }));
+      // The row stays busy until the reloaded list arrives, so a second click cannot race
+      // the refetch. A reload that fails leaves the draft in place rather than reverting.
+      try {
+        await onReload?.();
+      } catch {
+        // The console reports its own load failures; the accepted status still stands.
+      }
+      setPluginStateDrafts((drafts) => ({
+        ...drafts,
+        [plugin.id]: { ...(drafts[plugin.id] ?? {}), busy: false },
       }));
     } catch (reason) {
       if (isAuthExpiredError(reason)) return;
