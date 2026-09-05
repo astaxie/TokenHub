@@ -1,10 +1,9 @@
-import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PackageOpen, Save, Search, Settings2, ShieldCheck, Upload } from "lucide-react";
+import { Boxes, Clock3, Download, ExternalLink, GitBranch, Layers3, PackageOpen, Save, Search, Settings2, ShieldCheck } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { type ApiContext, type AppData, type GatewayHookDescriptor, type PluginBackgroundJobDescriptor, type PluginDescriptor } from "../core/types";
 import { pluginActionKey, pluginBackgroundJobKey } from "../domain/plugin-actions";
 import {
   pluginExtensionCategories,
-  pluginManagerTabs,
   pluginMarketplaceWebsiteURL,
   pluginStatusFilters,
   type PluginExtensionCategoryKey,
@@ -22,6 +21,7 @@ import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/pay
 import { StatusPill } from "../shared/ui";
 import { emptyInstallDraft, PluginInstallFields, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
 import { PluginDeleteControl, PluginLifecycleControl, pluginWithLifecycleDraft, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
+import { PluginManagerHeader } from "./plugin-manager-header";
 import { emptyPermissionPreviewDraft, PluginPermissionDiffPreview, type PluginPermissionDiffPreviewDraft } from "./plugin-permission-diff-preview";
 
 type PluginUpdateDraft = {
@@ -37,6 +37,8 @@ export function PluginsView({
   onSIMSelectionPreferenceChange,
   onReload,
   onSelectPlugin,
+  activeTab: controlledActiveTab,
+  onActiveTabChange,
   theme = "light",
 }: {
   api: ApiContext;
@@ -45,6 +47,8 @@ export function PluginsView({
   onSIMSelectionPreferenceChange?: (preference: SIMSelectionPreference) => void;
   onReload?: () => Promise<void>;
   onSelectPlugin?: (pluginID: string, section?: PluginDetailSection) => void;
+  activeTab?: PluginManagerTabKey;
+  onActiveTabChange?: (tab: PluginManagerTabKey) => void;
   theme?: "light" | "dark";
 }) {
   const plugins = data.plugins;
@@ -55,11 +59,13 @@ export function PluginsView({
   const [installPermissionPreview, setInstallPermissionPreview] = useState<PluginPermissionDiffPreviewDraft>(emptyPermissionPreviewDraft());
   const [pluginPermissionPreviews, setPluginPermissionPreviews] = useState<Record<string, PluginPermissionDiffPreviewDraft>>({});
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
-  const [activeTab, setActiveTab] = useState<PluginManagerTabKey>("installed");
+  const [localActiveTab, setLocalActiveTab] = useState<PluginManagerTabKey>("installed");
+  const activeTab = controlledActiveTab ?? localActiveTab;
   const [activeExtensionCategory, setActiveExtensionCategory] = useState<PluginExtensionCategoryKey>("provider");
   const [statusFilter, setStatusFilter] = useState<PluginStatusFilterKey>("all");
   const [pluginQuery, setPluginQuery] = useState("");
   const simRegistry = useMemo(() => simRegistryFromPlugins(plugins), [plugins]);
+  const pluginsWithSettings = useMemo(() => new Set(simRegistry.themeTokens.map((theme) => theme.pluginID)), [simRegistry.themeTokens]);
   const simSelection = useMemo(
     () => resolveSIMSelection({ plugins, preference: simSelectionPreference, themeMode: theme }),
     [plugins, simSelectionPreference, theme],
@@ -138,6 +144,11 @@ export function PluginsView({
   const pluginDeleteDraft = (plugin: PluginDescriptor) => pluginDeleteDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginRollbackDraft = (plugin: PluginDescriptor) => pluginRollbackDrafts[plugin.id] ?? { busy: false, error: "", result: "" };
   const pluginPermissionPreviewDraft = (plugin: PluginDescriptor) => pluginPermissionPreviews[plugin.id] ?? emptyPermissionPreviewDraft();
+
+  function selectManagerTab(tab: PluginManagerTabKey) {
+    setLocalActiveTab(tab);
+    onActiveTabChange?.(tab);
+  }
 
   async function updatePluginState(plugin: PluginDescriptor, status: string) {
     const current = pluginStateDraft(plugin);
@@ -394,32 +405,7 @@ export function PluginsView({
 
   return (
     <div className="plugins-view">
-      <div className="plugin-manager-topbar">
-        <div className="plugin-manager-tabs settings-tabs" role="tablist" aria-label={tx("插件管理模块")}>
-          {pluginManagerTabs.map((tab) => (
-            <button
-              aria-selected={activeTab === tab.key}
-              className={activeTab === tab.key ? "settings-tab active" : "settings-tab"}
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              role="tab"
-              type="button"
-            >
-              {tx(tab.label)}
-            </button>
-          ))}
-        </div>
-        <div className="plugin-manager-actions">
-          <a className="secondary-button plugin-marketplace-link" href={marketplaceWebsiteURL} rel="noreferrer" target="_blank">
-            <ExternalLink size={14} />
-            <span>{tx("插件市场")}</span>
-          </a>
-          <button className="secondary-button plugin-local-install-button" onClick={() => setActiveTab("install")} type="button">
-            <Upload size={14} />
-            <span>{tx("安装本地插件")}</span>
-          </button>
-        </div>
-      </div>
+      <PluginManagerHeader activeTab={activeTab} marketplaceWebsiteURL={marketplaceWebsiteURL} onTabChange={selectManagerTab} />
 
       {activeTab === "installed" ? (
       <section className="section plugin-installed-section" data-plugin-manager-section="registry">
@@ -501,10 +487,12 @@ export function PluginsView({
                                 <PackageOpen size={14} aria-hidden="true" />
                                 <span>{tx("详情")}</span>
                               </button>
-                              <button className="secondary-button compact-button" onClick={() => onSelectPlugin(plugin.id, "settings")} type="button">
-                                <Settings2 size={14} aria-hidden="true" />
-                                <span>{tx("设置")}</span>
-                              </button>
+                              {pluginsWithSettings.has(plugin.id) ? (
+                                <button className="secondary-button compact-button" onClick={() => onSelectPlugin(plugin.id, "settings")} type="button">
+                                  <Settings2 size={14} aria-hidden="true" />
+                                  <span>{tx("设置")}</span>
+                                </button>
+                              ) : null}
                             </>
                           ) : null}
                           {lifecycle.actions.uninstall.available ? (
@@ -616,10 +604,12 @@ export function PluginsView({
                               <PackageOpen size={14} aria-hidden="true" />
                               <span>{tx("详情")}</span>
                             </button>
-                            <button className="secondary-button compact-button" onClick={() => onSelectPlugin(plugin.id, "settings")} type="button">
-                              <Settings2 size={14} aria-hidden="true" />
-                              <span>{tx("设置")}</span>
-                            </button>
+                            {pluginsWithSettings.has(plugin.id) ? (
+                              <button className="secondary-button compact-button" onClick={() => onSelectPlugin(plugin.id, "settings")} type="button">
+                                <Settings2 size={14} aria-hidden="true" />
+                                <span>{tx("设置")}</span>
+                              </button>
+                            ) : null}
                           </>
                         ) : null}
                       </div>
@@ -749,9 +739,9 @@ export function PluginsView({
                   return (
                     <div className={isActive ? "sim-template-item-row active" : "sim-template-item-row"} key={template.id}>
                       <button
-                        aria-label={`${tx("配置界面模板")} ${template.name}`}
+                        aria-label={`${tx(pluginsWithSettings.has(template.id) ? "配置界面模板" : "查看插件详情")} ${template.name}`}
                         className="sim-template-item"
-                        onClick={() => onSelectPlugin?.(template.id, "settings")}
+                        onClick={() => onSelectPlugin?.(template.id, pluginsWithSettings.has(template.id) ? "settings" : "overview")}
                         type="button"
                       >
                         <span className="sim-template-item-main">
@@ -763,7 +753,10 @@ export function PluginsView({
                           <span className="tag">{template.theme?.title ?? tx("自动选择")}</span>
                           <span className="tag">{template.layout?.title ?? tx("自动选择")}</span>
                         </span>
-                        <span className="sim-template-open-label"><Settings2 size={14} aria-hidden="true" />{tx("打开配置")}</span>
+                        <span className="sim-template-open-label">
+                          {pluginsWithSettings.has(template.id) ? <Settings2 size={14} aria-hidden="true" /> : <PackageOpen size={14} aria-hidden="true" />}
+                          {tx(pluginsWithSettings.has(template.id) ? "打开配置" : "详情")}
+                        </span>
                       </button>
                       <button
                         className="secondary-button sim-template-default-button"

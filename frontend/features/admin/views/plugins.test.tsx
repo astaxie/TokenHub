@@ -68,6 +68,7 @@ describe("PluginsView", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看插件详情 Detail Example" }));
 
     expect(onSelectPlugin).toHaveBeenCalledWith("example.detail");
+    expect(screen.queryByRole("button", { name: "设置" })).not.toBeInTheDocument();
   });
 
   it("opens plugin settings directly from the installed list", () => {
@@ -81,7 +82,7 @@ describe("PluginsView", () => {
       status: "enabled",
       kinds: ["extension"],
       placements: ["gateway_chain"],
-      capabilities: [],
+      capabilities: [{ kind: "sim", name: "theme_tokens", value: JSON.stringify({ id: "light", tokens: { accent: "#2563eb" } }) }],
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} onSelectPlugin={onSelectPlugin} />);

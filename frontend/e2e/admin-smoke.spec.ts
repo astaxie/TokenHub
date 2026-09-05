@@ -77,7 +77,7 @@ test("admin can issue an API Key and open its usage page", async ({ page }) => {
   await expect(page.getByText("所选条件下暂无请求", { exact: true })).toBeVisible();
 });
 
-test("admin can inspect plugin details, files, and settings", async ({ page }) => {
+test("admin can inspect plugin details and files without fake settings", async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
   await expect(page).toHaveURL(/\/plugins$/);
@@ -85,7 +85,18 @@ test("admin can inspect plugin details, files, and settings", async ({ page }) =
   await page.getByRole("button", { name: "查看插件详情 External Trace Hook" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace$/);
   await expect(page.getByRole("heading", { name: "External Trace Hook" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "这个插件做什么" })).toBeVisible();
+  await expect(page.getByText("请求处理", { exact: true })).toBeVisible();
+  await expect(page.getByText("export", { exact: true })).not.toBeVisible();
+  await page.getByText("开发者信息", { exact: true }).click();
   await expect(page.getByText("export", { exact: true })).toBeVisible();
+  await expect(page.getByText("告诉 TokenHub 这个插件提供的一项扩展功能。", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const overflowingTechnicalElements = await page.locator(".plugin-technical-details").evaluate((details) => [details, ...details.querySelectorAll<HTMLElement>("*")]
+    .filter((element) => element.scrollWidth > element.clientWidth + 1)
+    .map((element) => `${element.tagName.toLowerCase()}.${element.className}:${element.clientWidth}/${element.scrollWidth}`));
+  expect(overflowingTechnicalElements).toEqual([]);
 
   await page.getByRole("tab", { name: "文件" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace\/files$/);
@@ -93,13 +104,9 @@ test("admin can inspect plugin details, files, and settings", async ({ page }) =
   await page.getByRole("button", { name: /hook\.sh/ }).click();
   await expect(page.locator(".plugin-file-preview pre")).toContainText("#!/bin/sh");
 
-  await page.getByRole("tab", { name: "配置" }).click();
-  await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace\/settings$/);
-  await expect(page.getByText("audit", { exact: true })).toBeVisible();
-  await expect(page.getByText("usage", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "设置" })).toHaveCount(0);
 
   await page.getByRole("tab", { name: "文件" }).click();
-  await page.setViewportSize({ width: 390, height: 844 });
   const fileListBox = await page.locator(".plugin-file-list").boundingBox();
   const previewBox = await page.locator(".plugin-file-preview").boundingBox();
   expect(fileListBox).not.toBeNull();
@@ -107,7 +114,7 @@ test("admin can inspect plugin details, files, and settings", async ({ page }) =
   expect(previewBox!.y).toBeGreaterThanOrEqual(fileListBox!.y + fileListBox!.height - 1);
 });
 
-test("admin can inspect and adjust UI template blocks", async ({ page }) => {
+test("admin can adjust UI template settings", async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
   await page.getByRole("tab", { name: "扩展类型" }).click();
@@ -115,14 +122,13 @@ test("admin can inspect and adjust UI template blocks", async ({ page }) => {
   await page.getByRole("button", { name: "配置界面模板 TokenHub 默认界面模板" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);
   await expect(page.getByRole("heading", { name: "TokenHub 默认界面模板" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /导航栏/ })).toBeVisible();
-  await page.getByRole("button", { name: /全局搜索/ }).click();
-  await expect(page.locator(".plugin-template-block-detail")).toContainText("shell.topbar.search");
-
-  await page.getByRole("button", { name: /TokenHub 默认浅色/ }).click();
-  await page.getByRole("textbox", { name: "accent 当前值" }).fill("#16a34a");
-  await page.getByRole("button", { name: "应用调整" }).click();
-  await expect(page.getByRole("status")).toContainText("样式调整已应用");
+  await page.reload();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);
+  await expect(page.getByRole("tab", { name: "TokenHub 默认浅色" })).toBeVisible();
+  await page.getByRole("tab", { name: "TokenHub 默认浅色" }).click();
+  await page.getByRole("textbox", { name: "主题色 当前值" }).fill("#16a34a");
+  await page.getByRole("button", { name: "保存设置" }).click();
+  await expect(page.getByRole("status")).toContainText("设置已保存");
   await expect(page.locator(".app-shell")).toHaveAttribute("style", /--accent: #16a34a/);
 
   await page.getByRole("button", { name: "恢复默认" }).click();
@@ -130,9 +136,5 @@ test("admin can inspect and adjust UI template blocks", async ({ page }) => {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  const blockListBox = await page.locator(".plugin-template-block-list").boundingBox();
-  const blockDetailBox = await page.locator(".plugin-template-block-detail").boundingBox();
-  expect(blockListBox).not.toBeNull();
-  expect(blockDetailBox).not.toBeNull();
-  expect(blockDetailBox!.y).toBeGreaterThanOrEqual(blockListBox!.y + blockListBox!.height - 1);
+  await expect.poll(() => page.locator(".plugin-setting-row").evaluateAll((rows) => rows.every((row) => row.scrollWidth <= row.clientWidth))).toBe(true);
 });

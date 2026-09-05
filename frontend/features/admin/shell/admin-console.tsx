@@ -12,6 +12,7 @@ import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
 import { apiKeyUsageIDFromPath, uniqueUIID, viewFromPath } from "../domain/formatting";
 import { pluginDetailPath, pluginDetailRouteFromPath, type PluginDetailSection } from "../domain/plugin-detail-route";
+import { type PluginManagerTabKey } from "../domain/plugin-management";
 import { reportDatasetLabel } from "../domain/labels";
 import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
 import { pluginShellPresentation } from "../domain/plugin-theme";
@@ -71,6 +72,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   );
   const [activeView, setActiveView] = useState<ViewKey>(routeView);
   const [activePluginPageKey, setActivePluginPageKey] = useState(() => pluginPageKeyFromLocation());
+  const [pluginManagerTab, setPluginManagerTab] = useState<PluginManagerTabKey>("installed");
   const [data, setData] = useState<AppData>(emptyData());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -953,7 +955,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         />
 
         <div className={activeView === "playground" ? "content-panel playground-content-panel" : "content-panel"}>
-          {activeView === "playground" || activeView === "overview" || apiKeyUsageID || pluginDetailRoute ? null : (
+          {activeView === "playground" || activeView === "overview" || apiKeyUsageID ? null : (
             <PageHeader activeView={activeView} data={data} meta={activeMeta} user={currentUser} />
           )}
 
@@ -964,7 +966,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             onClearNotice={() => setNotice("")}
           />
 
-          {activeView === "playground" || apiKeyUsageID || pluginDetailRoute ? null : <div className="divider" />}
+          {activeView === "playground" || apiKeyUsageID ? null : <div className="divider" />}
 
           {apiKeyUsageID ? (
             <APIKeyUsageView api={api} data={data} user={currentUser} keyID={apiKeyUsageID} onBack={() => selectView("api-keys")} />
@@ -1000,16 +1002,24 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
                 data={data}
                 pluginID={pluginDetailRoute.pluginID}
                 section={pluginDetailRoute.section}
+                managerTab={pluginManagerTab}
+                themeMode={theme}
                 themeOverrides={themeOverrides}
                 onBack={() => router.push("/plugins")}
                 onNavigate={selectPluginDetail}
+                onSelectManagerTab={(tab) => {
+                  setPluginManagerTab(tab);
+                  router.push("/plugins");
+                }}
                 onThemeTokenOverridesChange={changeThemeTokenOverrides}
               />
             ) : (
               <PluginsView
                 api={api}
+                activeTab={pluginManagerTab}
                 data={data}
                 onReload={() => load("plugins")}
+                onActiveTabChange={setPluginManagerTab}
                 onSelectPlugin={selectPluginDetail}
                 onSIMSelectionPreferenceChange={setSIMSelectionPreference}
                 simSelectionPreference={simSelectionPreference}

@@ -6,7 +6,7 @@ This guide describes the current TokenHub plugin direction and how to build agai
 
 The guide starts with the smallest working plugin and then explains the complete contract. In the same way that WordPress discovers a plugin from its main-file header, TokenHub discovers, validates, and loads a package from `plugin.yaml` at the package root. TokenHub additionally requires every plugin to declare its placement, capabilities, and least-privilege permissions.
 
-> **Current implementation boundary:** This guide only documents behavior implemented by Plugin API v1 in this repository. UI templates are declarative theme and layout capabilities, not an arbitrary React or JavaScript extension mechanism. Installed plugins have detail, file-inventory, and settings routes. The settings route exposes inspectable template blocks and safe theme-token adjustments; source files remain read-only previews and plugin code cannot be edited in the admin console.
+> **Current implementation boundary:** This guide only documents behavior implemented by Plugin API v1 in this repository. UI templates are declarative theme and layout capabilities, not an arbitrary React or JavaScript extension mechanism. Installed plugins have detail and file-inventory routes. Plugins that declare editable theme tokens also have a settings route; source files remain read-only previews and plugin code cannot be edited in the admin console.
 
 TokenHub keeps the core small:
 
@@ -17,16 +17,18 @@ TokenHub keeps the core small:
 
 ## Managing Installed Plugins
 
-TokenHub follows the useful part of the WordPress plugin-management pattern while separating management tasks from plugin types. Plugin Management has three primary destinations: **Installed Plugins** owns search, status filters, versions, updates, and lifecycle actions; **Install Plugin** contains marketplace access, URL installation, ZIP upload, checksum verification, and permission-diff preview; **Extension Types** uses secondary navigation for Provider, chain injection, UI template, and background-job plugins.
+TokenHub uses Office Add-ins as the reference for enterprise governance and Obsidian as the reference for plugin-management interaction, while separating management tasks from plugin types. Plugin Management has three primary destinations: **Installed Plugins** owns search, status filters, versions, updates, and lifecycle actions; **Install Plugin** contains marketplace access, URL installation, ZIP upload, checksum verification, and permission-diff preview; **Extension Types** uses secondary navigation for Provider, chain injection, UI template, and background-job plugins.
 
-In the installed list, the plugin name and **Details** open the overview, while **Settings** opens configuration directly. In the UI-template list, clicking the template body also opens Settings. Changing the active default remains a separate action, so opening configuration never changes the live interface by accident. This hierarchy follows the WordPress [installation, update, and management pattern](https://www.waimaob2c.com/wordpress-plugins), without copying online code editing or automatic-update behavior that does not fit an enterprise gateway.
+In the installed list, the plugin name and **Details** open the overview. **Settings** appears only when the plugin has editable settings and opens them directly. In the UI-template list, clicking a template with editable theme tokens opens Settings; other templates open Details. Changing the active default remains a separate action, so opening configuration never changes the live interface by accident. This hierarchy follows the WordPress [installation, update, and management pattern](https://www.waimaob2c.com/wordpress-plugins), without copying online code editing or automatic-update behavior that does not fit an enterprise gateway.
 
 | Route | Purpose |
 | --- | --- |
 | `/plugins` | Installed plugin registry and lifecycle actions |
-| `/plugins/[pluginId]` | Metadata, trust, compatibility, capabilities, hooks, UI contributions, actions, jobs, and package totals |
+| `/plugins/[pluginId]` | Plain-language purpose, usage, status, version, update, trust, and compatibility; implementation declarations stay in collapsed Developer Information |
 | `/plugins/[pluginId]/files` | Package-relative file inventory and safe text preview |
-| `/plugins/[pluginId]/settings` | Inspectable template blocks, safe theme-token adjustments, declared permissions, and plugin-owned UI/configuration schemas |
+| `/plugins/[pluginId]/settings` | Human-readable controls for safe theme-token adjustments, when the plugin declares editable values |
+
+The overview does not expose raw capability values or serialized JSON. **Developer Information** is collapsed by default; when expanded, each capability, hook, UI contribution, action, and background job includes a short explanation before its technical identifiers.
 
 The Files page intentionally differs from the WordPress Plugin File Editor. TokenHub never exposes absolute package paths and does not edit installed executable code. It skips symbolic links and blocks previews of binary, runtime-state, hidden, credential, secret, private, and oversized files. This keeps package inspection useful without turning the admin console into a remote-code-execution surface.
 
@@ -471,9 +473,9 @@ Important limitations:
 
 - A plugin cannot inject arbitrary CSS, JavaScript, remote scripts, stylesheet URLs, `@import`, or `url(...)`.
 - After installation, operators can select a template and adjust only the safe, allowlisted theme tokens declared by that template. Adjustments are stored in the current browser and are not server-side or team-wide settings.
-- The Settings page expands `shell_layouts` into inspectable navigation, top-bar, global-search, account-area, and content blocks. It also exposes declared page templates, regions, dashboard compositions, cards, and plugin-owned Admin UI contributions.
-- Clicking a block opens its declaration and placement in the detail pane. Theme blocks additionally expose their declared token controls and a restore-default action.
-- Block inspection lives inside the plugin Settings secondary page; there is no separate URL per block. Draft preview, revision history, and server-side one-click rollback are not implemented.
+- The Settings page contains only editable theme values, grouped by their visible effect. It does not expose capability declarations, placements, permissions, or raw schemas as settings.
+- Theme variants appear as tabs. Each value has a human-readable label, a short explanation, an input control, and a restore-default action.
+- Plugins without editable theme values do not show a Settings entry. Draft preview, revision history, and server-side one-click rollback are not implemented.
 
 The publishable unit remains a structured theme/layout preset, not a complete page builder or arbitrary CSS editor. If a template also needs backend behavior, split that behavior into a Provider, Hook, background job, or management action and declare its permissions separately.
 

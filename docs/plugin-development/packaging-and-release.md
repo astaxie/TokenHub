@@ -40,7 +40,7 @@ TokenHub extracts accepted packages into `TOKENHUB_PLUGIN_DIR`. A package that a
 
 - version, compatibility, and trust state on the Details page
 - file inventory and expected package contents on the Files page
-- permissions, jobs, hooks, and UI declarations on the Settings page
+- registered jobs, hooks, and UI contributions on the Details page, and permissions in `plugin.yaml` on the Files page
 - the real Provider or gateway behavior with a non-production credential first
 
 For updates, repeat the same review and verification. Back up relevant TokenHub state before an update that changes persisted data, and keep the previous immutable ZIP available for a controlled rollback.

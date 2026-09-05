@@ -5,7 +5,7 @@ import { PluginDetailView } from "./plugin-detail";
 
 const api = { baseURL: "http://localhost:8080", adminToken: "admin-token" };
 
-function detailPayload(withPackage = true) {
+function detailPayload(withPackage = true, capabilities: Array<{ kind: string; name: string; value?: string }> = [{ kind: "gateway", name: "request.filter", value: "{\"internal\":\"raw\"}" }]) {
   return {
     data: {
       plugin: {
@@ -16,7 +16,7 @@ function detailPayload(withPackage = true) {
         status: "enabled",
         kinds: ["extension"],
         placements: ["gateway_chain"],
-        capabilities: [{ kind: "gateway", name: "request.filter" }],
+        capabilities,
         permissions: [{ kind: "data", name: "request", access: "read", sensitivity: "internal" }],
         loadable: true,
         compatibility: { plugin_api: "v1", manifest_schema_version: 1, core_version: "0.7.0", verdict: "compatible" },
@@ -77,7 +77,7 @@ describe("PluginDetailView", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders package and implementation summaries", async () => {
+  it("leads with plain-language value and keeps implementation details collapsed", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(detailPayload()), { status: 200 })));
 
     const onNavigate = vi.fn();
@@ -86,12 +86,81 @@ describe("PluginDetailView", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("request-filter")).toBeInTheDocument();
-    expect(screen.getByText("导航搜索")).toBeInTheDocument();
-    expect(screen.getByText("refresh")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /导航搜索/ }));
-    expect(onNavigate).toHaveBeenCalledWith("example.detail", "settings");
+    expect(screen.getByRole("heading", { name: "这个插件做什么" })).toBeInTheDocument();
+    expect(screen.getByText("在模型请求经过网关时执行额外的处理逻辑。")).toBeInTheDocument();
+    expect(screen.getByText("请求处理")).toBeInTheDocument();
+    expect(screen.queryByText("request-filter")).not.toBeVisible();
+    expect(screen.queryByText("导航搜索")).not.toBeVisible();
+    expect(screen.queryByText("refresh")).not.toBeVisible();
+    expect(screen.queryByText("实现清单")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("开发者信息"));
+    expect(screen.getByText("3 个文件 · 72 B")).toBeVisible();
+    expect(screen.getByText("request-filter")).toBeVisible();
+    expect(screen.getByText("在请求发送给模型服务之前运行。")).toBeVisible();
+    expect(screen.getByText("导航搜索")).toBeVisible();
+    expect(screen.getByText("refresh")).toBeVisible();
+    expect(screen.queryByText('{"internal":"raw"}')).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "设置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /导航搜索/ })).not.toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("keeps the plugin manager header available on secondary pages", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(detailPayload()), { status: 200 })));
+    const onBack = vi.fn();
+    const onSelectManagerTab = vi.fn();
+
+    const { container } = render(
+      <PluginDetailView
+        api={api}
+        data={appData()}
+        pluginID="example.detail"
+        section="overview"
+        onBack={onBack}
+        onNavigate={vi.fn()}
+        onSelectManagerTab={onSelectManagerTab}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "已安装插件" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.betokenhub.com");
+    expect(container.querySelector(".plugin-detail-surface")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "安装插件" }));
+    expect(onSelectManagerTab).toHaveBeenCalledWith("install");
+    fireEvent.click(screen.getByRole("tab", { name: "已安装插件" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses marketplace description, publisher, and update state when available", async () => {
+    const payload = detailPayload();
+    payload.data.plugin.status = "disabled";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+    const data = appData();
+    data.pluginMarketplace = [{
+      installed: true,
+      installed_version: "1.0.0",
+      update_available: true,
+      plugin: {
+        ...payload.data.plugin,
+        version: "1.1.0",
+        source: "marketplace",
+        status: "enabled",
+        marketplace: {
+          summary: "Removes sensitive fields before requests leave TokenHub.",
+          publisher: { id: "example", name: "Example Labs", verified: true },
+        },
+      },
+    }];
+
+    render(<PluginDetailView api={api} data={data} pluginID="example.detail" section="overview" onBack={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(await screen.findByText("Removes sensitive fields before requests leave TokenHub.")).toBeVisible();
+    expect(screen.getByText("Example Labs")).toBeVisible();
+    expect(screen.getByText("有新版本可用")).toBeVisible();
+    expect(screen.getByText("已禁用")).toBeVisible();
   });
 
   it("lists package files and previews safe source files", async () => {
@@ -115,15 +184,43 @@ describe("PluginDetailView", () => {
     expect(previewed.some((url) => url.includes(`path=${encodeURIComponent("credentials.json")}`))).toBe(false);
   });
 
-  it("shows declared permissions and UI configuration schemas", async () => {
+  it("redirects old settings links when the plugin has no editable settings", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(detailPayload()), { status: 200 })));
+    const onNavigate = vi.fn();
 
-    renderDetail("settings");
+    render(<PluginDetailView api={api} data={appData()} pluginID="example.detail" section="settings" onBack={vi.fn()} onNavigate={onNavigate} />);
 
-    expect(await screen.findByText("request")).toBeInTheDocument();
-    expect(screen.getByText("data · read · internal")).toBeInTheDocument();
-    expect(screen.getAllByText("navigation.search").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/placeholder/).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
+    expect(onNavigate).toHaveBeenCalledWith("example.detail", "overview");
+    expect(screen.queryByRole("tab", { name: "设置" })).not.toBeInTheDocument();
+    expect(screen.queryByText("权限声明")).not.toBeInTheDocument();
+    expect(screen.queryByText(/placeholder/)).not.toBeInTheDocument();
+  });
+
+  it("shows settings only when the plugin declares editable theme values", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(detailPayload()), { status: 200 })));
+    const data = appData();
+    data.plugins = [{
+      ...detailPayload().data.plugin,
+      capabilities: [{ kind: "sim", name: "theme_tokens", value: JSON.stringify({ id: "light", tokens: { accent: "#2563eb" } }) }],
+    }];
+
+    render(<PluginDetailView api={api} data={data} pluginID="example.detail" section="settings" onBack={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(await screen.findByRole("tab", { name: "设置" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("主题色")).toBeInTheDocument();
+  });
+
+  it("keeps a direct settings link while registry data is still loading", async () => {
+    const payload = detailPayload(true, [{ kind: "sim", name: "theme_tokens", value: JSON.stringify({ id: "light", tokens: { accent: "#2563eb" } }) }]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+    const onNavigate = vi.fn();
+
+    render(<PluginDetailView api={api} data={emptyData()} pluginID="example.detail" section="settings" onBack={vi.fn()} onNavigate={onNavigate} />);
+
+    expect(await screen.findByRole("tab", { name: "设置" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("主题色")).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("explains that built-in plugins have no standalone package", async () => {

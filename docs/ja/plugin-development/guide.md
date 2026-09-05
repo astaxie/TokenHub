@@ -6,7 +6,7 @@ Language: [English](../../plugin-development/guide.md) | [简体中文](../../zh
 
 このガイドは、まず最小のプラグインを動かし、その後で完全な契約を説明する順序で構成しています。WordPress がメインファイルのヘッダーからプラグインを検出するのと同様に、TokenHub はパッケージルートの `plugin.yaml` からプラグインを検出、検証、読み込みます。TokenHub ではさらに、配置先、capability、最小権限を明示的に宣言する必要があります。
 
-> **現在の実装範囲:** このガイドは、このリポジトリで実装済みの Plugin API v1 だけを説明します。UI テンプレートは宣言的なテーマとレイアウトの capability であり、任意の React / JavaScript 拡張機構ではありません。インストール済みプラグインには詳細、ファイル一覧、設定の二次ルートがあります。設定ルートではテンプレート block の確認と安全な theme token 調整ができ、ソースファイルは引き続き読み取り専用プレビューです。管理画面からプラグインコードを編集することはできません。
+> **現在の実装範囲:** このガイドは、このリポジトリで実装済みの Plugin API v1 だけを説明します。UI テンプレートは宣言的なテーマとレイアウトの capability であり、任意の React / JavaScript 拡張機構ではありません。インストール済みプラグインには詳細とファイル一覧のルートがあります。編集可能な theme token を宣言したプラグインにだけ設定ルートがあります。ソースファイルは引き続き読み取り専用プレビューで、管理画面からプラグインコードを編集することはできません。
 
 TokenHub は core を小さく保ちます。
 
@@ -17,16 +17,18 @@ TokenHub は core を小さく保ちます。
 
 ## インストール済みプラグインの管理
 
-TokenHub は WordPress のプラグイン管理パターンから企業ゲートウェイに適した部分を採用し、管理タスクとプラグイン種類を分離します。プラグイン管理の第 1 階層は 3 つです。**インストール済みプラグイン**では検索、状態フィルター、バージョン、更新、ライフサイクル操作を扱い、**プラグインをインストール**ではマーケットプレイス、URL インストール、ZIP アップロード、checksum、権限差分プレビューを扱います。**拡張タイプ**では Provider、チェーン注入、UI テンプレート、バックグラウンドジョブを第 2 階層のナビゲーションにまとめます。
+TokenHub は Office Add-ins を企業ガバナンスの参考にし、Obsidian をプラグイン管理操作の参考にしながら、管理タスクとプラグイン種類を分離します。プラグイン管理の第 1 階層は 3 つです。**インストール済みプラグイン**では検索、状態フィルター、バージョン、更新、ライフサイクル操作を扱い、**プラグインをインストール**ではマーケットプレイス、URL インストール、ZIP アップロード、checksum、権限差分プレビューを扱います。**拡張タイプ**では Provider、チェーン注入、UI テンプレート、バックグラウンドジョブを第 2 階層のナビゲーションにまとめます。
 
-インストール済み一覧では、プラグイン名と **詳細** が概要を開き、**設定** が設定ページを直接開きます。UI テンプレート一覧でテンプレート本体をクリックした場合も設定ページを開きます。デフォルトの変更は別の操作なので、設定を開くだけで現在の UI が意図せず切り替わることはありません。この階層は WordPress の[インストール、更新、管理パターン](https://www.waimaob2c.com/wordpress-plugins)を参考にしていますが、企業ゲートウェイに適さないオンラインコード編集や自動更新はコピーしません。
+インストール済み一覧では、プラグイン名と **詳細** が概要を開きます。**設定** は編集可能な項目があるプラグインだけに表示され、設定ページを直接開きます。UI テンプレート一覧では、編集可能な theme token があるテンプレートは設定を、それ以外は詳細を開きます。デフォルトの変更は別の操作なので、設定を開くだけで現在の UI が意図せず切り替わることはありません。この階層は WordPress の[インストール、更新、管理パターン](https://www.waimaob2c.com/wordpress-plugins)を参考にしていますが、企業ゲートウェイに適さないオンラインコード編集や自動更新はコピーしません。
 
 | ルート | 用途 |
 | --- | --- |
 | `/plugins` | インストール済みプラグイン一覧とライフサイクル操作 |
-| `/plugins/[pluginId]` | メタデータ、信頼性、互換性、capability、Hook、UI 貢献、action、job、パッケージ統計 |
+| `/plugins/[pluginId]` | 目的、利用場所、状態、バージョン、更新、提供元の信頼性、互換性を分かりやすく表示し、実装宣言は折りたたんだ「開発者情報」に配置 |
 | `/plugins/[pluginId]/files` | パッケージ相対パスのファイル一覧と安全なテキストプレビュー |
-| `/plugins/[pluginId]/settings` | 確認可能なテンプレート block、安全な theme token 調整、宣言済み権限、プラグイン所有の UI / 設定 Schema |
+| `/plugins/[pluginId]/settings` | プラグインが編集可能な値を宣言した場合に、安全な theme token を分かりやすいコントロールで調整 |
+
+概要には capability の生値やシリアライズされた JSON を表示しません。「開発者情報」はデフォルトで折りたたまれ、展開すると capability、Hook、UI 拡張、管理操作、バックグラウンドジョブの各項目で用途を説明してから技術 ID を表示します。
 
 「ファイル」ページは WordPress の Plugin File Editor をそのまま再現しません。TokenHub はパッケージの絶対パスを公開せず、インストール済み実行コードを編集しません。symbolic link は除外し、binary、runtime state、hidden file、credential、secret、private、サイズ超過ファイルのプレビューを拒否します。これにより、管理画面をリモートコード実行面にせず、パッケージを確認できます。
 
@@ -471,9 +473,9 @@ Plugin API v1 は現在、4 種類の UI テンプレート capability をサポ
 
 - 任意の CSS、JavaScript、remote script、stylesheet URL、`@import`、`url(...)` は注入できません。
 - インストール後はテンプレートを選択し、そのテンプレートが宣言した allowlist 内の安全な theme token だけを調整できます。調整内容は現在のブラウザに保存され、server-side または team-wide の設定ではありません。
-- 設定ページは `shell_layouts` を navigation、top bar、global search、account area、content の確認可能な block に展開します。宣言済み page template、region、dashboard composition、card、プラグイン所有の Admin UI 貢献も表示します。
-- block をクリックすると、右側で宣言内容と配置を確認できます。theme block では宣言済み token の入力とデフォルト復元もできます。
-- block の確認はプラグイン設定の二次ページ内で行い、block ごとの URL はありません。draft preview、revision history、server-side one-click rollback は未実装です。
+- 設定ページには実際に編集できる theme 値だけを表示し、見た目への影響ごとに分類します。capability 宣言、配置、権限、raw Schema は設定として表示しません。
+- 複数の theme variant はタブで切り替えます。各項目には分かりやすい名前、短い説明、入力コントロール、デフォルト復元操作があります。
+- 編集可能な theme 値がないプラグインには設定入口を表示しません。draft preview、revision history、server-side one-click rollback は未実装です。
 
 したがって、現在公開できる単位は構造化された theme/layout preset であり、完全な page builder や任意の CSS editor ではありません。バックエンド動作も必要なら、Provider、Hook、background job、management action に分離し、それぞれの権限を宣言してください。
 
