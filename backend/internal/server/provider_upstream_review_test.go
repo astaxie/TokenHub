@@ -48,6 +48,9 @@ func TestProviderUpstreamPolicyTransportRejectsPublicHTTPBeforeSendingCredential
 		return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}, nil
 	})
 	transport := guardProviderUpstreamRequests(next, nil)
+	transport.(*providerUpstreamPolicyTransport).lookup = func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
+	}
 	req, err := http.NewRequest(http.MethodPost, "http://api.example.com/v1/chat?key=secret", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -142,6 +145,7 @@ func TestInvalidProviderUpstreamNAT64PrefixFailsClosed(t *testing.T) {
 }
 
 func TestProviderUpstreamLoopbackRequiresExplicitOptIn(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK", "")
 	if err := ValidateProviderUpstreamBaseURL("http://127.0.0.1:11434/v1"); err == nil {
 		t.Fatal("expected loopback base URL to be rejected by default")
@@ -162,6 +166,7 @@ func TestProviderUpstreamLoopbackRequiresExplicitOptIn(t *testing.T) {
 }
 
 func TestProviderUpstreamLoopbackExplicitOptIn(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK", "true")
 	if err := ValidateProviderUpstreamBaseURL("http://localhost:11434/v1"); err != nil {
 		t.Fatalf("expected opted-in loopback base URL to pass, got %v", err)

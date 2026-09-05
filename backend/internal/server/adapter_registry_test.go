@@ -217,8 +217,8 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if compatible.ProviderPolicy.RouteRequiresResource {
 		t.Fatal("OpenAI-compatible should keep route resources optional")
 	}
-	if !compatible.ProviderPolicy.APIKeyRequired {
-		t.Fatal("OpenAI-compatible should require Provider API keys by default")
+	if compatible.ProviderPolicy.APIKeyRequired {
+		t.Fatal("OpenAI-compatible should support upstreams without authentication")
 	}
 	if compatible.ProviderPolicy.CredentialsScope != providerCredentialsScopeProvider {
 		t.Fatalf("OpenAI-compatible credentials scope = %q, want provider", compatible.ProviderPolicy.CredentialsScope)

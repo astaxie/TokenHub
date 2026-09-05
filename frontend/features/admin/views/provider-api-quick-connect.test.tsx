@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 
-function ProviderHarness() {
+function ProviderHarness({ apiKeyRequired = true }: { apiKeyRequired?: boolean }) {
   const [values, setValues] = useState<Record<string, string>>({
     name: "Local Test Provider",
     type: "openai_compatible",
@@ -16,6 +16,7 @@ function ProviderHarness() {
     <ProviderAPIQuickConnect
       api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
       catalogID="custom"
+      providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, apiKeyRequired }]}
       modelCount={0}
       models={[]}
       modelsLoading={false}
@@ -35,6 +36,18 @@ function ProviderHarness() {
 }
 
 describe("ProviderAPIQuickConnect", () => {
+  it("tests an optional-credential custom upstream without a placeholder key", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ProviderHarness apiKeyRequired={false} />);
+    await user.type(screen.getByLabelText("Base URL"), "http://localhost:8000/v1");
+    expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("连接测试通过"));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({ type: "openai_compatible", api_key: "", base_url: "http://localhost:8000/v1" });
+  });
+
   it("renders provider catalog cards contributed by matching plugins", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
@@ -183,7 +196,7 @@ describe("ProviderAPIQuickConnect", () => {
     const testButton = screen.getByRole("button", { name: "测试连接" });
     expect(testButton).toBeDisabled();
     await user.type(screen.getByLabelText("Base URL"), "http://127.0.0.1:19090/v1");
-    expect(screen.getByLabelText("Application Token（可选）")).not.toBeRequired();
+    expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
     expect(testButton).toBeEnabled();
     await user.click(testButton);
 

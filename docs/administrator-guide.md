@@ -101,6 +101,12 @@ User limits are enforced alongside the applicable API Key, Project, Team, and gl
 
 Admission reserves user requests and estimated tokens before any Provider call. The shared settlement transaction reconciles the reservation to actual metered usage and uses the request ID as its durable idempotency marker for buffered, streaming, image, and background Responses calls. Background jobs persist their reservation state so cancellation, restart recovery, and stale workers cannot settle it twice. PostgreSQL uses transaction-scoped advisory locks and row locks across replicas; SQLite uses its single-backend transaction serialization. A blocked request returns HTTP 429 before Provider invocation with `details.scope` set to `user`. Audit payloads, alerts, and metrics retain that bounded scope without exposing the user ID or any API Key secret.
 
+## Self-hosted compatible APIs
+
+For a self-hosted service using the OpenAI-compatible adapter, leave the credential empty if the service does not require authentication. Connection testing, model discovery, and inference support this mode; no placeholder API Key is needed. If the service requires authentication, provide its real credential. When editing an existing Provider, leaving the field blank retains the saved credential; use the explicit remove-credential option to switch to unauthenticated access. Other adapters retain their declared authentication requirements.
+
+Local and private HTTP endpoints work by default, including internal DNS names. Existing nonempty private allowlists remain restrictive; see the deployment guide for strict mode and proxy policy.
+
 ## Provider Catalog Availability
 
 TokenHub stores the last known-good provider catalog in the database. On every backend startup, it validates and loads the configured local `provider-catalog.json`, then atomically replaces the database snapshot. Ordinary **Provider Channels** requests only read the database snapshot. An explicit administrator refresh downloads the latest `PublicProviderConf` catalog, applies the same completeness checks, and atomically replaces the snapshot only when validation succeeds. If the upstream request or validation fails, TokenHub falls back to the configured local catalog. If that fallback also fails, the refresh returns an error and TokenHub keeps using the last known-good snapshot. Refresh responses identify the selected source as `upstream-provider-catalog` or `local-provider-catalog`.

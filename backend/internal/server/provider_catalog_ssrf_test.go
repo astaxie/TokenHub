@@ -27,6 +27,7 @@ func TestMain(m *testing.M) {
 
 func validateBaseURL(t *testing.T, raw string) error {
 	t.Helper()
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	endpoint, err := url.Parse(raw)
 	if err != nil {
 		t.Fatalf("failed to parse test URL %q: %v", raw, err)
@@ -602,6 +603,7 @@ func TestValidateProviderUpstreamBaseURLStrictModeRejectsLoopback(t *testing.T) 
 // metadata or private space must fail at create time, not only when the
 // models endpoint is probed.
 func TestAdminCreateProviderRejectsSSRFBaseURL(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	for _, baseURL := range []string{
 		"http://169.254.169.254/latest/meta-data",
 		"http://100.100.100.200/latest/meta-data",
@@ -629,6 +631,7 @@ func TestAdminCreateProviderRejectsSSRFBaseURL(t *testing.T) {
 }
 
 func TestAdminCreateProviderRejectsLoopbackByDefault(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK", "")
 	store := NewMemoryStore()
 	if err := SeedDemoData(store); err != nil {
@@ -645,6 +648,7 @@ func TestAdminCreateProviderRejectsLoopbackByDefault(t *testing.T) {
 }
 
 func TestAdminCreateProviderRejectsPublicHTTP(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	store := NewMemoryStore()
 	if err := SeedDemoData(store); err != nil {
 		t.Fatal(err)
@@ -662,6 +666,7 @@ func TestAdminCreateProviderRejectsPublicHTTP(t *testing.T) {
 // TestAdminPatchProviderRejectsSSRFBaseURL verifies the same guard on update:
 // an existing healthy provider must not be repointed at a metadata endpoint.
 func TestAdminPatchProviderRejectsSSRFBaseURL(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	store := NewMemoryStore()
 	if err := SeedDemoData(store); err != nil {
 		t.Fatal(err)
@@ -729,7 +734,7 @@ func TestAdminProviderURLValidationIgnoresAmbientProxy(t *testing.T) {
 				errorCode string
 			}{
 				{name: "metadata", baseURL: "http://169.254.169.254/latest/meta-data", errorCode: "provider_base_url_not_allowed"},
-				{name: "public HTTP", baseURL: "http://api.example.com/v1", errorCode: "provider_base_url_insecure_scheme"},
+				{name: "public HTTP literal", baseURL: "http://8.8.8.8/v1", errorCode: "provider_base_url_insecure_scheme"},
 			} {
 				response := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
 					"name":     "Ambient proxy " + test.name,
@@ -790,6 +795,7 @@ func TestAdminCreateProviderAllowsAllowlistedPrivateLiteral(t *testing.T) {
 // literals fail before connecting, while the loopback exception still permits
 // local providers.
 func TestUpstreamClientsGuardInferenceDial(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	client, streamClient, _ := newUpstreamClients(Config{})
 	for name, candidate := range map[string]*http.Client{"non-streaming": client, "streaming": streamClient} {
 		proxying, ok := candidate.Transport.(*providerEnvironmentProxyTransport)
@@ -850,6 +856,7 @@ func TestUpstreamClientsGuardInferenceDial(t *testing.T) {
 // URLs, while clearing the override (empty value) and allowlisted literals
 // keep working.
 func TestProviderResourceBaseURLSSRFGuard(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")
 	newStore := func(t *testing.T) (*GormStore, Provider) {
 		t.Helper()
 		store := NewMemoryStore()

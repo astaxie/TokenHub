@@ -474,7 +474,7 @@ func TestAdminProviderConnectionTestRequiresCredentials(t *testing.T) {
 		code string
 	}{
 		{name: "base URL", body: map[string]any{"api_key": "test-secret"}, code: "provider_base_url_required"},
-		{name: "API key", body: map[string]any{"base_url": "https://example.invalid/v1"}, code: "provider_api_key_required"},
+		{name: "API key", body: map[string]any{"type": ProviderOpenAI, "base_url": "https://example.invalid/v1"}, code: "provider_api_key_required"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			resp := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", testCase.body, "")
