@@ -87,6 +87,19 @@ test("admin can inspect plugin details and files without fake settings", async (
   await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
   await expect(page).toHaveURL(/\/plugins$/);
 
+  const configurableRow = page.locator(".plugin-installed-row").filter({
+    has: page.getByRole("button", { name: "设置", exact: true }),
+  }).first();
+  await expect(configurableRow).toBeVisible();
+  const detailBox = await configurableRow.getByRole("button", { name: "详情", exact: true }).boundingBox();
+  const settingsBox = await configurableRow.getByRole("button", { name: "设置", exact: true }).boundingBox();
+  expect(detailBox).not.toBeNull();
+  expect(settingsBox).not.toBeNull();
+  expect(Math.abs(detailBox!.y - settingsBox!.y)).toBeLessThan(1);
+  expect(settingsBox!.x - detailBox!.x - detailBox!.width).toBeGreaterThanOrEqual(7);
+  expect(detailBox!.width).toBeGreaterThanOrEqual(80);
+  expect(settingsBox!.width).toBeGreaterThanOrEqual(80);
+
   await page.getByRole("button", { name: "查看插件详情 External Trace Hook" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace$/);
   await expect(page.getByRole("heading", { name: "External Trace Hook" })).toBeVisible();
