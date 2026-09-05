@@ -1,6 +1,9 @@
 package plugin
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestReadPackageStateDefaultsLegacyPackageToNormalizedEnabledState(t *testing.T) {
 	state, err := readPackageState(t.TempDir())
@@ -111,5 +114,49 @@ func TestNormalizePackageStateRejectsInvalidLifecycleState(t *testing.T) {
 				t.Fatal("package state normalized successfully")
 			}
 		})
+	}
+}
+
+func TestRuntimeCompleteRuntimeRestartClearsAppliedRestartFlags(t *testing.T) {
+	root := t.TempDir()
+	runtime := NewRuntime(root)
+	externalDir := filepath.Join(root, "privacy")
+	writeManifest(t, externalDir, lifecycleHookManifest("tokenhub.privacy"))
+	writePackageStateFile(t, externalDir, `{"status":"disabled","restart_required":true,"audit_event":"disabled"}`)
+	pendingDir := filepath.Join(root, "pending")
+	writeManifest(t, pendingDir, lifecycleHookManifest("tokenhub.pending"))
+	writePackageStateFile(t, pendingDir, `{"status":"pending_restart","audit_event":"pending_restart"}`)
+	if _, err := runtime.UpdateBuiltInPackageState("tokenhub.provider.qwen", PackageState{
+		Status:          StatusDisabled,
+		RestartRequired: true,
+		AuditEvent:      PackageLifecycleDisabled,
+	}); err != nil {
+		t.Fatalf("write built-in package state: %v", err)
+	}
+
+	if err := runtime.CompleteRuntimeRestart(); err != nil {
+		t.Fatalf("complete runtime restart: %v", err)
+	}
+
+	external, err := readPackageState(externalDir)
+	if err != nil {
+		t.Fatalf("read external package state: %v", err)
+	}
+	if external.RestartRequired || external.Status != StatusDisabled || external.AuditEvent != PackageLifecycleDisabled {
+		t.Fatalf("external package state = %+v, want applied disabled state", external)
+	}
+	builtIn, found, err := runtime.ReadBuiltInPackageState("tokenhub.provider.qwen")
+	if err != nil || !found {
+		t.Fatalf("read built-in package state found=%t err=%v", found, err)
+	}
+	if builtIn.RestartRequired || builtIn.Status != StatusDisabled || builtIn.AuditEvent != PackageLifecycleDisabled {
+		t.Fatalf("built-in package state = %+v, want applied disabled state", builtIn)
+	}
+	pending, err := readPackageState(pendingDir)
+	if err != nil {
+		t.Fatalf("read pending package state: %v", err)
+	}
+	if !pending.RestartRequired || pending.Status != StatusPendingRestart {
+		t.Fatalf("pending package state = %+v, want unresolved pending restart", pending)
 	}
 }

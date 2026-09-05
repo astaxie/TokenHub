@@ -151,6 +151,47 @@ func (s PackageState) BuiltInFallbackAvailable() bool {
 	return s.RollbackTarget == PackageRollbackTargetBuiltIn
 }
 
+// CompleteRuntimeRestart clears restart markers after the configured state was applied successfully.
+func (r Runtime) CompleteRuntimeRestart() error {
+	dirs, err := r.manifestPackageDirs()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(r.Dir) == "" {
+		return nil
+	}
+	root, err := filepath.Abs(r.Dir)
+	if err != nil {
+		return err
+	}
+	builtInRoot := filepath.Join(root, builtInPackageStateDirName)
+	entries, err := os.ReadDir(builtInRoot)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				dirs = append(dirs, filepath.Join(builtInRoot, entry.Name()))
+			}
+		}
+	}
+	for _, dir := range dirs {
+		state, err := readPackageState(dir)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", filepath.Join(dir, packageStateFileName), err)
+		}
+		if !state.RestartRequired || state.Status == StatusPendingRestart {
+			continue
+		}
+		state.RestartRequired = false
+		if err := writePackageState(dir, state); err != nil {
+			return fmt.Errorf("write %s: %w", filepath.Join(dir, packageStateFileName), err)
+		}
+	}
+	return nil
+}
+
 func (r Runtime) ReadBuiltInPackageState(pluginID string) (PackageState, bool, error) {
 	pluginID = strings.TrimSpace(pluginID)
 	if pluginID == "" || strings.TrimSpace(r.Dir) == "" {
