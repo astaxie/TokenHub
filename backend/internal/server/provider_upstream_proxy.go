@@ -84,6 +84,10 @@ func (transport *providerEnvironmentProxyTransport) RoundTrip(request *http.Requ
 	if err := validateProviderUpstreamBaseURL(request.URL, allowedProviderUpstreamCIDRs(), providerUpstreamLoopbackAllowed()); err != nil {
 		return nil, err
 	}
+	request, err := prepareProviderHTTPRequest(request, allowedProviderUpstreamCIDRs(), transport.lookup, transport.syntheticDNS)
+	if err != nil {
+		return nil, err
+	}
 	proxyURL, err := transport.selectProxy(request)
 	if err != nil {
 		if providerErrorDisposition(err) == ProviderErrorEgress {
@@ -97,6 +101,10 @@ func (transport *providerEnvironmentProxyTransport) RoundTrip(request *http.Requ
 	targets, targetPort, err := transport.resolveProxyTargets(request)
 	if err != nil {
 		return nil, err
+	}
+	synthetic := net.ParseIP(request.URL.Hostname()) == nil && providerTargetsAreSynthetic(request.Context(), targets, transport.syntheticDNS)
+	if !synthetic && providerTargetsAreLocal(targets, allowedProviderUpstreamCIDRs()) && !getenvBool("TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL", false) {
+		return transport.direct.RoundTrip(pinProviderDirectTargets(request, targets))
 	}
 	if strings.EqualFold(request.URL.Scheme, "https") {
 		response, err := transport.proxyTunnelTransport(proxyURL, request.URL.Host, targetPort, targets).RoundTrip(request)
@@ -163,8 +171,8 @@ func (transport *providerEnvironmentProxyTransport) resolveProxyTargets(request 
 }
 
 // pinProviderProxyTarget rewrites only the connection authority for a
-// plaintext HTTP proxy request. Public Provider URLs must use HTTPS, so this
-// path is limited to explicit loopback/private-literal operator exceptions.
+// plaintext HTTP proxy request. This path is limited to permitted local
+// targets when the operator explicitly opts to proxy local requests.
 func pinProviderProxyTarget(request *http.Request, target net.IP, port string) *http.Request {
 	pinned := request.Clone(request.Context())
 	pinnedURL := *request.URL
@@ -177,6 +185,9 @@ func pinProviderProxyTarget(request *http.Request, target net.IP, port string) *
 }
 
 func resolveProviderProxyTargetIPs(ctx context.Context, host string, allowedPrivate []*net.IPNet, syntheticDNS providerSyntheticDNSResolver, lookup upstreamLookupFunc) ([]net.IP, error) {
+	if ips := providerRequestTargets(ctx, host); len(ips) > 0 {
+		return ips, nil
+	}
 	if isLocalProviderHostname(host) {
 		if !providerUpstreamLoopbackAllowed() {
 			return nil, errProviderUpstreamDialDisallowed
@@ -211,7 +222,7 @@ func resolveProviderProxyTargetIPs(ctx context.Context, host string, allowedPriv
 	}
 	var allowed []net.IP
 	for _, address := range addresses {
-		if !isDisallowedProviderUpstreamIP(address.IP) || syntheticDNS != nil && syntheticDNS.allowsResolvedIPContext(ctx, address.IP) {
+		if providerUpstreamResolvedIPAllowed(ctx, address.IP, allowedPrivate, syntheticDNS) {
 			allowed = appendUniqueProviderProxyIP(allowed, address.IP)
 		}
 	}

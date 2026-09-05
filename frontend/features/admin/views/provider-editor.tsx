@@ -185,7 +185,7 @@ export function ProviderUpsertModal({
   const selectedCatalogSupportsModelPreview = providerCatalogSupportsModelPreview(selectedCatalogTemplateEntry, pluginActions);
   const selectedCatalogUsesDiscoveryPreview = providerCatalogUsesDiscoveryPreview(catalogID, selectedCatalogTemplateEntry, pluginActions);
   const selectedCatalogDiscoveryRouteID = providerCatalogDiscoveryRouteID(catalogID, selectedCatalogTemplateEntry, pluginActions);
-  const selectedCatalogRequiresAPIKey = providerCatalogAPIKeyRequired(catalogID, selectedCatalogTemplateEntry, pluginActions, providerTypeOptions);
+  const selectedCatalogRequiresAPIKey = providerCatalogAPIKeyRequired(catalogID, selectedCatalogTemplateEntry, pluginActions, providerTypeOptions, values.type);
   useEffect(() => {
     if (quickAPIFlow || credentialMode === "account_integration" || selectedCatalogIsAccountProvider) return;
     if (catalogID === "custom") return;

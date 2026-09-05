@@ -32,7 +32,7 @@ export function ProviderConnectionFields({
           <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
         </label>
         <label className="field">
-          <span>{apiKeyRequired ? "API Key" : tx("Application Token（可选）")}</span>
+          <span>{apiKeyRequired ? "API Key" : tx("认证密钥（可选）")}</span>
           <input
             autoComplete="new-password"
             value={values.api_key ?? ""}
@@ -52,7 +52,7 @@ export function ProviderConnectionFields({
                 onUpdate("clear_api_key", String(event.target.checked));
                 if (event.target.checked) onUpdate("api_key", "");
               }} />
-              <span>{tx("移除已保存的 application token，改为无认证访问")}</span>
+              <span>{tx("移除已保存的认证密钥，改为无认证访问")}</span>
             </label>
           </div>
         ) : null}

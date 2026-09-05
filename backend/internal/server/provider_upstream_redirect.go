@@ -13,13 +13,14 @@ import (
 type providerUpstreamPolicyTransport struct {
 	next           http.RoundTripper
 	allowedPrivate []*net.IPNet
+	lookup         upstreamLookupFunc
 }
 
 func guardProviderUpstreamRequests(next http.RoundTripper, allowedPrivate []*net.IPNet) http.RoundTripper {
 	if next == nil {
 		next = http.DefaultTransport
 	}
-	return &providerUpstreamPolicyTransport{next: next, allowedPrivate: allowedPrivate}
+	return &providerUpstreamPolicyTransport{next: next, allowedPrivate: allowedPrivate, lookup: net.DefaultResolver.LookupIPAddr}
 }
 
 func (transport *providerUpstreamPolicyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -29,7 +30,17 @@ func (transport *providerUpstreamPolicyTransport) RoundTrip(req *http.Request) (
 	if err := validateProviderUpstreamBaseURL(req.URL, transport.allowedPrivate, providerUpstreamLoopbackAllowed()); err != nil {
 		return nil, err
 	}
-	return transport.next.RoundTrip(req)
+	prepared, err := prepareProviderHTTPRequest(req, transport.allowedPrivate, transport.lookup)
+	if err != nil {
+		return nil, err
+	}
+	return transport.next.RoundTrip(prepared)
+}
+
+func (transport *providerUpstreamPolicyTransport) CloseIdleConnections() {
+	if closer, ok := transport.next.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
 }
 
 // strictProviderUpstreamRedirect permits only same-origin redirects. Provider

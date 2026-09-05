@@ -136,7 +136,7 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
         { value: "configured_proxy", label: "使用统一代理" },
       ],
       required: true,
-      help: "仅作用于所有 Provider 上游通道。升级后的默认值为继承 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY。",
+      help: "适用于 Provider 上游请求；本机与内网目标默认直连。其他目标默认继承 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY。",
     },
     {
       key: "provider_proxy_protocol",

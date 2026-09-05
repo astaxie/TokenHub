@@ -99,6 +99,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	}
 	if err := register("tokenhub.provider.openai-compatible", "OpenAI-Compatible", builtinProviderAdapter{
 		providerType:               ProviderOpenAICompatible,
+		apiKeyRequired:             boolPointer(false),
 		adapter:                    adapters[ProviderOpenAICompatible],
 		defaultCatalogProviderType: true,
 		reasoningConfigurable:      boolPointer(true),

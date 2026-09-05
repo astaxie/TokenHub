@@ -355,9 +355,11 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_MANAGED_UPDATES` | `false` | 允许容器部署执行在线更新与回退；原生部署始终允许 |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | 托管 Release 在线更新与回退使用的安装根目录 |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | 允许提供 `X-Forwarded-For`、`X-Forwarded-Host` 和 `X-Forwarded-Proto` 的代理 IP 或 CIDR，逗号分隔；可信代理必须覆盖这些请求头，不得透传客户端值 |
-| `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` | 空 | 逗号分隔的私网 CIDR（仅 RFC1918/ULA），网段内的字面量 IP 可用作自定义 provider base URL（用于内网模型服务）。这些显式放行的私网字面量可使用 HTTP；公网 provider URL 必须使用 HTTPS。解析到私网地址的域名与重定向目标仍被拒绝 |
+| `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE` | `auto` | `auto` 允许管理员配置本机与内网模型，包括内网域名；`strict` 保留旧版仅允许字面量例外的访问规则。未知值按严格模式处理 |
+| `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL` | `false` | 本地上游默认绕过所选代理。设为 `true` 后本地目标也遵循所选代理策略；继承环境模式仍遵循 `NO_PROXY`。若需强制走代理，应同时选择“使用统一代理” |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` | 空 | 可选的限制性私网 CIDR 清单。自动模式为空时允许 RFC1918/ULA；非空时同时限制私网字面量和内网域名解析结果。严格模式只允许清单内的私网字面量。非空但无效的配置不会退回全部放行；特殊危险地址不能通过清单放行 |
 | `TOKENHUB_PROVIDER_UPSTREAM_NAT64_PREFIX` | 空 | 可选的 RFC 6052 DNS64/NAT64 前缀，用于识别其中嵌入的 IPv4 目标。支持 32、40、48、56、64、96 位前缀；使用 `64:ff9b:1::/48` 等网络专用前缀时需要配置，标准 `64:ff9b::/96` 前缀无需配置 |
-| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false` | 显式允许 provider base URL（包括 HTTP URL）使用 `localhost`、`127.0.0.1` 或 `::1`，用于本地 Ollama/LM Studio 开发；公网 provider URL 必须使用 HTTPS；生产环境应保持关闭 |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false`（旧版默认） | 仅严格模式或配置了非空私网清单时生效，此时 `true` 允许 localhost/127.0.0.1/::1。自动模式且清单为空时忽略旧模板值，默认允许回环；有意禁止回环的部署应选择严格模式 |
 | `HTTP_PROXY` / `HTTPS_PROXY` | 空 | 所有 HTTP Provider 通道使用的标准出站 forward proxy。代理选择由运维配置负责；未走代理的请求继续接受 TokenHub 的 DNS/IP 出站校验 |
 | `NO_PROXY` | 空 | 标准代理绕过列表，以逗号分隔；匹配的 Provider 请求使用带防护的直连路径 |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公网地址 | 允许调用后端的精确浏览器 Origin，逗号分隔；设置后，同一列表也是 OAuth 控制台回跳 Origin 的精确白名单。每项只能包含 scheme、host 和可选端口，不得包含路径 |
@@ -428,11 +430,19 @@ docker compose --env-file deploy/.env \
   -f deploy/docker-compose.redis.yml up -d --remove-orphans
 ```
 
+### 本机与内网模型服务
+
+默认自动模式下，管理员可以直接填写 `http://127.0.0.1:8000/v1`、私网 IPv4/IPv6 地址、`host.docker.internal`、Docker 服务名或企业内网域名，无需额外配置 CIDR 清单。地址须从后端所在环境可达；容器的回环地址指向容器自身。TokenHub 不会自动创建 DNS 记录、加入 Docker 网络或配置宿主机别名。
+
+HTTP 域名在保存和发送请求前都必须全部解析为获准的本地地址；公网或混合公网／私网结果会在发送凭据和请求体前被拒绝。实际直连使用已校验地址，不再次解析；代理请求保留原始 Host 与 TLS 服务名。metadata、link-local、multicast 等特殊危险目标继续禁止。同协议、同地址及端口的重定向可以继续，包括内网同源跳转；跨源跳转仍被拒绝。
+
+已有非空私网清单继续限制访问范围。旧模板普遍包含 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK=false`，这一值单独存在时不再关闭自动模式。确实需要保留旧访问边界的部署可设置 `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=strict`，继续使用原字面量 CIDR 和回环开关；如本地流量也必须遵循所选代理，再设置 `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL=true`。这些部署配置需重启后端或重建容器生效。
+
 无需重启也可以在「系统设置 → 基础设置 → Provider 出口模式」切换出口。升级默认使用「继承环境变量代理」，读取进程启动时捕获的 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY`；「直接连接」忽略这些变量；「使用统一代理」把一个 HTTP 或 HTTPS forward proxy 用于全部 Provider 上游通道，包括推理、流式、图片、模型发现、Provider catalog 刷新、额度查询和 Provider 凭据刷新。身份登录、通知、Tracing 和版本更新不受这项设置影响。
 
-统一代理支持可选的 Basic 认证，密码会加密保存，API 与控制台只显示掩码。保存代理配置时只校验其语法；「测试代理连接」使用当前未保存表单和已有 Provider，仅验证代理 TCP/TLS、认证、CONNECT 与目标 TLS（使用系统 CA），不会发送 Provider 凭据或模型请求。无论选择哪种代理模式，Provider 与 Provider Resource 的 Base URL 都保留原有的入库协议和字面量地址校验：metadata 等始终禁止的目标仍会被拒绝，私网字面量仍需通过 `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` 明确允许。每次代理请求前，TokenHub 都会在本地解析原始 Provider 域名，拒绝私网、loopback、link-local、metadata 及其他禁止地址，并把代理请求或 CONNECT 隧道固定到已校验的 IP，同时保留原始 HTTP Host 和 TLS 服务名。直连及 `NO_PROXY` 命中的请求也会在受保护的拨号路径执行相同地址策略。代理配置、认证、连接、超时和 HTTPS CONNECT 失败按平台出口故障处理，不会惩罚 Provider 资源，也不会触发路由故障转移。对于明文 HTTP 代理请求，HTTP 错误响应可能来自代理或 Provider，因此保留常规上游错误处理。多实例会在五秒内加载共享配置，数据库临时读取失败时继续使用上一份有效配置。
+统一代理支持可选的 Basic 认证，密码会加密保存，API 与控制台只显示掩码。保存代理配置时只校验其语法；「测试代理连接」使用当前未保存表单和已有 Provider，仅验证代理 TCP/TLS、认证、CONNECT 与目标 TLS（使用系统 CA），不会发送 Provider 凭据或模型请求。无论选择哪种代理模式，Provider 与 Provider Resource 的 Base URL 都保留原有的入库协议和字面量地址校验：metadata 等始终禁止的目标仍会被拒绝，本地目标遵循上文的自动／严格访问策略。每次代理请求前，TokenHub 都会在本地解析原始 Provider 域名，执行已配置的本地地址与特殊用途地址策略，并把代理请求或 CONNECT 隧道固定到已校验的 IP，同时保留原始 HTTP Host 和 TLS 服务名。直连及 `NO_PROXY` 命中的请求也会在受保护的拨号路径执行相同地址策略。代理配置、认证、连接、超时和 HTTPS CONNECT 失败按平台出口故障处理，不会惩罚 Provider 资源，也不会触发路由故障转移。对于明文 HTTP 代理请求，HTTP 错误响应可能来自代理或 Provider，因此保留常规上游错误处理。多实例会在五秒内加载共享配置，数据库临时读取失败时继续使用上一份有效配置。
 
-当 TokenHub 所在主机的代理工作在 Fake-IP 模式时，在「系统设置 → 基础设置 → Synthetic DNS / Fake-IP 网段」中配置。该例外默认关闭，只作用于域名解析结果，不允许字面量 IP Provider URL。应填写代理实际使用的地址池，不要假设所有实现都使用 `198.18.0.0/15`：这个网段为基准测试保留，虽常被 Fake-IP 使用，但并非 Fake-IP 专属。普通模式仍禁止 RFC1918 私网和 IPv6 ULA；如果代理确实使用这些范围（例如 Xray 的 IPv6 Fake-IP 池），必须另行开启高风险私网信任。开启后，Provider 域名可能访问配置范围内的真实内网服务。loopback、link-local、metadata、multicast、NAT64 等范围在任何模式下仍会被拒绝。
+后端使用 Fake-IP DNS 时，在「系统设置 → 基础设置 → Synthetic DNS / Fake-IP 网段」配置代理实际地址池。这项独立例外默认关闭，只作用于域名解析结果，不放行字面量 Provider IP。不要假定所有代理都使用 `198.18.0.0/15`，该网段为基准测试保留，并非 Fake-IP 专属。私网 synthetic 地址池仍需单独开启私网信任。命中已启用 synthetic 地址池的域名继续要求 HTTPS，且不享受本地默认绕过代理，即使其 Fake-IP 位于 RFC1918/ULA。真实本地服务独立遵循上文的自动／严格策略。Synthetic 例外不能放行 loopback、link-local、metadata、multicast 或受保护的 NAT64 目标。
 
 模型目录连接失败现在区分 DNS 地址被安全策略拒绝（`provider_models_address_blocked`）、域名解析失败（`provider_models_dns_failed`）、超时（`provider_models_timeout`）和 TLS 证书验证失败（`provider_models_tls_failed`）。若 Fake-IP 解析结果被拒绝，应核实代理实际地址池后配置现有兼容例外。错误响应使用固定文案，不暴露原始传输错误或凭据。 地址被拒绝的错误在 `error.details.blocked_ips` 中提供规范化的实际 IP；演练场失败事件通过 `error_details.blocked_ips` 提供相同信息。控制台同时显示被拒绝地址和配置入口。配置前应核实代理实际地址池，系统不会自动信任被拒绝的地址。
 
@@ -478,7 +488,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 ### 连接 Kronk
 
-TokenHub 只连接外部 Kronk Model Server，不安装 Kronk、不下载 GGUF 文件，也不在进程内嵌 llama.cpp。TokenHub 容器内的 `127.0.0.1` 指向容器自身，而不是 Docker 宿主机。Kronk 运行在宿主机时，应使用环境支持的宿主机可达地址（例如 `host.docker.internal`）；运行在其他容器时，应加入共享 Docker 网络并使用 Kronk 服务名。可信私网字面 IP 通过 `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` 放行。只有 TokenHub 与 Kronk 确实共享同一宿主网络命名空间时，才为默认 loopback 地址设置 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK=true`。
+TokenHub 只连接外部 Kronk Model Server，不安装 Kronk、不下载 GGUF 文件，也不在进程内嵌 llama.cpp。TokenHub 容器内的 `127.0.0.1` 指向容器自身，而不是 Docker 宿主机。Kronk 运行在宿主机时，应使用环境支持的宿主机可达地址（例如 `host.docker.internal`）；运行在其他容器时，应加入共享 Docker 网络并使用 Kronk 服务名。默认自动模式允许这些本地目标，无需额外放行。只有 TokenHub 与 Kronk 共享同一网络命名空间时才应使用回环地址；严格模式需要显式配置本地例外。
 
 Kronk 默认监听明文 HTTP。远程部署时应使用可信私网或 TLS 反向代理，并启用合适的 Kronk authorization mode。TokenHub 只访问推理、模型发现、存活和就绪端点，不代理模型下载、目录、安全管理、调试、pprof 或管理 UI 端点。
 

@@ -135,6 +135,7 @@ func TestProviderProxyRejectsLegacyPublicHTTPBeforeSendingCredentials(t *testing
 		return proxyURL, nil
 	})
 	request, err := http.NewRequest(http.MethodGet, "http://public.example/v1/models", nil)
+	usePublicProxyTargetLookup(transport)
 	if err != nil {
 		t.Fatal(err)
 	}

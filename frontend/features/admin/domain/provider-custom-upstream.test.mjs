@@ -183,6 +183,18 @@ test("provider catalog API key requirement prefers provider policy metadata", ()
   assert.equal(providerCatalogAPIKeyRequired("policy-provider", entry, actions, [{ value: "policy_provider", apiKeyRequired: false }]), false);
 });
 
+test("custom provider credentials follow the selected type instead of the catalog template", () => {
+  const options = [
+    { value: "compatible", apiKeyRequired: false, defaultCatalogProviderType: true },
+    { value: "authenticated", apiKeyRequired: true },
+  ];
+  const entry = { id: "custom", type: "" };
+  assert.equal(providerCatalogAPIKeyRequired("custom", entry, [], options, "compatible"), false);
+  assert.equal(providerCatalogAPIKeyRequired("custom", entry, [], options, "authenticated"), true);
+  assert.equal(providerCatalogAPIKeyRequired("custom", entry, [], options), false);
+  assert.equal(providerCatalogAPIKeyRequired("custom", entry, [], options, "unknown"), true);
+});
+
 test("provider catalog preview can require API keys through action schema", () => {
   const entry = { id: "strict", type: "strict_provider" };
   const actions = [{

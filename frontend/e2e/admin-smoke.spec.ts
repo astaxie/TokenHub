@@ -24,7 +24,8 @@ test("admin can sign in and sign out of the console", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
 });
 
-test("admin can validate and create a custom Provider", async ({ page }) => {
+for (const authenticated of [true, false]) {
+test(`admin can validate and create a custom Provider with authentication = ${authenticated}`, async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "Provider 渠道", exact: true }).click();
   await expect(page).toHaveURL(/\/providers$/);
@@ -33,19 +34,23 @@ test("admin can validate and create a custom Provider", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "选择接入方式" })).toBeVisible();
   await page.getByRole("button", { name: "下一步" }).click();
   await page.getByRole("button", { name: "自定义渠道商" }).click();
-  await page.getByLabel("渠道名称").fill("E2E Fake Provider");
-  await page.getByLabel("Base URL").fill(`http://127.0.0.1:${upstreamPort}/v1`);
-  await page.getByLabel("API Key", { exact: true }).fill(upstreamKey);
+  const providerName = authenticated ? "E2E Fake Provider" : "E2E Local Provider";
+  await page.getByLabel("渠道名称").fill(providerName);
+  await page.getByLabel("Base URL").fill(`http://${authenticated ? "127.0.0.1" : "localhost"}:${upstreamPort}${authenticated ? "" : "/open"}/v1`);
+  const credential = page.getByLabel("认证密钥（可选）", { exact: true });
+  if (authenticated) await credential.fill(upstreamKey);
+  else await expect(credential).toHaveValue("");
 
   await page.getByRole("button", { name: "测试连接" }).click();
-  await expect(page.getByRole("status")).toContainText("API Key 配置有效");
+  await expect(page.getByRole("status")).toContainText("连接测试通过");
   await page.getByRole("tab", { name: "模型" }).click();
   await expect(page.getByText("e2e-chat-model", { exact: true }).first()).toBeVisible();
   await page.getByRole("switch", { name: "引入 e2e-chat-model" }).click();
   await page.locator("form.provider-modal").getByRole("button", { name: "新增 Provider" }).click();
 
-  await expect(page.getByText("E2E Fake Provider", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(providerName, { exact: true }).first()).toBeVisible();
 });
+}
 
 test("admin can issue an API Key and open its usage page", async ({ page }) => {
   await login(page);

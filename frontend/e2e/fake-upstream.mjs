@@ -12,8 +12,9 @@ const server = createServer((request, response) => {
     return;
   }
 
-  if (request.method === "GET" && request.url === "/v1/models") {
-    if (request.headers.authorization !== `Bearer ${expectedKey}`) {
+  if (request.method === "GET" && ["/v1/models", "/open/v1/models"].includes(request.url)) {
+    const expectedAuthorization = request.url === "/open/v1/models" ? undefined : `Bearer ${expectedKey}`;
+    if (request.headers.authorization !== expectedAuthorization) {
       response.writeHead(401, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { message: "invalid test credential" } }));
       return;
