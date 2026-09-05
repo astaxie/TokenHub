@@ -58,6 +58,18 @@ describe("tracked universe", () => {
   });
 });
 
+describe("internal domain documentation", () => {
+  it("tracks source-language decisions without requiring translated copies", () => {
+    for (const path of ["docs/adr/0001-decision.md", "docs/discussions/design.md"]) {
+      assert.equal(isTrackedEnglishDoc(path), true);
+      assert.equal(isEnglishOnly(path), false);
+      assert.equal(requiresTranslation(path), false);
+    }
+    assert.equal(requiresTranslation("docs/agents/domain.md"), true);
+    assert.equal(requiresTranslation("docs/architecture.md"), true);
+  });
+});
+
 describe("counterpart mapping", () => {
   it("maps root documents to a locale suffix", () => {
     const counterparts = counterpartsFor("README.md");

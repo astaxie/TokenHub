@@ -25,6 +25,9 @@ const ENGLISH_ONLY = ["docs/development/", "docs/postgresql-setup.md"];
 
 // Root documents that translate to a sibling with a locale suffix rather than into a
 // locale directory.
+// Internal decision records retain their original language; they remain tracked in Git.
+const SOURCE_LANGUAGE_ONLY = ["docs/adr/", "docs/discussions/"];
+
 const ROOT_DOCUMENTS = ["README.md", "CONTRIBUTING.md"];
 
 /**
@@ -51,7 +54,8 @@ export function isEnglishOnly(path) {
 
 /** Paths this gate has an opinion about: tracked, and not deliberately English-only. */
 export function requiresTranslation(path) {
-  return isTrackedEnglishDoc(path) && !isEnglishOnly(path);
+  return isTrackedEnglishDoc(path) && !isEnglishOnly(path)
+    && !SOURCE_LANGUAGE_ONLY.some((prefix) => path.startsWith(prefix));
 }
 
 /** Maps an English document to its counterpart path in each locale. */

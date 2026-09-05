@@ -57,6 +57,5 @@ yarn-error.log*
 # Claude Code
 .claude/
 .spec-workflow/
-CLAUDE.md
 backend/tokenhub-migrate
 sdk/migration-e2e/report.json
