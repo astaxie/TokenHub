@@ -293,6 +293,9 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 	if effectiveLimits.TokenLimitTPM > 0 || userPolicy.Enabled() {
 		admission.call.ReservedTokens = maxInt64(tokenReservation, 0)
 	}
+	if err := s.captureMeteringRequest(tx, admission.call); err != nil {
+		return admission, err
+	}
 	return admission, nil
 }
 

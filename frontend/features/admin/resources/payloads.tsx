@@ -265,6 +265,13 @@ export function modelPayload(values: Record<string, string>, existingMetadata?: 
     throw err;
   }
   Object.assign(payload, modelMetadataPayload(existingMetadata, values.display_name ?? ""));
+  const pricingMetadata = { ...(payload.metadata as Record<string, string> | undefined) };
+  if (values.modality !== "embedding" && configuredPriceEntered(values.cache_read_price_usd_per_1m)) {
+    pricingMetadata.cache_read_price_configured = "true";
+  } else {
+    pricingMetadata.cache_read_price_configured = "false";
+  }
+  payload.metadata = pricingMetadata;
   const routes = initialModelRoutes(values.initial_provider_models);
   if (routes.length > 0) payload.routes = routes;
   return payload;

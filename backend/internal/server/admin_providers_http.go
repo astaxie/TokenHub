@@ -1037,12 +1037,12 @@ func (s *Server) handleAdminModelItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveAdminModelPatch(w http.ResponseWriter, r *http.Request, user AdminUser, modelName string) {
-	var req Model
+	var req modelPatchRequest
 	if err := s.decodeJSON(w, r, &req); err != nil {
 		writeError(w, r, err)
 		return
 	}
-	model, err := s.store.UpdateModel(modelName, req)
+	model, err := s.store.UpdateModel(modelName, req.Model)
 	if err != nil {
 		writeError(w, r, err)
 		return

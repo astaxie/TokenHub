@@ -34,6 +34,12 @@ test("pricing period parser rejects invalid period fields", () => {
     [{ timezone: "UTC", start_time: "00:00" }],
     [{ effective_from: "tomorrow" }],
     [{ input_price_usd_per_1m: -1 }],
+    [{ weekdays: [1, 1] }],
+    [{ weekdays: [7] }],
+    [{ weekdays: "1" }],
+    [{ cache_read_price_usd_per_1m: -1 }],
+    [{ cache_write_1h_price_usd_per_1m: "2" }],
+    [{ effective_from: "2026-09-06T00:00:00Z", effective_until: "2026-09-05T00:00:00Z" }],
     [{ output_price_usd_per_1m: "0.4" }],
   ]) {
     assert.throws(

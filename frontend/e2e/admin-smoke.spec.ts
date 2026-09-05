@@ -138,3 +138,23 @@ test("admin can adjust UI template settings", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await expect.poll(() => page.locator(".plugin-setting-row").evaluateAll((rows) => rows.every((row) => row.scrollWidth <= row.clientWidth))).toBe(true);
 });
+
+test("admin can preview and publish an exact shadow rate card", async ({ page }) => {
+  await login(page);
+  await page.goto("/billing");
+  await expect(page.getByRole("heading", { name: "精确计价与影子核对" })).toBeVisible();
+  await page.getByRole("combobox", { name: "计价对象", exact: true }).selectOption({ index: 1 });
+  await page.getByLabel("价格依据", { exact: true }).fill("E2E pricing fixture");
+  await page.getByLabel("普通输入", { exact: true }).fill("2");
+  await page.getByLabel("缓存读取", { exact: true }).fill("0.5");
+  await page.getByLabel("其他缓存写入", { exact: true }).fill("0");
+  await page.getByLabel("5 分钟缓存写入", { exact: true }).fill("0");
+  await page.getByLabel("1 小时缓存写入", { exact: true }).fill("0");
+  await page.getByLabel("输出", { exact: true }).fill("6");
+  await page.getByRole("button", { name: "预览费用", exact: true }).click();
+  await expect(page.getByText("0.860000000000 USD", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "发布影子价目", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "影子价目已发布" })).toBeVisible();
+  await page.getByRole("button", { name: "读取已发布版本" }).click();
+  await expect(page.locator("li").filter({ hasText: /rate_/ }).first()).toBeVisible();
+});

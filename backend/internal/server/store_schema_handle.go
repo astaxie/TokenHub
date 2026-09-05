@@ -87,6 +87,7 @@ func VerifySchemaSemantics(ctx context.Context, databaseURL string) error {
 // receive every compatible schema expansion after the adoption baseline.
 func SchemaMigrationRegistry() []dbschema.Migration {
 	return []dbschema.Migration{
+		meteringMigration(),
 		{
 			Version:          2,
 			Name:             "add-granular-billing-columns-sqlite",

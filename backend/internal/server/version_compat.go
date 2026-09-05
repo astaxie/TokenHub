@@ -19,13 +19,13 @@ type CompatibilityManifest struct {
 }
 
 // CurrentCompatibilityManifest is this release's declaration. This release
-// establishes the granular billing expand migration and can run from the
-// adoption baseline through the expanded state.
+// requires the metering evidence expansion. Startup upgrades older databases
+// before requests are admitted; the runtime does not silently skip evidence.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: 2,
-		MinCompatible: dbschema.BaselineVersion,
-		MaxCompatible: 2,
+		TargetVersion: 4,
+		MinCompatible: 4,
+		MaxCompatible: 4,
 	}
 }
 
