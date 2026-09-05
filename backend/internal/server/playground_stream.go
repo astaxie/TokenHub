@@ -52,16 +52,17 @@ type playgroundTiming struct {
 }
 
 type playgroundStreamPayload struct {
-	Type      string                   `json:"type"`
-	Status    string                   `json:"status"`
-	Response  any                      `json:"response,omitempty"`
-	Route     PlaygroundRouteSummary   `json:"route,omitzero"`
-	Usage     Usage                    `json:"usage,omitzero"`
-	Attempts  []PlaygroundRouteAttempt `json:"attempts,omitempty"`
-	Timing    playgroundTiming         `json:"timing"`
-	RequestID string                   `json:"request_id"`
-	Code      string                   `json:"code,omitempty"`
-	Error     string                   `json:"error,omitempty"`
+	Type         string                   `json:"type"`
+	Status       string                   `json:"status"`
+	Response     any                      `json:"response,omitempty"`
+	Route        PlaygroundRouteSummary   `json:"route,omitzero"`
+	Usage        Usage                    `json:"usage,omitzero"`
+	Attempts     []PlaygroundRouteAttempt `json:"attempts,omitempty"`
+	Timing       playgroundTiming         `json:"timing"`
+	RequestID    string                   `json:"request_id"`
+	Code         string                   `json:"code,omitempty"`
+	Error        string                   `json:"error,omitempty"`
+	ErrorDetails any                      `json:"error_details,omitempty"`
 }
 
 type playgroundStreamResult struct {
@@ -692,6 +693,7 @@ func (s *Server) finishFailedPlaygroundStream(
 		Attempts:  playgroundAttemptsForUser(user, attempts),
 		Timing:    newPlaygroundTiming(routed.Call.StartedAt, result, completedAt, usage),
 		RequestID: routed.Call.RequestID, Code: code, Error: AsHTTPError(err).Message,
+		ErrorDetails: providerBlockedAddressDetails(err),
 	}
 	_ = events.emit("playground."+state, payload)
 }

@@ -195,4 +195,19 @@ describe("ProviderAPIQuickConnect", () => {
       api_key: "",
     });
   });
+  it("shows actionable Fake-IP settings guidance when a connection is blocked", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: "provider_models_address_blocked", message: "private upstream diagnostic" },
+    }), { status: 502, headers: { "content-type": "application/json" } })));
+    render(<ProviderHarness />);
+    await user.type(screen.getByLabelText("Base URL"), "https://provider.example/v1");
+    await user.type(screen.getByLabelText("API Key"), "test-key");
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("系统设置 → 基础设置 → 编辑配置"));
+    expect(screen.getByRole("status")).toHaveTextContent("允许 Provider 使用 Synthetic DNS / Fake-IP");
+    expect(screen.getByRole("status")).toHaveTextContent("代理实际使用的地址池");
+    expect(screen.getByRole("status")).not.toHaveTextContent("private upstream diagnostic");
+  });
+
 });

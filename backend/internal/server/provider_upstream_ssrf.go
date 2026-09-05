@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -359,7 +358,7 @@ func dialGuardedUpstream(ctx context.Context, network string, addr string, allow
 		}
 	}
 	if len(allowed) == 0 {
-		return nil, fmt.Errorf("provider base URL host %q resolves only to disallowed addresses", host)
+		return nil, newProviderBlockedAddressError(ips)
 	}
 	return raceValidatedUpstreamCandidates(dialCtx, network, port, allowed, dial)
 }

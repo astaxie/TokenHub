@@ -871,6 +871,7 @@ export type PlaygroundTiming = {
 };
 
 export type PlaygroundChatPayload = {
+  error_details?: { blocked_ips?: string[] };
   type?: "completed" | "failed" | "cancelled";
   status?: "completed" | "failed" | "cancelled";
   response?: {

@@ -1,3 +1,4 @@
+import { providerBlockedAddressMessage } from "./provider-network-errors";
 import { appRole } from "../core/navigation";
 import { clearSavedSession } from "../core/session";
 import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ApprovalRequest, authExpiredEventName, type FieldConfig, type Project, type ProviderCatalogModel, type ProviderResource, type ResourceConfig, type UserImportResult } from "../core/types";
@@ -768,8 +769,8 @@ export async function readAdminError(resp: Response, fallback: string) {
   const body = await resp.text().catch(() => "");
   if (!body) return resp.status === 403 ? permissionDeniedMessage(fallback) : `${fallback} (${resp.status})`;
   try {
-    const parsed = JSON.parse(body) as { error?: { code?: string; message?: string }; message?: string };
-    const localized = localizedAdminErrorCode(parsed.error?.code);
+    const parsed = JSON.parse(body) as { error?: { code?: string; message?: string; details?: unknown }; message?: string };
+    const localized = providerBlockedAddressMessage(parsed.error?.code, parsed.error?.details) ?? localizedAdminErrorCode(parsed.error?.code);
     if (localized) return localized;
     if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("账号会话已失效，请重新进行账号授权。");
     if (resp.status === 403) return permissionDeniedMessage(fallback);
@@ -787,6 +788,12 @@ function localizedAdminErrorCode(code?: string) {
       return tx("上游模型目录请求过于频繁，请稍后重试。");
     case "provider_models_upstream_error":
       return tx("上游模型目录加载失败，请检查 Provider 连接配置后重试。");
+    case "provider_models_dns_failed":
+      return tx("Provider 域名解析失败，请检查后端所在主机的 DNS 配置。");
+    case "provider_models_timeout":
+      return tx("连接上游模型目录超时。如果上游需要代理，请前往「系统设置 → 基础设置 → 编辑配置」，将「Provider 出口模式」设为「使用统一代理」，填写后端主机可访问的代理协议、Host 和端口，保存后重试；仅开启浏览器代理不代表后端已使用代理。");
+    case "provider_models_tls_failed":
+      return tx("上游 TLS 证书验证失败，请检查证书有效期、域名和信任链。");
     case "provider_models_request_failed":
       return tx("无法连接上游模型目录，请检查 Provider 地址和网络配置后重试。");
     case "provider_models_invalid_response":

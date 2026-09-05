@@ -593,7 +593,7 @@ func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client
 		if egressErr := providerEgressFailure(err); egressErr != nil {
 			return ProviderCatalogEntry{}, egressErr
 		}
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to request upstream models")
+		return ProviderCatalogEntry{}, providerCatalogConnectionError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {

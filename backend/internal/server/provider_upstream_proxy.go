@@ -218,7 +218,7 @@ func resolveProviderProxyTargetIPs(ctx context.Context, host string, allowedPriv
 	if len(allowed) > 0 {
 		return allowed, nil
 	}
-	return nil, fmt.Errorf("provider base URL host %q resolves only to disallowed addresses", host)
+	return nil, newProviderBlockedAddressError(addresses)
 }
 
 func appendUniqueProviderProxyIP(addresses []net.IP, candidate net.IP) []net.IP {
