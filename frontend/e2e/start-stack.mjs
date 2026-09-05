@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -93,6 +93,16 @@ process.on("SIGINT", () => void shutdown(0));
 process.on("SIGTERM", () => void shutdown(0));
 
 try {
+  // The smoke suite loads one plugin fixture. It is copied out of the tracked
+  // Go testdata tree first, because the backend writes plugin.state.json next to
+  // a plugin package and that would dirty the checkout the suite runs from.
+  const pluginDirectory = path.join(temporaryDirectory, "plugins");
+  await cp(
+    path.join(backendDirectory, "internal/plugin/testdata/external-trace-hook"),
+    path.join(pluginDirectory, "external-trace-hook"),
+    { recursive: true },
+  );
+
   const sharedEnvironment = {
     ...process.env,
     TOKENHUB_E2E_UPSTREAM_PORT: String(upstreamPort),
@@ -121,7 +131,7 @@ try {
       TOKENHUB_IMAGE_STORAGE_DIR: path.join(temporaryDirectory, "images"),
       TOKENHUB_MODEL_CATALOG_FILE: path.join(repositoryDirectory, "data/model-catalog.yaml"),
       TOKENHUB_PROVIDER_CATALOG_FILE: path.join(repositoryDirectory, "data/provider-catalog.json"),
-      TOKENHUB_PLUGIN_DIR: path.join(backendDirectory, "internal/plugin/testdata"),
+      TOKENHUB_PLUGIN_DIR: pluginDirectory,
       TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK: "true",
       TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS: "127.0.0.1/32",
       TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS: "1",

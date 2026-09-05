@@ -88,19 +88,43 @@ export function pluginThemeStyle(
   contribution: AdminUIContribution | SIMThemeTokens,
   overrides: Record<string, string> = {},
 ): CSSProperties | undefined {
-  const tokens = themeTokenPayload(contribution);
-  if (!tokens || typeof tokens !== "object" || Array.isArray(tokens)) return undefined;
   const style: Record<string, string> = {};
-  for (const [rawName, rawValue] of Object.entries(tokens)) {
-    const name = rawName.trim().replace(/^--/, "");
-    if (!isPluginThemeTokenName(name) || typeof rawValue !== "string") continue;
+  for (const { name, defaultValue } of pluginThemeTokenEntries(themeTokenPayload(contribution))) {
     const override = overrides[name] ?? overrides[`--${name}`];
     const normalizedOverride = typeof override === "string" ? override.trim() : "";
-    const value = normalizedOverride && isSafePluginCSSValue(normalizedOverride) ? normalizedOverride : rawValue.trim();
+    const value = normalizedOverride && isSafePluginCSSValue(normalizedOverride) ? normalizedOverride : defaultValue.trim();
     if (!isSafePluginCSSValue(value)) continue;
     style[`--${name}`] = value;
   }
   return Object.keys(style).length > 0 ? style as CSSProperties : undefined;
+}
+
+/**
+ * Canonical, allowlisted theme tokens declared by a template, in declaration order.
+ *
+ * A template may declare the same token twice, once bare and once `--`-prefixed. The
+ * rendered shell applies declarations in order, so the later value is the one that takes
+ * effect; the entry keeps the position of the first occurrence and the value of the last
+ * so the editor offers exactly what the shell will use. A later declaration the shell
+ * would refuse to render never displaces an earlier one it would accept.
+ */
+export function pluginThemeTokenEntries(tokens: unknown): Array<{ name: string; defaultValue: string }> {
+  if (!tokens || typeof tokens !== "object" || Array.isArray(tokens)) return [];
+  const entries: Array<{ name: string; defaultValue: string }> = [];
+  const positions = new Map<string, number>();
+  for (const [rawName, rawValue] of Object.entries(tokens)) {
+    const name = rawName.trim().replace(/^--/, "");
+    if (!isPluginThemeTokenName(name) || typeof rawValue !== "string") continue;
+    const position = positions.get(name);
+    if (position === undefined) {
+      positions.set(name, entries.length);
+      entries.push({ name, defaultValue: rawValue });
+      continue;
+    }
+    if (!isSafePluginCSSValue(rawValue.trim()) && isSafePluginCSSValue(entries[position].defaultValue.trim())) continue;
+    entries[position] = { name, defaultValue: rawValue };
+  }
+  return entries;
 }
 
 export function pluginLayoutDensity(contribution?: AdminUIContribution | SIMShellLayout): PluginLayoutDensity {

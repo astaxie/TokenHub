@@ -1,7 +1,7 @@
 import { Braces, CreditCard, LayoutDashboard, Menu, PanelTop, RotateCcw, Save, Search, SlidersHorizontal, SquareDashed, UserRound } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { type AdminUIContribution } from "../core/types";
-import { isSafePluginCSSValue } from "../domain/plugin-theme";
+import { isSafePluginCSSValue, pluginThemeTokenEntries } from "../domain/plugin-theme";
 import { type PluginThemeOverrides } from "../domain/plugin-theme-overrides";
 import { localizedCapabilityTitle, localizedContributionTitle } from "../domain/plugin-localization";
 import { type SIMRegistry, type SIMThemeTokens } from "../domain/sim-registry";
@@ -100,10 +100,15 @@ function ThemeTokenEditor({
   const [draft, setDraft] = useState<Record<string, string>>(overrides);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Only allowlisted token names survive `normalizePluginThemeOverrides`, so anything
+  // else offered here would be accepted by the editor and then silently dropped. The
+  // shell resolves the same declarations through `pluginThemeTokenEntries`, so the
+  // editor shows the default the shell actually applies.
+  const editableTokens = useMemo(() => pluginThemeTokenEntries(capability.payload.tokens), [capability.payload.tokens]);
 
   function apply() {
-    const values = Object.fromEntries(Object.entries(draft).flatMap(([name, rawValue]) => {
-      const value = rawValue.trim();
+    const values = Object.fromEntries(editableTokens.flatMap(({ name }) => {
+      const value = draft[name]?.trim() ?? "";
       return value ? [[name, value]] : [];
     }));
     if (Object.values(values).some((value) => !isSafePluginCSSValue(value))) {
@@ -129,41 +134,48 @@ function ThemeTokenEditor({
         <div><SlidersHorizontal size={15} aria-hidden="true" /><span><strong>{tx("样式调整")}</strong><small>{localizedCapabilityTitle(capability, languageLocale())}</small></span></div>
         <span>{capability.payload.mode}</span>
       </div>
-      <div className="plugin-theme-token-list">
-        {Object.entries(capability.payload.tokens).map(([rawName, defaultValue]) => {
-          const name = rawName.replace(/^--/, "");
-          const value = draft[name] ?? defaultValue;
-          const pickerValue = colorPickerValue(value);
-          return (
-            <label className="plugin-theme-token-row" key={name}>
-              <span><strong>--{name}</strong><small>{tx("默认值")}: {defaultValue}</small></span>
-              <span className="plugin-theme-token-control">
-                {pickerValue ? (
+      <p className="plugin-theme-token-hint">
+        <span>{tx("只能调整模板已经声明的安全主题 Token。")}</span>
+        <span>{tx("调整保存在当前浏览器。")}</span>
+      </p>
+      {editableTokens.length === 0 ? null : (
+      <>
+        <div className="plugin-theme-token-list">
+          {editableTokens.map(({ name, defaultValue }) => {
+            const value = draft[name] ?? defaultValue;
+            const pickerValue = colorPickerValue(value);
+            return (
+              <label className="plugin-theme-token-row" key={name}>
+                <span><strong>--{name}</strong><small>{tx("默认值")}: {defaultValue}</small></span>
+                <span className="plugin-theme-token-control">
+                  {pickerValue ? (
+                    <input
+                      aria-label={`${name} ${tx("颜色")}`}
+                      className="plugin-theme-color-input"
+                      type="color"
+                      value={pickerValue}
+                      onChange={(event) => setDraft((current) => ({ ...current, [name]: event.target.value }))}
+                    />
+                  ) : null}
                   <input
-                    aria-label={`${name} ${tx("颜色")}`}
-                    className="plugin-theme-color-input"
-                    type="color"
-                    value={pickerValue}
+                    aria-label={`${name} ${tx("当前值")}`}
+                    type="text"
+                    value={value}
                     onChange={(event) => setDraft((current) => ({ ...current, [name]: event.target.value }))}
                   />
-                ) : null}
-                <input
-                  aria-label={`${name} ${tx("当前值")}`}
-                  type="text"
-                  value={value}
-                  onChange={(event) => setDraft((current) => ({ ...current, [name]: event.target.value }))}
-                />
-              </span>
-            </label>
-          );
-        })}
-      </div>
-      {error ? <div className="inline-error" role="alert">{error}</div> : null}
-      {notice ? <p className="plugin-theme-token-notice" role="status">{notice}</p> : null}
-      <div className="plugin-theme-token-actions">
-        <button className="compact-button secondary" type="button" onClick={restore}><RotateCcw size={14} aria-hidden="true" />{tx("恢复默认")}</button>
-        <button className="compact-button" type="button" onClick={apply}><Save size={14} aria-hidden="true" />{tx("应用调整")}</button>
-      </div>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        {error ? <div className="inline-error" role="alert">{error}</div> : null}
+        {notice ? <p className="plugin-theme-token-notice" role="status">{notice}</p> : null}
+        <div className="plugin-theme-token-actions">
+          <button className="compact-button secondary" type="button" onClick={restore}><RotateCcw size={14} aria-hidden="true" />{tx("恢复默认")}</button>
+          <button className="compact-button" type="button" onClick={apply}><Save size={14} aria-hidden="true" />{tx("应用调整")}</button>
+        </div>
+      </>
+      )}
     </div>
   );
 }

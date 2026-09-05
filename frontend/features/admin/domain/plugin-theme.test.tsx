@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pluginLayoutDensity, pluginShellPresentation, pluginThemeStyle } from "./plugin-theme";
+import { pluginLayoutDensity, pluginShellPresentation, pluginThemeStyle, pluginThemeTokenEntries } from "./plugin-theme";
 
 describe("plugin shell presentation", () => {
   it("applies safe default theme tokens for the active mode", () => {
@@ -294,5 +294,52 @@ describe("plugin shell presentation", () => {
     expect(presentation.layoutContribution?.id).toBe("legacy-layout");
     expect(presentation.style).toEqual({ "--accent": "#f97316" });
     expect(presentation.density).toBe("spacious");
+  });
+});
+
+describe("pluginThemeTokenEntries", () => {
+  it("keeps the position of the first declaration and the value of the last", () => {
+    expect(pluginThemeTokenEntries({ accent: "#2563eb", surface: "#ffffff", "--accent": "#16a34a" })).toEqual([
+      { name: "accent", defaultValue: "#16a34a" },
+      { name: "surface", defaultValue: "#ffffff" },
+    ]);
+  });
+
+  it("keeps an earlier renderable value over a later one the shell would reject", () => {
+    expect(pluginThemeTokenEntries({ accent: "#2563eb", "--accent": "url(https://example.test/a.css)" })).toEqual([
+      { name: "accent", defaultValue: "#2563eb" },
+    ]);
+    expect(pluginThemeStyle({
+      plugin_id: "tokenhub.sim",
+      id: "unsafe-duplicate-theme",
+      slot: "theme.tokens",
+      schema: { mode: "light", default: true, tokens: { accent: "#2563eb", "--accent": "url(https://example.test/a.css)" } },
+    })).toEqual({ "--accent": "#2563eb" });
+  });
+
+  it("keeps the last declaration when the shell would reject every one of them", () => {
+    expect(pluginThemeTokenEntries({ accent: "url(https://example.test/a.css)", "--accent": "url(https://example.test/b.css)" })).toEqual([
+      { name: "accent", defaultValue: "url(https://example.test/b.css)" },
+    ]);
+  });
+
+  it("drops names outside the allowlist and values that are not strings", () => {
+    expect(pluginThemeTokenEntries({ "--accent": "#2563eb", "not-a-real-token": "#000000", surface: 12 })).toEqual([
+      { name: "accent", defaultValue: "#2563eb" },
+    ]);
+  });
+
+  it("returns nothing for a payload that is not a token object", () => {
+    expect(pluginThemeTokenEntries(undefined)).toEqual([]);
+    expect(pluginThemeTokenEntries(["accent"])).toEqual([]);
+  });
+
+  it("gives the shell the same duplicate default the editor shows", () => {
+    expect(pluginThemeStyle({
+      plugin_id: "tokenhub.sim",
+      id: "duplicate-theme",
+      slot: "theme.tokens",
+      schema: { mode: "light", default: true, tokens: { accent: "#2563eb", "--accent": "#16a34a" } },
+    })).toEqual({ "--accent": "#16a34a" });
   });
 });

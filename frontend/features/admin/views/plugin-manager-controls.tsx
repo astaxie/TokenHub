@@ -23,6 +23,23 @@ export type PluginRollbackDraft = {
   result: string;
 };
 
+/**
+ * Applies an in-flight lifecycle draft onto a descriptor so the row reflects the state
+ * the admin just asked for. The API reports the status twice — top level and nested
+ * under `lifecycle` — and `pluginManagerLifecycleState` lets the nested copy win, so
+ * overriding only the top-level field leaves the draft invisible.
+ */
+export function pluginWithLifecycleDraft(plugin: PluginDescriptor, draft: PluginStateDraft): PluginDescriptor {
+  if (!draft.status) return plugin;
+  return {
+    ...plugin,
+    status: draft.status,
+    lifecycle: plugin.lifecycle
+      ? { ...plugin.lifecycle, status: draft.status, restart_required: Boolean(draft.restartRequired) }
+      : undefined,
+  };
+}
+
 export function PluginLifecycleControl({
   plugin,
   lifecycle,
@@ -40,7 +57,7 @@ export function PluginLifecycleControl({
   onRollback: (plugin: PluginDescriptor) => void;
   onUpdate: (plugin: PluginDescriptor, status: string) => void;
 }) {
-  const effectiveLifecycle = draft.status ? pluginManagerDisplayState({ plugin: { ...plugin, status: draft.status } }) : lifecycle;
+  const effectiveLifecycle = draft.status ? pluginManagerDisplayState({ plugin: pluginWithLifecycleDraft(plugin, draft) }) : lifecycle;
   const status = effectiveLifecycle.status;
   const nextStatus = status === "disabled" ? "enabled" : "disabled";
   const canUpdate = (allowBuiltInUpdates || plugin.source !== "built_in") && !effectiveLifecycle.mandatory && (status === "enabled" || status === "disabled");

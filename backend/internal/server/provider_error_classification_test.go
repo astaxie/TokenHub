@@ -442,3 +442,79 @@ func TestAuthErrorDoesNotForwardTheUpstreamBody(t *testing.T) {
 		t.Fatalf("the upstream credential fragment reached the caller: %s", body)
 	}
 }
+
+// Providers do not always explain a failure: DeepSeek answers a chat model sent
+// to /embeddings with a bare 404 and no body. Passing that body straight through
+// left the caller an empty message, so the upstream status is reported instead.
+func TestEmptyUpstreamBodyFallsBackToTheUpstreamStatus(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		body string
+	}{
+		{name: "empty body", body: ""},
+		{name: "whitespace-only body", body: " \n\t "},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: http.StatusNotFound,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader(testCase.body)),
+			}
+			err := checkProviderResponse(resp)
+			httpErr := AsHTTPError(err)
+			if httpErr == nil {
+				t.Fatalf("upstream 404 did not produce an HTTP error: %#v", err)
+			}
+			if httpErr.Code != "provider_model_not_found" {
+				t.Fatalf("code = %q, want %q", httpErr.Code, "provider_model_not_found")
+			}
+			if httpErr.Status != http.StatusBadGateway {
+				t.Fatalf("caller status = %d, want 502", httpErr.Status)
+			}
+			// The upstream status, not the 502 the gateway decided to return.
+			if want := "Upstream provider returned HTTP 404"; httpErr.Message != want {
+				t.Fatalf("message = %q, want %q", httpErr.Message, want)
+			}
+			if got := providerErrorDisposition(err); got != ProviderErrorModelUnsupported {
+				t.Fatalf("disposition = %q, want %q", got, ProviderErrorModelUnsupported)
+			}
+		})
+	}
+}
+
+func TestEmptyUpstreamBodyFallsBackForProfiledProviders(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader("")),
+	}
+	err := checkProviderResponseForProviderPolicy(resp, Provider{}, AdapterProviderPolicy{
+		ErrorProfile: providerErrorProfileKronk,
+	})
+	httpErr := AsHTTPError(err)
+	if httpErr == nil {
+		t.Fatalf("upstream 404 did not produce an HTTP error: %#v", err)
+	}
+	if want := "Upstream provider returned HTTP 404"; httpErr.Message != want {
+		t.Fatalf("message = %q, want %q", httpErr.Message, want)
+	}
+	if httpErr.Code != "provider_model_not_found" || httpErr.Status != http.StatusBadGateway {
+		t.Fatalf("profiled empty body changed the classification: %#v", httpErr)
+	}
+}
+
+func TestNonEmptyUpstreamBodyIsStillForwarded(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"model not found"}}`)),
+	}
+	err := checkProviderResponse(resp)
+	httpErr := AsHTTPError(err)
+	if httpErr == nil {
+		t.Fatalf("upstream 404 did not produce an HTTP error: %#v", err)
+	}
+	if want := `{"error":{"message":"model not found"}}`; httpErr.Message != want {
+		t.Fatalf("message = %q, want the upstream body %q", httpErr.Message, want)
+	}
+}
