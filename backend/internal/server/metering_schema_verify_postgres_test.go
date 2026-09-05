@@ -23,7 +23,11 @@ func TestPostgresMeteringSchemaVerification(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer store.Close()
+			t.Cleanup(func() {
+				if err := store.Close(); err != nil {
+					t.Errorf("close test store: %v", err)
+				}
+			})
 			if err := VerifySchemaSemantics(context.Background(), dsn); err != nil {
 				t.Fatalf("intact database: %v", err)
 			}

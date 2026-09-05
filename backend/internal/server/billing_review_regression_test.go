@@ -12,7 +12,11 @@ import (
 
 func TestModelPricePatchRejectsNegativeBasePrices(t *testing.T) {
 	store := NewMemoryStore()
-	defer store.Close()
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("close test store: %v", err)
+		}
+	})
 	if err := SeedDemoData(store); err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +50,11 @@ func TestModelPricePatchRejectsNegativeBasePrices(t *testing.T) {
 
 func TestMeteringDiscoveredPricesRemainUnknownUntilExplicit(t *testing.T) {
 	store, project, key, _ := setupUserQuotaTest(t, map[string]any{})
-	defer store.Close()
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("close test store: %v", err)
+		}
+	})
 	provider := providerModelFromCatalog("provider", ProviderCatalogModel{ID: "unpriced"})
 	provider.ID = "pm_unpriced"
 	if err := store.db.Create(&provider).Error; err != nil {

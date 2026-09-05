@@ -12,7 +12,11 @@ func TestSchemaVerifyDetectsMissingMeteringObjects(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := NewMemoryStoreWithConfig(Config{})
-			defer store.Close()
+			t.Cleanup(func() {
+				if err := store.Close(); err != nil {
+					t.Errorf("close test store: %v", err)
+				}
+			})
 			if err := VerifySchemaSemantics(context.Background(), store.sqliteDSN); err != nil {
 				t.Fatalf("intact database: %v", err)
 			}
