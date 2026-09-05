@@ -563,7 +563,7 @@ func effectiveCacheReadPriceUSDPer1M(model Model) float64 {
 	if model.Modality == "embedding" {
 		return 0
 	}
-	if model.CacheReadPriceUSDPer1M > 0 || model.Metadata[cacheReadConfiguredKey] == "true" {
+	if model.CacheReadPriceUSDPer1M > 0 || model.CacheReadPriceUSDPer1M == 0 && model.Metadata[cacheReadConfiguredKey] == "true" {
 		return model.CacheReadPriceUSDPer1M
 	}
 	for _, key := range []string{"cached_input_price_usd_per_1m", "cache_read_price_usd_per_1m", "cached_read_price_usd_per_1m"} {

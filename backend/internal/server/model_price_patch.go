@@ -1,6 +1,28 @@
 package server
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+	"net/http"
+)
+
+func validateModelBasePrices(model Model) error {
+	for field, value := range map[string]float64{
+		"input_price_usd_per_1m":          model.InputPriceUSDPer1M,
+		"output_price_usd_per_1m":         model.OutputPriceUSDPer1M,
+		"embedding_price_usd_per_1m":      model.EmbeddingPriceUSDPer1M,
+		"cache_read_price_usd_per_1m":     model.CacheReadPriceUSDPer1M,
+		"cache_write_price_usd_per_1m":    model.CacheWritePriceUSDPer1M,
+		"cache_write_5m_price_usd_per_1m": model.CacheWrite5mPriceUSDPer1M,
+		"cache_write_1h_price_usd_per_1m": model.CacheWrite1hPriceUSDPer1M,
+	} {
+		if value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+			return NewHTTPError(http.StatusBadRequest, "invalid_model_price", fmt.Sprintf("%s must be a finite non-negative number", field))
+		}
+	}
+	return nil
+}
 
 // Presence is retained only for HTTP PATCH; internal full-model updates keep
 // their existing replacement semantics.

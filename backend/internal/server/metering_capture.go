@@ -71,6 +71,9 @@ func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPrice
 			break
 		}
 	}
+	if provider {
+		snapshot.Rates = providerLegacyMeteringRates(model, resolved, snapshot.Rates, at)
+	}
 	return snapshot
 }
 
@@ -200,7 +203,7 @@ func (s *GormStore) settleMeteringShadow(tx *gorm.DB, call CallContext, usage Us
 			price = attempt.Selection.MeteringSnapshot.Price
 		}
 		legacy := 0.0
-		knownLegacy := attempt.Selection.MeteringSnapshot != nil && attempt.Selection.MeteringSnapshot.LegacyModel != nil
+		knownLegacy := providerLegacyMeteringKnown(attempt.Selection.MeteringSnapshot, attempt.Usage)
 		if knownLegacy {
 			legacy = s.providerCostUSDAt(attempt.Selection, attempt.Usage, attempt.StartedAt)
 		}

@@ -171,6 +171,9 @@ func applyModelPricingPatch(model *Model, patch Model) error {
 	if err != nil {
 		return err
 	}
+	if err := validateModelBasePrices(patch); err != nil {
+		return err
+	}
 	model.InputPriceUSDPer1M = patch.InputPriceUSDPer1M
 	model.CacheReadPriceUSDPer1M = patch.CacheReadPriceUSDPer1M
 	model.CacheWritePriceUSDPer1M = patch.CacheWritePriceUSDPer1M
