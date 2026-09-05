@@ -131,6 +131,22 @@ describe("PluginDetailView", () => {
     expect(screen.queryByText("未提供插件说明。")).not.toBeInTheDocument();
   });
 
+  it("does not claim that catalog-only provider plugins process requests", async () => {
+    const payload = detailPayload(false, [{ kind: "provider_catalog", name: "entry", value: "{}" }]);
+    payload.data.plugin.id = "tokenhub.provider-catalog.requesty";
+    payload.data.plugin.name = "Requesty";
+    payload.data.plugin.kinds = ["provider"];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+
+    render(
+      <PluginDetailView api={api} data={appData()} pluginID={payload.data.plugin.id} section="overview" onBack={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Requesty" })).toBeInTheDocument();
+    expect(screen.getByText("模型服务接入")).toBeVisible();
+    expect(screen.queryByText("请求处理")).not.toBeInTheDocument();
+  });
+
   it("keeps the plugin manager header available on secondary pages", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(detailPayload()), { status: 200 })));
     const onBack = vi.fn();

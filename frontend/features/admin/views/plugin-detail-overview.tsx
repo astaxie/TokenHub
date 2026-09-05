@@ -237,10 +237,12 @@ function pluginFeatures(plugin: PluginDescriptor, related: {
 }): FeatureRow[] {
   const rows: FeatureRow[] = [];
   const capabilities = plugin.capabilities;
+  const catalogOnlyProvider = capabilities.some((item) => item.kind === "provider_catalog" && item.name === "entry")
+    && !capabilities.some((item) => item.kind === "provider" || item.kind === "provider_type");
   if (plugin.kinds.includes("provider") || capabilities.some((item) => item.kind.startsWith("provider"))) {
     rows.push({ key: "provider", icon: <CircleGauge size={17} />, title: tx("模型服务接入"), description: tx("在 Provider 管理中添加和配置这个插件支持的模型服务。") });
   }
-  if (related.hooks.length > 0 || plugin.placements.includes("gateway_chain")) {
+  if (related.hooks.length > 0 || (plugin.placements.includes("gateway_chain") && !catalogOnlyProvider)) {
     rows.push({ key: "gateway", icon: <RefreshCw size={17} />, title: tx("请求处理"), description: tx("在模型请求通过网关时自动执行这个插件提供的处理逻辑。") });
   }
   if (capabilities.some((item) => item.kind === "sim") || plugin.kinds.includes("sim")) {

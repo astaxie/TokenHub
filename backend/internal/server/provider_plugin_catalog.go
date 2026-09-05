@@ -12,20 +12,31 @@ import (
 )
 
 func (s *Server) providerCatalogEntriesWithPlugins(entries []ProviderCatalogEntry) ([]ProviderCatalogEntry, bool) {
+	availability := s.providerCatalogPluginAvailability()
+	merged := make([]ProviderCatalogEntry, 0, len(entries))
+	changed := false
+	for _, entry := range entries {
+		if enabled, managed := availability[entry.ID]; managed && !enabled {
+			changed = true
+			continue
+		}
+		merged = append(merged, entry)
+	}
 	pluginEntries := s.pluginProviderCatalogEntries()
 	if len(pluginEntries) == 0 {
-		return entries, false
+		return merged, changed
 	}
-	merged := append([]ProviderCatalogEntry(nil), entries...)
 	indexByID := map[string]int{}
 	for index, entry := range merged {
 		if entry.ID != "" {
 			indexByID[entry.ID] = index
 		}
 	}
-	changed := false
 	for _, entry := range pluginEntries {
 		if index, ok := indexByID[entry.ID]; ok {
+			if entry.Source == providerCatalogGeneratedPluginSource {
+				continue
+			}
 			enriched, updated := mergeProviderCatalogEntryWithPluginMetadata(merged[index], entry)
 			if updated {
 				merged[index] = enriched
@@ -55,6 +66,9 @@ func (s *Server) pluginProviderCatalogEntry(id string) (ProviderCatalogEntry, bo
 }
 
 func (s *Server) providerCatalogEntryWithPlugins(ctx context.Context, id string, refresh bool) (ProviderCatalogEntry, string, bool, error) {
+	if enabled, managed := s.providerCatalogPluginAvailability()[strings.TrimSpace(id)]; managed && !enabled {
+		return ProviderCatalogEntry{}, "plugins", false, nil
+	}
 	entry, source, ok, err := s.providerCatalog.Get(ctx, id, refresh)
 	if err != nil {
 		return ProviderCatalogEntry{}, source, false, err
@@ -62,6 +76,9 @@ func (s *Server) providerCatalogEntryWithPlugins(ctx context.Context, id string,
 	pluginEntry, pluginOK := s.pluginProviderCatalogEntry(id)
 	if !pluginOK {
 		return entry, source, ok, nil
+	}
+	if ok && pluginEntry.Source == providerCatalogGeneratedPluginSource {
+		return entry, source, true, nil
 	}
 	if !ok {
 		return pluginEntry, pluginEntry.Source, true, nil
@@ -96,6 +113,9 @@ func (s *Server) pluginProviderCatalogEntries() []ProviderCatalogEntry {
 	entriesByID := map[string]ProviderCatalogEntry{}
 	explicitTypes := map[string]struct{}{}
 	for _, descriptor := range s.pluginRegistry.List() {
+		if !providerCatalogPluginLoadable(descriptor) {
+			continue
+		}
 		for _, entry := range providerCatalogEntriesFromPluginCapabilities(descriptor) {
 			if entry.ID == "" || entry.Type == "" {
 				continue
@@ -156,6 +176,9 @@ func providerCatalogTypesFromRegistry(registry *AdapterRegistry) map[string]stri
 	}
 	types := map[string]string{}
 	for _, plugin := range registry.ListPlugins() {
+		if !providerCatalogPluginLoadable(plugin) {
+			continue
+		}
 		for _, entry := range providerCatalogEntriesFromPluginCapabilities(plugin) {
 			if entry.ID != "" && entry.Type != "" {
 				types[entry.ID] = entry.Type
@@ -173,6 +196,9 @@ func providerCatalogDefaultTypeFromRegistry(registry *AdapterRegistry) string {
 		return ""
 	}
 	for _, plugin := range registry.ListPlugins() {
+		if !providerCatalogPluginLoadable(plugin) {
+			continue
+		}
 		for _, capability := range plugin.Capabilities {
 			if capability.Kind != "provider_policy" || capability.Name != "default_catalog_provider_type" {
 				continue
@@ -194,7 +220,7 @@ func providerCatalogSeedEntriesFromRegistry(registry *AdapterRegistry) []Provide
 	}
 	entriesByID := map[string]ProviderCatalogEntry{}
 	for _, plugin := range registry.ListPlugins() {
-		if plugin.Source != pluginmeta.SourceBuiltIn {
+		if plugin.Source != pluginmeta.SourceBuiltIn || !providerCatalogPluginLoadable(plugin) {
 			continue
 		}
 		for _, entry := range providerCatalogEntriesFromPluginCapabilities(plugin) {
@@ -210,6 +236,28 @@ func providerCatalogSeedEntriesFromRegistry(registry *AdapterRegistry) []Provide
 		return nil
 	}
 	return entries
+}
+
+func (s *Server) providerCatalogPluginAvailability() map[string]bool {
+	availability := map[string]bool{}
+	if s == nil || s.pluginRegistry == nil {
+		return availability
+	}
+	for _, descriptor := range s.pluginRegistry.List() {
+		loadable := providerCatalogPluginLoadable(descriptor)
+		for _, entry := range providerCatalogEntriesFromPluginCapabilities(descriptor) {
+			if entry.ID == "" {
+				continue
+			}
+			availability[entry.ID] = availability[entry.ID] || loadable
+		}
+	}
+	return availability
+}
+
+func providerCatalogPluginLoadable(descriptor pluginmeta.Descriptor) bool {
+	state, err := pluginmeta.NormalizePackageState(pluginmeta.PackageState{Status: descriptor.Status})
+	return err == nil && state.Loadable()
 }
 
 func mergeProviderCatalogEntry(entries map[string]ProviderCatalogEntry, entry ProviderCatalogEntry) {
@@ -362,6 +410,9 @@ func (s *Server) pluginProviderCatalogManifestEntry(catalogID string, providerTy
 		return pluginProviderCatalogEntry{}, false
 	}
 	for _, plugin := range s.pluginRegistry.List() {
+		if !providerCatalogPluginLoadable(plugin) {
+			continue
+		}
 		for _, capability := range plugin.Capabilities {
 			if capability.Kind != "provider_catalog" || capability.Name != "entry" || strings.TrimSpace(capability.Value) == "" {
 				continue

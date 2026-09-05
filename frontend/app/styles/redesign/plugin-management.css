@@ -7,6 +7,11 @@
   padding: 0;
 }
 
+.plugin-installed-section .pagination {
+  margin: 0;
+  padding: 10px 16px;
+}
+
 .plugin-installed-empty {
   min-height: 128px;
   padding: 28px 24px 32px;

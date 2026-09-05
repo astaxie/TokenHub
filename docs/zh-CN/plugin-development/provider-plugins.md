@@ -4,6 +4,8 @@ Language: [English](../../plugin-development/provider-plugins.md) | 简体中文
 
 Provider 插件把 TokenHub 连接到上游模型服务或订阅账户。最小契约可从 [`examples/provider-mock-go`](../../../plugin-devkit/examples/provider-mock-go) 开始，更完整的 operation 可参考 Kimi 和 GLM Example。
 
+TokenHub 会把配置的 `provider-catalog.json` 中每个条目都表示为一个内置 Provider 插件。目录插件负责厂商身份、新增页元数据、详情页和启停状态；协议插件负责 `OpenAI-Compatible` 等可执行适配器。因此，多个目录插件可以共享同一个协议适配器，不需要复制运行代码。禁用目录插件会从新增 Provider 页面移除对应厂商，重新启用后立即恢复。
+
 插件需声明 Provider 类型、资源类型、支持的 operation、协议策略、模型发现、凭证范围和必要的 Admin UI 贡献。`ServeProvider` 通过 `stdio-json-v1` 接收投影后的 Provider、资源、模型、请求和凭证数据，不能直接访问 Core 存储。
 
 生产实现要求：

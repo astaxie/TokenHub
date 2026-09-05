@@ -130,6 +130,34 @@ describe("PluginsView", () => {
     expect(screen.getByText("暂无插件").closest(".plugin-installed-empty")).toBeInTheDocument();
   });
 
+  it("paginates large installed and provider plugin lists", () => {
+    const data = emptyData();
+    data.plugins = Array.from({ length: 25 }, (_, index) => ({
+      id: `example.provider-${String(index + 1).padStart(2, "0")}`,
+      name: `Provider ${String(index + 1).padStart(2, "0")}`,
+      version: "built-in",
+      source: "built_in",
+      status: "enabled",
+      kinds: ["provider"],
+      placements: ["gateway_chain"],
+      capabilities: [],
+    }));
+
+    render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
+
+    expect(screen.getByText("Provider 01")).toBeInTheDocument();
+    expect(screen.queryByText("Provider 21")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("下一页"));
+    expect(screen.queryByText("Provider 01")).not.toBeInTheDocument();
+    expect(screen.getByText("Provider 21")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Provider 插件" }));
+    expect(screen.getByText("Provider 01")).toBeInTheDocument();
+    expect(screen.queryByText("Provider 21")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("下一页"));
+    expect(screen.getByText("Provider 21")).toBeInTheDocument();
+  });
+
   it("summarizes repeated capability declarations without duplicate key warnings", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const data = emptyData();

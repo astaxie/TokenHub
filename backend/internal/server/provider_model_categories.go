@@ -29,6 +29,9 @@ func providerModelCategoryDefinitionsFromRegistry(registry *AdapterRegistry) []p
 		return normalizeProviderModelCategoryDefinitions(definitions)
 	}
 	for _, plugin := range registry.ListPlugins() {
+		if !providerCatalogPluginLoadable(plugin) {
+			continue
+		}
 		definitions = append(definitions, providerModelCategoryDefinitionsFromPlugin(plugin)...)
 	}
 	return normalizeProviderModelCategoryDefinitions(definitions)

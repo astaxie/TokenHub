@@ -18,6 +18,7 @@ import { simRegistryFromPlugins, type SIMRegistry, type SIMShellLayout, type SIM
 import { resolveSIMSelection, type SIMSelectionPreference } from "../domain/sim-selection";
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
+import { PaginationControls, usePagination } from "../shared/pagination";
 import { StatusPill } from "../shared/ui";
 import { emptyInstallDraft, PluginInstallFields, pluginInstallRequestBody, type PluginInstallDraft } from "./plugin-install-form";
 import { PluginDeleteControl, PluginLifecycleControl, pluginWithLifecycleDraft, type PluginDeleteDraft, type PluginRollbackDraft, type PluginStateDraft } from "./plugin-manager-controls";
@@ -121,6 +122,16 @@ export function PluginsView({
       return searchable.includes(normalizedQuery);
     });
   }, [effectivePlugins, locale, pluginQuery, statusFilter]);
+  const installedPagination = usePagination(filteredPlugins.length, `${statusFilter}:${pluginQuery}`);
+  const paginatedPlugins = useMemo(
+    () => filteredPlugins.slice(installedPagination.startIndex, installedPagination.endIndex),
+    [filteredPlugins, installedPagination.endIndex, installedPagination.startIndex],
+  );
+  const providerPagination = usePagination(providerPluginList.length, activeExtensionCategory);
+  const paginatedProviderPlugins = useMemo(
+    () => providerPluginList.slice(providerPagination.startIndex, providerPagination.endIndex),
+    [providerPluginList, providerPagination.endIndex, providerPagination.startIndex],
+  );
   // A draft only covers the gap between a state change and the reloaded list. Once the
   // server reports the status the draft was holding, the descriptor owns both the status
   // and the restart flag again. A draft that still disagrees is kept, so a failed reload
@@ -486,8 +497,9 @@ export function PluginsView({
               <span>{tx("暂无插件")}</span>
             </div>
           ) : (
-            <div className="plugin-installed-list">
-                  {filteredPlugins.map((plugin) => {
+            <>
+              <div className="plugin-installed-list">
+                  {paginatedPlugins.map((plugin) => {
                     const lifecycle = pluginManagerDisplayState({ plugin });
                     return (
                       <article className={`plugin-installed-row${lifecycle.status === "disabled" ? " disabled" : ""}${plugin.distribution ? " has-distribution" : ""}`} key={plugin.id}>
@@ -544,7 +556,9 @@ export function PluginsView({
                       </article>
                     );
                   })}
-            </div>
+              </div>
+              <PaginationControls pagination={installedPagination} totalItems={filteredPlugins.length} />
+            </>
           )}
         </div>
       </section>
@@ -560,7 +574,7 @@ export function PluginsView({
               <p className="empty-state">{tx("暂无 Provider 插件")}</p>
             ) : (
               <div className="plugin-type-list">
-                {providerPluginList.map((plugin) => {
+                {paginatedProviderPlugins.map((plugin) => {
                   const lifecycle = pluginManagerDisplayState({ plugin });
                   return (
                     <article className="plugin-type-row" key={plugin.id}>
@@ -606,6 +620,7 @@ export function PluginsView({
                 })}
               </div>
             )}
+            <PaginationControls pagination={providerPagination} totalItems={providerPluginList.length} />
           </div>
         </section>
       ) : null}

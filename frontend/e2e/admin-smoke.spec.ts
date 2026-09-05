@@ -87,6 +87,8 @@ test("admin can inspect plugin details and files without fake settings", async (
   await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
   await expect(page).toHaveURL(/\/plugins$/);
 
+  const pluginSearch = page.getByRole("searchbox", { name: "搜索插件" });
+  await pluginSearch.fill("TokenHub 默认界面模板");
   const configurableRow = page.locator(".plugin-installed-row").filter({
     has: page.getByRole("button", { name: "设置", exact: true }),
   }).first();
@@ -103,6 +105,7 @@ test("admin can inspect plugin details and files without fake settings", async (
   expect(detailBox!.width).toBeGreaterThanOrEqual(80);
   expect(settingsBox!.width).toBeGreaterThanOrEqual(80);
 
+  await pluginSearch.fill("");
   await page.getByRole("button", { name: "查看插件详情 TokenHub Core Provider Settings" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.admin\.core-provider$/);
   await expect(page.getByRole("tab", { name: "文件" })).toHaveCount(0);
