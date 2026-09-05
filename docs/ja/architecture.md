@@ -8,6 +8,8 @@ Language: [English](../architecture.md) | [简体中文](../zh-CN/architecture.m
 
 Go バックエンドの 1 プロセスで管理 API、OpenAI 互換モデル API、ルーティング、Provider アダプター、監査、永続化を提供します。Next.js は管理コンソールです。コントロールプレーンとデータプレーンは論理的な境界であり、既定構成では 1 つのバックエンドとデータベースを共有します。マルチインスタンス構成では PostgreSQL を介して状態を共有します。
 
+バックエンドは Core、内蔵プラグイン、外部プラグインで構成されます。Core は公開 API の互換性、認証・認可、ルーティングの准入制御、永続化、計量、監査を担当します。プラグインは宣言された Provider 能力、ゲートウェイフック、バックグラウンドジョブ、画面メタデータを提供し、外部実行プラグインはバックエンドから子プロセスとして呼び出されます。
+
 ```mermaid
 flowchart TB
     admin["管理者 / チームリーダー"]
@@ -21,7 +23,10 @@ flowchart TB
         modelApi["モデル API\n/v1/*"]
         governance["認証とガバナンス\nKey、RBAC、クォータ、並行数、IP 許可リスト"]
         routing["ルーティング\n候補、戦略、重み、フェイルオーバー、アフィニティ"]
-        adapters["アダプターレジストリ\n汎用 Provider / OpenAI Codex"]
+        adapters["アダプターレジストリ"]
+        builtin["内蔵 Provider プラグイン"]
+        plugins["プラグインレジストリとランタイム"]
+        hooks["ゲートウェイフックと Broker"]
         operations["運用と可観測性\n利用量、監査、アラート、ヘルスチェック"]
         store["GORM Store"]
 
@@ -31,7 +36,19 @@ flowchart TB
         modelApi --> operations --> store
         adminApi --> operations
         routing --> store
+        adminApi --> plugins
+        plugins --> adapters
+        adapters --> builtin
+        plugins --> hooks
+        routing <--> hooks
     end
+
+    external["外部プラグインプロセス\nstdio-json-v1"]
+    packages["プラグインパッケージとライフサイクル状態"]
+    packages --> plugins
+    plugins --> external
+    hooks --> external
+    adapters --> external
 
     subgraph persistence["永続化と設定"]
         sqlite[("SQLite\n既定の単一インスタンス")]
@@ -50,11 +67,14 @@ flowchart TB
     admin --> ingress --> frontend
     frontend -->|"TOKENHUB_API_BASE_URL"| backend
     app --> ingress -->|"/v1/*"| backend
-    adapters --> compatible
-    adapters --> azure
-    adapters --> anthropic
-    adapters --> gemini
-    adapters --> codex
+    external --> upstream
+    backend --> adminApi
+    backend --> modelApi
+    builtin --> compatible
+    builtin --> azure
+    builtin --> anthropic
+    builtin --> gemini
+    builtin --> codex
     store --> sqlite
     store --> postgres
     catalog --> store
@@ -91,6 +111,24 @@ flowchart LR
 
 既定イメージはビルド時に内蔵したモデルカタログを使用し、実行ファイルとカタログのバージョンを一致させます。カスタムカタログは `./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml` による明示的な上書きであり、既定の Compose マウントではありません。
 
+## プラグインランタイムと境界
+
+`backend/internal/server/plugin_bootstrap.go` は、プラグインレジストリ、ゲートウェイチェーンと実行器、管理 UI レジストリ、Action Broker、バックグラウンドジョブの Broker/Runner、アダプターレジストリを組み立てます。内蔵機能を登録し、`TOKENHUB_PLUGIN_DIR` からパッケージを読み込み、有効な外部 Provider アダプターを接続します。内蔵と外部のプラグインはメタデータと能力の契約を共有しますが、内蔵実装は Go プロセス内で、外部コマンドは `stdio-json-v1` 経由で実行されます。
+
+| 能力面 | 実装入口 | 責務と境界 |
+| --- | --- | --- |
+| パッケージ契約と読み込み | `backend/internal/plugin/manifest.go`、`runtime.go`、`registry.go` | 登録前に manifest schema、Plugin API 互換性、権限、パッケージ状態を検証 |
+| Provider | `backend/internal/server/provider_plugin_adapter.go`、`adapter_registry.go` | Provider・リソース・認証情報の投影を使って宣言された操作を呼び出す。ルーティングと計量は Core が担当 |
+| ゲートウェイチェーン | `backend/internal/plugin/gateway_chain.go`、`gateway_runner.go`、`backend/internal/server/gateway_plugin_hooks.go` | 各段階のフックに許可されたデータを渡し、構造化結果と変更範囲を検証 |
+| バックグラウンドジョブと管理操作 | `backend/internal/plugin/background_scheduler.go`、`background_job.go`、`action_broker.go` | 宣言されたジョブの実行と管理操作を仲介。永続化されたバックグラウンド Responses ジョブとは別の仕組み |
+| 画面 | `backend/internal/plugin/admin_ui.go`、`sim.go` | 宣言的なパネル、設定、テーマ、レイアウトをコンソールが描画。任意のプラグイン React や JavaScript は実行しない |
+
+パッケージは `plugin.yaml` で manifest schema `1` と Plugin API `v1` を宣言します。権限は呼び出しに投影できる Core データと、Core が受け入れる構造化変更を制限します。これは OS サンドボックスではありません。コマンドポリシーではネットワークとリソースの強制隔離は現在 `unsupported` です。外部コマンドには制限された環境変数、パッケージ相対の実行パス、入出力上限、タイムアウトを適用します。汎用コマンドの既定値は 30 秒、入力 4 MiB、出力 1 MiB で、各能力面には独自のタイムアウトがあります。例えばゲートウェイフックの既定値は 5 秒です。ストリーミング対応はアダプターごとに確認が必要です。現在の外部 Provider ブリッジはコマンド結果のイベント配列を解析し、子プロセスの出力をリアルタイムに中継するものではありません。
+
+3 種類の Compose はいずれも `tokenhub-plugins` を `/app/plugins` にマウントし、`TOKENHUB_PLUGIN_DIR` と `TOKENHUB_PLUGIN_MARKETPLACE_URL` を提供します。ファイルとライフサイクル状態はファイルシステムに保存され、レジストリと実行器はプロセスごとに保持されます。PostgreSQL はプラグインバイナリの配布や全レプリカのレジストリ更新を行いません。`plugin_runtime_reload.go` はクラスタ操作でリロードを直列化しますが、再構築するのは現在のサーバープロセスだけです。デプロイではパッケージのバージョンを揃え、各レプリカをリロードまたは再起動する必要があります。現在のパッケージ更新ハンドラーはファイルを置換した後にこのリロード経路を呼ばないため、更新レスポンスだけでは新しいランタイムの有効化を確認できません。
+
+インストールとマーケットプレイスのコードには、チェックサム検証、署名付きマーケットプレイスの信頼検証、権限レビュー、失敗したパッケージの隔離、ロールバック経路があります。これらは全レプリカの原子的な有効化やホストリソースの隔離を保証しません。詳細な契約とライフサイクル操作は[プラグイン開発ガイド](plugin-development.md)を参照してください。
+
 ## コンポーネントと Provider
 
 | コンポーネント | 場所 | 責務 |
@@ -99,20 +137,25 @@ flowchart LR
 | HTTP サーバー | `backend/internal/server/http.go` | API、認証、ルーティング呼び出し、レスポンス、ヘルスエンドポイント |
 | ルーティング | `backend/internal/server/http.go` | 優先度、リソース優先度、戦略、重み、アフィニティによる候補の順序付け |
 | アダプターレジストリと統合サービス | `adapter_registry.go`、`integration_service.go` | Provider 能力の宣言と Provider/リソースのプローブ |
-| Provider アダプター | `providers.go`、`provider_account_codex.go` | プロトコル変換、Codex Subscription の OAuth、更新、セッションアフィニティ |
+| Provider アダプター | `builtin_provider_plugins.go`、`provider_plugin_adapter.go`、`provider_account_codex.go` | プロトコル変換、Codex Subscription の OAuth、更新、セッションアフィニティ |
 | Store | `store.go` | GORM、クォータ、認証情報暗号化、SQLite バックアップ、PostgreSQL リース、クラスタロック |
+
+以下は代表的な内蔵登録であり、固定された全 Provider 一覧ではありません。実際の能力は有効なプラグインとアダプターの記述、Provider ポリシー、モデルとリソースの対応状況で決まります。外部プラグインは Provider 型を追加できます。
 
 | Provider 型 | アダプターと能力 |
 | --- | --- |
-| `openai`、`openai_compatible`、`qwen`、`local` | OpenAI 互換：Chat、ストリーミング Chat、Responses、Embeddings、プローブ |
-| `deepseek` | OpenAI 互換：Chat、ストリーミング Chat、Embeddings、プローブ。Responses とストリーミング Responses はモデル単位で宣言し、`deepseek-v4-flash` と `deepseek-v4-pro` で有効 |
+| `openai` | Chat、ストリーミング Chat、Responses、ストリーミング Responses、Embeddings、プローブ、画像生成 |
+| `openai_compatible`、`deepseek`、`qwen`、`local` | OpenAI 互換操作。モデルと Provider ポリシーによって Responses 対応を制限可能 |
+| `kronk` | Chat、ストリーミング Chat、Responses、ストリーミング Responses、Embeddings、モデル検出、プローブ |
 | `azure_openai` | Chat、ストリーミング Chat、Embeddings、プローブ |
 | `anthropic` | Chat、ストリーミング Chat、プローブ |
 | `gemini` | Chat、ストリーミング Chat、Embeddings、プローブ |
-| `openai_codex` | OpenAI Codex Subscription：Responses、ストリーミング Responses、モデル、クォータ、OAuth、セッションアフィニティ、Compact |
-| `mock` | ローカル検証とテスト用の内蔵アダプター |
+| `openai_codex` | Responses、ストリーミング Responses、モデル、プローブ、クォータ、OAuth、セッションアフィニティ、Compact、画像生成 |
+| `mock` | ローカル検証とテスト |
 
 ## モデルリクエスト経路
+
+以下は Core のリクエストフローの概要です。該当する段階で実行器が登録済みフックに許可されたデータを投影し、Core が処理を続ける前に結果を検証します。フック段階はプライバシーとガードレール、コンテキストとキャッシュ、候補選択と順位付け、リクエスト・レスポンス変換、利用量、精算、トレース出力を含みます。段階の宣言は全エンドポイントやインストール済みプラグインの実装を意味せず、各エンドポイントの対応状況と段階の規則が適用されます。
 
 `Model` は外部 API 契約、`ProviderModel` は 1 つの Provider に対する永続化された上流モデルインベントリ、`ModelRoute` はその間のマッピングです。外部モデルには明示的で永続化されたディレクトリロールが付くため、最後のルートを削除しても候補テンプレートへ戻らず、下書きとして残ります。ルートの作成または編集では、選択した `ProviderModel` がインベントリに存在する必要があります。限定的な例外は、サブスクリプション型仮想モデル `codex-gpt-image-2` です。このルートは OpenAI Codex Provider を対象とし、上流モデルを `gpt-image-2` に固定する必要があります。これはチャットモデルのインベントリ項目ではなく、実行能力です。これにより、同名 1:1 マッピングとカスタムエイリアスの両方を支持し、呼び出し側は Provider 固有のモデル名を意識しません。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/embeddings` は同じ認証、クォータ、ルーティング入口を共有します。
 
@@ -121,6 +164,7 @@ sequenceDiagram
     participant C as 業務アプリケーション
     participant G as TokenHub /v1
     participant S as Store とデータベース
+    participant H as ゲートウェイフック
     participant A as Provider Adapter
     participant U as 上流モデルサービス
 
@@ -133,6 +177,11 @@ sequenceDiagram
     G->>S: 有効かつ健全な Provider / Resource / Route を取得
     G->>G: API Key、Project、Global ポリシーを解決し候補を絞り込む
     G->>G: 戦略、重み、セッションアフィニティで試行順序を計画
+    opt 該当するリクエスト段階で許可データを投影
+        G->>H: 該当するリクエスト段階で許可データを投影
+        H-->>G: 検証済みの構造化結果
+    end
+    Note over G,A: 有効な内蔵アダプターまたは外部 Provider ブリッジを呼び出す
     loop フェイルオーバー可能な候補ルート
         G->>A: 正規化済みリクエストとルート選択
         A->>U: Provider プロトコルリクエスト
@@ -143,7 +192,7 @@ sequenceDiagram
     G-->>C: 互換レスポンスと x-request-id
 ```
 
-非アクティブまたは不健全な Provider、Resource、Route は除外されます。ただし例外として、クールダウンが満了した Resource はハーフオープン候補として再び候補に加わります。最初に到達したリクエストがクールダウン期限を前方へ進めることで試行権を取得するため、同時実行のリクエストは引き続き拒否され、試行が失敗した場合は次のより長いウィンドウがすでに設定されています。その試行自身が成功した場合にのみブレーカーが閉じ、管理者の操作なしに Resource が復旧します。ブレーカー作動時にすでに実行中だったリクエストが Resource を復活させることはありません。失敗が繰り返される場合は `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` を上限として指数的にウィンドウが延長されます。管理者が無効化した Resource が再び組み入れられることはありません。非ストリーミング呼び出しは候補を順番に試行します。出力開始後のストリームは安全に上流を切り替えられません。ストリーミング Responses には `response_stream` 能力を持つアダプターが必要です。`openai_codex` のルートでは、リクエストと API Key からセッションアフィニティキーを導出し、継続性のために Resource バインドを永続化できます。
+非アクティブまたは不健全な Provider、Resource、Route は除外されます。ただし例外として、クールダウンが満了した Resource はハーフオープン候補として再び候補に加わります。最初に到達したリクエストがクールダウン期限を前方へ進めることで試行権を取得するため、同時実行のリクエストは引き続き拒否され、試行が失敗した場合は次のより長いウィンドウがすでに設定されています。その試行自身が成功した場合にのみブレーカーが閉じ、管理者の操作なしに Resource が復旧します。ブレーカー作動時にすでに実行中だったリクエストが Resource を復活させることはありません。失敗が繰り返される場合は `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS` を上限として指数的にウィンドウが延長されます。管理者が無効化した Resource が再び組み入れられることはありません。非ストリーミング呼び出しは候補を順番に試行します。出力開始後のストリームは安全に上流を切り替えられません。ストリーミング Responses には `responses_stream` 能力を持つアダプターが必要です。`openai_codex` のルートでは、リクエストと API Key からセッションアフィニティキーを導出し、継続性のために Resource バインドを永続化できます。
 
 `background: true` を設定した `POST /v1/responses` では、同期リクエストフローは認証と永続化された投入の後で終了します。各レプリカは起動時にキューが空でも永続キューを継続して poll します。Worker はジョブを取得して元の認可を再検証し、admitted phase、request ID、quota counter、token reservation、concurrency lease を同じデータベース transaction で commit してから、同じ guardrail、routing、Provider、metering、audit、trace のフローへ入ります。lease epoch が古い Worker を fence します。PostgreSQL の複数レプリカは row lock と `SKIP LOCKED` で取得し、SQLite は対応対象の単一バックエンド構成で原子的に取得します。Admission 前の lease 喪失は安全に再実行できます。Admission 後の lease 喪失は Provider への重複リクエストを避けるため明示的な終端状態となり、未 dispatch の token reservation は復旧時に返却されます。
 

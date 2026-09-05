@@ -8,6 +8,8 @@ Language: [English](../architecture.md) | 简体中文 | [日本語](../ja/archi
 
 后端是一个 Go 进程，承载管理 API、OpenAI 兼容模型 API、路由编排、Provider 适配、审计和持久化逻辑。前端是 Next.js 管理后台。控制面与数据面是逻辑边界；默认部署中它们共享一个后端实例和数据库，多实例模式则通过 PostgreSQL 共享状态。
 
+后端由 Core、内置插件和外部插件组成。Core 保留公共 API 兼容、认证授权、路由准入、持久化、计量和审计职责。插件通过声明提供 Provider 能力、请求链 Hook、后台任务和界面元数据；外部可执行插件由后端以子进程调用。
+
 ```mermaid
 flowchart TB
     admin["平台管理员 / 团队负责人"]
@@ -21,7 +23,10 @@ flowchart TB
         modelApi["模型 API\n/v1/*"]
         governance["鉴权与治理\nKey、RBAC、配额、并发、IP 白名单"]
         routing["路由编排\n候选路由、策略、权重、回退、会话亲和"]
-        adapters["适配器注册表\n通用 Provider / OpenAI Codex"]
+        adapters["适配器注册表"]
+        builtin["内置 Provider 插件"]
+        plugins["插件注册表与运行时"]
+        hooks["请求链 Hook 与 Broker"]
         operations["运维与可观测性\n用量、审计、告警、健康检查"]
         store["GORM Store"]
 
@@ -31,7 +36,19 @@ flowchart TB
         modelApi --> operations --> store
         adminApi --> operations
         routing --> store
+        adminApi --> plugins
+        plugins --> adapters
+        adapters --> builtin
+        plugins --> hooks
+        routing <--> hooks
     end
+
+    external["外部插件进程\nstdio-json-v1"]
+    packages["插件包与生命周期状态"]
+    packages --> plugins
+    plugins --> external
+    hooks --> external
+    adapters --> external
 
     subgraph persistence["持久化与配置"]
         sqlite[("SQLite\n默认单实例")]
@@ -50,11 +67,14 @@ flowchart TB
     admin --> ingress --> frontend
     frontend -->|"TOKENHUB_API_BASE_URL"| backend
     app --> ingress -->|"/v1/*"| backend
-    adapters --> compatible
-    adapters --> azure
-    adapters --> anthropic
-    adapters --> gemini
-    adapters --> codex
+    external --> upstream
+    backend --> adminApi
+    backend --> modelApi
+    builtin --> compatible
+    builtin --> azure
+    builtin --> anthropic
+    builtin --> gemini
+    builtin --> codex
     store --> sqlite
     store --> postgres
     catalog --> store
@@ -91,6 +111,24 @@ flowchart LR
 
 默认镜像直接使用构建时内置的 `model-catalog.yaml`，以保证后端程序和模型目录版本一致。需要自定义目录时，通过 `./deploy/install.sh --model-catalog /absolute/path/to/model-catalog.yaml` 显式覆盖；该文件不是默认 Compose 挂载项。
 
+## 插件运行时与边界
+
+`backend/internal/server/plugin_bootstrap.go` 统一装配插件注册表、请求链及执行器、管理 UI 注册表、Action Broker、后台任务 Broker/Runner 和适配器注册表。启动时注册内置能力，从 `TOKENHUB_PLUGIN_DIR` 加载插件包，再接入启用的外部 Provider 适配器。内置与外部插件共享元数据和能力契约，但内置实现运行于 Go 进程内，外部命令通过 `stdio-json-v1` 执行。
+
+| 能力面 | 实现入口 | 职责与边界 |
+| --- | --- | --- |
+| 插件包契约与加载 | `backend/internal/plugin/manifest.go`、`runtime.go`、`registry.go` | 注册前校验 manifest schema、Plugin API 兼容性、权限和包状态 |
+| Provider | `backend/internal/server/provider_plugin_adapter.go`、`adapter_registry.go` | 使用 Provider、资源和凭证的数据投影调用声明的操作；路由与计量仍由 Core 负责 |
+| 请求链 | `backend/internal/plugin/gateway_chain.go`、`gateway_runner.go`；`backend/internal/server/gateway_plugin_hooks.go` | 向各阶段 Hook 提供获准数据，校验结构化结果并限制可修改内容 |
+| 后台任务与管理动作 | `backend/internal/plugin/background_scheduler.go`、`background_job.go`、`action_broker.go` | 调度声明的任务并代理管理员操作；与持久化后台 Responses 任务分开 |
+| 界面 | `backend/internal/plugin/admin_ui.go`、`sim.go` | 由控制台渲染声明式面板、设置、主题和布局；不执行任意插件 React 或 JavaScript |
+
+插件包通过 `plugin.yaml` 声明 manifest schema `1` 和 Plugin API `v1`。权限决定调用时可投影哪些 Core 数据，以及 Core 接受哪些结构化修改。这不等同于操作系统沙箱：命令策略当前将网络和资源强制隔离标记为 `unsupported`。外部命令使用受限环境变量、包内相对可执行路径、输入输出大小限制和超时。通用命令默认超时为 30 秒，输入上限 4 MiB、输出上限 1 MiB；各能力面可设置自己的超时，例如请求链 Hook 默认 5 秒。流式支持须按适配器核对；当前外部 Provider 桥接从命令结果中解析事件数组，并非实时转发子进程输出流。
+
+三种 Compose 编排均将 `tokenhub-plugins` 挂载到 `/app/plugins`，并提供 `TOKENHUB_PLUGIN_DIR` 和 `TOKENHUB_PLUGIN_MARKETPLACE_URL`。插件文件与生命周期状态保存在文件系统，注册表和执行器则属于各进程。PostgreSQL 不负责分发插件二进制，也不会刷新所有副本的注册表。`plugin_runtime_reload.go` 通过集群操作串行执行重载，但只重建当前服务进程的运行时；部署时仍需协调插件版本，并逐副本重载或重启。当前包更新处理器替换文件后没有调用该重载路径，因此仅凭更新响应不能确认新运行时已经生效。
+
+安装与市场代码提供校验和验证、签名市场信任校验、权限审查、失败插件隔离和回滚路径。这些机制不代表已实现跨副本原子激活，也不提供宿主资源隔离。详细契约和生命周期操作见[插件开发指南](plugin-development.md)。
+
 ## 关键组件
 
 | 组件 | 位置 | 责任 |
@@ -99,23 +137,28 @@ flowchart LR
 | HTTP 服务 | `backend/internal/server/http.go` | 注册 API、执行鉴权、路由调用、写入响应和健康检查 |
 | 路由编排 | `backend/internal/server/http.go` | 为统一模型名选择候选路由，按优先级、资源优先级、策略、权重和亲和性确定尝试顺序 |
 | 适配器注册与探测 | `adapter_registry.go`、`integration_service.go` | 声明各 Provider 的能力，执行 Provider 与资源探测 |
-| Provider 适配层 | `providers.go`、`provider_account_codex.go` | 将统一请求转换为上游协议；管理 Codex 订阅资源的 OAuth、刷新与会话亲和 |
+| Provider 适配层 | `builtin_provider_plugins.go`、`provider_plugin_adapter.go`、`provider_account_codex.go` | 将统一请求转换为上游协议；管理 Codex 订阅资源的 OAuth、刷新与会话亲和 |
 | 持久化层 | `store.go` | GORM 数据访问、配额计数、凭证加密、SQLite 备份、PostgreSQL 租约和集群锁 |
 | 模型目录 | `data/model-catalog.yaml` | 为镜像构建提供标准模型元数据，启动时同步到数据库 |
 
 Provider 类型与主要能力如下：
 
+下表列出代表性的内置注册项，并非完整且固定的 Provider 清单。实际能力由启用的插件与适配器描述、Provider 策略以及模型和资源支持共同决定；外部插件可以增加 Provider 类型。
+
 | Provider 类型 | 适配器与能力 |
 | --- | --- |
-| `openai`、`openai_compatible`、`qwen`、`local` | OpenAI 兼容；Chat、流式 Chat、Responses、Embeddings、探测 |
-| `deepseek` | OpenAI 兼容；Chat、流式 Chat、Embeddings、探测。Responses 与流式 Responses 按模型声明，对 `deepseek-v4-flash` 和 `deepseek-v4-pro` 开放 |
+| `openai` | Chat、流式 Chat、Responses、流式 Responses、Embeddings、探测和图像生成 |
+| `openai_compatible`、`deepseek`、`qwen`、`local` | OpenAI 兼容操作；模型与 Provider 策略可进一步限制 Responses 支持 |
+| `kronk` | Chat、流式 Chat、Responses、流式 Responses、Embeddings、模型发现和探测 |
 | `azure_openai` | Chat、流式 Chat、Embeddings、探测 |
 | `anthropic` | Chat、流式 Chat、探测 |
 | `gemini` | Chat、流式 Chat、Embeddings、探测 |
-| `openai_codex` | OpenAI Codex Subscription；Responses、Responses 流式、模型发现、额度、OAuth、会话亲和和 Compact |
-| `mock` | 内置 Mock，供本地验证与测试 |
+| `openai_codex` | Responses、流式 Responses、模型发现、探测、额度、OAuth、会话亲和、Compact 和图像生成 |
+| `mock` | 本地验证与测试 |
 
 ## 模型请求链路
+
+下图概括 Core 请求流程。在适用的阶段，请求链执行器向已注册 Hook 投影获准数据，并在 Core 继续执行前校验结果。Hook 阶段覆盖隐私与内容安全、上下文与缓存、候选选择与排序、请求响应转换、用量、结算和追踪导出。声明了阶段不代表每个端点或已安装插件都实现了相应能力；仍以端点支持和阶段规则为准。
 
 `Model` 是对外 API 契约，`ProviderModel` 是某个 Provider 下持久化的上游模型库存，`ModelRoute` 在两者之间建立映射。对外模型带有明确且持久化的目录角色，因此删除最后一条路由后会保留为草稿，而不会重新变成候选模板；创建或编辑路由时，所选 `ProviderModel` 必须已经存在于库存中。唯一的窄例外是订阅制虚拟模型 `codex-gpt-image-2`：它的路由必须指向 OpenAI Codex Provider，并固定使用上游模型 `gpt-image-2`；这是执行能力，不属于聊天模型库存。这既支持同名 1:1 映射，也支持自定义别名，调用方无需感知具体 Provider 模型名。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact` 和 `POST /v1/embeddings` 都遵循相同的鉴权、配额与路由起点。
 
@@ -124,6 +167,7 @@ sequenceDiagram
     participant C as 业务应用
     participant G as TokenHub /v1
     participant S as Store + 数据库
+    participant H as 请求链 Hook
     participant A as Provider Adapter
     participant U as 上游模型服务
 
@@ -136,6 +180,11 @@ sequenceDiagram
     G->>S: 查询活跃且健康的 Provider / Resource / Route
     G->>G: 解析 API Key、项目或全局策略，筛选候选路由
     G->>G: 按策略、权重与会话亲和生成尝试顺序
+    opt 在适用的请求阶段投影获准数据
+        G->>H: 在适用的请求阶段投影获准数据
+        H-->>G: 校验后的结构化结果
+    end
+    Note over G,A: 调用已启用的内置适配器或外部 Provider 桥接
     loop 可回退的候选路由
         G->>A: 统一请求 + 路由选择
         A->>U: Provider 协议请求
@@ -146,7 +195,7 @@ sequenceDiagram
     G-->>C: OpenAI 兼容响应 + x-request-id
 ```
 
-路由筛选会跳过非活跃或不健康的 Provider、Provider Resource 和 Route，但有一个例外：冷却期已过的资源会作为半开候选重新进入候选池。第一个选中它的请求通过把冷却截止时间向后推进来占用这次试探，因此并发请求仍会被拒绝，而试探失败时下一个（更长的）冷却窗口已经就位。只有该次试探自身成功才会关闭熔断器并自动恢复资源，无需管理员介入——熔断触发时已经在途的请求无法把资源救活；反复失败则按指数退避加长窗口，上限为 `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS`。被管理员禁用的资源永远不会被重新纳入。非流式调用依次尝试候选路由。已开始输出的流无法安全切换到另一条上游路由；Responses 流式仅选择声明 `response_stream` 能力的适配器。对于 `openai_codex` 路由，系统可根据请求与 Key 派生会话亲和键，并持久化资源绑定以保持会话连续性。
+路由筛选会跳过非活跃或不健康的 Provider、Provider Resource 和 Route，但有一个例外：冷却期已过的资源会作为半开候选重新进入候选池。第一个选中它的请求通过把冷却截止时间向后推进来占用这次试探，因此并发请求仍会被拒绝，而试探失败时下一个（更长的）冷却窗口已经就位。只有该次试探自身成功才会关闭熔断器并自动恢复资源，无需管理员介入——熔断触发时已经在途的请求无法把资源救活；反复失败则按指数退避加长窗口，上限为 `TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS`。被管理员禁用的资源永远不会被重新纳入。非流式调用依次尝试候选路由。已开始输出的流无法安全切换到另一条上游路由；Responses 流式仅选择声明 `responses_stream` 能力的适配器。对于 `openai_codex` 路由，系统可根据请求与 Key 派生会话亲和键，并持久化资源绑定以保持会话连续性。
 
 对于设置 `background: true` 的 `POST /v1/responses`，同步请求链路会在认证和持久化提交后结束。每个副本即使在启动时队列为空，也会持续轮询持久化队列。Worker 领取任务并重新验证原始授权后，会在同一个数据库事务中提交 admitted 阶段、请求 ID、配额计数、Token 预留与并发租约，再进入相同的 Guardrail、路由、Provider、计量、审计和链路追踪流程。租约代次用于隔离过期 Worker。PostgreSQL 多实例通过行锁和 `SKIP LOCKED` 领取任务；SQLite 在受支持的单后端部署中通过原子操作领取。准入前的租约丢失可安全重放；准入后的租约丢失会进入明确终态，避免重复请求 Provider，尚未分发的 Token 预留会在恢复时退还。
 
