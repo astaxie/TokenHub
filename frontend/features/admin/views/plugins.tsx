@@ -479,7 +479,12 @@ export function PluginsView({
         </div>
         <div className="section-body">
           {filteredPlugins.length === 0 ? (
-            <p className="empty-state">{tx("暂无插件")}</p>
+            <div className="plugin-installed-empty">
+              <span className="plugin-installed-empty-icon" aria-hidden="true">
+                <PackageOpen size={20} />
+              </span>
+              <span>{tx("暂无插件")}</span>
+            </div>
           ) : (
             <div className="plugin-installed-list">
                   {filteredPlugins.map((plugin) => {

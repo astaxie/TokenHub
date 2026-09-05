@@ -125,6 +125,9 @@ describe("PluginsView", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索插件" }), { target: { value: "enabled" } });
     expect(screen.getByText("Enabled Example")).toBeInTheDocument();
     expect(screen.queryByText("Disabled Example")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索插件" }), { target: { value: "missing" } });
+    expect(screen.getByText("暂无插件").closest(".plugin-installed-empty")).toBeInTheDocument();
   });
 
   it("summarizes repeated capability declarations without duplicate key warnings", () => {
@@ -820,6 +823,7 @@ describe("PluginsView", () => {
     expect(container.querySelector('[data-plugin-manager-control="distribution"]')).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-manager-control="delete"]')).toBeInTheDocument();
     expect(pluginStyles()).toContain(".plugin-installed-row");
+    expect(pluginStyles()).toContain(".plugin-installed-empty");
     expect(pluginStyles()).toContain(".plugin-status-filters");
     expect(pluginStyles()).toContain(".plugin-extension-nav");
     expect(pluginStyles()).toContain(".plugin-manager-topbar");
