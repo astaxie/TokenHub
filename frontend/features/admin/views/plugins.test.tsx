@@ -894,5 +894,7 @@ function layoutCapability(id: string, payload: Record<string, unknown> = {}) {
 }
 
 function pluginStyles() {
-  return readFileSync(resolve("app/styles/redesign/plugins.css"), "utf8");
+  return ["plugins.css", "plugin-management.css"]
+    .map((fileName) => readFileSync(resolve("app/styles/redesign", fileName), "utf8"))
+    .join("\n");
 }

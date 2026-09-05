@@ -91,6 +91,9 @@ test("admin can inspect plugin details and files without fake settings", async (
     has: page.getByRole("button", { name: "设置", exact: true }),
   }).first();
   await expect(configurableRow).toBeVisible();
+  await expect(configurableRow.locator(".plugin-installed-meta")).toBeVisible();
+  await expect(configurableRow.locator(".plugin-title-version")).toHaveCount(0);
+  await expect(configurableRow.locator(".plugin-installed-label")).not.toHaveCount(0);
   const detailBox = await configurableRow.getByRole("button", { name: "详情", exact: true }).boundingBox();
   const settingsBox = await configurableRow.getByRole("button", { name: "设置", exact: true }).boundingBox();
   expect(detailBox).not.toBeNull();

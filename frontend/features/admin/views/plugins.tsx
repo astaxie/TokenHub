@@ -485,15 +485,9 @@ export function PluginsView({
                   {filteredPlugins.map((plugin) => {
                     const lifecycle = pluginManagerDisplayState({ plugin });
                     return (
-                      <article className={`plugin-installed-row${lifecycle.status === "disabled" ? " disabled" : ""}`} key={plugin.id}>
+                      <article className={`plugin-installed-row${lifecycle.status === "disabled" ? " disabled" : ""}${plugin.distribution ? " has-distribution" : ""}`} key={plugin.id}>
                         <div className="plugin-installed-main">
-                          <PluginTitle plugin={plugin} onSelect={onSelectPlugin} />
-                          <div className="plugin-installed-taxonomy">
-                            <TagList values={[...plugin.kinds.map(pluginKindLabel), ...plugin.placements.map(pluginPlacementLabel)]} />
-                          </div>
-                        </div>
-                        <div className="plugin-installed-source">
-                          <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
+                          <InstalledPluginTitle plugin={plugin} onSelect={onSelectPlugin} />
                         </div>
                         <div className="plugin-installed-state">
                           <PluginLifecycleControl
@@ -506,8 +500,8 @@ export function PluginsView({
                             rollbackDraft={pluginRollbackDraft(plugin)}
                           />
                         </div>
-                        <div className="plugin-installed-distribution">
-                          {plugin.distribution ? (
+                        {plugin.distribution ? (
+                          <div className="plugin-installed-distribution">
                             <DistributionMetadata
                               lifecycle={lifecycle}
                               plugin={plugin}
@@ -516,8 +510,8 @@ export function PluginsView({
                               onPreview={(target) => previewPluginPermissions(target, "update")}
                               previewDraft={pluginPermissionPreviewDraft(plugin)}
                             />
-                          ) : null}
-                        </div>
+                          </div>
+                        ) : null}
                         <div className="plugin-installed-actions">
                           {onSelectPlugin ? (
                             <>
@@ -1008,6 +1002,34 @@ function PluginTitle({ plugin, onSelect }: { plugin: PluginDescriptor; onSelect?
       <div className="plugin-title-meta">
         <span className="plugin-title-id" title={plugin.id}>{plugin.id}</span>
         <span className="plugin-title-version">{plugin.version || tx("内置")}</span>
+      </div>
+    </div>
+  );
+}
+
+function InstalledPluginTitle({ plugin, onSelect }: { plugin: PluginDescriptor; onSelect?: (pluginID: string) => void }) {
+  const locale = languageLocale();
+  const name = localizedPluginName(plugin, locale);
+  const taxonomy = [...plugin.kinds.map(pluginKindLabel), ...plugin.placements.map(pluginPlacementLabel)];
+  const visibleTaxonomy = taxonomy.slice(0, 2);
+  const remainingTaxonomy = taxonomy.length - visibleTaxonomy.length;
+  const version = plugin.version && plugin.version !== "built-in" ? plugin.version : "";
+  const metadataTitle = [plugin.id, pluginSourceLabel(plugin.source), version, ...taxonomy].filter(Boolean).join(" · ");
+  return (
+    <div className="plugin-title-cell plugin-installed-title-cell">
+      {onSelect ? (
+        <button className="plugin-title-link" type="button" onClick={() => onSelect(plugin.id)} aria-label={`${tx("查看插件详情")} ${name}`}>
+          {name}
+        </button>
+      ) : (
+        <strong className="plugin-title-name">{name}</strong>
+      )}
+      <div className="plugin-installed-meta" title={metadataTitle}>
+        <span className="plugin-installed-id" title={plugin.id}>{plugin.id}</span>
+        <span className="plugin-installed-label source">{pluginSourceLabel(plugin.source)}</span>
+        {version ? <span className="plugin-installed-label version">{version}</span> : null}
+        {visibleTaxonomy.map((value) => <span className="plugin-installed-label" key={value}>{value}</span>)}
+        {remainingTaxonomy > 0 ? <span className="plugin-installed-label count">+{remainingTaxonomy}</span> : null}
       </div>
     </div>
   );
