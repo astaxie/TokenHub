@@ -375,22 +375,6 @@ func openAIAccountAuthenticationPatch(creds *ProviderResourceCredentials) bool {
 		strings.TrimSpace(creds.ClientID) != ""
 }
 
-func openAIAccountImageBindingChanged(
-	before ProviderResource,
-	beforeCredentials ProviderResourceCredentials,
-	after ProviderResource,
-	afterCredentials ProviderResourceCredentials,
-) bool {
-	if before.ProviderID != after.ProviderID ||
-		before.ResourceType != after.ResourceType ||
-		strings.TrimSpace(before.BaseURL) != strings.TrimSpace(after.BaseURL) ||
-		strings.TrimSpace(before.Options["allowed_codex_hosts"]) != strings.TrimSpace(after.Options["allowed_codex_hosts"]) {
-		return true
-	}
-	return !openAIAccountAuthenticationEqual(beforeCredentials, afterCredentials) ||
-		strings.TrimSpace(beforeCredentials.AccountID) != strings.TrimSpace(afterCredentials.AccountID)
-}
-
 func openAIAccountAuthenticationEqual(left ProviderResourceCredentials, right ProviderResourceCredentials) bool {
 	return providerResourceAuthenticationEqual(left, right)
 }

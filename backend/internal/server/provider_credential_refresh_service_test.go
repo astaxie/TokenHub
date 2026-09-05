@@ -215,7 +215,7 @@ func TestProviderQuotaRefreshBackgroundJobPersistsExternalPluginSnapshots(t *tes
 	providerType := "quota_background_plugin"
 	resourceType := "quota_background_account"
 	pluginID := "tokenhub.provider.quota-background"
-	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: []string{resourceType}})
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: {resourceType}})
 	provider := store.AddProvider(Provider{
 		Name:    "Quota Background Plugin",
 		Type:    providerType,
@@ -316,7 +316,7 @@ func TestProviderCredentialRefreshServiceUsesNativeRefreshProfilePolicy(t *testi
 	providerType := "profile_oauth_subscription"
 	resourceType := "profile_oauth_account"
 	refreshProfile := "profile_oauth"
-	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: []string{resourceType}})
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: {resourceType}})
 	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
 		ProviderType:        providerType,
 		Profile:             refreshProfile,
@@ -380,7 +380,7 @@ func TestProviderCredentialRefreshUsesRegisteredNativeHandler(t *testing.T) {
 	providerType := "native_handler_subscription"
 	resourceType := "native_handler_account"
 	refreshProfile := "native_handler_oauth"
-	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: []string{resourceType}})
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{providerType: {resourceType}})
 	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
 		ProviderType: "native_handler_subscription",
 		Profile:      refreshProfile,

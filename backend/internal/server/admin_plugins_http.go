@@ -439,7 +439,7 @@ func (s *Server) readAdminPluginInstallRequest(w http.ResponseWriter, r *http.Re
 		return adminPluginInstallPayload{}, nil, NewHTTPError(http.StatusBadRequest, "invalid_plugin_upload", "Plugin package upload is invalid")
 	}
 	if r.MultipartForm != nil {
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 	}
 	file, err := firstAdminPluginUploadFile(r, "package", "plugin_package", "file")
 	if err != nil {

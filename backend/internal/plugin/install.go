@@ -53,7 +53,7 @@ func (r Runtime) InstallZipArchive(archive []byte, options InstallOptions) (Pack
 	if err != nil {
 		return Package{}, err
 	}
-	defer os.RemoveAll(staging)
+	defer func() { _ = os.RemoveAll(staging) }()
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
 		return Package{}, err

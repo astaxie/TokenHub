@@ -218,10 +218,6 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 	return cloneCatalogEntries(entries, false), nil
 }
 
-func prepareProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, error) {
-	return prepareProviderCatalogRefreshWithDefault(entries, previous, defaultProviderCatalogProviderType())
-}
-
 func prepareProviderCatalogRefreshWithDefault(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry, defaultType string) ([]ProviderCatalogEntry, error) {
 	if err := validateProviderCatalogRefresh(entries, previous); err != nil {
 		return nil, err
@@ -298,18 +294,6 @@ func loadLocalProviderCatalogWithPolicy(catalogFile string, catalogTypes map[str
 		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
 	}
 	return entries, nil
-}
-
-func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry, error) {
-	return parseProviderCatalogWithTypes(content, source, nil)
-}
-
-func parseProviderCatalogWithTypes(content []byte, source string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
-	return parseProviderCatalogWithDefault(content, source, catalogTypes, defaultProviderCatalogProviderType())
-}
-
-func parseProviderCatalogWithDefault(content []byte, source string, catalogTypes map[string]string, defaultType string) ([]ProviderCatalogEntry, error) {
-	return parseProviderCatalogWithPolicy(content, source, catalogTypes, defaultType, nil)
 }
 
 func parseProviderCatalogWithPolicy(content []byte, source string, catalogTypes map[string]string, defaultType string, modelCategories []providerModelCategoryDefinition) ([]ProviderCatalogEntry, error) {
@@ -453,10 +437,6 @@ func normalizeProviderCatalogModelWithCategories(raw map[string]any, modelCatego
 	model.Capabilities = catalogModelCapabilities(raw, model)
 	model.SupportedParameters = catalogModelParameters(raw, model)
 	return model
-}
-
-func catalogModelCategory(raw map[string]any, id string, displayName string) string {
-	return catalogModelCategoryWithDefinitions(raw, id, displayName, nil)
 }
 
 func catalogModelCategoryWithDefinitions(raw map[string]any, id string, displayName string, modelCategories []providerModelCategoryDefinition) string {
@@ -757,10 +737,6 @@ func providerModelsUpstreamError(status int) *HTTPError {
 	default:
 		return NewHTTPError(statusForProvider(status), "provider_models_upstream_error", "Upstream model catalog request failed")
 	}
-}
-
-func customProviderModelsFromPayload(payload map[string]any) []ProviderCatalogModel {
-	return customProviderModelsFromPayloadWithDefinitions(payload, nil)
 }
 
 func customProviderModelsFromPayloadWithDefinitions(payload map[string]any, modelCategories []providerModelCategoryDefinition) []ProviderCatalogModel {

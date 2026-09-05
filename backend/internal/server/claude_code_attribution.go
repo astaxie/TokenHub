@@ -44,10 +44,6 @@ func anthropicRequestForRoute(req anthropicMessagesRequest, route RouteSelection
 	return req
 }
 
-func defaultClaudeCodeAttributionPolicyForDescriptor(descriptor AdapterDescriptor) string {
-	return defaultSystemPromptTransformPolicyForDescriptor(descriptor)
-}
-
 func defaultSystemPromptTransformPolicyForDescriptor(descriptor AdapterDescriptor) string {
 	if policy := normalizeSystemPromptTransformPolicyOrEmpty(descriptor.ProviderPolicy.SystemPromptTransformDefault); policy != "" {
 		return policy
@@ -68,10 +64,6 @@ func normalizeSystemPromptTransformPolicyOrEmpty(value string) string {
 		return policy
 	}
 	return ""
-}
-
-func applyClaudeCodeAttributionPolicy(options map[string]string, requested *string) (map[string]string, error) {
-	return applySystemPromptTransformPolicy(options, nil, requested)
 }
 
 func applySystemPromptTransformPolicy(options map[string]string, requested *string, legacyRequested *string) (map[string]string, error) {
@@ -95,10 +87,6 @@ func applySystemPromptTransformPolicy(options map[string]string, requested *stri
 	return next, nil
 }
 
-func validateClaudeCodeAttributionOptions(options map[string]string) error {
-	return validateSystemPromptTransformOptions(options)
-}
-
 func validateSystemPromptTransformOptions(options map[string]string) error {
 	if value, exists := options[systemPromptTransformPolicyOption]; exists {
 		policy, err := normalizeSystemPromptTransformPolicy(value)
@@ -118,10 +106,6 @@ func validateSystemPromptTransformOptions(options map[string]string) error {
 		delete(options, claudeCodeAttributionPolicyOption)
 	}
 	return nil
-}
-
-func normalizeClaudeCodeAttributionPolicy(value string) (string, error) {
-	return normalizeSystemPromptTransformPolicy(value)
 }
 
 func normalizeSystemPromptTransformPolicy(value string) (string, error) {

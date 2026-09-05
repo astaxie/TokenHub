@@ -25,10 +25,6 @@ func (s *Server) executeProviderProbeAction(ctx context.Context, user AdminUser,
 	return result.Data, true, nil
 }
 
-func (s *Server) executeProviderResourceModelsAction(ctx context.Context, user AdminUser, resourceID string) (ProviderCatalogEntry, bool, error) {
-	return s.executeProviderResourceModelsActionForCatalog(ctx, user, "", resourceID)
-}
-
 func (s *Server) executeProviderResourceModelsActionForCatalog(ctx context.Context, user AdminUser, catalogProviderType string, resourceID string) (ProviderCatalogEntry, bool, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {

@@ -34,7 +34,7 @@ func run(args []string, stdout io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		fmt.Fprintf(stdout, "%s: valid marketplace index (%d plugins)\n", path, len(index.Plugins))
+		_, _ = fmt.Fprintf(stdout, "%s: valid marketplace index (%d plugins)\n", path, len(index.Plugins))
 	}
 	return nil
 }
@@ -63,7 +63,7 @@ func runOffline(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "%s: verified signed marketplace index (%d plugins, %d artifacts)\n", options.indexPath, result.Plugins, result.ArtifactsVerified)
+	_, _ = fmt.Fprintf(stdout, "%s: verified signed marketplace index (%d plugins, %d artifacts)\n", options.indexPath, result.Plugins, result.ArtifactsVerified)
 	return nil
 }
 

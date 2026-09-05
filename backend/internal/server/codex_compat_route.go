@@ -172,10 +172,6 @@ func (s *Server) compatibleChatRoutes(routed RoutedCall, req ChatCompletionReque
 	return compatible, nil
 }
 
-func compatibleChatRoutes(routed RoutedCall, req ChatCompletionRequest) (RoutedCall, error) {
-	return (&Server{}).compatibleChatRoutes(routed, req)
-}
-
 func (s *Server) anthropicGatewayAffinity(
 	apiKeyID string,
 	model string,

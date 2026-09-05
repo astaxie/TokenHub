@@ -49,32 +49,6 @@ func providerModelCategoryDefinitionsFromPlugin(plugin pluginmeta.Descriptor) []
 	return definitions
 }
 
-func providerModelCategoryDefinitionsForKeys(keys []string) []providerModelCategoryDefinition {
-	definitionsByKey := map[string]providerModelCategoryDefinition{}
-	for _, definition := range fallbackProviderModelCategoryDefinitions() {
-		definition = normalizeProviderModelCategoryDefinition(definition)
-		definitionsByKey[definition.Key] = definition
-	}
-	result := make([]providerModelCategoryDefinition, 0, len(keys))
-	seen := map[string]struct{}{}
-	for _, key := range keys {
-		key = strings.ToLower(strings.TrimSpace(key))
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		if definition, ok := definitionsByKey[key]; ok {
-			result = append(result, definition)
-			continue
-		}
-		result = append(result, providerModelCategoryDefinition{Key: key, Label: key, Aliases: []string{key}})
-	}
-	return normalizeProviderModelCategoryDefinitions(result)
-}
-
 func standardModelCategorySet() map[string]bool {
 	categories := map[string]bool{}
 	for _, definition := range defaultProviderModelCategoryDefinitions() {
@@ -138,22 +112,6 @@ func lowerUniqueStrings(values []string) []string {
 		}
 	}
 	return catalogUniqueStrings(normalized)
-}
-
-func adapterModelCategoriesFromDefinitions(definitions []providerModelCategoryDefinition) []AdapterModelCategory {
-	definitions = normalizeProviderModelCategoryDefinitions(definitions)
-	categories := make([]AdapterModelCategory, 0, len(definitions))
-	for _, definition := range definitions {
-		categories = append(categories, AdapterModelCategory{
-			Key:               definition.Key,
-			Label:             definition.Label,
-			Order:             definition.Order,
-			Aliases:           append([]string(nil), definition.Aliases...),
-			FamilyPrefixes:    append([]string(nil), definition.FamilyPrefixes...),
-			CanonicalPrefixes: append([]string(nil), definition.CanonicalPrefixes...),
-		})
-	}
-	return categories
 }
 
 func providerModelCategoryDefinitionsFromAdapter(categories []AdapterModelCategory) []providerModelCategoryDefinition {

@@ -145,10 +145,6 @@ func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (stri
 	return compatibilitySessionIdentifier(headers, request)
 }
 
-func codexClientMetadataSessionID(request ResponsesRequest) string {
-	return compatibilityClientMetadataSessionID(request)
-}
-
 func compatibilityClientMetadataSessionID(request ResponsesRequest) string {
 	if request.raw == nil {
 		return ""
