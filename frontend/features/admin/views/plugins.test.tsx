@@ -145,15 +145,15 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
 
+    fireEvent.click(screen.getByRole("tab", { name: "Provider 插件" }));
     const capabilityCount = screen.getByText("能力").closest(".plugin-type-capability-count");
     expect(capabilityCount).not.toBeNull();
     expect(within(capabilityCount as HTMLElement).getByText("2")).toBeInTheDocument();
     expect(consoleError.mock.calls.some((call) => String(call[0]).includes("Encountered two children with the same key"))).toBe(false);
   });
 
-  it("counts plugin categories in the extension navigation", () => {
+  it("shows plugin categories beside the installed list without a separate extension tab", () => {
     const data = emptyData();
     data.plugins = [
       {
@@ -227,8 +227,9 @@ describe("PluginsView", () => {
     ];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
 
+    expect(screen.queryByRole("tab", { name: "扩展类型" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "全部插件" })).toHaveTextContent("4");
     expect(screen.getByRole("tab", { name: "Provider 插件" })).toHaveTextContent("1");
     expect(screen.getByRole("tab", { name: "链路注入" })).toHaveTextContent("1");
     expect(screen.getByRole("tab", { name: "界面模板" })).toHaveTextContent("1");
@@ -250,14 +251,13 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "Provider 插件" }));
 
     expect(screen.getByText("Provider 插件清单")).toBeInTheDocument();
     expect(screen.getByText("Qwen")).toBeInTheDocument();
   });
 
-  it("allows built-in provider plugins to be disabled from the provider tab", async () => {
+  it("allows built-in provider plugins to be disabled from the installed list", async () => {
     const data = emptyData();
     data.plugins = [{
       id: "tokenhub.provider.qwen",
@@ -275,8 +275,6 @@ describe("PluginsView", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Provider 插件" }));
     fireEvent.click(screen.getByRole("button", { name: "禁用" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -284,7 +282,7 @@ describe("PluginsView", () => {
     expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.provider.qwen/state");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(String(init.body))).toEqual({ status: "disabled" });
-    await waitFor(() => expect(screen.getByText("已禁用")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("已禁用").some((element) => element.matches(".pill"))).toBe(true));
   });
 
   it("lists gateway injection plugins instead of raw hook rows", () => {
@@ -327,7 +325,6 @@ describe("PluginsView", () => {
     ];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "链路注入" }));
 
     expect(screen.getByText("链路注入插件清单")).toBeInTheDocument();
@@ -368,7 +365,7 @@ describe("PluginsView", () => {
     expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.local-privacy/state");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(String(init.body))).toEqual({ status: "enabled" });
-    await waitFor(() => expect(screen.getByText("重启后生效")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("需重启 TokenHub 服务")).toBeInTheDocument());
     expect(screen.getAllByText("已启用").some((element) => element.matches(".pill"))).toBe(true);
   });
 
@@ -556,7 +553,6 @@ describe("PluginsView", () => {
     }];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "后台任务" }));
 
     expect(screen.getByText("后台任务插件清单")).toBeInTheDocument();
@@ -608,7 +604,6 @@ describe("PluginsView", () => {
     ];
 
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
 
     expect(screen.getByText("界面模板与主题贡献")).toBeInTheDocument();
@@ -649,7 +644,6 @@ describe("PluginsView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
     expect(screen.getByLabelText("界面模板列表")).toBeInTheDocument();
     expect(screen.queryByLabelText("界面模板插件")).not.toBeInTheDocument();
@@ -746,7 +740,6 @@ describe("PluginsView", () => {
     const { rerender } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} theme="light" />);
 
     expect(screen.getByText("Codex Subscription")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Extension Types" }));
     fireEvent.click(screen.getByRole("tab", { name: "UI Templates" }));
     fireEvent.click(screen.getByText("Developer Info"));
     expect(screen.getByText("Route Context")).toBeInTheDocument();
@@ -783,7 +776,6 @@ describe("PluginsView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "扩展类型" }));
     fireEvent.click(screen.getByRole("tab", { name: "界面模板" }));
     expect(screen.getByText("界面模板选择面板")).toBeInTheDocument();
     expect(pluginStyles()).toContain(".plugin-action-field select");
@@ -902,5 +894,7 @@ function layoutCapability(id: string, payload: Record<string, unknown> = {}) {
 }
 
 function pluginStyles() {
-  return readFileSync(resolve("app/styles/redesign/plugins.css"), "utf8");
+  return ["plugins.css", "plugin-management.css"]
+    .map((fileName) => readFileSync(resolve("app/styles/redesign", fileName), "utf8"))
+    .join("\n");
 }

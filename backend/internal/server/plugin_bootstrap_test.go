@@ -115,8 +115,10 @@ permissions:
 func TestBootstrapServerPluginsSkipsDisabledBuiltInProviderAdapter(t *testing.T) {
 	pluginDir := t.TempDir()
 	if _, err := pluginmeta.NewRuntime(pluginDir).UpdateBuiltInPackageState("tokenhub.provider.qwen", pluginmeta.PackageState{
-		Status: pluginmeta.StatusDisabled,
-		Reason: "operator disabled provider plugin",
+		Status:          pluginmeta.StatusDisabled,
+		Reason:          "operator disabled provider plugin",
+		RestartRequired: true,
+		AuditEvent:      pluginmeta.PackageLifecycleDisabled,
 	}); err != nil {
 		t.Fatalf("write built-in provider state: %v", err)
 	}
@@ -140,6 +142,13 @@ func TestBootstrapServerPluginsSkipsDisabledBuiltInProviderAdapter(t *testing.T)
 	}
 	if _, ok := bootstrap.adapterRegistry.Describe(ProviderMock); !ok {
 		t.Fatal("enabled built-in provider adapter was not registered")
+	}
+	state, found, err := pluginmeta.NewRuntime(pluginDir).ReadBuiltInPackageState("tokenhub.provider.qwen")
+	if err != nil || !found {
+		t.Fatalf("read built-in provider state found=%t err=%v", found, err)
+	}
+	if state.RestartRequired || state.Status != pluginmeta.StatusDisabled {
+		t.Fatalf("built-in provider state after bootstrap = %+v, want applied disabled state", state)
 	}
 }
 

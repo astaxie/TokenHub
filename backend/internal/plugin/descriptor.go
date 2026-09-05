@@ -142,6 +142,7 @@ type Descriptor struct {
 	ID           string                 `json:"id"`
 	Name         string                 `json:"name"`
 	Version      string                 `json:"version"`
+	Description  string                 `json:"description,omitempty"`
 	Source       Source                 `json:"source"`
 	Status       Status                 `json:"status"`
 	Distribution *Distribution          `json:"distribution,omitempty"`
@@ -196,6 +197,7 @@ func BuiltInProviderWithResourceTypeMetadata(id string, name string, providerTyp
 }
 
 func NormalizeDescriptor(descriptor Descriptor) Descriptor {
+	descriptor.Description = strings.TrimSpace(descriptor.Description)
 	if descriptor.Status == "" {
 		descriptor.Status = StatusEnabled
 	}

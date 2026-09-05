@@ -193,63 +193,6 @@
   text-align: center;
 }
 
-.plugin-installed-section .section-body {
-  padding: 0;
-}
-
-.plugin-installed-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) 100px 130px 112px;
-  grid-template-areas: "main source state actions" "main distribution distribution actions";
-  gap: 16px;
-  align-items: start;
-  border-bottom: 1px solid var(--border);
-  padding: 16px;
-  background: var(--surface);
-}
-
-.plugin-installed-row:last-child {
-  border-bottom: 0;
-}
-
-.plugin-installed-row.disabled {
-  background: color-mix(in srgb, var(--surface-2) 54%, var(--surface));
-}
-
-.plugin-installed-main,
-.plugin-installed-source,
-.plugin-installed-state,
-.plugin-installed-distribution,
-.plugin-installed-actions {
-  min-width: 0;
-  display: grid;
-  align-content: start;
-  gap: 8px;
-}
-
-.plugin-installed-main .plugin-title-link {
-  font-size: 14px;
-}
-
-.plugin-installed-taxonomy .tag,
-.plugin-installed-main > .tag-list .tag {
-  border: 0;
-  padding: 2px 0;
-  background: transparent;
-  color: var(--ink-2);
-}
-
-.plugin-installed-source > span:last-child {
-  color: var(--ink-2);
-  font-size: 12px;
-}
-
-.plugin-installed-actions .compact-button {
-  width: 100%;
-  justify-content: flex-start;
-}
-
 .plugin-extension-workspace {
   min-width: 0;
   display: grid;
@@ -987,29 +930,21 @@
   gap: 26px;
 }
 
-.plugin-overview-about {
+.plugin-overview-purpose-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 28px;
 }
 
-.plugin-overview-about h2,
-.plugin-overview-about p,
 .plugin-overview-publisher span,
 .plugin-overview-publisher strong {
   margin: 0;
 }
 
-.plugin-overview-about h2 {
-  color: var(--ink);
-  font-size: 15px;
-  letter-spacing: 0;
-}
-
-.plugin-overview-about p {
+.plugin-overview-description {
   max-width: 780px;
-  margin-top: 7px;
+  margin: -4px 0 0;
   color: var(--ink-2);
   font-size: 13px;
   line-height: 1.6;
@@ -1340,20 +1275,6 @@
     width: 100%;
   }
 
-  .plugin-installed-row {
-    grid-template-columns: 1fr;
-    grid-template-areas: "main" "source" "state" "distribution" "actions";
-    gap: 12px;
-  }
-
-  .plugin-installed-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .plugin-installed-actions [data-plugin-manager-control="delete"] {
-    grid-column: 1 / -1;
-  }
-
   .plugin-extension-workspace {
     grid-template-columns: 1fr;
   }
@@ -1444,9 +1365,10 @@
     min-height: 360px;
   }
 
-  .plugin-overview-about,
+  .plugin-overview-purpose-header,
   .plugin-overview-assurance {
     flex-direction: column;
+    align-items: flex-start;
     gap: 8px;
   }
 

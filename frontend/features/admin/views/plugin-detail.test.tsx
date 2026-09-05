@@ -86,9 +86,10 @@ describe("PluginDetailView", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "这个插件做什么" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.getByText("在模型请求经过网关时执行额外的处理逻辑。")).toBeInTheDocument();
     expect(screen.getByText("请求处理")).toBeInTheDocument();
+    expect(screen.queryByText("未提供插件说明。")).not.toBeInTheDocument();
     expect(screen.queryByText("request-filter")).not.toBeVisible();
     expect(screen.queryByText("导航搜索")).not.toBeVisible();
     expect(screen.queryByText("refresh")).not.toBeVisible();
@@ -104,6 +105,30 @@ describe("PluginDetailView", () => {
     expect(screen.queryByRole("tab", { name: "设置" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /导航搜索/ })).not.toBeInTheDocument();
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it("explains provider UI features instead of showing an empty description", async () => {
+    const payload = detailPayload(false, []);
+    payload.data.plugin.id = "tokenhub.admin.core-provider";
+    payload.data.plugin.name = "TokenHub Core Provider Settings";
+    payload.data.plugin.kinds = ["admin_ui"];
+    payload.data.plugin.placements = ["presentation"];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+    const data = appData();
+    data.pluginUI = [
+      { plugin_id: "tokenhub.admin.core-provider", id: "advanced", slot: "provider.form.section", title: "Advanced settings" },
+      { plugin_id: "tokenhub.admin.core-provider", id: "resource", slot: "provider.resource.panel", title: "Resource settings" },
+    ];
+
+    render(
+      <PluginDetailView api={api} data={data} pluginID="tokenhub.admin.core-provider" section="overview" onBack={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "TokenHub Core Provider Settings" })).toBeInTheDocument();
+    expect(screen.getByText("扩展 Provider 的连接设置和账号资源页面，让管理员直接管理插件提供的高级选项。")).toBeVisible();
+    expect(screen.getByText("Provider 高级设置")).toBeVisible();
+    expect(screen.getByText("账号资源设置")).toBeVisible();
+    expect(screen.queryByText("未提供插件说明。")).not.toBeInTheDocument();
   });
 
   it("keeps the plugin manager header available on secondary pages", async () => {

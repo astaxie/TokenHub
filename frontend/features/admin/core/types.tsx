@@ -442,6 +442,7 @@ export type PluginDescriptor = {
   id: string;
   name: string;
   version: string;
+  description?: string;
   localizations?: Record<string, PluginLocalization>;
   source: "built_in" | "marketplace" | "local_file" | string;
   status?: "enabled" | "disabled" | string;

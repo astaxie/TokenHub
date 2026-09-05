@@ -30,7 +30,7 @@ export function providerAuthMode(values: Record<string, string>, providerTypeOpt
   return preferredProviderAuthMode(modes);
 }
 
-const providerConnectionTestFields = new Set(["base_url", "api_key", "type", providerAuthModeField, legacyProviderAuthModeField, "custom_headers"]);
+const providerConnectionTestFields = new Set(["base_url", "api_key", "clear_api_key", "type", providerAuthModeField, legacyProviderAuthModeField, "custom_headers"]);
 
 export function providerConnectionTestRunAfterUpdate(currentRun: number, key: string) {
   return providerConnectionTestFields.has(key) ? currentRun + 1 : currentRun;
@@ -58,11 +58,12 @@ export function providerCatalogDiscoveryRouteID(catalogID: string, entry: Provid
   return providerCatalogSupportsModelPreview(entry, actions) ? catalogID : "";
 }
 
-export function providerCatalogAPIKeyRequired(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = [], providerTypeOptions: ProviderAuthModeOption[] = []) {
-  if (catalogID === "custom") return true;
-  const option = providerTypeOptions.find((item) => item.value === entry?.type);
+export function providerCatalogAPIKeyRequired(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = [], providerTypeOptions: ProviderAuthModeOption[] = [], currentProviderType = "") {
+  const providerType = catalogID === "custom" ? currentProviderType || defaultProviderTypeValue(providerTypeOptions) : entry?.type;
+  const option = providerTypeOptions.find((item) => item.value === providerType);
   if (option?.apiKeyRequired === false) return false;
   if (option?.apiKeyRequired === true) return true;
+  if (catalogID === "custom") return true;
   const action = providerCatalogModelsPreviewAction(entry, actions);
   if (!action) return true;
   return pluginActionRequiredFields(action).has("api_key");
@@ -82,6 +83,7 @@ export function customUpstreamDiscoveryPayload(
     type: providerTypeValue(values, providerTypeOptions),
     base_url: values.base_url,
     api_key: values.api_key,
+    ...(values.clear_api_key === "true" ? { clear_api_key: true } : {}),
     ...headers,
     [providerAuthModeField]: authMode,
     [legacyProviderAuthModeField]: authMode,
@@ -97,6 +99,7 @@ export function customUpstreamConnectionKey(values: Record<string, string>, prov
   return JSON.stringify([
     values.base_url,
     values.api_key,
+    values.clear_api_key === "true",
     providerTypeValue(values, providerTypeOptions),
     providerAuthMode(values, providerTypeOptions),
     values.custom_headers,

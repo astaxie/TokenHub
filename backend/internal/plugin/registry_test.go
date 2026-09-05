@@ -55,10 +55,11 @@ func TestRegisterRejectsBlankID(t *testing.T) {
 func TestRegistryMergesDescriptorsForSamePlugin(t *testing.T) {
 	registry := NewRegistry()
 	if err := registry.Register(Descriptor{
-		ID:      "tokenhub.codex",
-		Name:    "Codex",
-		Version: "built-in",
-		Source:  SourceBuiltIn,
+		ID:          "tokenhub.codex",
+		Name:        "Codex",
+		Version:     "built-in",
+		Description: "Connects Codex subscriptions to TokenHub.",
+		Source:      SourceBuiltIn,
 		Marketplace: &MarketplaceMetadata{
 			Summary:    "Official Codex subscription provider.",
 			Categories: []string{"provider"},
@@ -94,6 +95,9 @@ func TestRegistryMergesDescriptorsForSamePlugin(t *testing.T) {
 	}
 	if descriptor.Name != "Codex" || descriptor.Version != "built-in" || descriptor.Source != SourceBuiltIn {
 		t.Fatalf("descriptor identity changed: %+v", descriptor)
+	}
+	if descriptor.Description != "Connects Codex subscriptions to TokenHub." {
+		t.Fatalf("descriptor description changed: %q", descriptor.Description)
 	}
 	if want := []Kind{KindAdminUI, KindProvider}; !reflect.DeepEqual(descriptor.Kinds, want) {
 		t.Fatalf("kinds = %v, want %v", descriptor.Kinds, want)

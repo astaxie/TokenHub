@@ -72,7 +72,7 @@ export function ProviderAPIQuickCatalog({
       <button className={selectedID === "custom" ? "custom-provider-button provider-quick-custom active" : "custom-provider-button provider-quick-custom"} onClick={onSelectCustom} type="button">
         <Plus size={14} />
         <span>{tx("自定义渠道商")}</span>
-        <em>{tx("填写名称、Base URL 和 API Key")}</em>
+        <em>{tx("填写名称和 Base URL")}</em>
       </button>
     </section>
   );
@@ -144,7 +144,7 @@ export function ProviderAPIQuickConnect({
   const connectionTestRun = useRef(0);
   const custom = catalogID === "custom";
   const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
-  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions);
+  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions, values.type);
   const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
   const connectionReady = Boolean(values.base_url?.trim() && (!apiKeyRequired || values.api_key?.trim()));
 
@@ -224,7 +224,7 @@ export function ProviderAPIQuickConnect({
             <span><KeyRound size={18} /></span>
             <div>
               <strong>{tx(custom ? "填写连接信息" : apiKeyRequired ? "只需填写 API Key" : "连接插件上游服务")}</strong>
-              <p>{tx(custom ? "自定义渠道需要填写名称、Base URL 和 API Key。" : apiKeyRequired ? "把上游 Key 保存到 Provider，适合单账号或兼容 API。" : "该插件声明连接测试可不填写认证密钥；启用认证时再填写 token。")}</p>
+              <p>{tx(custom && apiKeyRequired ? "自定义渠道需要填写名称、Base URL 和 API Key。" : apiKeyRequired ? "把上游 Key 保存到 Provider，适合单账号或兼容 API。" : "上游未启用认证时可留空；启用认证时填写密钥。")}</p>
             </div>
           </div>
 
@@ -247,7 +247,7 @@ export function ProviderAPIQuickConnect({
           )}
 
           <label className="field provider-quick-key-field">
-            <span>{apiKeyRequired ? "API Key" : tx("Application Token（可选）")}</span>
+            <span>{apiKeyRequired ? "API Key" : tx("认证密钥（可选）")}</span>
             <div className="provider-quick-key-input">
               <input
                 autoComplete="new-password"
@@ -291,7 +291,7 @@ export function ProviderAPIQuickConnect({
       {activeTab === "models" ? (
         <div className="provider-quick-tab-panel">
           {custom && !values.base_url?.trim() ? (
-            <p className="provider-quick-custom-note">{tx("先在“连接”中填写 Base URL 和 API Key，这里会加载自定义渠道的上游模型。")}</p>
+            <p className="provider-quick-custom-note">{tx("先在“连接”中填写 Base URL，这里会加载自定义渠道的上游模型。")}</p>
           ) : (
             <>
               <div className="provider-quick-model-summary">

@@ -61,7 +61,7 @@ export function PluginsView({
   const [installDraft, setInstallDraft] = useState<PluginInstallDraft>(emptyInstallDraft());
   const [localActiveTab, setLocalActiveTab] = useState<PluginManagerTabKey>("installed");
   const activeTab = controlledActiveTab ?? localActiveTab;
-  const [activeExtensionCategory, setActiveExtensionCategory] = useState<PluginExtensionCategoryKey>("provider");
+  const [activeExtensionCategory, setActiveExtensionCategory] = useState<"all" | PluginExtensionCategoryKey>("all");
   const [statusFilter, setStatusFilter] = useState<PluginStatusFilterKey>("all");
   const [pluginQuery, setPluginQuery] = useState("");
   const simRegistry = useMemo(() => simRegistryFromPlugins(plugins), [plugins]);
@@ -146,6 +146,7 @@ export function PluginsView({
   const pluginPermissionPreviewDraft = (plugin: PluginDescriptor) => pluginPermissionPreviews[plugin.id] ?? emptyPermissionPreviewDraft();
 
   function selectManagerTab(tab: PluginManagerTabKey) {
+    if (tab === "installed") setActiveExtensionCategory("all");
     setLocalActiveTab(tab);
     onActiveTabChange?.(tab);
   }
@@ -408,6 +409,42 @@ export function PluginsView({
       <PluginManagerHeader activeTab={activeTab} marketplaceWebsiteURL={marketplaceWebsiteURL} onTabChange={selectManagerTab} />
 
       {activeTab === "installed" ? (
+        <div className="plugin-extension-workspace">
+          <aside className="plugin-extension-nav" aria-label={tx("已安装插件")} role="tablist">
+            <div className="plugin-extension-nav-heading">
+              <strong>{tx("已安装插件")}</strong>
+              <span>{effectivePlugins.length}</span>
+            </div>
+            <button
+              aria-label={tx("全部插件")}
+              aria-selected={activeExtensionCategory === "all"}
+              className={activeExtensionCategory === "all" ? "active" : ""}
+              onClick={() => setActiveExtensionCategory("all")}
+              role="tab"
+              type="button"
+            >
+              <PackageOpen size={16} aria-hidden="true" />
+              <span>{tx("全部插件")}</span>
+              <strong>{effectivePlugins.length}</strong>
+            </button>
+            {pluginExtensionCategories.map((category) => (
+              <button
+                aria-label={tx(category.label)}
+                aria-selected={activeExtensionCategory === category.key}
+                className={activeExtensionCategory === category.key ? "active" : ""}
+                key={category.key}
+                onClick={() => setActiveExtensionCategory(category.key)}
+                role="tab"
+                type="button"
+              >
+                {extensionCategoryIcon(category.key)}
+                <span>{tx(category.label)}</span>
+                <strong>{extensionCategoryCount(category.key, { providerPlugins, chainInjectionPlugins, uiTemplatePlugins, backgroundJobPlugins })}</strong>
+              </button>
+            ))}
+          </aside>
+          <div className="plugin-extension-content">
+      {activeExtensionCategory === "all" ? (
       <section className="section plugin-installed-section" data-plugin-manager-section="registry">
         <div className="section-header plugin-installed-header">
           <div>
@@ -448,18 +485,13 @@ export function PluginsView({
                   {filteredPlugins.map((plugin) => {
                     const lifecycle = pluginManagerDisplayState({ plugin });
                     return (
-                      <article className={`plugin-installed-row${lifecycle.status === "disabled" ? " disabled" : ""}`} key={plugin.id}>
+                      <article className={`plugin-installed-row${lifecycle.status === "disabled" ? " disabled" : ""}${plugin.distribution ? " has-distribution" : ""}`} key={plugin.id}>
                         <div className="plugin-installed-main">
-                          <PluginTitle plugin={plugin} onSelect={onSelectPlugin} />
-                          <div className="plugin-installed-taxonomy">
-                            <TagList values={[...plugin.kinds.map(pluginKindLabel), ...plugin.placements.map(pluginPlacementLabel)]} />
-                          </div>
-                        </div>
-                        <div className="plugin-installed-source">
-                          <StatusPill status={plugin.source} label={pluginSourceLabel(plugin.source)} />
+                          <InstalledPluginTitle plugin={plugin} onSelect={onSelectPlugin} />
                         </div>
                         <div className="plugin-installed-state">
                           <PluginLifecycleControl
+                            allowBuiltInUpdates
                             draft={pluginStateDraft(plugin)}
                             lifecycle={lifecycle}
                             onRollback={rollbackPlugin}
@@ -468,8 +500,8 @@ export function PluginsView({
                             rollbackDraft={pluginRollbackDraft(plugin)}
                           />
                         </div>
-                        <div className="plugin-installed-distribution">
-                          {plugin.distribution ? (
+                        {plugin.distribution ? (
+                          <div className="plugin-installed-distribution">
                             <DistributionMetadata
                               lifecycle={lifecycle}
                               plugin={plugin}
@@ -478,8 +510,8 @@ export function PluginsView({
                               onPreview={(target) => previewPluginPermissions(target, "update")}
                               previewDraft={pluginPermissionPreviewDraft(plugin)}
                             />
-                          ) : null}
-                        </div>
+                          </div>
+                        ) : null}
                         <div className="plugin-installed-actions">
                           {onSelectPlugin ? (
                             <>
@@ -512,55 +544,6 @@ export function PluginsView({
         </div>
       </section>
       ) : null}
-
-      {activeTab === "install" ? (
-        <section className="section plugin-install-center" data-plugin-manager-section="install">
-          <div className="section-header">
-            <div>
-              <h2>{tx("安装插件")}</h2>
-              <span>{tx("URL 或 ZIP 插件包")}</span>
-            </div>
-            <a className="secondary-button plugin-marketplace-link" href={marketplaceWebsiteURL} rel="noreferrer" target="_blank">
-              <ExternalLink size={14} aria-hidden="true" />
-              <span>{tx("浏览插件市场")}</span>
-            </a>
-          </div>
-          <div className="section-body">
-            <PluginInstallFields
-              draft={installDraft}
-              onInstall={installPlugin}
-              onPermissionPreview={previewInstallPluginPermissions}
-              permissionPreviewDraft={installPermissionPreview}
-              setDraft={setInstallDraft}
-            />
-          </div>
-        </section>
-      ) : null}
-
-      {activeTab === "extensions" ? (
-        <div className="plugin-extension-workspace">
-          <aside className="plugin-extension-nav" aria-label={tx("扩展类型")} role="tablist">
-            <div className="plugin-extension-nav-heading">
-              <strong>{tx("扩展类型")}</strong>
-              <span>{providerPlugins + chainInjectionPlugins + uiTemplatePlugins + backgroundJobPlugins}</span>
-            </div>
-            {pluginExtensionCategories.map((category) => (
-              <button
-                aria-label={tx(category.label)}
-                aria-selected={activeExtensionCategory === category.key}
-                className={activeExtensionCategory === category.key ? "active" : ""}
-                key={category.key}
-                onClick={() => setActiveExtensionCategory(category.key)}
-                role="tab"
-                type="button"
-              >
-                {extensionCategoryIcon(category.key)}
-                <span>{tx(category.label)}</span>
-                <strong>{extensionCategoryCount(category.key, { providerPlugins, chainInjectionPlugins, uiTemplatePlugins, backgroundJobPlugins })}</strong>
-              </button>
-            ))}
-          </aside>
-          <div className="plugin-extension-content">
 
       {activeExtensionCategory === "provider" ? (
         <section className="section" data-plugin-manager-section="provider">
@@ -949,6 +932,30 @@ export function PluginsView({
           </div>
         </div>
       ) : null}
+
+      {activeTab === "install" ? (
+        <section className="section plugin-install-center" data-plugin-manager-section="install">
+          <div className="section-header">
+            <div>
+              <h2>{tx("安装插件")}</h2>
+              <span>{tx("URL 或 ZIP 插件包")}</span>
+            </div>
+            <a className="secondary-button plugin-marketplace-link" href={marketplaceWebsiteURL} rel="noreferrer" target="_blank">
+              <ExternalLink size={14} aria-hidden="true" />
+              <span>{tx("浏览插件市场")}</span>
+            </a>
+          </div>
+          <div className="section-body">
+            <PluginInstallFields
+              draft={installDraft}
+              onInstall={installPlugin}
+              onPermissionPreview={previewInstallPluginPermissions}
+              permissionPreviewDraft={installPermissionPreview}
+              setDraft={setInstallDraft}
+            />
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -995,6 +1002,34 @@ function PluginTitle({ plugin, onSelect }: { plugin: PluginDescriptor; onSelect?
       <div className="plugin-title-meta">
         <span className="plugin-title-id" title={plugin.id}>{plugin.id}</span>
         <span className="plugin-title-version">{plugin.version || tx("内置")}</span>
+      </div>
+    </div>
+  );
+}
+
+function InstalledPluginTitle({ plugin, onSelect }: { plugin: PluginDescriptor; onSelect?: (pluginID: string) => void }) {
+  const locale = languageLocale();
+  const name = localizedPluginName(plugin, locale);
+  const taxonomy = [...plugin.kinds.map(pluginKindLabel), ...plugin.placements.map(pluginPlacementLabel)];
+  const visibleTaxonomy = taxonomy.slice(0, 2);
+  const remainingTaxonomy = taxonomy.length - visibleTaxonomy.length;
+  const version = plugin.version && plugin.version !== "built-in" ? plugin.version : "";
+  const metadataTitle = [plugin.id, pluginSourceLabel(plugin.source), version, ...taxonomy].filter(Boolean).join(" · ");
+  return (
+    <div className="plugin-title-cell plugin-installed-title-cell">
+      {onSelect ? (
+        <button className="plugin-title-link" type="button" onClick={() => onSelect(plugin.id)} aria-label={`${tx("查看插件详情")} ${name}`}>
+          {name}
+        </button>
+      ) : (
+        <strong className="plugin-title-name">{name}</strong>
+      )}
+      <div className="plugin-installed-meta" title={metadataTitle}>
+        <span className="plugin-installed-id" title={plugin.id}>{plugin.id}</span>
+        <span className="plugin-installed-label source">{pluginSourceLabel(plugin.source)}</span>
+        {version ? <span className="plugin-installed-label version">{version}</span> : null}
+        {visibleTaxonomy.map((value) => <span className="plugin-installed-label" key={value}>{value}</span>)}
+        {remainingTaxonomy > 0 ? <span className="plugin-installed-label count">+{remainingTaxonomy}</span> : null}
       </div>
     </div>
   );

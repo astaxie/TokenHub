@@ -24,7 +24,8 @@ test("admin can sign in and sign out of the console", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
 });
 
-test("admin can validate and create a custom Provider", async ({ page }) => {
+for (const authenticated of [true, false]) {
+test(`admin can validate and create a custom Provider with authentication = ${authenticated}`, async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "Provider 渠道", exact: true }).click();
   await expect(page).toHaveURL(/\/providers$/);
@@ -33,19 +34,23 @@ test("admin can validate and create a custom Provider", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "选择接入方式" })).toBeVisible();
   await page.getByRole("button", { name: "下一步" }).click();
   await page.getByRole("button", { name: "自定义渠道商" }).click();
-  await page.getByLabel("渠道名称").fill("E2E Fake Provider");
-  await page.getByLabel("Base URL").fill(`http://127.0.0.1:${upstreamPort}/v1`);
-  await page.getByLabel("API Key", { exact: true }).fill(upstreamKey);
+  const providerName = authenticated ? "E2E Fake Provider" : "E2E Local Provider";
+  await page.getByLabel("渠道名称").fill(providerName);
+  await page.getByLabel("Base URL").fill(`http://${authenticated ? "127.0.0.1" : "localhost"}:${upstreamPort}${authenticated ? "" : "/open"}/v1`);
+  const credential = page.getByLabel("认证密钥（可选）", { exact: true });
+  if (authenticated) await credential.fill(upstreamKey);
+  else await expect(credential).toHaveValue("");
 
   await page.getByRole("button", { name: "测试连接" }).click();
-  await expect(page.getByRole("status")).toContainText("API Key 配置有效");
+  await expect(page.getByRole("status")).toContainText("连接测试通过");
   await page.getByRole("tab", { name: "模型" }).click();
   await expect(page.getByText("e2e-chat-model", { exact: true }).first()).toBeVisible();
   await page.getByRole("switch", { name: "引入 e2e-chat-model" }).click();
   await page.locator("form.provider-modal").getByRole("button", { name: "新增 Provider" }).click();
 
-  await expect(page.getByText("E2E Fake Provider", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(providerName, { exact: true }).first()).toBeVisible();
 });
+}
 
 test("admin can issue an API Key and open its usage page", async ({ page }) => {
   await login(page);
@@ -82,10 +87,27 @@ test("admin can inspect plugin details and files without fake settings", async (
   await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
   await expect(page).toHaveURL(/\/plugins$/);
 
+  const configurableRow = page.locator(".plugin-installed-row").filter({
+    has: page.getByRole("button", { name: "设置", exact: true }),
+  }).first();
+  await expect(configurableRow).toBeVisible();
+  await expect(configurableRow.locator(".plugin-installed-meta")).toBeVisible();
+  await expect(configurableRow.locator(".plugin-title-version")).toHaveCount(0);
+  await expect(configurableRow.locator(".plugin-installed-label")).not.toHaveCount(0);
+  const detailBox = await configurableRow.getByRole("button", { name: "详情", exact: true }).boundingBox();
+  const settingsBox = await configurableRow.getByRole("button", { name: "设置", exact: true }).boundingBox();
+  expect(detailBox).not.toBeNull();
+  expect(settingsBox).not.toBeNull();
+  expect(Math.abs(detailBox!.y - settingsBox!.y)).toBeLessThan(1);
+  expect(settingsBox!.x - detailBox!.x - detailBox!.width).toBeGreaterThanOrEqual(7);
+  expect(detailBox!.width).toBeGreaterThanOrEqual(80);
+  expect(settingsBox!.width).toBeGreaterThanOrEqual(80);
+
   await page.getByRole("button", { name: "查看插件详情 External Trace Hook" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace$/);
   await expect(page.getByRole("heading", { name: "External Trace Hook" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "这个插件做什么" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "主要功能" })).toBeVisible();
+  await expect(page.getByText("Contract fixture for an external trace export gateway hook.", { exact: true })).toBeVisible();
   await expect(page.getByText("请求处理", { exact: true })).toBeVisible();
   await expect(page.getByText("export", { exact: true })).not.toBeVisible();
   await page.getByText("开发者信息", { exact: true }).click();
@@ -117,7 +139,6 @@ test("admin can inspect plugin details and files without fake settings", async (
 test("admin can adjust UI template settings", async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
-  await page.getByRole("tab", { name: "扩展类型" }).click();
   await page.getByRole("tab", { name: "界面模板" }).click();
   await page.getByRole("button", { name: "配置界面模板 TokenHub 默认界面模板" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);

@@ -32,7 +32,7 @@ describe("ProviderUpsertModal", () => {
     vi.unstubAllGlobals();
   });
 
-  it("submits a Provider creation payload from the API key flow", async () => {
+  it.each([true, false])("submits a Provider creation payload with API key required = %s", async (apiKeyRequired) => {
     const user = userEvent.setup();
     const onSaved = vi.fn().mockResolvedValue(undefined);
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -59,6 +59,7 @@ describe("ProviderUpsertModal", () => {
         catalog={[catalogEntry]}
         loading={false}
         mode="create"
+        providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, apiKeyRequired }]}
         onClose={vi.fn()}
         onSaved={onSaved}
         pluginUI={[
@@ -85,7 +86,8 @@ describe("ProviderUpsertModal", () => {
     ));
     await user.click(screen.getByRole("button", { name: "下一步" }));
     await user.type(screen.getByLabelText("Tenant ID"), "tenant-001");
-    await user.type(screen.getByLabelText("API Key", { exact: true }), "provider-secret");
+    if (apiKeyRequired) await user.type(screen.getByLabelText("API Key", { exact: true }), "provider-secret");
+    else expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
     await user.click(screen.getByRole("button", { name: "新增 Provider" }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
@@ -97,7 +99,7 @@ describe("ProviderUpsertModal", () => {
       name: "Quality Provider",
       type: "openai_compatible",
       base_url: "https://provider.example/v1",
-      api_key: "provider-secret",
+      api_key: apiKeyRequired ? "provider-secret" : "",
       catalog_id: "quality-provider",
       options: { tenant_id: "tenant-001" },
     });

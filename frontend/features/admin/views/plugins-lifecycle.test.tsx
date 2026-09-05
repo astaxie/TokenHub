@@ -104,7 +104,7 @@ describe("PluginsView lifecycle controls", () => {
     await waitFor(() => expect(screen.getByText("1.0.0 · 插件回滚完成，重启后生效")).toBeInTheDocument());
   });
 
-  it("keeps built-in plugin lifecycle actions read-only", () => {
+  it("allows built-in plugins to be disabled from the installed list", () => {
     const data = emptyData();
     data.plugins = [{
       id: "tokenhub.provider.openai",
@@ -125,7 +125,7 @@ describe("PluginsView lifecycle controls", () => {
 
     expect(screen.getAllByText("已启用").some((element) => element.matches(".pill"))).toBe(true);
     expect(screen.queryByRole("button", { name: "回滚" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "禁用" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "禁用" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "更新" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "卸载" })).not.toBeInTheDocument();
   });

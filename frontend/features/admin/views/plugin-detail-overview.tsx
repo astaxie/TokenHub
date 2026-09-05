@@ -1,4 +1,4 @@
-import { Braces, ChevronDown, CircleGauge, LayoutPanelTop, PackageCheck, Play, Puzzle, RefreshCw, ShieldCheck } from "lucide-react";
+import { Braces, ChevronDown, CircleGauge, LayoutPanelTop, Play, Puzzle, RefreshCw, ShieldCheck } from "lucide-react";
 import { type ReactNode } from "react";
 import {
   type AdminUIContribution,
@@ -59,7 +59,7 @@ export function PluginOverview({
       marketplace: marketplaceEntry.plugin.marketplace ?? plugin.marketplace,
     },
   } : plugin, { locale });
-  const description = pluginDescription(marketplace.description, marketplace.name, plugin);
+  const description = pluginDescription(marketplace.description, marketplace.name, plugin, contributions);
   const publisher = marketplace.publisher.name === "unknown" || marketplace.publisher.name === plugin.source
     ? ""
     : marketplace.publisher.name;
@@ -67,31 +67,31 @@ export function PluginOverview({
 
   return (
     <div className="plugin-detail-content">
-      <section className="plugin-overview-about" aria-labelledby="plugin-about-title">
-        <div>
-          <h2 id="plugin-about-title">{tx("关于此插件")}</h2>
-          <p>{description}</p>
-        </div>
-        {publisher ? <div className="plugin-overview-publisher"><span>{tx("开发者")}</span><strong>{publisher}</strong></div> : null}
-      </section>
+      {description || features.length > 0 ? (
+        <section className="plugin-overview-section plugin-overview-purpose" aria-labelledby="plugin-features-title">
+          <div className="plugin-overview-purpose-header">
+            <SectionTitle icon={<Puzzle size={18} />} title={tx("主要功能")} id="plugin-features-title" />
+            {publisher ? <div className="plugin-overview-publisher"><span>{tx("开发者")}</span><strong>{publisher}</strong></div> : null}
+          </div>
+          {description ? <p className="plugin-overview-description">{description}</p> : null}
+          {features.length > 0 ? (
+            <div className="plugin-overview-feature-list">
+              {features.map((feature) => (
+                <div className="plugin-overview-feature" key={feature.key}>
+                  <span className="plugin-overview-feature-icon" aria-hidden="true">{feature.icon}</span>
+                  <div><strong>{feature.title}</strong><p>{feature.description}</p></div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="plugin-overview-facts" aria-label={tx("安装与运行")}>
         <OverviewFact label={tx("状态")} value={tx(marketplace.lifecycle.labelKey)} tone={marketplace.lifecycle.tone} />
         <OverviewFact label={tx("版本")} value={marketplace.installedVersion || plugin.version || "-"} />
         <OverviewFact label={tx("安装来源")} value={pluginSourceLabel(plugin.source)} />
         <OverviewFact label={tx("更新")} value={pluginUpdateLabel(plugin, marketplace.updateAvailable)} tone={marketplace.updateAvailable ? "warn" : "neutral"} />
-      </section>
-
-      <section className="plugin-overview-section" aria-labelledby="plugin-features-title">
-        <SectionTitle icon={<Puzzle size={18} />} title={tx("这个插件做什么")} id="plugin-features-title" />
-        <div className="plugin-overview-feature-list">
-          {features.map((feature) => (
-            <div className="plugin-overview-feature" key={feature.key}>
-              <span className="plugin-overview-feature-icon" aria-hidden="true">{feature.icon}</span>
-              <div><strong>{feature.title}</strong><p>{feature.description}</p></div>
-            </div>
-          ))}
-        </div>
       </section>
 
       <section className="plugin-overview-section" aria-labelledby="plugin-safety-title">
@@ -214,14 +214,19 @@ function TechnicalGroup({ description, rows, title }: { description: string; row
   );
 }
 
-function pluginDescription(description: string, name: string, plugin: PluginDescriptor) {
+function pluginDescription(description: string, name: string, plugin: PluginDescriptor, contributions: AdminUIContribution[]) {
   const normalized = description.trim();
   if (normalized && normalized !== name && normalized !== plugin.id) return normalized;
+  if (contributions.some((item) => item.slot.startsWith("provider."))) {
+    return tx("扩展 Provider 的连接设置和账号资源页面，让管理员直接管理插件提供的高级选项。");
+  }
   if (plugin.kinds.includes("provider")) return tx("连接模型服务，并让管理员在 TokenHub 中配置和使用它们。");
   if (plugin.kinds.includes("sim")) return tx("调整 TokenHub 管理后台的界面外观和布局。");
   if (plugin.placements.includes("gateway_chain")) return tx("在模型请求经过网关时执行额外的处理逻辑。");
   if (plugin.placements.includes("background")) return tx("在后台执行自动化维护或同步任务。");
-  return tx("未提供插件说明。");
+  if (plugin.placements.includes("management_action")) return tx("提供可由管理员按需执行的插件操作。");
+  if (contributions.length > 0) return tx("在 TokenHub 管理后台中增加相关页面、面板或操作入口。");
+  return "";
 }
 
 function pluginFeatures(plugin: PluginDescriptor, related: {
@@ -241,7 +246,17 @@ function pluginFeatures(plugin: PluginDescriptor, related: {
   if (capabilities.some((item) => item.kind === "sim") || plugin.kinds.includes("sim")) {
     rows.push({ key: "appearance", icon: <LayoutPanelTop size={17} />, title: tx("界面外观"), description: tx("为 TokenHub 提供界面主题、布局或页面样式。") });
   }
-  if (related.contributions.length > 0) {
+  const contributionSlots = new Set(related.contributions.map((item) => item.slot));
+  if (contributionSlots.has("provider.form.section")) {
+    rows.push({ key: "provider-form", icon: <LayoutPanelTop size={17} />, title: tx("Provider 高级设置"), description: tx("在新建或编辑 Provider 时增加此插件提供的连接与高级选项。") });
+  }
+  if (contributionSlots.has("provider.model.panel")) {
+    rows.push({ key: "provider-model", icon: <LayoutPanelTop size={17} />, title: tx("模型能力设置"), description: tx("在 Provider 模型页面增加此插件提供的模型能力选项。") });
+  }
+  if (contributionSlots.has("provider.resource.form.section") || contributionSlots.has("provider.resource.panel")) {
+    rows.push({ key: "provider-resource", icon: <LayoutPanelTop size={17} />, title: tx("账号资源设置"), description: tx("在 Provider 账号和资源页面增加此插件提供的配置与状态信息。") });
+  }
+  if (related.contributions.some((item) => !item.slot.startsWith("provider."))) {
     rows.push({ key: "ui", icon: <LayoutPanelTop size={17} />, title: tx("管理界面"), description: tx("在 TokenHub 管理后台中增加相关页面、面板或操作入口。") });
   }
   if (related.actions.length > 0 || plugin.placements.includes("management_action")) {
@@ -249,9 +264,6 @@ function pluginFeatures(plugin: PluginDescriptor, related: {
   }
   if (related.jobs.length > 0 || plugin.placements.includes("background")) {
     rows.push({ key: "jobs", icon: <RefreshCw size={17} />, title: tx("自动任务"), description: tx("按计划在后台执行维护或同步任务。") });
-  }
-  if (rows.length === 0) {
-    rows.push({ key: "extension", icon: <PackageCheck size={17} />, title: tx("扩展功能"), description: tx("为 TokenHub 提供此插件声明的扩展功能。") });
   }
   return rows;
 }

@@ -49,6 +49,9 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]any)
 		return serverPluginBootstrap{}, fmt.Errorf("configure provider credential refresh handlers: %w", err)
 	}
 	reconcileProviderPluginPolicies(store, adapterRegistry)
+	if err := pluginRuntime.CompleteRuntimeRestart(); err != nil {
+		return serverPluginBootstrap{}, fmt.Errorf("complete TokenHub plugin runtime restart: %w", err)
+	}
 
 	return serverPluginBootstrap{
 		pluginRegistry:         pluginRegistry,

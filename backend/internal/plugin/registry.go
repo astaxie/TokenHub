@@ -70,6 +70,9 @@ func mergeDescriptors(existing Descriptor, next Descriptor) Descriptor {
 	if next.Version == "" {
 		next.Version = existing.Version
 	}
+	if next.Description == "" {
+		next.Description = existing.Description
+	}
 	if next.Source == "" {
 		next.Source = existing.Source
 	}
