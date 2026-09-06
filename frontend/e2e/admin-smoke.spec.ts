@@ -173,22 +173,55 @@ test("admin can adjust UI template settings", async ({ page }) => {
   await expect.poll(() => page.locator(".plugin-setting-row").evaluateAll((rows) => rows.every((row) => row.scrollWidth <= row.clientWidth))).toBe(true);
 });
 
-test("admin can preview and publish an exact shadow rate card", async ({ page }) => {
+test.describe("Billing calculator", () => {
+  test.use({ timezoneId: "Asia/Shanghai" });
+  test("admin can calculate, publish, and inspect prices without advanced configuration", async ({ page }) => {
   await login(page);
   await page.goto("/billing");
-  await expect(page.getByRole("heading", { name: "精确计价与影子核对" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "先算清楚，再发布价格" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "外部账单连接器" })).not.toBeVisible();
   await page.getByRole("combobox", { name: "计价对象", exact: true }).selectOption({ index: 1 });
-  await page.getByLabel("价格依据", { exact: true }).fill("E2E pricing fixture");
   await page.getByLabel("普通输入", { exact: true }).fill("2");
-  await page.getByLabel("缓存读取", { exact: true }).fill("0.5");
-  await page.getByLabel("其他缓存写入", { exact: true }).fill("0");
-  await page.getByLabel("5 分钟缓存写入", { exact: true }).fill("0");
-  await page.getByLabel("1 小时缓存写入", { exact: true }).fill("0");
   await page.getByLabel("输出", { exact: true }).fill("6");
-  await page.getByRole("button", { name: "预览费用", exact: true }).click();
-  await expect(page.getByText("0.860000000000 USD", { exact: true }).first()).toBeVisible();
-  await page.getByRole("button", { name: "发布影子价目", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "影子价目已发布" })).toBeVisible();
-  await page.getByRole("button", { name: "读取已发布版本" }).click();
-  await expect(page.locator("li").filter({ hasText: /rate_/ }).first()).toBeVisible();
+  const input = page.getByLabel("普通输入", { exact: true });
+  expect(await input.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(40);
+  await page.getByRole("button", { name: "试算费用", exact: true }).click();
+  await expect(page.locator(".billing-result output")).toHaveText("0.008 USD");
+  await page.locator("summary").filter({ hasText: "单独设置缓存价格" }).click();
+  await page.getByLabel("缓存读取", { exact: true }).fill("0.5");
+  await expect(page.getByRole("button", { name: "发布用于后续核对" })).not.toBeVisible();
+  await page.locator("summary").filter({ hasText: "缓存用量与试算时间" }).click();
+  await page.getByLabel("总输入 Token", { exact: true }).fill("1000000");
+  await page.getByLabel("缓存读取 Token", { exact: true }).fill("800000");
+  await page.getByLabel("输出 Token", { exact: true }).fill("10000");
+  await page.getByRole("button", { name: "试算费用", exact: true }).click();
+  await expect(page.locator(".billing-result output")).toHaveText("0.86 USD");
+  await page.locator("summary").filter({ hasText: "设置峰谷时段" }).click();
+  await page.getByRole("button", { name: "添加时段", exact: true }).click();
+  await page.locator(".billing-period").getByLabel("普通输入", { exact: true }).fill("4");
+  await page.getByLabel("试算时间", { exact: true }).fill("2026-09-07T10:00");
+  await page.getByRole("button", { name: "试算费用", exact: true }).click();
+  await expect(page.locator(".billing-result output")).toHaveText("1.26 USD");
+  await expect(page.locator(".billing-period-badge")).toHaveText("时段 1");
+  await page.getByRole("button", { name: "删除时段", exact: true }).click();
+  await page.getByRole("button", { name: "试算费用", exact: true }).click();
+  await expect(page.locator(".billing-result output")).toHaveText("0.86 USD");
+  await page.getByRole("button", { name: "发布用于后续核对", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "已发布。" })).toBeVisible();
+  await page.getByRole("tab", { name: "价目与记录" }).click();
+  await expect(page.locator(".billing-version").first()).toBeVisible();
+  await page.getByRole("tab", { name: "账单与对账" }).click();
+  await expect(page.getByRole("heading", { name: "外部账单连接器" })).toBeVisible();
+  const last = page.getByRole("heading", { name: "外部账单明细" }).locator("xpath=ancestor::section[1]");
+  const next = page.getByRole("heading", { name: "成本对账规则" }).locator("xpath=ancestor::section[1]");
+  const bottom = await last.boundingBox();
+  const top = await next.boundingBox();
+  expect(top!.y - bottom!.y - bottom!.height).toBeGreaterThanOrEqual(18);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("tab", { name: "费用试算" }).click();
+  await expect.poll(() => page.locator(".billing-page").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(page.getByRole("combobox", { name: "计价对象", exact: true })).toBeVisible();
+  await expect(page.getByLabel("普通输入", { exact: true })).toHaveValue("2");
+});
+
 });

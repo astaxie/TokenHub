@@ -582,6 +582,9 @@ export function BillingView({
   loading: boolean;
   onReload: () => Promise<void>;
 }) {
+  const [activeTab, setActiveTab] = useState("pricing");
+  const isAdmin = appRole(user.role) === "admin";
+  const billingTabs = [["pricing", "费用试算"], ["history", "价目与记录"], ["reconciliation", "账单与对账"], ["usage", "用量成本"]] as const;
   const showMemberBreakdown = appRole(user.role) === "team_leader";
   const costCenterSection = (
     <DataSection title="成本中心">
@@ -612,10 +615,20 @@ export function BillingView({
     </DataSection>
   );
   return (
-    <>
-      {appRole(user.role) === "admin" ? <BillingRateCards api={api} data={data} /> : null}
-      {appRole(user.role) === "admin" ? <BillingConnectorManager api={api} data={data} loading={loading} onReload={onReload} /> : null}
-      {appRole(user.role) === "admin" ? <ReconciliationManager api={api} data={data} loading={loading} onReload={onReload} /> : null}
+    <div className="billing-page">
+      {isAdmin ? <div role="tablist" aria-label={tx("成本账单导航")} className="billing-tabs">{billingTabs.map(([id, label], index) => <button key={id} id={`billing-tab-${id}`} type="button" role="tab" aria-selected={activeTab === id} aria-controls={`billing-panel-${id}`} tabIndex={activeTab === id ? 0 : -1} onClick={() => setActiveTab(id)} onKeyDown={(event) => {
+        const next = event.key === "ArrowRight" ? (index + 1) % billingTabs.length : event.key === "ArrowLeft" ? (index + billingTabs.length - 1) % billingTabs.length : event.key === "Home" ? 0 : event.key === "End" ? billingTabs.length - 1 : -1;
+        if (next >= 0) { event.preventDefault(); setActiveTab(billingTabs[next][0]); document.getElementById(`billing-tab-${billingTabs[next][0]}`)?.focus(); }
+      }}>{tx(label)}</button>)}</div> : null}
+      {isAdmin ? <>
+        <div hidden={activeTab !== "pricing" && activeTab !== "history"}><BillingRateCards api={api} data={data} view={activeTab === "history" ? "history" : "pricing"} /></div>
+        <div hidden={activeTab !== "reconciliation"} className="billing-panel" role="tabpanel" id="billing-panel-reconciliation" aria-labelledby="billing-tab-reconciliation">
+          <p className="billing-hint">{tx("先接入供应商账单，再设置对账规则，检查平台估算与实际账单的差异。")}</p>
+          <BillingConnectorManager api={api} data={data} loading={loading} onReload={onReload} />
+          <ReconciliationManager api={api} data={data} loading={loading} onReload={onReload} />
+        </div>
+      </> : null}
+      <div hidden={isAdmin && activeTab !== "usage"} className="billing-panel" role={isAdmin ? "tabpanel" : undefined} id="billing-panel-usage" aria-labelledby={isAdmin ? "billing-tab-usage" : undefined}>
       {showMemberBreakdown ? (
         <div className="two-column">
           {costCenterSection}
@@ -650,7 +663,8 @@ export function BillingView({
           />
         </DataSection>
       </div>
-    </>
+      </div>
+    </div>
   );
 }
 
