@@ -186,7 +186,13 @@ func (s *Service) calculateAndSave(ctx context.Context, run Run, replace bool) (
 		bills, err = s.billing.ListRecordsInRange(run.ConnectorID, run.PeriodStart, run.PeriodEnd)
 	}
 	if err == nil {
-		usages, err = s.store.ListUsages(run.PeriodStart, run.PeriodEnd, window)
+		if scoped, ok := s.store.(interface {
+			ListScopedUsages(time.Time, time.Time, time.Duration, string, string) ([]Usage, error)
+		}); ok {
+			usages, err = scoped.ListScopedUsages(run.PeriodStart, run.PeriodEnd, window, run.ProviderID, run.ProviderResourceID)
+		} else {
+			usages, err = s.store.ListUsages(run.PeriodStart, run.PeriodEnd, window)
+		}
 	}
 	if err == nil {
 		usages = scopeUsages(run, usages)

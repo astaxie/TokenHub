@@ -38,7 +38,16 @@ func (s *GormStore) AddProviderModel(model ProviderModel) ProviderModel {
 	if model.LastSeenAt == nil {
 		model.LastSeenAt = &now
 	}
-	_ = s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
+	// Discovery refreshes catalog details; saved prices and their presence flags
+	// remain under the explicit inventory-edit workflow, including free prices.
+	_ = s.db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "provider_id"}, {Name: "upstream_model"}}, DoUpdates: clause.AssignmentColumns([]string{
+		"display_name", "canonical_name", "category", "family", "modality", "context_window",
+		"input_modalities", "output_modalities", "capabilities", "supported_parameters", "last_seen_at", "updated_at",
+	})}).Create(&model).Error
+	var saved ProviderModel
+	if err := s.db.Where("provider_id = ? AND upstream_model = ?", model.ProviderID, model.UpstreamModel).First(&saved).Error; err == nil {
+		return saved
+	}
 	return model
 }
 

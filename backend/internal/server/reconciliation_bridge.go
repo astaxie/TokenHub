@@ -106,6 +106,16 @@ func (b *reconciliationStoreBridge) ListUsages(from time.Time, to time.Time, win
 	return result, nil
 }
 
+// Push connector scope into the ledger query before applying statement limits.
+func (b *reconciliationStoreBridge) ListScopedUsages(from, to time.Time, window time.Duration, provider, resource string) ([]reconciliation.Usage, error) {
+	if store, ok := b.store.(interface {
+		ListScopedProviderReconciliationUsages(time.Time, time.Time, time.Duration, string, string) ([]reconciliation.Usage, error)
+	}); ok {
+		return store.ListScopedProviderReconciliationUsages(from, to, window, provider, resource)
+	}
+	return b.ListUsages(from, to, window)
+}
+
 func (b *reconciliationStoreBridge) SaveRun(run reconciliation.Run, items []reconciliation.Item) (reconciliation.Run, error) {
 	result, err := b.store.SaveReconciliationRun(serverReconciliationRun(run), serverReconciliationItems(items))
 	return domainReconciliationRun(result), domainReconciliationStoreError(err)

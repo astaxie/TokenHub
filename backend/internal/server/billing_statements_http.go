@@ -94,10 +94,10 @@ func (s *Server) exportPlatformBillingStatement(w http.ResponseWriter, r *http.R
 	}
 	defer func() { _ = file.Close(); _ = os.Remove(file.Name()) }()
 	writer := csv.NewWriter(file)
-	err = writer.Write([]string{"kind", "occurred_at", "request_id", "upstream_request_id", "provider_id", "provider_name", "resource_id", "resource_name", "model", "project_id", "project_name", "user_id", "api_key_id", "status", "reason", "currency", "amount", "amount_usd", "source"})
+	err = writer.Write([]string{"kind", "occurred_at", "request_id", "upstream_request_id", "provider_id", "provider_name", "resource_id", "resource_name", "model", "project_id", "project_name", "user_id", "api_key_id", "status", "reason", "currency", "amount", "amount_usd", "source", "evidence_incomplete"})
 	if err == nil {
 		err = store.scanBillingStatements(r.Context(), q, func(row billingStatementRow) error {
-			fields := []string{q.Kind, row.OccurredAt.Format(time.RFC3339Nano), row.RequestID, row.UpstreamRequestID, row.ProviderID, row.ProviderName, row.ResourceID, row.ResourceName, row.Model, row.ProjectID, row.ProjectName, row.UserID, row.APIKeyID, row.Status, row.Reason, row.Currency, row.Amount, row.AmountUSD, row.Source}
+			fields := []string{q.Kind, row.OccurredAt.Format(time.RFC3339Nano), row.RequestID, row.UpstreamRequestID, row.ProviderID, row.ProviderName, row.ResourceID, row.ResourceName, row.Model, row.ProjectID, row.ProjectName, row.UserID, row.APIKeyID, row.Status, row.Reason, row.Currency, row.Amount, row.AmountUSD, row.Source, strconv.FormatBool(row.EvidenceIncomplete)}
 			for i := range fields {
 				fields[i] = billingCSVCell(fields[i])
 			}

@@ -11,32 +11,33 @@ import (
 )
 
 type billingStatementQuery struct {
-	Kind                              string
-	From, To                          time.Time
-	Provider, Model, Project, GroupBy string
-	Offset, Limit                     int
+	Kind                                        string
+	From, To                                    time.Time
+	Provider, Resource, Model, Project, GroupBy string
+	Offset, Limit                               int
 }
 type billingStatementRow struct {
-	ID                string    `json:"id"`
-	RequestID         string    `json:"request_id"`
-	UpstreamRequestID string    `json:"upstream_request_id,omitempty"`
-	OccurredAt        time.Time `json:"occurred_at"`
-	ProviderID        string    `json:"provider_id,omitempty"`
-	ProviderName      string    `json:"provider_name,omitempty"`
-	ResourceID        string    `json:"resource_id,omitempty"`
-	ResourceName      string    `json:"resource_name,omitempty"`
-	Model             string    `json:"model"`
-	TenantModel       string    `json:"tenant_model,omitempty"`
-	ProjectID         string    `json:"project_id,omitempty"`
-	ProjectName       string    `json:"project_name,omitempty"`
-	UserID            string    `json:"user_id,omitempty"`
-	APIKeyID          string    `json:"api_key_id,omitempty"`
-	Status            string    `json:"status"`
-	Reason            string    `json:"reason,omitempty"`
-	Source            string    `json:"source"`
-	Currency          string    `json:"currency"`
-	Amount            string    `json:"amount,omitempty"`
-	AmountUSD         string    `json:"amount_usd,omitempty"`
+	ID                 string    `json:"id"`
+	RequestID          string    `json:"request_id"`
+	UpstreamRequestID  string    `json:"upstream_request_id,omitempty"`
+	OccurredAt         time.Time `json:"occurred_at"`
+	ProviderID         string    `json:"provider_id,omitempty"`
+	ProviderName       string    `json:"provider_name,omitempty"`
+	ResourceID         string    `json:"resource_id,omitempty"`
+	ResourceName       string    `json:"resource_name,omitempty"`
+	Model              string    `json:"model"`
+	TenantModel        string    `json:"tenant_model,omitempty"`
+	ProjectID          string    `json:"project_id,omitempty"`
+	ProjectName        string    `json:"project_name,omitempty"`
+	UserID             string    `json:"user_id,omitempty"`
+	APIKeyID           string    `json:"api_key_id,omitempty"`
+	Status             string    `json:"status"`
+	EvidenceIncomplete bool      `json:"evidence_incomplete"`
+	Reason             string    `json:"reason,omitempty"`
+	Source             string    `json:"source"`
+	Currency           string    `json:"currency"`
+	Amount             string    `json:"amount,omitempty"`
+	AmountUSD          string    `json:"amount_usd,omitempty"`
 }
 type billingStatementGroup struct {
 	ID             string `json:"id"`
@@ -86,7 +87,7 @@ func (s *GormStore) scanBillingStatements(ctx context.Context, q billingStatemen
 		options = &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		query := statementQuery{Side: q.Kind, Timezone: "UTC", ProviderID: q.Provider, Model: q.Model}
+		query := statementQuery{Side: q.Kind, Timezone: "UTC", ProviderID: q.Provider, ResourceID: q.Resource, Model: q.Model}
 		if q.Project != "" {
 			query.ProjectIDs = []string{q.Project}
 		}
@@ -103,6 +104,7 @@ func (s *GormStore) scanBillingStatements(ctx context.Context, q billingStatemen
 			if q.Kind == "provider" {
 				row.Source = "attempt_evidence"
 			}
+			row.EvidenceIncomplete = entry.Status == "pending" || entry.Status == "legacy_incomplete"
 			if entry.Status == "legacy_incomplete" {
 				row.Source = "legacy_usage"
 			}
@@ -161,10 +163,12 @@ func (s *GormStore) PlatformBillingStatement(ctx context.Context, q billingState
 		}
 		group := groups[key]
 		group.Records++
-		if amount, ok := statementAmount(row.AmountUSD); ok && row.Status != "pending" {
+		amount, known := statementAmount(row.AmountUSD)
+		if known && row.Status != "pending" {
 			total.Add(total, amount)
 			sums[key].Add(sums[key], amount)
-		} else {
+		}
+		if !known || row.Status == "pending" || row.EvidenceIncomplete {
 			result.Pending++
 			group.Pending++
 		}

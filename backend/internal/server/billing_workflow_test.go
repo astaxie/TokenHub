@@ -210,7 +210,7 @@ func TestBillingStatementsIncludeRetryCostsAndPostedFailedCharges(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tenant.Records != 1 || tenant.Pending != 0 || tenant.KnownAmountUSD != "2.000000000000" {
+	if tenant.Records != 1 || tenant.Pending != 1 || tenant.Complete || !tenant.Items[0].EvidenceIncomplete || tenant.KnownAmountUSD != "2.000000000000" {
 		t.Fatalf("posted failure hidden: %+v", tenant)
 	}
 	reconciled, err := store.ListProviderReconciliationUsages(from, to, 0)
@@ -234,6 +234,12 @@ func TestBillingStatementsIncludeRetryCostsAndPostedFailedCharges(t *testing.T) 
 	if len(rows) != 3 || rows[1][5] != "'=SUM(1)" {
 		t.Fatalf("CSV scope/escaping: %+v", rows)
 	}
+	query.Set("kind", "tenant")
+	response = doJSON(t, app, "GET", "/api/admin/billing/statements?"+query.Encode(), nil, token)
+	rows, err = csv.NewReader(strings.NewReader(response.Body)).ReadAll()
+	if err != nil || response.Code != 200 || len(rows) != 2 || rows[1][13] != "charged" || rows[1][17] != "2" || rows[1][19] != "true" {
+		t.Fatalf("CSV lost posted charge or incomplete evidence: %v %+v", err, rows)
+	}
 }
 func TestBillingStatementsUnknownCostAndLegacyNamespace(t *testing.T) {
 	store, project, key := billingWorkflowFixture(t)
@@ -256,7 +262,7 @@ func TestBillingStatementsUnknownCostAndLegacyNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Records != 2 || report.Pending != 1 || report.Legacy != 1 || report.Complete || report.KnownAmountUSD != "4.000000000000" {
+	if report.Records != 2 || report.Pending != 2 || report.Legacy != 1 || report.Complete || report.KnownAmountUSD != "4.000000000000" {
 		t.Fatalf("unknown/legacy amounts: %+v", report)
 	}
 }
