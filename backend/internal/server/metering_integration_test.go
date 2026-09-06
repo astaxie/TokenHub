@@ -8,10 +8,9 @@ import (
 	"tokenhub/backend/internal/metering"
 )
 
-func TestMeteringRequestKeepsPublishedPriceAndSettlesShadowOnce(t *testing.T) {
+func TestMeteringRequestKeepsAppliedPriceAndSettlesOnce(t *testing.T) {
 	store, project, key, _ := setupUserQuotaTest(t, map[string]any{})
-	old := meteringRateCard{Kind: "tenant", Target: "user-quota-model", Currency: "USD", Source: "test", Rates: metering.Rates{Input: "2", CacheRead: "0.5", CacheWrite: "0", CacheWrite5m: "0", CacheWrite1h: "0", Output: "6"}}
-	first, err := store.PublishMeteringCard(old)
+	_, err := store.UpdateModel("user-quota-model", Model{InputPriceUSDPer1M: 2, CacheReadPriceUSDPer1M: 0.5, OutputPriceUSDPer1M: 6})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,8 +18,7 @@ func TestMeteringRequestKeepsPublishedPriceAndSettlesShadowOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old.Rates.Input = "20"
-	if _, err := store.PublishMeteringCard(old); err != nil {
+	if _, err := store.UpdateModel("user-quota-model", Model{InputPriceUSDPer1M: 20}); err != nil {
 		t.Fatal(err)
 	}
 	usage := Usage{PromptTokens: 1000000, CachedInputTokens: 800000, CompletionTokens: 10000}
@@ -44,7 +42,7 @@ func TestMeteringRequestKeepsPublishedPriceAndSettlesShadowOnce(t *testing.T) {
 			}
 		}
 	}
-	if outcome.Tenant.Price == nil || outcome.Tenant.Price.Version != first.ID || outcome.Tenant.Charge == nil || outcome.Tenant.Charge.Amount != "0.860000000000" {
+	if outcome.Tenant.Price == nil || outcome.Tenant.Price.Rates.Input != "2" || outcome.Tenant.Charge == nil || outcome.Tenant.Charge.Amount != "0.860000000000" {
 		t.Fatalf("price snapshot changed: %+v", outcome)
 	}
 }
@@ -87,9 +85,9 @@ func TestMeteringRejectsContradictoryUsageAfterLegacyClamp(t *testing.T) {
 	}
 }
 
-func TestMeteringFXAndAttemptEvidenceRemainIndependent(t *testing.T) {
+func TestMeteringAttemptsIgnoreRetiredShadowPrices(t *testing.T) {
 	store, project, key, _ := setupUserQuotaTest(t, map[string]any{})
-	fx, err := store.PublishMeteringExchangeRate(meteringExchangeRate{Currency: "CNY", Rate: "0.14", Source: "test fixture"})
+	_, err := store.PublishMeteringExchangeRate(meteringExchangeRate{Currency: "CNY", Rate: "0.14", Source: "test fixture"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +130,7 @@ func TestMeteringFXAndAttemptEvidenceRemainIndependent(t *testing.T) {
 		t.Fatalf("missing attempt: %+v", result)
 	}
 	attempt := result.Attempts[0]
-	if attempt.Number != 2 || attempt.UpstreamRequestID != "upstream-id" || attempt.Charge.Price.ExchangeRateVersion != fx.ID || attempt.Charge.Charge.USD != "0.053900000000" || attempt.Charge.LegacyUSD != "0.8600000000000001" && attempt.Charge.LegacyUSD != "0.86" {
+	if attempt.Number != 2 || attempt.UpstreamRequestID != "upstream-id" || attempt.Charge.Price.Currency != "USD" || attempt.Charge.Charge.USD != "0.860000000000" || attempt.Charge.LegacyUSD != "0.8600000000000001" && attempt.Charge.LegacyUSD != "0.86" {
 		t.Fatalf("attempt evidence: %+v", attempt)
 	}
 }

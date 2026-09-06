@@ -2,7 +2,7 @@ import { cloneElement, isValidElement, useId, type ReactNode } from "react";
 import { languageLocale, tx } from "../i18n/runtime";
 
 export type Rates = Record<"input" | "cache_read" | "cache_write" | "cache_write_5m" | "cache_write_1h" | "output", string>;
-export type Period = { name: string; timezone: string; weekdays: number[]; start_time: string; end_time: string; rates: Rates };
+export type Period = { name: string; timezone: string; weekdays: number[]; start_time: string; end_time: string; effective_from?: string; effective_until?: string; rates: Rates };
 export type Card = { id?: string; revision?: number; kind: string; target: string; source: string; currency: string; effective_from?: string; rates: Rates; periods: Period[] };
 export const emptyRates = (): Rates => ({ input: "", cache_read: "", cache_write: "", cache_write_5m: "", cache_write_1h: "", output: "" });
 export const rateLabels: [keyof Rates, string][] = [["input", "普通输入"], ["cache_read", "缓存读取"], ["cache_write", "其他缓存写入"], ["cache_write_5m", "5 分钟缓存写入"], ["cache_write_1h", "1 小时缓存写入"], ["output", "输出"]];

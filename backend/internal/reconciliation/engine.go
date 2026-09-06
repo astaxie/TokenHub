@@ -94,8 +94,8 @@ func calculate(run Run, bills []BillingRecord, usages []Usage) (Run, []Item, err
 			continue
 		}
 		localCost := record.ProviderCostUSD
-		if localCost == 0 {
-			localCost = record.CostUSD
+		if localCost == 0 && !record.ProviderCostKnown {
+			return run, nil, fmt.Errorf("provider cost is pending for usage %s; tenant charges cannot substitute for costs", record.ID)
 		}
 		amount, parseErr := moneyFromFloat(localCost)
 		if parseErr != nil {

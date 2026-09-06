@@ -19,12 +19,12 @@ type CostDraft = {
 
 function costDraft(model: ProviderModel): CostDraft {
   return {
-    input: String(model.input_price_usd_per_1m ?? 0),
-    cache: String(model.cache_read_price_usd_per_1m ?? 0),
+    input: configuredPriceFormValue(model.input_price_usd_per_1m, model.metadata?.input_price_configured === "true" || (model.input_price_usd_per_1m ?? 0) > 0),
+    cache: configuredPriceFormValue(model.cache_read_price_usd_per_1m, model.metadata?.cache_read_price_configured === "true" || (model.cache_read_price_usd_per_1m ?? 0) > 0),
     cacheWrite: configuredPriceFormValue(model.cache_write_price_usd_per_1m, model.cache_write_price_configured),
     cacheWrite5m: configuredPriceFormValue(model.cache_write_5m_price_usd_per_1m, model.cache_write_5m_price_configured),
     cacheWrite1h: configuredPriceFormValue(model.cache_write_1h_price_usd_per_1m, model.cache_write_1h_price_configured),
-    output: String(model.output_price_usd_per_1m ?? 0),
+    output: configuredPriceFormValue(model.output_price_usd_per_1m, model.metadata?.output_price_configured === "true" || (model.output_price_usd_per_1m ?? 0) > 0),
   };
 }
 
@@ -73,6 +73,9 @@ export function ProviderModelInventory({
         method: "PATCH",
         body: JSON.stringify({
           input_price_usd_per_1m: costs.input,
+          input_price_configured: draft.input.trim() !== "",
+          output_price_configured: draft.output.trim() !== "",
+          cache_read_price_configured: draft.cache.trim() !== "",
           cache_read_price_usd_per_1m: costs.cache,
           cache_write_price_usd_per_1m: costs.cacheWrite,
           cache_write_price_configured: draft.cacheWrite.trim() !== "",
@@ -107,7 +110,7 @@ export function ProviderModelInventory({
       <div className="provider-model-inventory-head">
         <div>
           <strong>{tx("已引入模型与渠道成本")}</strong>
-          <span>{tx("渠道成本价用于请求审计和真实成本核算，不会改变模型目录中的对外统一价。")}</span>
+          <span>{tx("输入、输出和缓存读价留空表示未知，0 表示免费。缓存写价留空沿用默认规则；不会改变对外收费。")}</span>
         </div>
         <em>{models.length}</em>
       </div>

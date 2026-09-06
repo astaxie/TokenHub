@@ -85,6 +85,11 @@ func (b *reconciliationStoreBridge) ListDueRules(now time.Time, limit int) []rec
 }
 
 func (b *reconciliationStoreBridge) ListUsages(from time.Time, to time.Time, window time.Duration) ([]reconciliation.Usage, error) {
+	if store, ok := b.store.(interface {
+		ListProviderReconciliationUsages(time.Time, time.Time, time.Duration) ([]reconciliation.Usage, error)
+	}); ok {
+		return store.ListProviderReconciliationUsages(from, to, window)
+	}
 	records, err := b.store.ListReconciliationUsages(from, to, window)
 	if err != nil {
 		return nil, domainReconciliationStoreError(err)
@@ -95,7 +100,7 @@ func (b *reconciliationStoreBridge) ListUsages(from time.Time, to time.Time, win
 			ID: record.ID, RequestID: record.RequestID, ProjectID: record.ProjectID,
 			ModelName: record.ModelName, ProviderID: record.ProviderID,
 			ProviderResourceID: record.ProviderResourceID, CostUSD: record.CostUSD,
-			ProviderCostUSD: record.ProviderCostUSD, CreatedAt: record.CreatedAt,
+			ProviderCostUSD: record.ProviderCostUSD, ProviderCostKnown: record.ProviderCostUSD > 0, CreatedAt: record.CreatedAt,
 		}
 	}
 	return result, nil

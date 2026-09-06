@@ -93,3 +93,18 @@
 @media (max-width: 1100px) { .billing-workbench { grid-template-columns: minmax(0, 1fr) minmax(245px, 290px); gap: 16px; } .billing-step { padding: 20px; } }
 @media (max-width: 900px) { .billing-workbench { grid-template-columns: minmax(0, 1fr); } .billing-result { position: static; } .billing-result-empty { padding: 22px; } }
 @media (max-width: 560px) { .billing-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 4px; padding: 4px; } .billing-tabs button { min-width: 0; min-height: 44px; padding: 8px 6px; white-space: normal; font-size: 12px; line-height: 1.4; } .billing-intro { align-items: flex-start; flex-direction: column; gap: 12px; } .billing-intro h2 { font-size: 20px; } .billing-form-grid { grid-template-columns: 1fr; gap: 0; } .billing-step { padding: 18px; } .billing-rate-summary { grid-template-columns: 1fr 1fr; } .billing-lookup { align-items: stretch; flex-direction: column; } .billing-safe { font-size: 11px; } .billing-section-toolbar { align-items: flex-start; } .billing-panel .two-column { grid-template-columns: minmax(0, 1fr); } }
+
+.billing-confirm-dialog { width: min(680px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--ink); padding: 24px; }
+.billing-confirm-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.billing-confirm-dialog h2 { margin-top: 0; font-size: 20px; }
+.billing-confirm-dialog p { color: var(--ink-2); font-size: 13px; line-height: 1.7; }
+.billing-confirm-model { display: block; margin: 18px 0; overflow-wrap: anywhere; }
+.billing-confirm-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.billing-confirm-periods { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; overflow-wrap: anywhere; }
+.billing-statement-filters { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin-top: 20px; }
+.billing-statement-actions { display: flex; align-items: end; gap: 10px; padding-bottom: 16px; flex-wrap: wrap; }
+.billing-statement-totals { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 20px; padding: 20px 0; }
+.billing-statement-totals small, .billing-row-id { display: block; color: var(--ink-3); font-size: 11px; margin: 7px 0; overflow-wrap: anywhere; }
+.billing-statement-totals strong { font-size: 22px; overflow-wrap: anywhere; }
+@media(max-width:700px) { .billing-statement-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } .billing-confirm-periods { grid-template-columns: 1fr; } }
+@media(max-width:480px) { .billing-statement-filters { grid-template-columns: 1fr; } .billing-statement-totals { grid-template-columns: 1fr; gap: 8px; } .billing-confirm-dialog { padding: 16px; } .billing-confirm-actions { flex-wrap: wrap; } }

@@ -1042,7 +1042,7 @@ func (s *Server) serveAdminModelPatch(w http.ResponseWriter, r *http.Request, us
 		writeError(w, r, err)
 		return
 	}
-	model, err := s.store.UpdateModel(modelName, req.Model)
+	model, err := updateModelAsActor(s.store, modelName, req.Model, user)
 	if err != nil {
 		writeError(w, r, err)
 		return

@@ -6,8 +6,6 @@ import (
 	"net/url"
 	"testing"
 	"time"
-
-	"tokenhub/backend/internal/metering"
 )
 
 func TestModelPricePatchRejectsNegativeBasePrices(t *testing.T) {
@@ -62,7 +60,9 @@ func TestMeteringDiscoveredPricesRemainUnknownUntilExplicit(t *testing.T) {
 	}
 	for _, explicit := range []bool{false, true} {
 		if explicit {
-			_, err := store.PublishMeteringCard(meteringRateCard{Kind: "provider", Target: "provider:unpriced", Currency: "USD", Source: "explicit free fixture", Rates: metering.Rates{Input: "0"}})
+			value := 0.0
+			updated := (providerModelPatchRequest{InputPriceUSDPer1M: &value}).withCurrentCosts(provider)
+			_, err := store.UpdateProviderModel(provider.ID, updated)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,7 +96,7 @@ func TestMeteringDiscoveredPricesRemainUnknownUntilExplicit(t *testing.T) {
 			t.Fatalf("missing settlement: %+v", rows)
 		}
 		charge := settled.Attempts[0].Charge
-		if charge.LegacyUSD != "" {
+		if !explicit && charge.LegacyUSD != "" {
 			t.Fatalf("missing legacy price became known: %+v", charge)
 		}
 		if explicit {

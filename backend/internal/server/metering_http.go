@@ -12,6 +12,7 @@ import (
 )
 
 func (s *Server) registerMeteringRoutes() {
+	s.registerBillingWorkflowRoutes()
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/billing/exchange-rates", s.handleMeteringExchangeRate, s.adminMethodNotAllowed("billing", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/billing/evidence/{request_id}", s.handleMeteringEvidence, s.adminMethodNotAllowed("billing", http.MethodGet))
 	s.registerMethodRoutes("/api/admin/billing/rate-cards", func(methods string) http.HandlerFunc { return s.adminMethodNotAllowed("billing", methods) },
@@ -20,43 +21,10 @@ func (s *Server) registerMeteringRoutes() {
 }
 
 func (s *Server) handleMeteringRateCards(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireAdmin(w, r, "billing", r.Method)
-	if !ok {
+	if _, ok := s.requireAdmin(w, r, "billing", r.Method); !ok {
 		return
 	}
-	store, ok := s.store.(interface {
-		PublishMeteringCard(meteringRateCard) (meteringRateCard, error)
-		ListMeteringCards() ([]meteringRateCard, error)
-	})
-	if !ok {
-		writeError(w, r, NewHTTPError(503, "metering_unavailable", "Metering persistence is unavailable"))
-		return
-	}
-	if r.Method == http.MethodGet {
-		cards, err := store.ListMeteringCards()
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		writeJSON(w, 200, map[string]any{"data": cards, "mode": "shadow"})
-		return
-	}
-	var card meteringRateCard
-	if err := s.decodeJSON(w, r, &card); err != nil {
-		writeError(w, r, err)
-		return
-	}
-	if err := card.validate(); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_rate_card", err.Error()))
-		return
-	}
-	saved, err := store.PublishMeteringCard(card)
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-	s.recordAdminAudit(r, user, "publish", "billing_rate_card", saved.ID, "", saved)
-	writeJSON(w, 201, map[string]any{"data": saved, "mode": "shadow"})
+	writeError(w, r, NewHTTPError(410, "rate_cards_retired", "Standalone rate cards are retired; preview and confirm a model price change instead"))
 }
 
 func (s *Server) handleMeteringPreview(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +39,22 @@ func (s *Server) handleMeteringPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.decodeJSON(w, r, &request); err != nil {
 		writeError(w, r, err)
+		return
+	}
+	if request.Card.Kind == "tenant" {
+		store, ok := s.store.(interface {
+			PreviewBillingModel(meteringRateCard, Usage, time.Time) (map[string]any, error)
+		})
+		if !ok {
+			writeError(w, r, NewHTTPError(503, "metering_unavailable", "Billing persistence is unavailable"))
+			return
+		}
+		result, err := store.PreviewBillingModel(request.Card, request.Usage, request.At)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		writeJSON(w, 200, result)
 		return
 	}
 	if err := request.Card.validate(); err != nil {
