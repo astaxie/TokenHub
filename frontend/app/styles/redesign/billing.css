@@ -35,6 +35,8 @@
 .billing-disclosure > .billing-hint { margin-bottom: 15px; }
 .billing-step > .billing-hint { font-size: 11px; margin-top: 10px; }
 .billing-page .primary-button, .billing-page .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; cursor: pointer; }
+.billing-page .primary-button { padding: 10px 16px; border: 1px solid var(--billing-accent); border-radius: 10px; background: var(--billing-accent); color: #fff; font-weight: 600; }
+.billing-page .primary-button:focus-visible { outline: 2px solid var(--billing-accent); outline-offset: 3px; }
 .billing-page button:disabled { cursor: not-allowed; opacity: .6; }
 .billing-preview-button { margin-top: 20px; width: 100%; }
 .billing-period { min-width: 0; margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
