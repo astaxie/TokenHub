@@ -85,7 +85,7 @@ export function OverviewView({
     <div className="overview-report">
       <header className="overview-report-head">
         <div>
-          <p className="eyebrow">Enterprise AI Gateway</p>
+          <p className="eyebrow">{tx("企业级 AI 网关")}</p>
           <h1>{tx("网关概览")}</h1>
         </div>
         <div className="overview-range-tabs" role="tablist" aria-label={tx("报表时间范围")}>

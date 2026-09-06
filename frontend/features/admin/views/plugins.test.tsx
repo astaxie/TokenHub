@@ -3,15 +3,36 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type PluginDescriptor } from "../core/types";
 import { emptyData } from "../domain/catalog";
 import { pluginMarketplaceWebsiteURL } from "../domain/plugin-management";
+import { setActiveLanguage } from "../i18n/runtime";
 import { PluginsView } from "./plugins";
 
 const api = { baseURL: "http://localhost:8080", adminToken: "admin-token" };
 
 describe("PluginsView", () => {
   afterEach(() => {
+    setActiveLanguage("zh-CN");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
+
+  for (const locale of ["en", "ja", "zh-CN"] as const) {
+    it(`keeps canonical template names in the ${locale} installed list`, () => {
+      const data = emptyData();
+      data.plugins = [plugin("tokenhub.sim.enterprise", "Enterprise SIM", "ui_template", ["sim"], ["presentation"], {
+        localizations: {
+          "en-US": { name: "Localized Enterprise SIM" },
+          "zh-CN": { name: "企业 SIM" },
+          "ja-JP": { name: "エンタープライズ SIM" },
+        },
+      })];
+      setActiveLanguage(locale);
+      render(<PluginsView api={api} data={data} />);
+      expect(screen.getByText("Enterprise SIM")).toBeInTheDocument();
+      for (const localized of ["Localized Enterprise SIM", "企业 SIM", "エンタープライズ SIM"]) {
+        expect(screen.queryByText(localized)).not.toBeInTheDocument();
+      }
+    });
+  }
 
   it("shows the four categories beside one unified installed list", () => {
     const data = emptyData();

@@ -217,6 +217,9 @@ func (s *GormStore) PreviewBillingModel(card meteringRateCard, usage Usage, at t
 	if err := s.db.First(&current, "name = ?", card.Target).Error; err != nil {
 		return nil, notFound(err, "model_not_found", "Model not found")
 	}
+	if current.Modality == "embedding" && (usage.CompletionTokens != 0 || usage.CachedInputTokens != 0 || usage.CacheWriteInputTokens != 0 || usage.CacheWrite5mInputTokens != 0 || usage.CacheWrite1hInputTokens != 0) {
+		return nil, NewHTTPError(400, "invalid_usage", "Embedding previews accept input tokens only")
+	}
 	if _, err := meteringUnits(usage); err != nil {
 		return nil, NewHTTPError(400, "invalid_usage", err.Error())
 	}

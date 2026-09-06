@@ -55,10 +55,10 @@ describe("AdminUISettingsPanels", () => {
 
     render(<AdminUISettingsPanels api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
-    expect(screen.getByText("Plugin Runtime")).toBeInTheDocument();
-    expect(screen.getByText("Admin UI schema")).toBeInTheDocument();
-    expect(screen.getByText("Registered plugins")).toBeInTheDocument();
-    expect(screen.queryByText("Plugin Ecosystem")).not.toBeInTheDocument();
+    expect(screen.getByText("插件运行时")).toBeInTheDocument();
+    expect(screen.getByText("管理界面结构版本")).toBeInTheDocument();
+    expect(screen.getByText("已注册插件")).toBeInTheDocument();
+    expect(screen.queryByText("插件生态")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /执行插件面板/ }));
 

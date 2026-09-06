@@ -66,8 +66,8 @@ describe("PluginPageView", () => {
       />,
     );
 
-    expect(screen.getAllByText("Plugin Ecosystem")).toHaveLength(2);
-    expect(screen.getByText("Registered plugins")).toBeInTheDocument();
+    expect(screen.getAllByText("插件生态")).toHaveLength(2);
+    expect(screen.getByText("已注册插件")).toBeInTheDocument();
     expect(screen.getByText("Runtime")).toBeInTheDocument();
     expect(screen.queryByText("Plugin Settings")).not.toBeInTheDocument();
 

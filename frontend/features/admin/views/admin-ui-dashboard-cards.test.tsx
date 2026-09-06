@@ -51,9 +51,9 @@ describe("AdminUIDashboardCards", () => {
 
     render(<AdminUIDashboardCards data={data} />);
 
-    expect(screen.getByText("Plugin Ecosystem")).toBeInTheDocument();
-    expect(screen.getByText("Registered plugins")).toBeInTheDocument();
-    expect(screen.getByText("Gateway hooks")).toBeInTheDocument();
+    expect(screen.getByText("插件生态")).toBeInTheDocument();
+    expect(screen.getByText("已注册插件")).toBeInTheDocument();
+    expect(screen.getByText("网关钩子")).toBeInTheDocument();
     expect(screen.getByText("Compatibility")).toBeInTheDocument();
     expect(screen.getAllByText("1")).toHaveLength(2);
     expect(screen.getByText("v1")).toBeInTheDocument();

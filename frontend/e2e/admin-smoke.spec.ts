@@ -234,3 +234,41 @@ test.describe("Billing workflow", () => {
     await expect.poll(() => page.locator(".billing-tabs").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   });
 });
+
+test("admin can preview and export separate billing statements", async ({ page, request }) => {
+  const backendPort = Number(process.env.TOKENHUB_E2E_BACKEND_PORT ?? e2eDefaults.backendPort);
+  const seeded = await request.post(`http://127.0.0.1:${backendPort}/api/admin/models`, {
+    headers: { authorization: "Bearer e2e_admin_token_0000000000000000" },
+    data: { name: "statement-retail-model", family: "test", modality: "chat", status: "active", metadata: { directory_role: "external" } },
+  });
+  expect(seeded.status()).toBe(201);
+  await login(page);
+  await page.goto("/billing");
+  await page.locator("summary").filter({ hasText: "客户对账单与毛利" }).click();
+  await expect(page.getByRole("heading", { name: "费用对账单", exact: true })).toBeVisible();
+  await page.getByLabel("客户名称", { exact: true }).fill("E2E Customer");
+  await page.getByLabel("客户项目（可多选）").selectOption({ index: 0 });
+  await page.getByRole("button", { name: "预览对账单", exact: true }).click();
+  await expect(page.getByRole("button", { name: "导出当前预览 CSV" })).toBeVisible();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出当前预览 CSV" }).click();
+  expect((await downloaded).suggestedFilename()).toMatch(/^tokenhub-tenant-/);
+  await page.getByLabel("对账单类型").selectOption("provider");
+  await expect(page.getByRole("button", { name: "导出当前预览 CSV" })).toHaveCount(0);
+  await page.getByRole("button", { name: "预览对账单", exact: true }).click();
+  await expect(page.getByText("供应商金额与本地估算分列，不相加；跨期间记录保留全额，不自动分摊。")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.getByRole("heading", { name: "费用对账单", exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath("billing-statements-mobile.png") });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: test.info().outputPath("billing-statements-desktop.png") });
+  await page.goto("/models");
+  await page.getByRole("group", { name: "发布状态" }).getByRole("button", { name: "全部", exact: true }).click();
+  await page.getByRole("button", { name: "下游费用对账单", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "费用对账单", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("对外模型（留空为全部）")).not.toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});

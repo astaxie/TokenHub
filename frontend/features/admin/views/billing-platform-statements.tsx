@@ -33,7 +33,7 @@ export function BillingPlatformStatements({ api, data }: { api: ApiContext; data
     try {
       const query = queryString(offset);
       const response = await adminFetch(api, `/api/admin/billing/statements?${query}`);
-      if (!response.ok) throw new Error(await readAdminError(response, "读取平台账单失败"));
+      if (!response.ok) { const detail = await readAdminError(response, "读取平台账单失败"); throw new Error(detail.includes("10000") ? tx("记录过多，请缩小日期范围或增加筛选条件。") : detail); }
       const body = await response.json();
       if (run === generation.current) { setResult(body); setActiveQuery(query); }
     } catch (caught) { if (run === generation.current) setError(caught instanceof Error ? caught.message : tx("读取平台账单失败")); }

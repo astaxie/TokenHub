@@ -222,7 +222,7 @@ describe("ProviderUpsertModal", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: "高级" }));
-    await user.selectOptions(screen.getByLabelText("System prompt transform"), "strip");
+    await user.selectOptions(screen.getByLabelText("系统提示词转换"), "strip");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
@@ -303,7 +303,7 @@ describe("ProviderUpsertModal", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await user.click(screen.getByRole("tab", { name: "高级" }));
     expect(screen.getByText("认证方式").closest("label")?.querySelector("select")).toHaveValue("bearer");
-    expect(screen.getByLabelText("System prompt transform")).toHaveValue("strip");
+    expect(screen.getByLabelText("系统提示词转换")).toHaveValue("strip");
   });
 
   it("defaults Anthropic auth selection from adapter metadata", async () => {

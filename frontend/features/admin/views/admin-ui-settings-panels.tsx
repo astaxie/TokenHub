@@ -1,3 +1,4 @@
+import { localizeBuiltinContribution } from "../i18n/builtin-admin-ui";
 import { Play, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { type AdminUIContribution, type ApiContext, type AppData } from "../core/types";
@@ -29,6 +30,7 @@ export function AdminUISettingsPanels({
   data: AppData;
 }) {
   const panels = data.pluginUI
+    .map((contribution) => localizeBuiltinContribution(contribution))
     .filter((contribution) => contribution.slot === "settings.panel")
     .map((contribution) => ({ contribution, fields: settingsPanelFields(contribution) }))
     .filter((panel) => panel.fields.length > 0 || Boolean(panel.contribution.action));

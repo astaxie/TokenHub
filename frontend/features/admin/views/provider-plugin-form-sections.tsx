@@ -1,8 +1,9 @@
+import { localizeBuiltinContribution } from "../i18n/builtin-admin-ui";
 import { ExternalLink, Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type Provider, type ProviderResource } from "../core/types";
 import { providerPluginOptionFieldKey, providerPluginOptionValuesForPlugin } from "../domain/provider-plugin-options";
-import { tx } from "../i18n/runtime";
+import { activeLanguage, tx } from "../i18n/runtime";
 import { runProviderPluginActionEnvelope } from "../resources/provider-model-config";
 import { ProviderInlineField } from "./provider-editor-fields";
 
@@ -58,15 +59,17 @@ export function ProviderPluginFormSections({
   onUpdate: (key: string, value: string) => void;
 }) {
   const [actionStates, setActionStates] = useState<Record<string, PluginFormActionState>>({});
+  const language = activeLanguage;
   const sections = useMemo(
     () => contributions
+      .map((contribution) => localizeBuiltinContribution(contribution, language))
       .filter((contribution) =>
         contribution.slot === slot &&
         pluginFormContributionMatches(contribution, providerType || values.type, resourceType || values.resource_type, placement),
       )
       .map((contribution) => ({ contribution, fields: pluginFormFields(contribution) }))
       .filter((section) => section.fields.length > 0),
-    [contributions, placement, providerType, resourceType, slot, values.resource_type, values.type],
+    [language, contributions, placement, providerType, resourceType, slot, values.resource_type, values.type],
   );
   const actionDescriptors = useMemo(() => new Map(actions.map((action) => [pluginFormActionKey(action.plugin_id, action.action_id), action])), [actions]);
   useEffect(() => {

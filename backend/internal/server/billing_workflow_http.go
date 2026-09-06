@@ -16,7 +16,7 @@ func (s *Server) registerBillingWorkflowRoutes() {
 	s.registerSingleMethodRoute("GET", "/api/admin/billing/models/{model}/pricing", s.handleBillingModelPricing, s.adminMethodNotAllowed("billing", "GET"))
 	s.registerSingleMethodRoute("POST", "/api/admin/billing/model-pricing/apply", s.handleBillingModelApply, s.adminMethodNotAllowed("billing", "POST"))
 	s.registerSingleMethodRoute("GET", "/api/admin/billing/price-changes", s.handleBillingPriceChanges, s.adminMethodNotAllowed("billing", "GET"))
-	s.registerSingleMethodRoute("GET", "/api/admin/billing/statements", s.handleBillingStatements, s.adminMethodNotAllowed("billing", "GET"))
+	s.registerMethodRoutes("/api/admin/billing/statements", func(methods string) http.HandlerFunc { return s.adminMethodNotAllowed("billing", methods) }, methodRoute{Method: "GET", Handler: s.handleBillingStatements}, methodRoute{Method: "POST", Handler: s.handleBillingStatement})
 }
 func (s *Server) billingPricingStore(w http.ResponseWriter, r *http.Request) (billingPricingStore, bool) {
 	store, ok := s.store.(billingPricingStore)

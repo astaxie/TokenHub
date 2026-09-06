@@ -11,8 +11,8 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   const control = isValidElement<{ id?: string; "aria-describedby"?: string }>(children) ? cloneElement(children, { id, "aria-describedby": hint ? `${id}-hint` : undefined }) : children;
   return <div className="field"><label htmlFor={id}>{tx(label)}</label>{control}{hint ? <small id={`${id}-hint`}>{tx(hint)}</small> : null}</div>;
 }
-export function RateFields({ rates, update, cache = false, inherit = true }: { rates: Rates; update: (key: keyof Rates, value: string) => void; cache?: boolean; inherit?: boolean }) {
-  return <div className="billing-form-grid">{rateLabels.filter(([key]) => cache ? key.startsWith("cache_") : !key.startsWith("cache_")).map(([key, label]) => <Field key={key} label={label}><input inputMode="decimal" placeholder={cache ? tx(inherit ? "留空按基础价格计算" : "未知单价请留空") : "0.00"} value={rates[key]} onChange={(event) => update(key, event.target.value)} /></Field>)}</div>;
+export function RateFields({ rates, update, cache = false, inherit = true, inputOnly = false }: { rates: Rates; update: (key: keyof Rates, value: string) => void; cache?: boolean; inherit?: boolean; inputOnly?: boolean }) {
+  return <div className="billing-form-grid">{rateLabels.filter(([key]) => !inputOnly || key === "input").filter(([key]) => cache ? key.startsWith("cache_") : !key.startsWith("cache_")).map(([key, label]) => <Field key={key} label={label}><input inputMode="decimal" placeholder={cache ? tx(inherit ? "留空按基础价格计算" : "未知单价请留空") : "0.00"} value={rates[key]} onChange={(event) => update(key, event.target.value)} /></Field>)}</div>;
 }
 export function completedRates(rates: Rates, inheritCache = true): Rates {
   if (!inheritCache) return { input: rates.input.trim(), output: rates.output.trim(), cache_read: rates.cache_read.trim(), cache_write: rates.cache_write.trim(), cache_write_5m: rates.cache_write_5m.trim(), cache_write_1h: rates.cache_write_1h.trim() };

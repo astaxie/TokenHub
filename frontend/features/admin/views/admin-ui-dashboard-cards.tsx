@@ -1,3 +1,4 @@
+import { localizeBuiltinContribution } from "../i18n/builtin-admin-ui";
 import { PlugZap } from "lucide-react";
 import { type AdminUIContribution, type AppData } from "../core/types";
 import { dashboardCardRegistry } from "../domain/admin-ui-dashboard";
@@ -15,6 +16,7 @@ type DashboardMetricField = {
 
 export function AdminUIDashboardCards({ data }: { data: AppData }) {
   const cards = dashboardCardRegistry(data)
+    .map((entry) => ({ ...entry, contribution: localizeBuiltinContribution(entry.contribution) }))
     .map((entry) => ({ ...entry, fields: dashboardMetricFields(entry.contribution) }))
     .filter((card) => card.fields.length > 0);
 

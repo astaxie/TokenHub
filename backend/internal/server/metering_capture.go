@@ -12,18 +12,19 @@ import (
 )
 
 type meteringRequestSnapshot struct {
-	RequestID   string                `json:"request_id"`
-	ModelName   string                `json:"model_name"`
-	ProjectID   string                `json:"project_id"`
-	ProjectName string                `json:"project_name"`
-	APIKeyID    string                `json:"api_key_id"`
-	APIKeyName  string                `json:"api_key_name"`
-	UserID      string                `json:"user_id"`
-	TeamID      string                `json:"team_id,omitempty"`
-	CostCenter  string                `json:"cost_center,omitempty"`
-	BudgetDay   string                `json:"budget_day_utc"`
-	BudgetMonth string                `json:"budget_month_utc"`
-	Price       meteringPriceSnapshot `json:"price"`
+	ModelName   string                 `json:"model"`
+	LegacyPrice *meteringPriceSnapshot `json:"legacy_price,omitempty"`
+	RequestID   string                 `json:"request_id"`
+	ProjectID   string                 `json:"project_id"`
+	ProjectName string                 `json:"project_name"`
+	APIKeyID    string                 `json:"api_key_id"`
+	APIKeyName  string                 `json:"api_key_name"`
+	UserID      string                 `json:"user_id"`
+	TeamID      string                 `json:"team_id,omitempty"`
+	CostCenter  string                 `json:"cost_center,omitempty"`
+	BudgetDay   string                 `json:"budget_day_utc"`
+	BudgetMonth string                 `json:"budget_month_utc"`
+	Price       meteringPriceSnapshot  `json:"price"`
 }
 
 type meteringAttemptSnapshot struct {
@@ -83,7 +84,7 @@ func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext) error 
 		return nil
 	}
 	price := legacyMeteringPrice(call.Model, call.StartedAt, false)
-	snapshot := meteringRequestSnapshot{RequestID: call.RequestID, ModelName: call.Model.Name, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
+	snapshot := meteringRequestSnapshot{LegacyPrice: &price, RequestID: call.RequestID, ModelName: call.Model.Name, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
 	return saveMeteringEntry(tx, call.RequestID+":admission", "admission", call.RequestID, snapshot, call.StartedAt)
 }
 

@@ -255,17 +255,6 @@ func adminPluginDescriptorForPackageWithFacts(descriptor pluginmeta.Descriptor, 
 	}
 }
 
-func adminPluginLifecycleForState(state pluginmeta.PackageState) adminPluginLifecycleResponse {
-	facts := pluginmeta.DeriveLifecycleFacts(pluginmeta.LifecycleFactsInput{
-		Available:    true,
-		Installed:    true,
-		Configured:   true,
-		DesiredState: state,
-		ActiveStatus: state.Status,
-	})
-	return adminPluginLifecycleForStateAndFacts(state, facts)
-}
-
 func adminPluginLifecycleForStateAndFacts(state pluginmeta.PackageState, facts pluginmeta.LifecycleFacts) adminPluginLifecycleResponse {
 	normalized, err := pluginmeta.NormalizePackageState(state)
 	if err == nil {

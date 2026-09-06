@@ -28,6 +28,11 @@ test("interface template plugins keep their English manifest names", () => {
     id: "tokenhub.sim.example",
     name: "Example Interface Template",
     kinds: ["sim"],
+    localizations: {
+      "en-US": { name: "Localized Interface Template" },
+      "zh-CN": { name: "示例界面模板" },
+      "ja-JP": { name: "サンプルインターフェイステンプレート" },
+    },
     marketplace: {
       localizations: {
         "zh-CN": { name: "示例界面模板" },
@@ -36,6 +41,7 @@ test("interface template plugins keep their English manifest names", () => {
     },
   };
 
+  assert.equal(localizedPluginName(plugin, "en-US"), "Example Interface Template");
   assert.equal(localizedPluginName(plugin, "zh-CN"), "Example Interface Template");
   assert.equal(localizedPluginName(plugin, "ja-JP"), "Example Interface Template");
 });

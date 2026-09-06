@@ -9,3 +9,5 @@ Language: [English](../../plugin-development/ui-templates.md) | 简体中文 | [
 安全边界是显式的：模板不能注入任意 JavaScript、CSS、stylesheet URL、远程脚本、`@import` 或 `url(...)`。动作经 Core 执行，继续受 RBAC 和审计约束，且不会获得原始管理员凭证。浏览器本地 Token 覆盖不是团队级服务端配置。
 
 每个贡献都必须在目标 renderer 中测试；Schema 通过不代表所有 slot 都支持其中的每种控件。完整布局、控件和 slot 见[完整指南](guide.md)。
+
+内置插件生态面板及核心上游/Codex 设置随控制台语言切换，支持简体中文、英语和日语。翻译仅作用于已知内置标题、说明、字段标签和帮助文案；插件标识、配置值、第三方及未知元数据保持原样。

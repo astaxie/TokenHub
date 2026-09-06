@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"tokenhub/backend/internal/reconciliation"
@@ -23,7 +24,14 @@ func (s *GormStore) ListProviderReconciliationUsages(from, to time.Time, window 
 		if requestID == "" {
 			requestID = row.RequestID
 		}
-		result = append(result, reconciliation.Usage{ID: row.ID, RequestID: requestID, ProjectID: row.ProjectID, ModelName: row.Model, ProviderID: row.ProviderID, ProviderResourceID: row.ResourceID, ProviderCostUSD: amount, ProviderCostKnown: known, CreatedAt: row.OccurredAt})
+		if row.Source == "legacy_usage" {
+			row.ID = strings.TrimSuffix(row.ID, ":provider")
+		}
+		model := row.TenantModel
+		if model == "" {
+			model = row.Model
+		}
+		result = append(result, reconciliation.Usage{ID: row.ID, RequestID: requestID, ProjectID: row.ProjectID, ModelName: model, ProviderID: row.ProviderID, ProviderResourceID: row.ResourceID, ProviderCostUSD: amount, ProviderCostKnown: known, CreatedAt: row.OccurredAt})
 		return nil
 	})
 	return result, err

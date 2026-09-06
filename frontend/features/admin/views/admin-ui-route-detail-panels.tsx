@@ -1,3 +1,4 @@
+import { localizeBuiltinContribution } from "../i18n/builtin-admin-ui";
 import { Play, Route } from "lucide-react";
 import { useState } from "react";
 import { type AdminUIContribution, type ApiContext, type AppData, type ModelRoute } from "../core/types";
@@ -31,6 +32,7 @@ export function AdminUIRouteDetailPanels({
   route: ModelRoute;
 }) {
   const panels = data.pluginUI
+    .map((contribution) => localizeBuiltinContribution(contribution))
     .filter((contribution) => contribution.slot === "route.detail.panel")
     .map((contribution) => ({ contribution, fields: routePanelFields(contribution) }))
     .filter((panel) => panel.fields.length > 0 || Boolean(panel.contribution.action));

@@ -331,7 +331,7 @@ export function ProviderChannelTable({
     <section className="provider-channel-list" aria-label={tx("Provider 可用性监控")}>
       <div className="provider-monitor-head">
         <div>
-          <p className="eyebrow">Provider Availability</p>
+          <p className="eyebrow">{tx("上游可用性")}</p>
           <h2>{tx("Provider 渠道与可用性")}</h2>
         </div>
         <div className="provider-monitor-summary" aria-label={tx("Provider 健康摘要")}>

@@ -178,7 +178,7 @@ func TestBillingStatementsIncludeRetryCostsAndPostedFailedCharges(t *testing.T) 
 	if err := json.Unmarshal([]byte(admission.Payload), &old); err != nil {
 		t.Fatal(err)
 	}
-	delete(old, "model_name")
+	delete(old, "model")
 	payload, _ := json.Marshal(old)
 	if err := store.db.Model(&admission).Update("payload", string(payload)).Error; err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestBillingStatementsUnknownCostAndLegacyNamespace(t *testing.T) {
 }
 func TestBillingStatementsKeysetPaginationDoesNotLoseRows(t *testing.T) {
 	store, _, _ := billingWorkflowFixture(t)
-	at := time.Now().UTC()
+	at := time.Now().UTC().Add(-time.Minute)
 	entries := []meteringEntry{}
 	for i := 0; i < 251; i++ {
 		id := fmt.Sprintf("batch-%04d", 250-i)

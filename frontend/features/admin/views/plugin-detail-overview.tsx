@@ -1,3 +1,4 @@
+import { localizeBuiltinContribution } from "../i18n/builtin-admin-ui";
 import { ArrowRight, Braces, ChevronDown, CircleGauge, LayoutPanelTop, Play, Puzzle, RefreshCw, ShieldCheck } from "lucide-react";
 import { type ReactNode } from "react";
 import {
@@ -166,7 +167,7 @@ export function PluginOverview({
             description={tx("列出插件在管理后台中增加的页面、面板或操作入口。")}
             rows={contributions.map((contribution) => ({
               key: contribution.id,
-              title: localizedContributionTitle(contribution, locale) || contribution.id,
+              title: localizedContributionTitle(localizeBuiltinContribution(contribution), locale) || contribution.id,
               description: tx("这是插件添加到 TokenHub 管理界面的内容。"),
               meta: [contribution.id, contribution.slot, contribution.action].filter(Boolean).join(" · "),
             }))}

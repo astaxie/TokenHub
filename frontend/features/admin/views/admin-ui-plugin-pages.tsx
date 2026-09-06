@@ -1,3 +1,4 @@
+import { localizeBuiltinContribution } from "../i18n/builtin-admin-ui";
 import { Play, Puzzle } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { type AdminUIContribution, type ApiContext, type AppData, type PluginDescriptor } from "../core/types";
@@ -29,7 +30,7 @@ export function PluginPageView({
   data: AppData;
   onSelectPage: (key: string) => void;
 }) {
-  const pages = pluginNavPages(data.pluginUI, data.plugins);
+  const pages = pluginNavPages(data.pluginUI.map((contribution) => localizeBuiltinContribution(contribution)), data.plugins);
   const selected = pages.find((page) => page.key === activePageKey) ?? pages[0];
   const fields = selected ? pluginPageFields(selected.contribution) : [];
   const actionKeys = new Set(data.pluginActions.map((action) => adminUIActionKey(action.plugin_id, action.action_id)));

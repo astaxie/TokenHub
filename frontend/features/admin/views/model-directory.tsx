@@ -1,5 +1,6 @@
 "use client";
 
+import { StatementLauncher } from "./billing-statements";
 import { AlertTriangle, Boxes, CircleCheck, CircleDashed, Link2, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { type ApiContext, type AppData, type Model, type ResourceConfig } from "../core/types";
@@ -151,6 +152,7 @@ export function ModelDirectoryView({
         </div>
 
         <ExternalModelsTable
+          api={api}
           data={data}
           models={filteredExternal}
           readOnly={readOnly}
@@ -185,7 +187,8 @@ function ModelDirectoryStats({ stats }: { stats: ReturnType<typeof modelDirector
   );
 }
 
-function ExternalModelsTable({ data, models, readOnly, busy, onOpenRoutes, onEdit, onDelete, onPublish }: {
+function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, onEdit, onDelete, onPublish }: {
+  api: ApiContext;
   data: AppData;
   models: Model[];
   readOnly: boolean;
@@ -242,7 +245,7 @@ function ExternalModelsTable({ data, models, readOnly, busy, onOpenRoutes, onEdi
                 </> : <td><StatusPill status="active" label={tx("当前账号可用")} /></td>}
                 <td><strong>{priceMetric(model.input_price_usd_per_1m)}</strong><span>{tx("输入")} · {priceMetric(model.output_price_usd_per_1m)} {tx("输出")}</span></td>
                 {!readOnly ? (
-                  <td><div className="directory-row-actions"><button aria-label={`${tx("路由策略")}: ${model.name}`} className="text-button" onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button><button className="text-button" onClick={() => onEdit(model)} type="button">{tx("编辑")}</button><button className="text-button" disabled={busy || (publication !== "published" && activeRoutes.length === 0)} onClick={() => onPublish(model, publication !== "published")} type="button">{tx(publication === "published" ? "下线" : "发布")}</button><button className="danger-button" onClick={() => onDelete(model)} type="button">{tx("删除")}</button></div></td>
+                  <td><div className="directory-row-actions"><StatementLauncher api={api} side="tenant" model={model.name} /><button aria-label={`${tx("路由策略")}: ${model.name}`} className="text-button" onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button><button className="text-button" onClick={() => onEdit(model)} type="button">{tx("编辑")}</button><button className="text-button" disabled={busy || (publication !== "published" && activeRoutes.length === 0)} onClick={() => onPublish(model, publication !== "published")} type="button">{tx(publication === "published" ? "下线" : "发布")}</button><button className="danger-button" onClick={() => onDelete(model)} type="button">{tx("删除")}</button></div></td>
                 ) : null}
               </tr>
             );

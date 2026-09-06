@@ -1,9 +1,10 @@
+import { localizeBuiltinContribution } from "../i18n/builtin-admin-ui";
 import { Play } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type Provider, type ProviderResource } from "../core/types";
 import { compactNumber, formatMoney, formatNumber } from "../domain/formatting";
 import { pluginActionInputDefaults, pluginActionKey, pluginActionPayload, redactPluginActionResult } from "../domain/plugin-actions";
-import { tx } from "../i18n/runtime";
+import { activeLanguage, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { PluginActionRunner } from "./plugin-action-runner";
 import { ProviderResourceSystemPromptTransformFields } from "./provider-editor-sections";
@@ -46,8 +47,10 @@ export function ProviderPluginPanels({
   handledContributionKeys?: string[];
 }) {
   const handledContributions = useMemo(() => new Set(handledContributionKeys), [handledContributionKeys]);
+  const language = activeLanguage;
   const panels = useMemo(
     () => contributions
+      .map((contribution) => localizeBuiltinContribution(contribution, language))
       .filter((contribution) =>
         contribution.slot === "provider.resource.panel" &&
         (contribution.provider_types?.length ? contribution.provider_types.includes(provider.type) : true),
@@ -55,7 +58,7 @@ export function ProviderPluginPanels({
       .filter((contribution) => !handledContributions.has(providerPanelContributionKey(contribution)))
       .map((contribution) => ({ contribution, fields: providerPanelFields(contribution), layout: providerPanelLayout(contribution), resources: providerPanelResources(contribution, resources, provider.id) }))
       .filter((panel) => panel.layout || panel.fields.length > 0 || Boolean(panel.contribution.action)),
-    [contributions, handledContributions, provider.id, provider.type, resources],
+    [language, contributions, handledContributions, provider.id, provider.type, resources],
   );
   const layoutPanels = panels.filter((panel) => panel.layout);
   const genericPanels = panels.filter((panel) => !panel.layout);

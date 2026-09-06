@@ -1,5 +1,7 @@
 export const billingPricingTranslations = {
   en: {
+    "客户对账单与毛利": "Customer statements and margin",
+    "记录过多，请缩小日期范围或增加筛选条件。": "Too many records. Narrow the date range or add filters.",
     "每天": "Every day",
     "按 Provider 归集的下游费用": "Tenant charges by Provider",
     "按资源账号归集的下游费用": "Tenant charges by resource account",
@@ -191,6 +193,8 @@ export const billingPricingTranslations = {
   "周六": "Saturday"
 },
   ja: {
+    "客户对账单与毛利": "顧客明細と粗利益",
+    "记录过多，请缩小日期范围或增加筛选条件。": "記録が多すぎます。期間を短くするか、条件を追加してください。",
     "每天": "毎日",
     "按 Provider 归集的下游费用": "Provider 別の下流料金",
     "按资源账号归集的下游费用": "リソースアカウント別の下流料金",

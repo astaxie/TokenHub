@@ -220,7 +220,7 @@ describe("ProviderPluginFormSections", () => {
 
     render(<Harness />);
 
-    const select = screen.getByLabelText("System prompt transform");
+    const select = screen.getByLabelText("系统提示词转换");
     expect(select).toHaveValue("preserve");
     await user.selectOptions(select, "strip");
     expect(updateSpy).toHaveBeenLastCalledWith("system_prompt_transform_policy", "strip");

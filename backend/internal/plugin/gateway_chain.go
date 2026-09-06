@@ -480,21 +480,6 @@ func GatewayStagePolicy(stage GatewayHookStage) (GatewayHookStagePolicy, bool) {
 	}
 }
 
-func sortGatewayHooks(hooks []GatewayHookDescriptor) {
-	sort.Slice(hooks, func(i, j int) bool {
-		if hooks[i].Priority != hooks[j].Priority {
-			return hooks[i].Priority < hooks[j].Priority
-		}
-		if hooks[i].PluginID != hooks[j].PluginID {
-			return hooks[i].PluginID < hooks[j].PluginID
-		}
-		if hooks[i].HookID != hooks[j].HookID {
-			return hooks[i].HookID < hooks[j].HookID
-		}
-		return gatewayHookScopeSortKey(hooks[i]) < gatewayHookScopeSortKey(hooks[j])
-	})
-}
-
 func normalizeDataClasses(items []GatewayDataClass) []GatewayDataClass {
 	seen := map[GatewayDataClass]struct{}{}
 	normalized := make([]GatewayDataClass, 0, len(items))
@@ -649,21 +634,6 @@ func gatewayScopeListMatches(allowed []string, value string, caseInsensitive boo
 		}
 	}
 	return false
-}
-
-func gatewayHookScopeSortKey(hook GatewayHookDescriptor) string {
-	scope := normalizeGatewayHookScope(hook.Scope)
-	parts := []string{
-		strings.Join(scope.ProjectIDs, ","),
-		strings.Join(scope.APIKeyIDs, ","),
-		strings.Join(scope.ProviderTypes, ","),
-		strings.Join(scope.ProviderIDs, ","),
-		strings.Join(scope.ResourceIDs, ","),
-		strings.Join(scope.ResourceTypes, ","),
-		strings.Join(scope.RouteProtocols, ","),
-		strings.Join(scope.Operations, ","),
-	}
-	return strings.Join(parts, "|")
 }
 
 func normalizeLowerStrings(items []string) []string {
