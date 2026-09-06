@@ -39,7 +39,7 @@ export function BillingRateCards({ api, data, view = "pricing" }: { api: ApiCont
   async function act(action: "preview" | "publish") {
     setBusy(true); setError(""); setMessage("");
     try {
-      const payload = { ...card, source: card.source.trim() || "manual", rates: completedRates(card.rates) };
+      const payload = { ...card, source: card.source.trim() || "manual", rates: completedRates(card.rates, card.kind === "tenant") };
       if (!card.target) throw new Error(tx("请先选择要试算的模型。"));
       if (!/^[A-Z]{3}$/.test(card.currency)) throw new Error(tx("币种请填写三个大写字母，例如 USD 或 CNY。"));
       const decimal = /^(0|[1-9][0-9]{0,17})(\.[0-9]{1,12})?$/;
@@ -87,8 +87,8 @@ export function BillingRateCards({ api, data, view = "pricing" }: { api: ApiCont
               <div className="billing-step-heading"><span>2</span><h3>{tx("填写基础价格")}</h3><small>{card.currency} / {tx("百万 Token")}</small></div>
               {card.kind === "provider" ? <p className="billing-hint">{tx("上游单价未知可留空，试算时该项用量需为 0。")}</p> : null}
               <RateFields rates={card.rates} update={(key, value) => updateCard({ ...card, rates: { ...card.rates, [key]: value } })} />
-              <details className="billing-disclosure"><summary>{tx("单独设置缓存价格")}<small>{tx("可选")}</small></summary><p className="billing-hint">{tx("留空时，缓存读写按普通输入价计算；5 分钟和 1 小时写入继承缓存写价。0 表示免费。")}</p><RateFields cache rates={card.rates} update={(key, value) => updateCard({ ...card, rates: { ...card.rates, [key]: value } })} /></details>
-              <p className="billing-hint">{tx("基础单价中的缓存项留空会继承价格，发布时也会保存这些继承后的单价。")}</p>
+              <details className="billing-disclosure"><summary>{tx("单独设置缓存价格")}<small>{tx("可选")}</small></summary><p className="billing-hint">{tx(card.kind === "tenant" ? "留空时，缓存读写按普通输入价计算；5 分钟和 1 小时写入继承缓存写价。0 表示免费。" : "上游缓存价格未知时请留空；已知时填写单价，0 表示明确免费。")}</p><RateFields cache inherit={card.kind === "tenant"} rates={card.rates} update={(key, value) => updateCard({ ...card, rates: { ...card.rates, [key]: value } })} /></details>
+              {card.kind === "tenant" ? <p className="billing-hint">{tx("基础单价中的缓存项留空会继承价格，发布时也会保存这些继承后的单价。")}</p> : null}
               <details className="billing-disclosure"><summary><Clock3 size={16} />{tx("设置峰谷时段")}<small>{tx("可选")}</small></summary><p className="billing-hint">{tx("只填写不同于基础价格的项目。跨午夜按开始日计算，时段不能重叠。")}</p>
                 {card.periods.map((period, index) => <fieldset className="billing-period" key={index}><legend>{period.name}</legend><div className="billing-form-grid"><Field label="名称"><input value={period.name} onChange={(event) => updatePeriod(index, { name: event.target.value })} /></Field><Field label="时区"><input value={period.timezone} onChange={(event) => updatePeriod(index, { timezone: event.target.value })} /></Field><Field label="开始时间"><input type="time" value={period.start_time} onChange={(event) => updatePeriod(index, { start_time: event.target.value })} /></Field><Field label="结束时间"><input type="time" value={period.end_time} onChange={(event) => updatePeriod(index, { end_time: event.target.value })} /></Field></div>
                   <div className="billing-weekdays" role="group" aria-label={tx("适用星期")}>{["周日", "周一", "周二", "周三", "周四", "周五", "周六"].map((day, number) => <label key={day}><input type="checkbox" checked={period.weekdays.includes(number)} onChange={(event) => updatePeriod(index, { weekdays: event.target.checked ? [...period.weekdays, number] : period.weekdays.filter((value) => value !== number) })} /><span>{tx(day)}</span></label>)}</div>

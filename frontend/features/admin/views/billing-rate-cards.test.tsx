@@ -48,6 +48,17 @@ describe("BillingRateCards", () => {
     await waitFor(() => expect(adminFetch).toHaveBeenCalledOnce());
     const body = JSON.parse(String(vi.mocked(adminFetch).mock.calls[0][2]?.body));
     expect(body.card.rates.output).toBe("");
+    for (const key of ["cache_read", "cache_write", "cache_write_5m", "cache_write_1h"]) expect(body.card.rates[key]).toBe("");
+    vi.mocked(adminFetch).mockClear();
+    fireEvent.change(screen.getByLabelText("缓存读取 Token", { exact: true }), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "试算费用" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("试算用量涉及未知单价");
+    expect(adminFetch).not.toHaveBeenCalled();
+    vi.mocked(adminFetch).mockResolvedValue(new Response(JSON.stringify(preview)));
+    fireEvent.change(screen.getByLabelText("缓存读取", { exact: true }), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "试算费用" }));
+    await waitFor(() => expect(adminFetch).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(vi.mocked(adminFetch).mock.calls[0][2]?.body)).card.rates.cache_read).toBe("0");
   });
   it("rejects contradictory cache usage before sending a request", async () => {
     setup();
@@ -73,6 +84,16 @@ describe("BillingRateCards", () => {
     fireEvent.click(screen.getByRole("button", { name: "试算费用" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("每个时段至少选择一天");
     expect(adminFetch).not.toHaveBeenCalled();
+  });
+  it("formats historical rates and charges without changing raw evidence", async () => {
+    vi.mocked(adminFetch).mockResolvedValue(new Response(JSON.stringify({ data: [{ id: "rate", kind: "tenant", target: "test-model", revision: 1, currency: "USD", source: "test", rates: { ...emptyRates(), input: "1234.500000000000" } }] })));
+    render(<BillingRateCards api={api} data={emptyData()} view="history" />);
+    await screen.findByText("1,234.50");
+    vi.mocked(adminFetch).mockResolvedValue(new Response(JSON.stringify({ data: [{ kind: "shadow_settlement", at: "2026-09-06T00:00:00Z", data: { tenant: { status: "estimated", charge: { amount: "1234.500000000000", currency: "USD" } } } }] })));
+    fireEvent.change(screen.getByRole("textbox", { name: "请求 ID" }), { target: { value: "request" } });
+    fireEvent.click(screen.getByRole("button", { name: "查询记录" }));
+    await screen.findByText("1,234.50 USD");
+    expect(screen.getByText(/"amount": "1234.500000000000"/)).toBeInTheDocument();
   });
   it("automatically loads published cards and gives a readable missing-record message", async () => {
     vi.mocked(adminFetch).mockResolvedValue(new Response(JSON.stringify({ data: [] })));

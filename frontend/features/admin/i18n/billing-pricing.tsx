@@ -1,5 +1,7 @@
 export const billingPricingTranslations = {
   en: {
+    "未知单价请留空": "Leave unknown rates blank",
+    "上游缓存价格未知时请留空；已知时填写单价，0 表示明确免费。": "Leave unknown provider cache rates blank. Enter known rates; 0 explicitly means free.",
     "当前时区：{timezone}": "Current timezone: {timezone}",
     "币种请填写三个大写字母，例如 USD 或 CNY。": "Use a three-letter uppercase currency code, such as USD or CNY.",
     "试算用量涉及未知单价，请补充价格或将该项用量设为 0。": "Usage includes an unknown rate. Enter the rate or set that usage category to 0.",
@@ -118,6 +120,8 @@ export const billingPricingTranslations = {
   "周六": "Saturday"
 },
   ja: {
+    "未知单价请留空": "不明な単価は空欄",
+    "上游缓存价格未知时请留空；已知时填写单价，0 表示明确免费。": "不明な上流キャッシュ単価は空欄にし、既知の単価のみ入力してください。0 は明示的に無料を意味します。",
     "当前时区：{timezone}": "現在のタイムゾーン：{timezone}",
     "币种请填写三个大写字母，例如 USD 或 CNY。": "USD や CNY など、大文字 3 字の通貨コードを入力してください。",
     "试算用量涉及未知单价，请补充价格或将该项用量设为 0。": "単価が不明な使用量があります。単価を入力するか、その項目の使用量を 0 にしてください。",

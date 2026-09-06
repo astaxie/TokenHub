@@ -222,6 +222,13 @@ test.describe("Billing calculator", () => {
   await expect.poll(() => page.locator(".billing-page").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   await expect(page.getByRole("combobox", { name: "计价对象", exact: true })).toBeVisible();
   await expect(page.getByLabel("普通输入", { exact: true })).toHaveValue("2");
+  await page.getByRole("button", { name: "界面语言", exact: true }).click();
+  await page.getByRole("option", { name: "English", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Cost calculator", exact: true })).toBeVisible();
+  await expect.poll(() => page.locator(".billing-page").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect.poll(() => page.locator(".billing-tabs").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await page.getByRole("tab", { name: "Bills & reconciliation", exact: true }).click();
+  await expect(page.locator("#billing-panel-reconciliation")).toBeVisible();
 });
 
 });
