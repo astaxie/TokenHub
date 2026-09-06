@@ -330,13 +330,15 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 模型记录和 Provider 模型库存也支持 `pricing_periods`：一个按时间段覆盖价格的 JSON 数组。每个时间段可以包含 IANA `timezone`、`HH:MM` 格式的本地 `start_time` 和 `end_time`、可选的 RFC 3339 `effective_from` 和 `effective_until`，以及输入或输出价格字段。TokenHub 按请求开始时间选择价格，首个匹配的时间段生效；时间窗口可以跨午夜。
 
+试算费用、发布核对价目和查询请求记录的分步操作，请参阅[计费页面操作](billing-pricing.md#计费页面操作)。
+
 ## 目录元数据恢复
 
 删除对外模型会移除其数据库记录及路由，但不会修改 `data/model-catalog.yaml` 或 `TOKENHUB_MODEL_CATALOG_FILE` 指向的文件。后端启动时会再次同步其中的跟踪目录元数据；管理员也可以在「系统设置 → 基础设置 → 同步模型参考目录」中免重启触发同一操作。该同步不会把模型引入 Provider、创建路由或将其发布到 `GET /v1/models`；这些操作仍需在各自的管理区域中显式完成。
 
 ## 外部账单连接器
 
-平台管理员可在「成本账单」中管理外部账单源。TokenHub 支持阿里云 `QueryInstanceBill`、NewAPI 额度数据和 OneAPI 兼容日志源。连接器可以测试连接、立即同步、按分钟设置定时同步、停用并保留历史记录，也可以随后重新启用。连接器需配置对应的 TokenHub Provider ID；若账单只对应一个账号，还可配置 TokenHub 资源账号 ID。对账会使用这一持久化范围，避免其他 Provider 或账号的用量混入结果。
+平台管理员可在「成本账单 → 账单与对账」中管理外部账单源。TokenHub 支持阿里云 `QueryInstanceBill`、NewAPI 额度数据和 OneAPI 兼容日志源。连接器可以测试连接、立即同步、按分钟设置定时同步、停用并保留历史记录，也可以随后重新启用。连接器需配置对应的 TokenHub Provider ID；若账单只对应一个账号，还可配置 TokenHub 资源账号 ID。对账会使用这一持久化范围，避免其他 Provider 或账号的用量混入结果。
 
 阿里云连接器需要账单 RPC Base URL、AccessKey ID、AccessKey Secret、源时区，可选填写 Product Code。TokenHub 使用 HMAC-SHA1 为每个 RPC 请求签名，并按账期逐月推进。NewAPI 连接器需要 Base URL、访问令牌、`New-Api-User` 用户 ID、币种，以及一个币种单位对应的 Quota 数量；TokenHub 会按照官方文档携带鉴权请求头调用 `GET /api/data/self`，并自动把同步范围切分为最长 30 天的窗口。OneAPI 兼容连接器需要 Base URL、API Token、日志路径、币种和 Quota 换算值。所有连接器都可以设置每秒请求上限；临时网络错误、`429` 和 `5xx` 会使用有上限的指数退避重试。
 
@@ -346,7 +348,7 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 ## 成本对账
 
-平台管理员可以在「成本账单 → 成本对账规则」中，将已同步的 Provider 账单与 TokenHub 用量进行比较。规则可选择一个账单连接器、明细/小时/天/月粒度、匹配维度、IANA 时区、一个 ISO 币种、金额与比例容差、明细时间窗口、账单延迟窗口和可选定时周期。币种始终是匹配维度，因此不同币种需要分别建立规则。TokenHub 用量成本以 USD 保存，每条规则记录固定的“1 USD = 目标币种”汇率；USD 规则的汇率必须为 `1`。可选的 Provider 侧映射可将外部 Provider、资源账号、模型和项目值规范化为 TokenHub 标识。明细规则必须包含 `request_id`；聚合规则可按 Provider、资源账号、模型、项目和币种分组。NewAPI 账单没有请求级标识，因此 NewAPI 连接器只支持小时、天和月粒度，不支持明细粒度。手工输入的账期时间会先按规则的 IANA 时区解释，再发送给 API。
+平台管理员可以在「成本账单 → 账单与对账 → 成本对账规则」中，将已同步的 Provider 账单与 TokenHub 用量进行比较。规则可选择一个账单连接器、明细/小时/天/月粒度、匹配维度、IANA 时区、一个 ISO 币种、金额与比例容差、明细时间窗口、账单延迟窗口和可选定时周期。币种始终是匹配维度，因此不同币种需要分别建立规则。TokenHub 用量成本以 USD 保存，每条规则记录固定的“1 USD = 目标币种”汇率；USD 规则的汇率必须为 `1`。可选的 Provider 侧映射可将外部 Provider、资源账号、模型和项目值规范化为 TokenHub 标识。明细规则必须包含 `request_id`；聚合规则可按 Provider、资源账号、模型、项目和币种分组。NewAPI 账单没有请求级标识，因此 NewAPI 连接器只支持小时、天和月粒度，不支持明细粒度。手工输入的账期时间会先按规则的 IANA 时区解释，再发送给 API。
 
 选择账期执行规则后，结果会给出已匹配、仅 Provider 存在、仅 TokenHub 存在和金额不一致四类数量，以及两侧总额、差异、可能原因和可下钻的源记录 ID。金额先按亚微美元精度累加，只在保存或展示结果时舍入到最多六位小数。明细匹配会先在时间窗口内最大化一对一匹配数量，再最小化总时间距离；账期边界外的 TokenHub 记录若与账期内 Provider 账单匹配，也会纳入结果。Provider 记录按实际用量时间而非入库时间归属账期，因此迟到的账单仍会归入原始账期。定时任务会在配置的账单延迟后，对最近一个完整的小时、天或月执行对账。
 

@@ -12,7 +12,7 @@ Tenant legacy pricing remains tied to admission. Routed Provider costs capture t
 
 ## Exact shadow pricing
 
-Platform administrators can open **Billing → Cost calculator**, select a tenant model or Provider/model pair, enter decimal-string rates and time windows, preview a specific instant, and publish a new immutable shadow version. Preview success is required before publishing from the form. Changing the form invalidates that preview. Select at least one weekday in each form window.
+Platform administrators can open **Cost Billing → Cost calculator**, select a tenant model or Provider/model pair, enter decimal-string rates and time windows, preview a specific instant, and publish a new immutable shadow version. Preview success is required before publishing from the form. Changing the form invalidates that preview. Select at least one weekday in each form window.
 
 Shadow rates do not replace current charges or reserve budget. They record comparisons for new requests. Legacy configurations are identified as `legacy_float_configuration`; converting them to decimal strings does not create historical exact-price evidence. Adapter usage currently remains unverified for field presence and provider charging-time rules. Contradictory usage, missing rates, missing usage, or uncertain delivery produces pending evidence. No supplier reconciliation claim is implied.
 
@@ -41,7 +41,7 @@ Model price updates reject non-finite or negative base prices. Legacy Provider z
 
 ## Billing UI workflow
 
-Open **Cost governance → Billing**. The page separates **Cost calculator**, **Prices & records**, **Bills & reconciliation**, and **Usage costs**. Start with a model, input/output rates, and sample usage. Cache rates, time windows, cache usage, and calculation time expand only when needed. The time picker uses the browser's local timezone; each pricing window still uses its configured timezone.
+Open **Cost Governance → Cost Billing**. The page separates **Cost calculator**, **Prices & records**, **Bills & reconciliation**, and **Usage costs**. Start with a model, input/output rates, and sample usage. Cache rates, time windows, cache usage, and calculation time expand only when needed. The time picker uses the browser's local timezone; each pricing window still uses its configured timezone.
 
 For tenant prices, blank base cache rates inherit the input rate; 5-minute and 1-hour writes inherit the generic cache-write rate. These resolved tenant rates are saved when publishing. Provider blanks stay unknown, including every cache category, and require zero usage for any unresolved category during a calculation. Explicit zero remains free for either kind. Blank window overrides inherit the base rates. Cache reads and all write categories are included in total input. Results show the cost breakdown before the separate **Publish for comparison** action. Editing a field invalidates the previous result.
 
