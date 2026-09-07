@@ -444,7 +444,7 @@ export type PluginDescriptor = {
   name: string;
   version: string;
   description?: string;
-  summary?: string; category?: "provider_integration" | "request_pipeline" | "ui_template" | "automation" | string; host_adapter?: string; dependencies?: Array<{ id: string; version?: string }>; settings?: { scopes?: string[] }; permissions?: Array<{ kind: string; name: string; access: string; sensitivity: string }>; has_settings?: boolean; legacy?: boolean; available?: boolean; installed?: boolean; enabled?: boolean; configured?: boolean; in_use?: boolean; setup_required?: boolean; desired_version?: string; active_version?: string; desired_enabled?: boolean; active_enabled?: boolean; active_capabilities?: PluginCapabilityDescriptor[];
+  summary?: string; category?: "provider_integration" | "request_pipeline" | "ui_template" | "automation" | string; host_adapter?: string; dependencies?: Array<{ id: string; version?: string }>; settings?: { scopes?: string[] }; permissions?: Array<{ kind: string; name: string; access: string; sensitivity: string }>; has_settings?: boolean; legacy?: boolean; available?: boolean; installed?: boolean; enabled?: boolean; configured?: boolean; in_use?: boolean; setup_required?: boolean; desired_version?: string; active_version?: string; desired_enabled?: boolean; active_enabled?: boolean; active_kinds?: string[]; active_capabilities?: PluginCapabilityDescriptor[];
   localizations?: Record<string, PluginLocalization>;
   source: "built_in" | "marketplace" | "local_file" | string;
   status?: "enabled" | "disabled" | string;

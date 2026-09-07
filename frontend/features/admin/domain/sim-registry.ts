@@ -15,6 +15,7 @@ export type SIMPluginDescriptorLike = {
   status?: unknown;
   loadable?: unknown;
   capabilities?: unknown;
+  active_kinds?: unknown;
   active_capabilities?: unknown;
   lifecycle?: unknown;
 };
@@ -104,11 +105,24 @@ function operationalSIMPlugin(plugin: SIMPluginDescriptorLike): SIMPluginDescrip
     return {
       ...plugin,
       version: stringValue(lifecycle.active_version) || plugin.version,
-      kinds: activeCapabilityKinds(activeCapabilities),
+      kinds: activePluginKinds(plugin, lifecycle, activeCapabilities),
       capabilities: activeCapabilities,
     };
   }
   return simPluginIsOperational(plugin) ? plugin : null;
+}
+
+function activePluginKinds(
+  plugin: SIMPluginDescriptorLike,
+  lifecycle: Record<string, unknown>,
+  activeCapabilities: readonly unknown[],
+) {
+  if (Array.isArray(plugin.active_kinds)) return plugin.active_kinds;
+  if (plugin.active_kinds !== undefined && plugin.active_kinds !== null) return [];
+  const activeKinds = activeCapabilityKinds(activeCapabilities);
+  if (!activeDescriptorMatchesDesired(plugin, lifecycle)) return activeKinds;
+  const desiredKinds = Array.isArray(plugin.kinds) ? plugin.kinds.map(stringValue).filter(Boolean) : [];
+  return [...new Set([...activeKinds, ...desiredKinds])];
 }
 
 function activeCapabilityKinds(capabilities: readonly unknown[]) {
@@ -117,6 +131,13 @@ function activeCapabilityKinds(capabilities: readonly unknown[]) {
     const kind = stringValue((capability as SIMPluginCapabilityDescriptorLike).kind);
     return kind ? [kind] : [];
   }))];
+}
+
+function activeDescriptorMatchesDesired(plugin: SIMPluginDescriptorLike, lifecycle: Record<string, unknown>) {
+  if (!simPluginIsOperational(plugin)) return false;
+  const desiredVersion = stringValue(lifecycle.desired_version) || stringValue(plugin.version);
+  const activeVersion = stringValue(lifecycle.active_version);
+  return desiredVersion !== "" && desiredVersion === activeVersion;
 }
 
 function simPluginIsOperational(plugin: SIMPluginDescriptorLike) {

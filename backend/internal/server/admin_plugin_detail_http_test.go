@@ -187,6 +187,60 @@ permissions:
 	if !desiredFound || !activeFound {
 		t.Fatalf("desired capabilities = %+v, active capabilities = %+v", plugin.Capabilities, plugin.ActiveCapabilities)
 	}
+	if len(plugin.ActiveKinds) != 1 || plugin.ActiveKinds[0] != pluginmeta.KindSIM {
+		t.Fatalf("active kinds = %+v, want built-in SIM kind", plugin.ActiveKinds)
+	}
+}
+
+func TestAdminPluginDescriptorsProjectBuiltInKindsAcrossFailedOverride(t *testing.T) {
+	pluginDir := t.TempDir()
+	packageDir := filepath.Join(pluginDir, "codex-sim-override")
+	writeServerPluginManifest(t, packageDir, `
+schema_version: 2
+id: tokenhub.provider.openai-codex
+name: Quarantined Codex SIM Override
+version: 2.0.0
+summary: Exercises active kind projection across a built-in fallback.
+category: ui_template
+tokenhub:
+  plugin_api: v2
+kinds: [sim]
+placement: [presentation]
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: run.sh
+capabilities:
+  sim:
+    theme_tokens:
+      - id: external-theme
+        mode: light
+        tokens:
+          accent: "#dc2626"
+permissions:
+  data:
+    read: []
+    write: []
+`)
+	writeAdminPluginDetailFile(t, packageDir, "run.sh", "#!/bin/sh\nprintf '{}'")
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+
+	plugin := requireAdminPluginDescriptor(t, server, "tokenhub.provider.openai-codex")
+	if plugin.Status != pluginmeta.StatusFailedStartup || len(plugin.Kinds) != 1 || plugin.Kinds[0] != pluginmeta.KindSIM {
+		t.Fatalf("desired failed override = %+v", plugin)
+	}
+	hasProviderKind := false
+	for _, kind := range plugin.ActiveKinds {
+		if kind == pluginmeta.KindProvider {
+			hasProviderKind = true
+		}
+		if kind == pluginmeta.KindSIM {
+			t.Fatalf("active kinds inherited the quarantined SIM kind: %+v", plugin.ActiveKinds)
+		}
+	}
+	if !hasProviderKind {
+		t.Fatalf("active kinds = %+v, want built-in Provider kind", plugin.ActiveKinds)
+	}
 }
 
 func TestAdminPluginFileReturnsOnlySafeTextPreview(t *testing.T) {

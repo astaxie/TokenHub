@@ -143,6 +143,7 @@ test("SIM registry preserves active built-in capabilities during failed package 
     status: "failed_startup",
     loadable: false,
     capabilities: [desiredCapability],
+    active_kinds: ["sim"],
     active_capabilities: [activeCapability],
     lifecycle: { active_enabled: true, active_version: "1.0.0" },
   }]);

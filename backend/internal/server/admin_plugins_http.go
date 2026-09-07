@@ -36,6 +36,7 @@ type adminPluginDescriptorResponse struct {
 	LastErrorCode      string                            `json:"last_error_code,omitempty"`
 	AuditEvent         pluginmeta.PackageLifecycleEvent  `json:"audit_event,omitempty"`
 	Loadable           bool                              `json:"loadable"`
+	ActiveKinds        []pluginmeta.Kind                 `json:"active_kinds,omitempty"`
 	ActiveCapabilities []pluginmeta.CapabilityDescriptor `json:"active_capabilities,omitempty"`
 	Lifecycle          adminPluginLifecycleResponse      `json:"lifecycle"`
 	Compatibility      adminPluginCompatibilityResponse  `json:"compatibility"`
@@ -189,6 +190,7 @@ func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, erro
 			ActiveVersion:  activeDescriptor.Version,
 		})
 		plugin := adminPluginDescriptorForPackageWithFacts(descriptor, pkg, packageInstalled, facts)
+		plugin.ActiveKinds = append([]pluginmeta.Kind(nil), activeDescriptor.Kinds...)
 		plugin.ActiveCapabilities = append([]pluginmeta.CapabilityDescriptor(nil), activeDescriptor.Capabilities...)
 		response = append(response, plugin)
 		seen[descriptor.ID] = true
@@ -207,11 +209,13 @@ func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, erro
 func (s *Server) adminPluginDescriptorForPackage(descriptor pluginmeta.Descriptor, pkg pluginmeta.Package, packageInstalled bool, installed bool) adminPluginDescriptorResponse {
 	activeStatus := pluginmeta.StatusDisabled
 	activeVersion := ""
+	var activeKinds []pluginmeta.Kind
 	var activeCapabilities []pluginmeta.CapabilityDescriptor
 	if s != nil && s.pluginRegistry != nil {
 		if active, ok := s.pluginRegistry.Describe(descriptor.ID); ok {
 			activeStatus = active.Status
 			activeVersion = active.Version
+			activeKinds = append(activeKinds, active.Kinds...)
 			activeCapabilities = append(activeCapabilities, active.Capabilities...)
 		}
 	}
@@ -226,6 +230,7 @@ func (s *Server) adminPluginDescriptorForPackage(descriptor pluginmeta.Descripto
 		ActiveVersion:  activeVersion,
 	})
 	plugin := adminPluginDescriptorForPackageWithFacts(descriptor, pkg, packageInstalled, facts)
+	plugin.ActiveKinds = activeKinds
 	plugin.ActiveCapabilities = activeCapabilities
 	return plugin
 }
