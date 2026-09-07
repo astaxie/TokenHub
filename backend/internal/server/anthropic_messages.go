@@ -923,7 +923,7 @@ func (s *Server) executeNativeAnthropicMessages(
 		return nil, Usage{}, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Anthropic provider returned invalid JSON")
 	}
 	body["model"] = req.Model
-	return body, anthropicUsage(body), nil
+	return body, withUsageResponseMetadata(anthropicUsage(body), resp.Header, route.Provider), nil
 }
 
 func (s *Server) doNativeAnthropicRequest(

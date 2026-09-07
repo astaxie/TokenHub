@@ -1095,7 +1095,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               onCreateModel={() => setModal({ config: activeConfig })}
               onOpenProviders={() => selectView("providers")}
               onOpenRoutes={openRoutes}
-              onEditModel={(item) => setModal({ config: activeConfig, item })}
+              onEditModel={(item) => setModal({ config: !item.modality || ["chat", "embedding"].includes(item.modality) ? { ...activeConfig, fields: activeConfig.fields.filter(field => !field.key.includes("price_") && field.key !== "pricing_periods").map(field => field.key === "modality" ? { ...field, readOnlyOnEdit: true } : field) } : activeConfig, item })}
               onDeleteModel={(item) => setConfirmDelete({ config: activeConfig, item })}
             />
           ) : activeView === "reports" && activeConfig ? (

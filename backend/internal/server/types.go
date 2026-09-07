@@ -433,6 +433,7 @@ type ModelRoutePolicy struct {
 }
 
 type Usage struct {
+	Evidence                 *usageEvidence  `json:"-"`
 	MeteringRaw              *metering.Units `json:"-"`
 	MeteringInvalid          bool            `json:"-"`
 	PromptTokens             int64           `json:"prompt_tokens"`

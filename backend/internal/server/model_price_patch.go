@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 )
 
 func validateModelBasePrices(model Model) error {
@@ -83,6 +84,33 @@ func modelPricingMetadata(current map[string]string, patch Model) map[string]str
 		metadata = patch.Metadata
 	}
 	if patch.pricingPatch == nil {
+		return metadata
+	}
+	// A metadata-only edit cannot silently replace inherited pricing metadata.
+	hasPricingFields := false
+	for key := range patch.pricingPatch.fields {
+		if strings.Contains(key, "price_") || key == "pricing_periods" {
+			hasPricingFields = true
+			break
+		}
+	}
+	for _, key := range []string{cacheReadConfiguredKey, cacheReadEstimateRatioKey, "cached_input_price_usd_per_1m", "cache_read_price_usd_per_1m", "cached_read_price_usd_per_1m"} {
+		if _, explicit := patch.Metadata[key]; explicit {
+			hasPricingFields = true
+		}
+	}
+	if !hasPricingFields {
+		metadata = cloneStringMap(metadata)
+		if metadata == nil {
+			metadata = map[string]string{}
+		}
+		for _, key := range []string{cacheReadConfiguredKey, cacheReadEstimateRatioKey, "cached_input_price_usd_per_1m", "cache_read_price_usd_per_1m", "cached_read_price_usd_per_1m"} {
+			if value, ok := current[key]; ok {
+				metadata[key] = value
+			} else {
+				delete(metadata, key)
+			}
+		}
 		return metadata
 	}
 	if configured, ok := patch.Metadata[cacheReadConfiguredKey]; ok {

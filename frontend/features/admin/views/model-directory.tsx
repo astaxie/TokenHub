@@ -1,5 +1,6 @@
 "use client";
 
+import { ModelPricingWorkbench } from "./model-pricing-workbench";
 import { StatementLauncher } from "./billing-statements";
 import { AlertTriangle, Boxes, CircleCheck, CircleDashed, Link2, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -41,6 +42,7 @@ export function ModelDirectoryView({
   onEditModel: (model: Model) => void;
   onDeleteModel: (model: Model) => void;
 }) {
+  const [pricingModel, setPricingModel] = useState<Model | null>(null);
   const [publication, setPublication] = useState<"all" | ModelPublicationState>(readOnly ? "all" : "published");
   const [query, setQuery] = useState("");
   const [providerID, setProviderID] = useState("");
@@ -74,6 +76,7 @@ export function ModelDirectoryView({
     }
   }
 
+  if (pricingModel && !readOnly) return <div className="billing-page"><button type="button" className="secondary-button" onClick={() => setPricingModel(null)}>{tx("返回模型目录")}</button><ModelPricingWorkbench key={pricingModel.name} api={api} data={data} model={pricingModel} onApplied={onReload} /></div>;
   if (!loading && publishedModels.length === 0) {
     if (readOnly) {
       return (
@@ -158,6 +161,7 @@ export function ModelDirectoryView({
           readOnly={readOnly}
           busy={busy || loading}
           onOpenRoutes={onOpenRoutes}
+          onPricing={setPricingModel}
           onEdit={onEditModel}
           onDelete={onDeleteModel}
           onPublish={setPublished}
@@ -187,13 +191,14 @@ function ModelDirectoryStats({ stats }: { stats: ReturnType<typeof modelDirector
   );
 }
 
-function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, onEdit, onDelete, onPublish }: {
+function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, onPricing, onEdit, onDelete, onPublish }: {
   api: ApiContext;
   data: AppData;
   models: Model[];
   readOnly: boolean;
   busy: boolean;
   onOpenRoutes: (model?: Model) => void;
+  onPricing: (model: Model) => void;
   onEdit: (model: Model) => void;
   onDelete: (model: Model) => void;
   onPublish: (model: Model, published: boolean) => void;
@@ -245,7 +250,7 @@ function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, 
                 </> : <td><StatusPill status="active" label={tx("当前账号可用")} /></td>}
                 <td><strong>{priceMetric(model.input_price_usd_per_1m)}</strong><span>{tx("输入")} · {priceMetric(model.output_price_usd_per_1m)} {tx("输出")}</span></td>
                 {!readOnly ? (
-                  <td><div className="directory-row-actions"><StatementLauncher api={api} side="tenant" model={model.name} /><button aria-label={`${tx("路由策略")}: ${model.name}`} className="text-button" onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button><button className="text-button" onClick={() => onEdit(model)} type="button">{tx("编辑")}</button><button className="text-button" disabled={busy || (publication !== "published" && activeRoutes.length === 0)} onClick={() => onPublish(model, publication !== "published")} type="button">{tx(publication === "published" ? "下线" : "发布")}</button><button className="danger-button" onClick={() => onDelete(model)} type="button">{tx("删除")}</button></div></td>
+                  <td><div className="directory-row-actions">{(!model.modality || ["chat", "embedding"].includes(model.modality)) ? <button type="button" className="text-button" onClick={() => onPricing(model)}>{tx("定价与收益")}</button> : null}<StatementLauncher api={api} side="tenant" model={model.name} /><button aria-label={`${tx("路由策略")}: ${model.name}`} className="text-button" onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button><button className="text-button" onClick={() => onEdit(model)} type="button">{tx("编辑")}</button><button className="text-button" disabled={busy || (publication !== "published" && activeRoutes.length === 0)} onClick={() => onPublish(model, publication !== "published")} type="button">{tx(publication === "published" ? "下线" : "发布")}</button><button className="danger-button" onClick={() => onDelete(model)} type="button">{tx("删除")}</button></div></td>
                 ) : null}
               </tr>
             );

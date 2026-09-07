@@ -180,8 +180,10 @@ func applyCodexResponseMetadata(usage *Usage, headers http.Header) {
 	usage.UpstreamRequestID = firstNonEmpty(
 		boundedHeaderValue(headers.Get("x-request-id")),
 		boundedHeaderValue(headers.Get("x-oai-request-id")),
-		boundedHeaderValue(headers.Get("cf-ray")),
 	)
+	usage.Evidence = cloneUsageEvidence(evidenceForUsage(*usage))
+	usage.Evidence.InvocationID = usage.UpstreamRequestID
+	usage.Evidence.TraceID = boundedHeaderValue(headers.Get("cf-ray"))
 	usage.ServedModel = boundedHeaderValue(headers.Get("openai-model"))
 	usage.ModelETag = boundedHeaderValue(headers.Get("x-models-etag"))
 	usage.Transport = "http_sse"

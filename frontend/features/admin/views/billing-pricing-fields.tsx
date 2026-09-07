@@ -30,7 +30,7 @@ export function decimalAmount(value: string) {
   const separator = new Intl.NumberFormat(languageLocale()).formatToParts(1.1).find((part) => part.type === "decimal")?.value ?? ".";
   return new Intl.NumberFormat(languageLocale()).format(BigInt(integer)) + separator + fraction.replace(/0+$/, "").padEnd(2, "0");
 }
-export function displayDate(value?: string) {
+export function displayDate(value?: string, timezone?: string) {
   if (!value || Number.isNaN(Date.parse(value))) return "—";
-  return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "short", ...(timezone ? { timeZone: timezone } : {}) }).format(new Date(value));
 }

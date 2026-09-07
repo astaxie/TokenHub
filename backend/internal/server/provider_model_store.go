@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -38,16 +39,24 @@ func (s *GormStore) AddProviderModel(model ProviderModel) ProviderModel {
 	if model.LastSeenAt == nil {
 		model.LastSeenAt = &now
 	}
-	// Discovery refreshes catalog details; saved prices and their presence flags
-	// remain under the explicit inventory-edit workflow, including free prices.
-	_ = s.db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "provider_id"}, {Name: "upstream_model"}}, DoUpdates: clause.AssignmentColumns([]string{
-		"display_name", "canonical_name", "category", "family", "modality", "context_window",
-		"input_modalities", "output_modalities", "capabilities", "supported_parameters", "last_seen_at", "updated_at",
-	})}).Create(&model).Error
-	var saved ProviderModel
-	if err := s.db.Where("provider_id = ? AND upstream_model = ?", model.ProviderID, model.UpstreamModel).First(&saved).Error; err == nil {
-		return saved
-	}
+	_ = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.lockScopeForUpdate(tx, "provider_pricing", procurementKey(model.ProviderID, model.UpstreamModel)); err != nil {
+			return err
+		}
+		// Discovery refreshes catalog details; saved prices and their presence flags
+		// remain under the explicit inventory-edit workflow, including free prices.
+		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "provider_id"}, {Name: "upstream_model"}}, DoUpdates: clause.AssignmentColumns([]string{
+			"display_name", "canonical_name", "category", "family", "modality", "context_window",
+			"input_modalities", "output_modalities", "capabilities", "supported_parameters", "last_seen_at", "updated_at",
+		})}).Create(&model).Error; err != nil {
+			return err
+		}
+		var saved ProviderModel
+		if err := tx.Where("provider_id = ? AND upstream_model = ?", model.ProviderID, model.UpstreamModel).First(&saved).Error; err == nil {
+			model = saved
+		}
+		return nil
+	})
 	return model
 }
 
@@ -61,53 +70,64 @@ func (s *GormStore) UpdateProviderModel(id string, patch ProviderModel) (Provide
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var model ProviderModel
-	if err := s.db.First(&model, "id = ?", id).Error; err != nil {
-		return ProviderModel{}, notFound(err, "provider_model_not_found", "Provider model not found")
-	}
-	if patch.DisplayName != "" {
-		model.DisplayName = patch.DisplayName
-	}
-	if patch.CanonicalName != "" {
-		model.CanonicalName = patch.CanonicalName
-	}
-	if patch.Category != "" {
-		model.Category = patch.Category
-	}
-	if patch.Family != "" {
-		model.Family = patch.Family
-	}
-	if patch.Modality != "" {
-		model.Modality = patch.Modality
-	}
-	if patch.ContextWindow != 0 {
-		model.ContextWindow = patch.ContextWindow
-	}
-	if patch.Capabilities != nil {
-		model.Capabilities = patch.Capabilities
-	}
-	if patch.SupportedParameters != nil {
-		model.SupportedParameters = patch.SupportedParameters
-	}
-	if patch.Metadata != nil {
-		model.Metadata = patch.Metadata
-	}
-	if patch.Status != "" {
-		model.Status = patch.Status
-	}
-	model.InputPriceUSDPer1M = patch.InputPriceUSDPer1M
-	model.CacheReadPriceUSDPer1M = patch.CacheReadPriceUSDPer1M
-	model.CacheWritePriceUSDPer1M = patch.CacheWritePriceUSDPer1M
-	model.CacheWritePriceConfigured = patch.CacheWritePriceConfigured
-	model.CacheWrite5mPriceUSDPer1M = patch.CacheWrite5mPriceUSDPer1M
-	model.CacheWrite5mPriceConfigured = patch.CacheWrite5mPriceConfigured
-	model.CacheWrite1hPriceUSDPer1M = patch.CacheWrite1hPriceUSDPer1M
-	model.CacheWrite1hPriceConfigured = patch.CacheWrite1hPriceConfigured
-	model.OutputPriceUSDPer1M = patch.OutputPriceUSDPer1M
-	model.PricingPeriods = append([]ModelPricingPeriod(nil), patch.PricingPeriods...)
-	normalizeProviderModelCacheWriteConfiguration(&model)
-	model.UpdatedAt = time.Now().UTC()
-	return model, s.db.Save(&model).Error
+	var result ProviderModel
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var model ProviderModel
+		if err := tx.First(&model, "id = ?", id).Error; err != nil {
+			return notFound(err, "provider_model_not_found", "Provider model not found")
+		}
+		if err := s.lockScopeForUpdate(tx, "provider_pricing", procurementKey(model.ProviderID, model.UpstreamModel)); err != nil {
+			return err
+		}
+		if err := tx.First(&model, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if patch.DisplayName != "" {
+			model.DisplayName = patch.DisplayName
+		}
+		if patch.CanonicalName != "" {
+			model.CanonicalName = patch.CanonicalName
+		}
+		if patch.Category != "" {
+			model.Category = patch.Category
+		}
+		if patch.Family != "" {
+			model.Family = patch.Family
+		}
+		if patch.Modality != "" {
+			model.Modality = patch.Modality
+		}
+		if patch.ContextWindow != 0 {
+			model.ContextWindow = patch.ContextWindow
+		}
+		if patch.Capabilities != nil {
+			model.Capabilities = patch.Capabilities
+		}
+		if patch.SupportedParameters != nil {
+			model.SupportedParameters = patch.SupportedParameters
+		}
+		if patch.Metadata != nil {
+			model.Metadata = patch.Metadata
+		}
+		if patch.Status != "" {
+			model.Status = patch.Status
+		}
+		model.InputPriceUSDPer1M = patch.InputPriceUSDPer1M
+		model.CacheReadPriceUSDPer1M = patch.CacheReadPriceUSDPer1M
+		model.CacheWritePriceUSDPer1M = patch.CacheWritePriceUSDPer1M
+		model.CacheWritePriceConfigured = patch.CacheWritePriceConfigured
+		model.CacheWrite5mPriceUSDPer1M = patch.CacheWrite5mPriceUSDPer1M
+		model.CacheWrite5mPriceConfigured = patch.CacheWrite5mPriceConfigured
+		model.CacheWrite1hPriceUSDPer1M = patch.CacheWrite1hPriceUSDPer1M
+		model.CacheWrite1hPriceConfigured = patch.CacheWrite1hPriceConfigured
+		model.OutputPriceUSDPer1M = patch.OutputPriceUSDPer1M
+		model.PricingPeriods = append([]ModelPricingPeriod(nil), patch.PricingPeriods...)
+		normalizeProviderModelCacheWriteConfiguration(&model)
+		model.UpdatedAt = time.Now().UTC()
+		result = model
+		return tx.Save(&model).Error
+	})
+	return result, err
 }
 
 func normalizeProviderModelCacheWriteConfiguration(model *ProviderModel) {
@@ -126,9 +146,14 @@ func (s *GormStore) DeleteProviderModel(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var model ProviderModel
-	if err := s.db.First(&model, "id = ?", id).Error; err != nil {
-		return notFound(err, "provider_model_not_found", "Provider model not found")
-	}
-	return s.db.Delete(&model).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var model ProviderModel
+		if err := tx.First(&model, "id = ?", id).Error; err != nil {
+			return notFound(err, "provider_model_not_found", "Provider model not found")
+		}
+		if err := s.lockScopeForUpdate(tx, "provider_pricing", procurementKey(model.ProviderID, model.UpstreamModel)); err != nil {
+			return err
+		}
+		return tx.Delete(&model).Error
+	})
 }

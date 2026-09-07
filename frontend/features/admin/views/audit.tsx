@@ -1,3 +1,4 @@
+import { RequestUsageEvidence } from "./usage-evidence";
 import { Activity, AlertCircle, Check, Copy, Gauge, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { canViewAdminAudit } from "../core/navigation";
@@ -313,6 +314,7 @@ export function AuditView({ api, data, user }: { api: ApiContext; data: AppData;
               </div>
 
               <RequestDetailPanel
+                api={api}
                 data={data}
                 requestID={selectedRequestID}
                 detail={detail?.log.request_id === selectedRequestID ? detail : null}
@@ -363,6 +365,7 @@ function emptyRequestLogSummary(): RequestLogSummary {
 }
 
 export function RequestDetailPanel({
+  api,
   data,
   requestID,
   detail,
@@ -376,6 +379,7 @@ export function RequestDetailPanel({
   loading: boolean;
   error: string;
   showProviderCost: boolean;
+  api?: ApiContext;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -476,6 +480,7 @@ export function RequestDetailPanel({
         </button>
       </div>
 
+      {showProviderCost && api ? <RequestUsageEvidence api={api} requestID={requestID} /> : null}
       <div className="request-detail-grid">
         <DetailField label="时间" value={formatTime(log.created_at)} />
         <DetailField label="延迟" value={`${log.latency_ms || 0}ms`} />

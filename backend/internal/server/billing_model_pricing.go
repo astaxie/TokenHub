@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,18 +18,22 @@ import (
 )
 
 type modelPriceChange struct {
-	BeforeEffective metering.Rates   `json:"before_effective"`
-	AfterEffective  metering.Rates   `json:"after_effective"`
-	Replayed        bool             `json:"-"`
-	ID              string           `json:"id"`
-	RequestID       string           `json:"request_id"`
-	RequestHash     string           `json:"request_hash"`
-	ModelName       string           `json:"model_name"`
-	ActorID         string           `json:"actor_id"`
-	ActorName       string           `json:"actor_name"`
-	EffectiveAt     time.Time        `json:"effective_at"`
-	Before          meteringRateCard `json:"before"`
-	After           meteringRateCard `json:"after"`
+	RiskAcknowledged  bool                 `json:"risk_acknowledged"`
+	AcknowledgedRisks []string             `json:"acknowledged_risks,omitempty"`
+	Analysis          *pricingImpactReport `json:"analysis,omitempty"`
+	AnalysisState     string               `json:"analysis_state"`
+	BeforeEffective   metering.Rates       `json:"before_effective"`
+	AfterEffective    metering.Rates       `json:"after_effective"`
+	Replayed          bool                 `json:"-"`
+	ID                string               `json:"id"`
+	RequestID         string               `json:"request_id"`
+	RequestHash       string               `json:"request_hash"`
+	ModelName         string               `json:"model_name"`
+	ActorID           string               `json:"actor_id"`
+	ActorName         string               `json:"actor_name"`
+	EffectiveAt       time.Time            `json:"effective_at"`
+	Before            meteringRateCard     `json:"before"`
+	After             meteringRateCard     `json:"after"`
 }
 
 type modelPricingDraft struct {
@@ -261,6 +266,12 @@ func (s *GormStore) PreviewBillingModel(card meteringRateCard, usage Usage, at t
 func billingAmount(value float64) string { return strconv.FormatFloat(value, 'f', 12, 64) }
 
 func (s *GormStore) ApplyBillingModel(card meteringRateCard, expected, requestID string, actor AdminUser) (modelPriceChange, error) {
+	return s.applyBillingModelDecision(context.Background(), card, expected, requestID, actor, "", false)
+}
+func (s *GormStore) ApplyBillingModelAnalysis(ctx context.Context, card meteringRateCard, expected, requestID string, actor AdminUser, receipt string) (modelPriceChange, error) {
+	return s.applyBillingModelDecision(ctx, card, expected, requestID, actor, receipt, true)
+}
+func (s *GormStore) applyBillingModelDecision(ctx context.Context, card meteringRateCard, expected, requestID string, actor AdminUser, receipt string, riskAcknowledged bool) (modelPriceChange, error) {
 	var result modelPriceChange
 	if expected == "" || len(requestID) < 8 || len(requestID) > 128 {
 		return result, NewHTTPError(400, "pricing_confirmation_required", "A pricing fingerprint and request ID are required")
@@ -269,12 +280,18 @@ func (s *GormStore) ApplyBillingModel(card meteringRateCard, expected, requestID
 		Card            meteringRateCard
 		Expected, Actor string
 	}{card, expected, actor.ID})
+	if receipt != "" {
+		raw, _ = json.Marshal(struct {
+			Request json.RawMessage
+			Receipt string
+		}{raw, receipt})
+	}
 	digest := sha256.Sum256(raw)
 	requestHash := hex.EncodeToString(digest[:])
 	id := "model-price:" + requestID
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := s.lockScopeForUpdate(tx, "model_price_change", requestID); err != nil {
 			return err
 		}
@@ -304,6 +321,18 @@ func (s *GormStore) ApplyBillingModel(card meteringRateCard, expected, requestID
 		if err != nil {
 			return err
 		}
+		var analysis *pricingAnalysisDecision
+		if receipt != "" {
+			analysis, err = s.readPricingAnalysis(receipt, actor, current, candidate)
+			if err != nil {
+				return err
+			}
+		}
+		if analysis != nil {
+			if err := s.validateProcurementBasis(tx, analysis.Report.ProcurementBasis); err != nil {
+				return err
+			}
+		}
 		if pricingFingerprint(candidate) == expected {
 			return NewHTTPError(409, "model_price_unchanged", "No model price changes to apply")
 		}
@@ -311,7 +340,15 @@ func (s *GormStore) ApplyBillingModel(card meteringRateCard, expected, requestID
 		if err != nil {
 			return err
 		}
-		result = modelPriceChange{ID: id, RequestID: requestID, RequestHash: requestHash, ModelName: current.Name, ActorID: actor.ID, ActorName: actor.Username, EffectiveAt: now, Before: modelPricingCard(current), After: modelPricingCard(candidate), BeforeEffective: effectiveModelBaseRates(current), AfterEffective: effectiveModelBaseRates(candidate)}
+		result = modelPriceChange{RiskAcknowledged: riskAcknowledged, AnalysisState: "not_performed", ID: id, RequestID: requestID, RequestHash: requestHash, ModelName: current.Name, ActorID: actor.ID, ActorName: actor.Username, EffectiveAt: now, Before: modelPricingCard(current), After: modelPricingCard(candidate), BeforeEffective: effectiveModelBaseRates(current), AfterEffective: effectiveModelBaseRates(candidate)}
+		if analysis != nil {
+			result.AnalysisState = "performed"
+			result.Analysis = &analysis.Report
+			result.AcknowledgedRisks = append([]string{}, analysis.Report.Risks...)
+		}
+		if analysis == nil && riskAcknowledged {
+			result.AcknowledgedRisks = []string{"analysis_not_performed"}
+		}
 		if err := tx.Model(&candidate).Select("InputPriceUSDPer1M", "OutputPriceUSDPer1M", "EmbeddingPriceUSDPer1M", "CacheReadPriceUSDPer1M", "CacheWritePriceUSDPer1M", "CacheWrite5mPriceUSDPer1M", "CacheWrite1hPriceUSDPer1M", "CacheWritePriceConfigured", "CacheWrite5mPriceConfigured", "CacheWrite1hPriceConfigured", "PricingPeriods", "Metadata").Updates(&candidate).Error; err != nil {
 			return err
 		}
@@ -358,7 +395,7 @@ func recordModelPriceChange(tx *gorm.DB, before, after Model, actor AdminUser, n
 	if name == "" {
 		name = "system"
 	}
-	change := modelPriceChange{ID: NewID("price_change"), ModelName: after.Name, ActorID: actor.ID, ActorName: name, EffectiveAt: now, Before: modelPricingCard(before), After: modelPricingCard(after), BeforeEffective: effectiveModelBaseRates(before), AfterEffective: effectiveModelBaseRates(after)}
+	change := modelPriceChange{AnalysisState: "not_performed", ID: NewID("price_change"), ModelName: after.Name, ActorID: actor.ID, ActorName: name, EffectiveAt: now, Before: modelPricingCard(before), After: modelPricingCard(after), BeforeEffective: effectiveModelBaseRates(before), AfterEffective: effectiveModelBaseRates(after)}
 	return saveMeteringEntry(tx, change.ID, "model_price_change", after.Name, change, now)
 }
 

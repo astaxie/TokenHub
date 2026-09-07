@@ -28,11 +28,11 @@ func TestAnthropicUsageFromRawMap(t *testing.T) {
 		CompletionTokens:        5,
 		TotalTokens:             25,
 	}
-	if !reflect.DeepEqual(usage, want) {
+	if !reflect.DeepEqual(usageCountsOnly(usage), want) {
 		t.Fatalf("anthropicUsageFromRawMap() = %+v, want %+v", usage, want)
 	}
 
-	if empty := anthropicUsageFromRawMap(nil); !reflect.DeepEqual(empty, Usage{}) {
+	if empty := anthropicUsageFromRawMap(nil); !reflect.DeepEqual(usageCountsOnly(empty), Usage{}) {
 		t.Fatalf("anthropicUsageFromRawMap(nil) = %+v, want a zero usage", empty)
 	}
 }
@@ -57,7 +57,7 @@ func TestAnthropicUsageObjectDerivesCacheWriteTotalFromDurationDetails(t *testin
 // A stream splits usage across message_start and message_delta. A frame only
 // overwrites what it carries, and the three input classes move as one group: a
 // frame that restates any of them replaces the whole input side.
-func TestMergeAnthropicStreamUsageOnlyPositiveValuesOverwrite(t *testing.T) {
+func TestMergeAnthropicStreamUsagePreservesOmissionAndExplicitZero(t *testing.T) {
 	start := mergeAnthropicStreamUsage(Usage{}, map[string]any{
 		"input_tokens":            int64(30),
 		"cache_read_input_tokens": int64(10),
@@ -74,13 +74,13 @@ func TestMergeAnthropicStreamUsageOnlyPositiveValuesOverwrite(t *testing.T) {
 		t.Fatalf("message_delta merge = %+v", final)
 	}
 
-	// An explicit zero is treated the same as an omission.
+	// Explicit zeros overwrite the corresponding reported snapshot.
 	zeroed := mergeAnthropicStreamUsage(final, map[string]any{
 		"input_tokens":            int64(0),
 		"cache_read_input_tokens": int64(0),
 		"output_tokens":           int64(0),
 	})
-	if !reflect.DeepEqual(zeroed, final) {
+	if zeroed.PromptTokens != 0 || zeroed.CompletionTokens != 0 || zeroed.CachedInputTokens != 0 {
 		t.Fatalf("zero-valued merge = %+v, want %+v", zeroed, final)
 	}
 

@@ -27,6 +27,13 @@ const server = createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && request.url === "/v1/chat/completions") {
+    if (request.headers.authorization !== `Bearer ${expectedKey}`) { response.writeHead(401); response.end(); return; }
+    response.writeHead(200, { "content-type": "application/json", "x-request-id": "e2e-supplier-invocation" });
+    response.end(JSON.stringify({ id: "e2e-response", choices: [{ message: { role: "assistant", content: "Fixture reply" }, finish_reason: "stop" }], usage: { prompt_tokens: 1000000, completion_tokens: 10000, total_tokens: 1010000, prompt_tokens_details: { cached_tokens: 500000 }, cache_write_input_tokens: 100000, cache_write_5m_input_tokens: 60000, cache_write_1h_input_tokens: 30000 } }));
+    return;
+  }
+
   response.writeHead(404, { "content-type": "application/json" });
   response.end(JSON.stringify({ error: { message: "not found" } }));
 });

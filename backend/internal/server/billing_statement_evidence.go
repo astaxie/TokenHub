@@ -172,11 +172,15 @@ func buildStatement(tx *gorm.DB, out *statementResult) error {
 	if err != nil {
 		return err
 	}
+	invocationIDs, err := statementLegacyInvocationIDs(tx, legacy)
+	if err != nil {
+		return err
+	}
 	for _, row := range legacy {
 		if item := evidence[row.RequestID]; item != nil && item.Admission != nil {
 			continue
 		}
-		appendLegacyStatement(out, row, legacyModels[row.RequestID])
+		appendLegacyStatement(out, row, legacyModels[row.RequestID], invocationIDs[row.RequestID])
 	}
 	sort.Slice(out.Rows, func(i, j int) bool {
 		if out.Rows[i].At.Equal(out.Rows[j].At) {
@@ -195,6 +199,7 @@ func appendTenantStatement(out *statementResult, item *statementEvidence, model 
 		row.Amount = statementString(t.LegacyUSD)
 		row.USD = row.Amount
 		row.Units = t.Units
+		row.Evidence = t.Evidence
 		row.Status = "legacy_incomplete"
 		row.Reason = "historical_price_incomplete"
 		// Shadow rate cards do not change the actual charged amount. Only attach
@@ -241,10 +246,12 @@ func appendAttemptStatements(out *statementResult, item *statementEvidence, mode
 			for _, completion := range item.Settlement.Attempts {
 				if completion.ID == attempt.ID {
 					row.ExternalRequestID = completion.UpstreamRequestID
+					row.AttemptFinished = !completion.EndedAt.IsZero()
 					priced := completion.Charge
 					row.Status = priced.Status
 					row.Reason = priced.Reason
 					row.Units = priced.Units
+					row.Evidence = priced.Evidence
 					if priced.Charge != nil {
 						row.Amount = statementString(priced.Charge.Amount)
 						row.Currency = priced.Charge.Currency
@@ -266,7 +273,7 @@ func appendAttemptStatements(out *statementResult, item *statementEvidence, mode
 	}
 }
 
-func appendLegacyStatement(out *statementResult, u UsageRecord, upstreamModel string) {
+func appendLegacyStatement(out *statementResult, u UsageRecord, upstreamModel string, invocationID ...string) {
 	q := out.Query
 	matchQuery := q
 	if q.Side == "provider" {
@@ -276,6 +283,9 @@ func appendLegacyStatement(out *statementResult, u UsageRecord, upstreamModel st
 		return
 	}
 	base := statementRow{ID: u.ID, RequestID: u.RequestID, At: u.CreatedAt, Timezone: q.Timezone, ProjectID: u.ProjectID, UserID: u.AttributedUserID, TenantModel: u.ModelName, APIKeyID: u.APIKeyID, Model: u.ModelName, Currency: "USD", Status: "legacy_incomplete", Reason: "historical_evidence_incomplete", Units: metering.Units{Input: u.InputTokens - u.CachedInputTokens - u.CacheWriteTokens, CacheRead: u.CachedInputTokens, CacheWrite: u.CacheWriteTokens - u.CacheWrite5mTokens - u.CacheWrite1hTokens, CacheWrite5m: u.CacheWrite5mTokens, CacheWrite1h: u.CacheWrite1hTokens, Output: u.OutputTokens}}
+	if len(invocationID) > 0 {
+		base.ExternalRequestID = invocationID[0]
+	}
 	if q.Side != "provider" {
 		row := base
 		row.Source = "tenant"

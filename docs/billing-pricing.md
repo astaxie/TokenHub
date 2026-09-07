@@ -2,20 +2,28 @@
 
 ## Model price changes
 
-Platform administrators open **Cost Governance → Cost Billing → Model pricing** and choose a downstream model. Current model prices are loaded. Chat and embedding token prices are supported; provider-cost previews are reference calculations and do not change Provider cost configuration.
+Platform administrators open **Model Directory → Pricing and margin** for a token-priced chat or embedding model. Edit global input, output, cache prices and time windows directly. Historical analysis and the advanced single-request simulator are optional; neither is required to change a price.
 
-1. Edit input, output, cache prices or time windows, and enter sample usage.
-2. Select **Calculate cost**. Preview invokes actual model billing logic without saving prices or creating trial history.
-3. Select **Apply to model prices** and review the model, old/new prices, and time windows in the confirmation dialog.
-4. Only **Confirm price change** saves the change. Cancel writes nothing; repeated clicks are disabled while submitting.
+1. Edit the prices. The ordinary model metadata editor does not overwrite token prices.
+2. Optionally expand historical analysis, select dates, timezone, projects and cost basis. Project filters select evidence only: the saved model price remains global.
+3. Select **Review and save**, review old/new prices and any loss, unknown-evidence or missing-analysis warnings, and acknowledge the impact and risks.
+4. Confirm to apply. Cancel writes nothing. New requests use the change immediately; in-flight requests retain their admission-time configuration.
 
-New requests use the applied prices immediately; in-flight requests retain their admission-time model configuration. If another administrator changes the prices or inherited cache-pricing metadata after preview, application is rejected and requires a new preview and confirmation. Replaying the same change request neither reapplies it nor duplicates successful price-change audits. Scheduled activation is not supported in this increment.
+Analysis defaults to the previous 30 complete calendar days, excluding today, with a 7-day shortcut and custom ranges up to 93 days. Dates use the selected IANA timezone. Requests belong to their admission date; all recorded attempts, including retries across midnight, are evaluated at a fixed analysis cutoff. Above 10000 evidence rows the request fails and requires a narrower range; it never samples or truncates silently.
+
+The result separates recorded historical charges, current-price replay and candidate-price replay. Historical cost uses saved attempt estimates. Current-procurement scenarios reprice those same attempts at their original times, routes and cache/retry distribution using current inventory prices; they are not forecasts. Absolute effective dates remain unchanged, and rules not exercised by the sample are identified. Revenue is counted once per request and costs include every attempt. Provider/resource combinations form separate margin groups.
+
+Computable samples are not supplier-verified. Request coverage and known recorded-charge coverage are separate, with unknown charges counted separately. Zero denominators display no percentage. Missing evidence makes overall margin unavailable; the computable subset is shown without extrapolation. Losses and incomplete or absent analysis require acknowledgement but do not prohibit saving. Model-price changes invalidate the confirmation; current-procurement basis changes invalidate that analysis receipt. Repeating an identical change request does not duplicate the change or its audit.
 
 Blank cache-read prices retain the model's default estimation rule; blank cache-write prices inherit default input/write rates. Explicit `0` means free. Provider input, output and cache-read costs distinguish missing configuration from explicit free prices: saving blank inventory fields means unknown, while `0` means free. Unknown costs never fall back to tenant charges. Reimporting an existing Provider model refreshes catalog details while preserving saved prices, time windows and price-presence flags; change costs explicitly in inventory.
 
 Time windows support weekdays (0 = Sunday, 6 = Saturday), IANA timezones, inclusive starts/exclusive ends, and input/cache/output overrides. Overnight windows belong to their starting day. Up to 64 non-overlapping windows are allowed. The preview picker displays the browser's local timezone; each window matches in its own timezone. Embedding windows are unsupported.
 
 **Price changes** lists only applied changes, retaining model, actor, timestamp, old/new configuration and effective base-price evidence, up to the latest 100 entries. Standalone shadow-card publication is retired; `/api/admin/billing/rate-cards` returns 410. Existing evidence is not deleted and historical charges are not recalculated.
+
+Applied changes also retain the analysis summary and cost basis, or explicitly record that analysis was not performed. Drafts and each individual analysis are not saved as price versions.
+
+Usage evidence is collected independently of pricing. Request detail and applied-change history expose reported, derived, estimated, missing, invalid and legacy-unverified fields, explicit zero values, stream completion and attempts. Supplier invocation ID, response ID and trace ID remain separate; a local request ID cannot substitute for a supplier ID. External reconciliation compares amounts only: an amount match does not establish token-field equivalence.
 
 ## Platform statements
 
@@ -36,8 +44,10 @@ Time windows support weekdays (0 = Sunday, 6 = Saturday), IANA timezones, inclus
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/admin/billing/models/{model}/pricing` | Current pricing configuration and concurrency fingerprint |
+| POST | `/api/admin/billing/model-pricing/check` | Validate prices without sample usage |
+| POST | `/api/admin/billing/model-pricing/impact` | Analyze `{card, fingerprint, basis, from, to, timezone, project_ids}` and issue a confirmation receipt |
 | POST | `/api/admin/billing/preview` | Preview `{card, usage, at, exchange_rate?}`; tenant previews use actual billing logic |
-| POST | `/api/admin/billing/model-pricing/apply` | Apply `{card, fingerprint, request_id, confirmed:true}` |
+| POST | `/api/admin/billing/model-pricing/apply` | Apply `{card, fingerprint, request_id, confirmed:true, risk_acknowledged:true, analysis_receipt?}` |
 | GET | `/api/admin/billing/price-changes` | Recent applied price changes |
 | GET | `/api/admin/billing/statements` | `kind=tenant/provider`, RFC3339 `from/to`, filters, grouping and pagination; `format=csv` exports |
 | POST | `/api/admin/billing/statements` | Existing customer/provider/margin statement preview |

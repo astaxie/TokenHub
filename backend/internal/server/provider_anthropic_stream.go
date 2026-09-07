@@ -26,6 +26,7 @@ type anthropicStreamDecoder struct {
 	// forwarded incrementally as they arrive.
 	toolArguments map[int]*strings.Builder
 
+	responseID   string
 	usage        map[string]any
 	stopReason   string
 	sawMessage   bool
@@ -118,6 +119,7 @@ func (d *anthropicStreamDecoder) consume(event serverSentEvent) (bool, error) {
 	case "message_start":
 		d.sawMessage = true
 		if message, ok := payload["message"].(map[string]any); ok {
+			d.responseID, _ = message["id"].(string)
 			d.mergeUsage(message["usage"])
 		}
 		return false, d.encoder.EmitRole()
@@ -290,7 +292,9 @@ func (d *anthropicStreamDecoder) mergeUsage(value any) {
 }
 
 func (d *anthropicStreamDecoder) currentUsage() Usage {
-	return anthropicUsageFromRawMap(d.usage)
+	usage := markUsageStream(anthropicUsageFromRawMap(d.usage), d.sawTerminal)
+	usage.Evidence.ResponseID = boundedUsageID(d.responseID)
+	return usage
 }
 
 func anthropicStreamError(payload map[string]any, provider Provider) error {

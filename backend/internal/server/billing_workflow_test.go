@@ -65,6 +65,7 @@ func TestBillingModelApplyConfirmationIdempotencyAndInFlightPrice(t *testing.T) 
 		t.Fatal("unconfirmed request changed price")
 	}
 	body["confirmed"] = true
+	body["risk_acknowledged"] = true
 	for range 2 {
 		response = doJSON(t, app, "POST", "/api/admin/billing/model-pricing/apply", body, token)
 		if response.Code != 200 {

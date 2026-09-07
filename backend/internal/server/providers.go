@@ -249,11 +249,16 @@ func (c openAICompatibleCore) chat(ctx context.Context, provider Provider, provi
 	req = withoutGatewayExtensions(req, c.preserveReasoningContent(provider))
 	req.Model = providerModel
 	req.ReasoningEffort = normalizedReasoningEffort(req.ReasoningEffort)
-	var body map[string]any
-	if err := c.doJSON(ctx, provider, http.MethodPost, providerModel, "/chat/completions", req, &body); err != nil {
+	response, err := c.doRaw(ctx, provider, http.MethodPost, providerModel, "/chat/completions", req, false)
+	if err != nil {
 		return nil, Usage{}, err
 	}
-	return body, usageFromMap(body), nil
+	body, err := decodeUsageBody(response)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	usage := withUsageResponseMetadata(usageFromMap(body), response.Header, provider)
+	return body, usage, nil
 }
 
 func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
@@ -267,25 +272,25 @@ func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider,
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsageForProvider(w, resp.Body, provider)
+	usage, err := copyOpenAIStreamAndUsageForProvider(w, resp.Body, provider)
+	return withUsageResponseMetadata(usage, resp.Header, provider), err
 }
 
 func (c openAICompatibleCore) embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
 	req.Model = providerModel
-	var body map[string]any
-	if err := c.doJSON(ctx, provider, http.MethodPost, providerModel, "/embeddings", req, &body); err != nil {
+	response, err := c.doRaw(ctx, provider, http.MethodPost, providerModel, "/embeddings", req, false)
+	if err != nil {
 		return nil, Usage{}, err
 	}
-	return body, usageFromMap(body), nil
-}
-
-func (c openAICompatibleCore) doJSON(ctx context.Context, provider Provider, method string, model string, endpoint string, payload any, target any) error {
-	resp, err := c.doRaw(ctx, provider, method, model, endpoint, payload, false)
+	body, err := decodeUsageBody(response)
 	if err != nil {
-		return err
+		return nil, Usage{}, err
 	}
-	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
+	usage := withUsageResponseMetadata(usageFromMap(body), response.Header, provider)
+	if usage.Evidence.Fields["output"].State == "missing" {
+		usage.Evidence.Fields["output"] = derivedEvidence(0)
+	}
+	return body, usage, nil
 }
 
 func (c openAICompatibleCore) doRaw(ctx context.Context, provider Provider, method string, model string, endpoint string, payload any, stream bool) (*http.Response, error) {
@@ -356,11 +361,16 @@ func (a OpenAICompatibleAdapter) ChatStream(ctx context.Context, provider Provid
 func (a OpenAICompatibleAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
 	req.Model = providerModel
 	req = normalizedResponsesReasoning(req)
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, http.MethodPost, "/responses", req, &body); err != nil {
+	response, err := a.doRaw(ctx, provider, http.MethodPost, "/responses", req, false)
+	if err != nil {
 		return nil, Usage{}, err
 	}
-	return body, usageFromMap(body), nil
+	body, err := decodeUsageBody(response)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	usage := withUsageResponseMetadata(usageFromMap(body), response.Header, provider)
+	return body, usage, nil
 }
 
 func (a OpenAICompatibleAdapter) OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, _ http.Header) (*http.Response, error) {
@@ -372,10 +382,6 @@ func (a OpenAICompatibleAdapter) OpenResponses(ctx context.Context, provider Pro
 
 func (a OpenAICompatibleAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
 	return a.core().embeddings(ctx, provider, providerModel, req)
-}
-
-func (a OpenAICompatibleAdapter) doJSON(ctx context.Context, provider Provider, method, endpoint string, payload any, target any) error {
-	return a.core().doJSON(ctx, provider, method, "", endpoint, payload, target)
 }
 
 func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, method, endpoint string, payload any, stream bool) (*http.Response, error) {
@@ -571,11 +577,15 @@ func (a AnthropicAdapter) Chat(ctx context.Context, provider Provider, providerM
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, "/v1/messages", payload, &body); err != nil {
+	response, err := a.doRaw(ctx, provider, "/v1/messages", payload, false)
+	if err != nil {
 		return nil, Usage{}, err
 	}
-	usage := anthropicUsage(body)
+	body, err := decodeUsageBody(response)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	usage := withUsageResponseMetadata(anthropicUsage(body), response.Header, provider)
 	converted, err := anthropicChatResponse(body, req.Model, usage)
 	if err != nil {
 		return nil, usage, err
@@ -595,7 +605,8 @@ func (a AnthropicAdapter) ChatStream(ctx context.Context, provider Provider, pro
 	}
 	defer resp.Body.Close()
 	encoder := newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req))
-	return streamAnthropicChatForProvider(resp.Body, encoder, provider)
+	usage, err := streamAnthropicChatForProvider(resp.Body, encoder, provider)
+	return withUsageResponseMetadata(usage, resp.Header, provider), err
 }
 
 func (a AnthropicAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -618,15 +629,6 @@ func (a AnthropicAdapter) Responses(ctx context.Context, provider Provider, prov
 
 func (a AnthropicAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
 	return nil, Usage{}, NewHTTPError(501, "provider_capability_not_supported", "Anthropic embeddings are not supported")
-}
-
-func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoint string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, endpoint, payload, false)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
 }
 
 func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint string, payload any, stream bool) (*http.Response, error) {
@@ -672,11 +674,15 @@ func (a GeminiAdapter) Chat(ctx context.Context, provider Provider, providerMode
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, providerModel, ":generateContent", payload, &body); err != nil {
+	response, err := a.doRaw(ctx, provider, providerModel, ":generateContent", payload, false)
+	if err != nil {
 		return nil, Usage{}, err
 	}
-	usage := geminiUsage(body)
+	body, err := decodeUsageBody(response)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	usage := withUsageResponseMetadata(geminiUsage(body), response.Header, provider)
 	converted, err := geminiChatResponse(body, req.Model, usage)
 	if err != nil {
 		return nil, usage, err
@@ -695,7 +701,8 @@ func (a GeminiAdapter) ChatStream(ctx context.Context, provider Provider, provid
 	}
 	defer resp.Body.Close()
 	encoder := newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req))
-	return streamGeminiChatForProvider(resp.Body, encoder, provider)
+	usage, err := streamGeminiChatForProvider(resp.Body, encoder, provider)
+	return withUsageResponseMetadata(usage, resp.Header, provider), err
 }
 
 func (a GeminiAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
@@ -722,8 +729,12 @@ func (a GeminiAdapter) Embeddings(ctx context.Context, provider Provider, provid
 			"parts": []map[string]any{{"text": EmbeddingInputText(req.Input)}},
 		},
 	}
-	var body map[string]any
-	if err := a.doJSON(ctx, provider, providerModel, ":embedContent", payload, &body); err != nil {
+	resp, err := a.doRaw(ctx, provider, providerModel, ":embedContent", payload, false)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	body, err := decodeUsageBody(resp)
+	if err != nil {
 		return nil, Usage{}, err
 	}
 	values := []any{}
@@ -734,6 +745,9 @@ func (a GeminiAdapter) Embeddings(ctx context.Context, provider Provider, provid
 	}
 	usage := Usage{PromptTokens: EstimateTextTokens(EmbeddingInputText(req.Input))}
 	usage.TotalTokens = usage.PromptTokens
+	recordUsageEstimate(&usage, "input_total", usage.PromptTokens)
+	recordUsageEstimate(&usage, "total", usage.TotalTokens)
+	usage = withUsageResponseMetadata(usage, resp.Header, provider)
 	return map[string]any{
 		"object": "list",
 		"model":  req.Model,
@@ -742,15 +756,6 @@ func (a GeminiAdapter) Embeddings(ctx context.Context, provider Provider, provid
 		},
 		"usage": map[string]any{"prompt_tokens": usage.PromptTokens, "total_tokens": usage.TotalTokens},
 	}, usage, nil
-}
-
-func (a GeminiAdapter) doJSON(ctx context.Context, provider Provider, model string, action string, payload any, target any) error {
-	resp, err := a.doRaw(ctx, provider, model, action, payload, false)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
 }
 
 // doRaw issues a Gemini request. The action may already carry a query string
@@ -1017,6 +1022,7 @@ func geminiUsage(body map[string]any) Usage {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
+	usage.Evidence = captureGeminiUsageEvidence(usageMap, usage)
 	return usage
 }
 
@@ -1063,6 +1069,10 @@ func usageFromMap(body map[string]any) Usage {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
+	usage.Evidence = captureOpenAIUsageEvidence(usageMap, usage)
+	if value, ok := body["id"].(string); ok {
+		usage.Evidence.ResponseID = boundedUsageID(value)
+	}
 	return usage
 }
 
@@ -1084,9 +1094,10 @@ func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
 	return copyOpenAIStreamAndUsageForProvider(w, body, Provider{})
 }
 
-func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider Provider) (Usage, error) {
+func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider Provider) (usage Usage, resultErr error) {
 	events := newSSEDecoder(body)
-	var usage Usage
+	sawDone := false
+	defer func() { usage = markUsageStream(usage, sawDone && resultErr == nil) }()
 	for {
 		event, err := events.Next()
 		if err == io.EOF {
@@ -1105,6 +1116,9 @@ func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider P
 		// A token stream is mostly frames that are neither an error nor a usage
 		// report, so both questions are answered from a single decode of the
 		// payload rather than one full map decode each.
+		if strings.TrimSpace(event.Data) == "[DONE]" {
+			sawDone = true
+		}
 		probe := probeProviderStreamEvent(event.Data)
 		output := event.Raw
 		if sseEventNameIsError(event.Event) || probe.isError() {
@@ -1117,7 +1131,7 @@ func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider P
 			flusher.Flush()
 		}
 		if parsed, ok := usageFromProbedFrame(event, probe); ok {
-			usage = parsed
+			usage = mergeOpenAIUsageEvidence(usage, parsed)
 		}
 		if failure, ok := openAIErrorFrame(event, provider); ok {
 			// The provider's terminal error frame is already on the wire (it is a
@@ -1239,7 +1253,12 @@ func (probe providerStreamEventProbe) usage() (Usage, bool) {
 	// usageFromMap only ever reads body["usage"], so handing it the decoded
 	// usage object under that one key is the same call the whole-payload map
 	// used to make.
-	return usageFromMap(map[string]any{"usage": usageMap}), true
+	usage := usageFromMap(map[string]any{"usage": usageMap})
+	var id string
+	if json.Unmarshal(probe["id"], &id) == nil {
+		usage.Evidence.ResponseID = boundedUsageID(id)
+	}
+	return usage, true
 }
 
 func sseEventNameIsError(name string) bool {

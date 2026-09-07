@@ -56,9 +56,6 @@ func (s *GormStore) ListScopedProviderReconciliationUsages(from, to time.Time, w
 				amount = 0
 			}
 			requestID := row.UpstreamRequestID
-			if requestID == "" {
-				requestID = row.RequestID
-			}
 			if row.Source == "legacy_usage" {
 				row.ID = strings.TrimSuffix(row.ID, ":provider")
 			}

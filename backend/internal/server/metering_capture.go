@@ -43,6 +43,7 @@ type meteringAttemptSnapshot struct {
 }
 
 type meteringShadowCharge struct {
+	Evidence    *usageEvidence         `json:"usage_evidence,omitempty"`
 	Status      string                 `json:"status"`
 	Reason      string                 `json:"reason,omitempty"`
 	UsageSource string                 `json:"usage_source"`
@@ -130,11 +131,7 @@ func (s *GormStore) PrepareMeteringAttempt(requestID string, number int, route R
 }
 
 func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) meteringShadowCharge {
-	result := meteringShadowCharge{Status: "pending", UsageSource: "legacy_adapter_unverified", Price: price, LegacyUSD: strconv.FormatFloat(legacy, 'f', -1, 64)}
-	if price == nil {
-		result.Reason = "missing_price"
-		return result
-	}
+	result := meteringShadowCharge{Status: "pending", UsageSource: "legacy_adapter_unverified", Evidence: evidenceForUsage(usage), Price: price, LegacyUSD: strconv.FormatFloat(legacy, 'f', -1, 64)}
 	units, err := meteringUnits(usage)
 	if usage.MeteringInvalid {
 		err = fmt.Errorf("invalid original usage")
@@ -147,7 +144,18 @@ func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) mete
 		return result
 	}
 	result.Units = units
-	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+	if price == nil {
+		result.Reason = "missing_price"
+		return result
+	}
+	if reason := usageEvidenceReason(result.Evidence); reason != "" {
+		result.Reason = reason
+		return result
+	}
+	if result.Evidence.Protocol != "legacy" {
+		result.UsageSource = result.Evidence.Protocol
+	}
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && result.Evidence.Protocol == "legacy" {
 		result.Reason = "usage_presence_unknown"
 		return result
 	}

@@ -63,7 +63,7 @@ func TestCopyOpenAIStreamPreservesFramingVariantsByteForByte(t *testing.T) {
 		t.Fatalf("stream changed during copy:\n%q", output.String())
 	}
 	want := Usage{PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10}
-	if !reflect.DeepEqual(usage, want) {
+	if !reflect.DeepEqual(usageCountsOnly(usage), want) {
 		t.Fatalf("stream usage = %+v, want %+v", usage, want)
 	}
 }
@@ -83,7 +83,7 @@ func TestCopyOpenAIStreamReassemblesEventsSplitAcrossReads(t *testing.T) {
 			t.Fatalf("chunk size %d changed the stream:\n%q", size, output.String())
 		}
 		want := Usage{PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10}
-		if !reflect.DeepEqual(usage, want) {
+		if !reflect.DeepEqual(usageCountsOnly(usage), want) {
 			t.Fatalf("chunk size %d usage = %+v, want %+v", size, usage, want)
 		}
 	}
@@ -303,7 +303,7 @@ func TestCopyNativeAnthropicStreamPreservesFramingAndRewritesModel(t *testing.T)
 		t.Fatalf("upstream model name leaked to the client:\n%q", got)
 	}
 	want := Usage{PromptTokens: 11, CompletionTokens: 4, TotalTokens: 15}
-	if !reflect.DeepEqual(usage, want) {
+	if !reflect.DeepEqual(usageCountsOnly(usage), want) {
 		t.Fatalf("usage = %+v, want %+v", usage, want)
 	}
 }
@@ -514,7 +514,7 @@ func TestSSEDecoderJoinsMultiLineDataForUsage(t *testing.T) {
 		t.Fatalf("stream changed during copy:\n%q", output.String())
 	}
 	want := Usage{PromptTokens: 3, CompletionTokens: 2, TotalTokens: 5}
-	if !reflect.DeepEqual(usage, want) {
+	if !reflect.DeepEqual(usageCountsOnly(usage), want) {
 		t.Fatalf("usage = %+v, want %+v", usage, want)
 	}
 }
@@ -712,7 +712,7 @@ func TestCopyOpenAIStreamReadsUsageFromSingleNewlineSeparatedChunks(t *testing.T
 		t.Fatalf("stream changed during copy:\n%q", output.String())
 	}
 	want := Usage{PromptTokens: 12, CompletionTokens: 4, TotalTokens: 16}
-	if !reflect.DeepEqual(usage, want) {
+	if !reflect.DeepEqual(usageCountsOnly(usage), want) {
 		t.Fatalf("usage = %+v, want %+v", usage, want)
 	}
 }

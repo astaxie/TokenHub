@@ -97,7 +97,7 @@ func (b *reconciliationStoreBridge) ListUsages(from time.Time, to time.Time, win
 	result := make([]reconciliation.Usage, len(records))
 	for index, record := range records {
 		result[index] = reconciliation.Usage{
-			ID: record.ID, RequestID: record.RequestID, ProjectID: record.ProjectID,
+			ID: record.ID, ProjectID: record.ProjectID,
 			ModelName: record.ModelName, ProviderID: record.ProviderID,
 			ProviderResourceID: record.ProviderResourceID, CostUSD: record.CostUSD,
 			ProviderCostUSD: record.ProviderCostUSD, ProviderCostKnown: record.ProviderCostUSD > 0, CreatedAt: record.CreatedAt,

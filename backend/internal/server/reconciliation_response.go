@@ -2,7 +2,11 @@ package server
 
 type reconciliationRuleResponse ReconciliationRule
 
-type reconciliationRunResponse ReconciliationRun
+type reconciliationRunResponse struct {
+	ReconciliationRun
+	ComparisonScope string `json:"comparison_scope"`
+	TokenComparison string `json:"token_comparison"`
+}
 
 type reconciliationDetailResponse struct {
 	Run    reconciliationRunResponse `json:"run"`
@@ -27,7 +31,7 @@ func newReconciliationRuleResponses(rules []ReconciliationRule) []reconciliation
 }
 
 func newReconciliationRunResponse(run ReconciliationRun) reconciliationRunResponse {
-	response := reconciliationRunResponse(run)
+	response := reconciliationRunResponse{ReconciliationRun: run, ComparisonScope: "amount_only", TokenComparison: "not_performed"}
 	response.DimensionMappings = reconciliationResponseDimensionMappings(run.DimensionMappings)
 	return response
 }

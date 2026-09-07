@@ -15,6 +15,7 @@ type geminiStreamDecoder struct {
 	encoder  *openAIChatStreamEncoder
 	provider Provider
 
+	responseID   string
 	usage        map[string]any
 	finishReason string
 	sawCandidate bool
@@ -87,6 +88,9 @@ func (d *geminiStreamDecoder) consume(event serverSentEvent) error {
 		}
 		message = string(redactProviderErrorSecrets([]byte(message), d.provider))
 		return NewHTTPError(502, "provider_stream_error", fmt.Sprintf("Gemini stream error: %s", message))
+	}
+	if id, ok := payload["responseId"].(string); ok {
+		d.responseID = id
 	}
 	if usage, ok := payload["usageMetadata"].(map[string]any); ok {
 		// Gemini reports cumulative counters; keep the latest snapshot.
@@ -163,5 +167,5 @@ func (d *geminiStreamDecoder) consumePart(part map[string]any) error {
 }
 
 func (d *geminiStreamDecoder) currentUsage() Usage {
-	return geminiUsage(map[string]any{"usageMetadata": d.usage})
+	return markUsageStream(geminiUsage(map[string]any{"usageMetadata": d.usage, "responseId": d.responseID}), d.finishReason != "")
 }

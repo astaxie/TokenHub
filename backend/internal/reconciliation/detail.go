@@ -46,7 +46,7 @@ func calculateDetail(
 			dimensions: providerDimensions(run, record), amount: amount,
 			occurredAt: record.UsageStartAt.UTC(), inPeriod: true,
 		}
-		group := detailGroupFor(run, entry.dimensions, groups)
+		group := detailGroupFor(run, entry.dimensions, groups, "provider:"+entry.id)
 		group.providers = append(group.providers, entry)
 		if err := addDetailEntryToRun(&run, "provider", entry, &digestRows); err != nil {
 			return run, nil, err
@@ -78,7 +78,7 @@ func calculateDetail(
 			occurredAt: record.CreatedAt.UTC(),
 			inPeriod:   !record.CreatedAt.Before(run.PeriodStart) && record.CreatedAt.Before(run.PeriodEnd),
 		}
-		group := detailGroupFor(run, entry.dimensions, groups)
+		group := detailGroupFor(run, entry.dimensions, groups, "local:"+entry.id)
 		group.usages = append(group.usages, entry)
 	}
 
@@ -111,6 +111,9 @@ func calculateDetail(
 			if entryOutsideWindow(provider, group.usages, window) {
 				reason = "outside_time_window"
 			}
+			if provider.dimensions["request_id"] == "" {
+				reason = "missing_supplier_request_id"
+			}
 			bucket := detailBucket(key, &provider, nil)
 			items = append(items, itemFromBucket(run, bucket, amountTolerance, ratioTolerance, reason))
 		}
@@ -123,6 +126,9 @@ func calculateDetail(
 			if entryOutsideWindow(usage, group.providers, window) {
 				reason = "outside_time_window"
 			}
+			if usage.dimensions["request_id"] == "" {
+				reason = "missing_supplier_request_id"
+			}
 			bucket := detailBucket(key, nil, &usage)
 			items = append(items, itemFromBucket(run, bucket, amountTolerance, ratioTolerance, reason))
 			if err := addDetailEntryToRun(&run, "tokenhub", usage, &digestRows); err != nil {
@@ -133,11 +139,14 @@ func calculateDetail(
 	return finish(run, items, digestRows)
 }
 
-func detailGroupFor(run Run, dimensions map[string]string, groups map[string]*detailGroup) *detailGroup {
+func detailGroupFor(run Run, dimensions map[string]string, groups map[string]*detailGroup, unmatchedID string) *detailGroup {
 	selected := selectedDimensions(run.MatchDimensions, dimensions)
 	parts := make([]string, 0, len(run.MatchDimensions))
 	for _, dimension := range run.MatchDimensions {
 		parts = append(parts, dimension+"="+selected[dimension])
+	}
+	if dimensions["request_id"] == "" {
+		parts = append(parts, "unmatchable="+unmatchedID)
 	}
 	encoded, _ := json.Marshal(parts)
 	key := string(encoded)

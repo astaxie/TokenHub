@@ -28,6 +28,8 @@ type statementQuery struct {
 }
 
 type statementRow struct {
+	AttemptFinished   bool                   `json:"attempt_finished,omitempty"`
+	Evidence          *usageEvidence         `json:"usage_evidence,omitempty"`
 	ProviderName      string                 `json:"provider_name,omitempty"`
 	ResourceName      string                 `json:"resource_name,omitempty"`
 	ProjectName       string                 `json:"project_name,omitempty"`

@@ -110,3 +110,19 @@
 .billing-statement-totals strong { font-size: 22px; overflow-wrap: anywhere; }
 @media(max-width:700px) { .billing-statement-filters { grid-template-columns: repeat(2,minmax(0,1fr)); } .billing-confirm-periods { grid-template-columns: 1fr; } }
 @media(max-width:480px) { .billing-statement-filters { grid-template-columns: 1fr; } .billing-statement-totals { grid-template-columns: 1fr; gap: 8px; } .billing-confirm-dialog { padding: 16px; } .billing-confirm-actions { flex-wrap: wrap; } }
+
+.model-pricing-workbench { display: grid; gap: 20px; min-width: 0; }
+.model-pricing-workbench > fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.model-pricing-workbench .billing-step { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+.pricing-risk-ack { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
+.pricing-risk-ack input { width: auto; margin-top: 5px; }
+.billing-confirm-dialog tr[data-changed="true"] { background: var(--billing-tint); font-weight: 600; }
+.request-usage-evidence { padding: 12px 0; min-width: 0; }
+.request-usage-evidence .table-wrap { max-width: 100%; overflow-x: auto; }
+.request-usage-evidence p { overflow-wrap: anywhere; }
+
+.pricing-impact-filters { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.pricing-impact-panel { background: var(--surface); padding: 20px; border: 1px solid var(--border); border-radius: 14px; }
+.pricing-impact-panel table { width: 100%; }
+.pricing-impact-panel .table-wrap { max-width: 100%; overflow-x: auto; }
+@media(max-width:700px) { .pricing-impact-filters { grid-template-columns: 1fr; } }

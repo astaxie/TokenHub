@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"time"
 )
@@ -13,6 +14,8 @@ type billingPricingStore interface {
 }
 
 func (s *Server) registerBillingWorkflowRoutes() {
+	s.registerSingleMethodRoute("POST", "/api/admin/billing/model-pricing/impact", s.handlePricingImpact, s.adminMethodNotAllowed("billing", "POST"))
+	s.registerSingleMethodRoute("POST", "/api/admin/billing/model-pricing/check", s.handleCheckModelPricing, s.adminMethodNotAllowed("billing", "POST"))
 	s.registerSingleMethodRoute("GET", "/api/admin/billing/models/{model}/pricing", s.handleBillingModelPricing, s.adminMethodNotAllowed("billing", "GET"))
 	s.registerSingleMethodRoute("POST", "/api/admin/billing/model-pricing/apply", s.handleBillingModelApply, s.adminMethodNotAllowed("billing", "POST"))
 	s.registerSingleMethodRoute("GET", "/api/admin/billing/price-changes", s.handleBillingPriceChanges, s.adminMethodNotAllowed("billing", "GET"))
@@ -50,10 +53,12 @@ func (s *Server) handleBillingModelApply(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var request struct {
-		Card        meteringRateCard `json:"card"`
-		Fingerprint string           `json:"fingerprint"`
-		RequestID   string           `json:"request_id"`
-		Confirmed   bool             `json:"confirmed"`
+		Card             meteringRateCard `json:"card"`
+		Fingerprint      string           `json:"fingerprint"`
+		RequestID        string           `json:"request_id"`
+		Confirmed        bool             `json:"confirmed"`
+		RiskAcknowledged bool             `json:"risk_acknowledged"`
+		AnalysisReceipt  string           `json:"analysis_receipt"`
 	}
 	if err := s.decodeJSON(w, r, &request); err != nil {
 		writeError(w, r, err)
@@ -63,7 +68,21 @@ func (s *Server) handleBillingModelApply(w http.ResponseWriter, r *http.Request)
 		writeError(w, r, NewHTTPError(400, "pricing_confirmation_required", "Confirm the model price change before applying it"))
 		return
 	}
-	result, err := store.ApplyBillingModel(request.Card, request.Fingerprint, request.RequestID, user)
+	if !request.RiskAcknowledged {
+		writeError(w, r, NewHTTPError(400, "pricing_risk_acknowledgment_required", "Acknowledge the price-change scope and analysis risks"))
+		return
+	}
+	var result modelPriceChange
+	var err error
+	if writer, ok := s.store.(interface {
+		ApplyBillingModelAnalysis(context.Context, meteringRateCard, string, string, AdminUser, string) (modelPriceChange, error)
+	}); ok {
+		result, err = writer.ApplyBillingModelAnalysis(r.Context(), request.Card, request.Fingerprint, request.RequestID, user, request.AnalysisReceipt)
+	} else if request.AnalysisReceipt != "" {
+		err = NewHTTPError(503, "pricing_unavailable", "Analysis-backed application is unavailable")
+	} else {
+		result, err = store.ApplyBillingModel(request.Card, request.Fingerprint, request.RequestID, user)
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return

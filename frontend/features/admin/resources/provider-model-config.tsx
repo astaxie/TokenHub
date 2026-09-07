@@ -9,7 +9,7 @@ import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTyp
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { defaultProviderResourceTypeMetadata, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder, providerTypeHasPluginMetadata } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
-import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
+import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, modelMetadataEditPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
 import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
 
 export function providerConfig(): ResourceConfig<Provider> {
@@ -559,7 +559,7 @@ export function modelConfig(): ResourceConfig<Model> {
     ],
     list: (ctx) => ctx.models,
     create: (ctx, values) => adminMutate(ctx, "/api/admin/models", "POST", modelPayload(values)),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`, "PATCH", modelPayload(values, item.metadata)),
+    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`, "PATCH", (!item.modality || ["chat", "embedding"].includes(item.modality)) ? modelMetadataEditPayload(values, item.metadata) : modelPayload(values, item.metadata)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`),
     actions: [
       {
