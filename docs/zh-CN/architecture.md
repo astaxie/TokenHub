@@ -8,7 +8,7 @@ Language: [English](../architecture.md) | 简体中文 | [日本語](../ja/archi
 
 后端是一个 Go 进程，承载管理 API、OpenAI 兼容模型 API、路由编排、Provider 适配、审计和持久化逻辑。前端是 Next.js 管理后台。控制面与数据面是逻辑边界；默认部署中它们共享一个后端实例和数据库，多实例模式则通过 PostgreSQL 共享状态。
 
-后端由 Core、内置插件和外部插件组成。Core 保留公共 API 兼容、认证授权、路由准入、持久化、计量和审计职责。插件通过声明提供 Provider 能力、请求链 Hook、后台任务和界面元数据；外部可执行插件由后端以子进程调用。
+后端由 Core、内置插件和可安装外部包组成。Core 保留公共 API 兼容、认证授权、路由准入、持久化、计量和审计职责。内置插件在进程内提供可执行的 Provider、请求链、任务和 Action 能力。外部包当前只提供经过校验的元数据和声明式界面；其可执行入口不会启动。
 
 ```mermaid
 flowchart TB
@@ -43,12 +43,8 @@ flowchart TB
         routing <--> hooks
     end
 
-    external["外部插件进程\nstdio-json-v1"]
-    packages["插件包与生命周期状态"]
+    packages["外部插件包\n生命周期与声明式界面"]
     packages --> plugins
-    plugins --> external
-    hooks --> external
-    adapters --> external
 
     subgraph persistence["持久化与配置"]
         sqlite[("SQLite\n默认单实例")]
@@ -67,7 +63,6 @@ flowchart TB
     admin --> ingress --> frontend
     frontend -->|"TOKENHUB_API_BASE_URL"| backend
     app --> ingress -->|"/v1/*"| backend
-    external --> upstream
     backend --> adminApi
     backend --> modelApi
     builtin --> compatible
@@ -113,19 +108,19 @@ flowchart LR
 
 ## 插件运行时与边界
 
-`backend/internal/server/plugin_bootstrap.go` 统一装配插件注册表、请求链及执行器、管理 UI 注册表、Action Broker、后台任务 Broker/Runner 和适配器注册表。启动时注册内置能力，从 `TOKENHUB_PLUGIN_DIR` 加载插件包，再接入启用的外部 Provider 适配器。内置与外部插件共享元数据和能力契约，但内置实现运行于 Go 进程内，外部命令通过 `stdio-json-v1` 执行。
+`backend/internal/server/plugin_bootstrap.go` 统一装配插件注册表、请求链及执行器、管理 UI 注册表、Action Broker、后台任务 Broker/Runner 和适配器注册表。启动时注册内置能力，检查 `TOKENHUB_PLUGIN_DIR` 中的插件包，并发布受支持的声明式贡献。内置与外部包共享元数据和能力契约，但只有内置插件在 Go 进程内执行。`stdio-json-v1` 定义的是 Devkit 与未来运行时契约，并非当前版本可用的外部执行路径。
 
 | 能力面 | 实现入口 | 职责与边界 |
 | --- | --- | --- |
 | 插件包契约与加载 | `backend/internal/plugin/manifest.go`、`runtime.go`、`registry.go` | 注册前校验 manifest schema、Plugin API 兼容性、权限和包状态 |
-| Provider | `backend/internal/server/provider_plugin_adapter.go`、`adapter_registry.go` | 使用 Provider、资源和凭证的数据投影调用声明的操作；路由与计量仍由 Core 负责 |
-| 请求链 | `backend/internal/plugin/gateway_chain.go`、`gateway_runner.go`；`backend/internal/server/gateway_plugin_hooks.go` | 向各阶段 Hook 提供获准数据，校验结构化结果并限制可修改内容 |
-| 后台任务与管理动作 | `backend/internal/plugin/background_scheduler.go`、`background_job.go`、`action_broker.go` | 调度声明的任务并代理管理员操作；与持久化后台 Responses 任务分开 |
+| Provider | `backend/internal/server/provider_plugin_adapter.go`、`adapter_registry.go` | 内置适配器使用 Provider、资源和凭证的数据投影调用声明的操作；路由与计量仍由 Core 负责 |
+| 请求链 | `backend/internal/plugin/gateway_chain.go`、`gateway_runner.go`；`backend/internal/server/gateway_plugin_hooks.go` | 在进程内向各阶段 Hook 提供获准数据，校验结构化结果并限制可修改内容 |
+| 后台任务与管理动作 | `backend/internal/plugin/background_scheduler.go`、`background_job.go`、`action_broker.go` | 调度进程内任务并代理管理员操作；与持久化后台 Responses 任务分开 |
 | 界面 | `backend/internal/plugin/admin_ui.go`、`sim.go` | 由控制台渲染声明式面板、设置、主题和布局；不执行任意插件 React 或 JavaScript |
 
-插件包通过 `plugin.yaml` 声明 manifest schema `2` 和 Plugin API `v2`；schema `1` 与 API `v1` 仍通过兼容适配器支持。权限决定调用时可投影哪些 Core 数据，以及 Core 接受哪些结构化修改。这不等同于操作系统沙箱：命令策略当前将网络和资源强制隔离标记为 `unsupported`。外部命令使用受限环境变量、包内相对可执行路径、输入输出大小限制和超时。通用命令默认超时为 30 秒，输入上限 4 MiB、输出上限 1 MiB；各能力面可设置自己的超时，例如请求链 Hook 默认 5 秒。流式支持须按适配器核对；当前外部 Provider 桥接从命令结果中解析事件数组，并非实时转发子进程输出流。
+插件包通过 `plugin.yaml` 声明 manifest schema `2` 和 Plugin API `v2`；schema `1` 与 API `v1` 仍通过兼容适配器支持。权限决定未来调用时可投影哪些 Core 数据，以及 Core 可接受哪些结构化修改。这不等同于操作系统沙箱：命令策略当前将网络和资源强制隔离标记为 `unsupported`。因此，在宿主机能够强制执行进程、网络和资源隔离前，TokenHub 会采取失败关闭策略，在启动前拒绝所有由运行时加载的外部 Action、后台任务、Provider 命令和请求链命令。带可执行后端入口的启用包会持久化为 `failed_startup`，保持已安装且可检查，但不会发布任何运行时能力。纯声明式界面包和进程内置插件不受影响。通用命令限制仍属于未来执行契约：默认超时 30 秒、输入上限 4 MiB、输出上限 1 MiB，各能力面还可使用自己的限制，例如请求链 Hook 默认 5 秒。外部命令禁用期间，外部 Provider 流式调用同样不可用；当前协议形态描述的是事件数组，而不是对子进程输出的实时转发。
 
-三种 Compose 编排均将 `tokenhub-plugins` 挂载到 `/app/plugins`，并提供 `TOKENHUB_PLUGIN_DIR` 和 `TOKENHUB_PLUGIN_MARKETPLACE_URL`。插件文件与生命周期状态保存在文件系统，注册表和执行器则属于各进程。插件生命周期操作会热加载处理该请求的服务进程，因此普通单实例中的安装、更新、启用/禁用、回滚和卸载无需重启服务。PostgreSQL 不负责分发插件二进制，也不会刷新所有副本的注册表；多实例部署仍需协调插件版本，并逐副本执行热加载。
+三种 Compose 编排均将 `tokenhub-plugins` 挂载到 `/app/plugins`，并提供 `TOKENHUB_PLUGIN_DIR` 和 `TOKENHUB_PLUGIN_MARKETPLACE_URL`。插件文件与生命周期状态保存在文件系统，注册表和执行器则属于各进程。插件生命周期操作会热加载处理该请求的服务进程，因此包校验、声明式贡献变更和生命周期失败呈现无需重启服务。热加载会评估外部命令包，但不会使其变为可执行。PostgreSQL 不负责分发插件二进制，也不会刷新所有副本的注册表；多实例部署仍需协调插件版本，并逐副本执行热加载。
 
 安装与市场代码提供校验和验证、签名市场信任校验、权限审查、失败插件隔离和回滚路径。这些机制不代表已实现跨副本原子激活，也不提供宿主资源隔离。详细契约和生命周期操作见[插件开发指南](plugin-development/README.md)。
 
@@ -143,7 +138,7 @@ flowchart LR
 
 Provider 类型与主要能力如下：
 
-下表列出代表性的内置注册项，并非完整且固定的 Provider 清单。实际能力由启用的插件与适配器描述、Provider 策略以及模型和资源支持共同决定；外部插件可以增加 Provider 类型。
+下表列出当前可运行的内置 Provider 注册项。实际能力由启用的内置插件与适配器描述、Provider 策略以及模型和资源支持共同决定。外部 manifest 可以为包检查和 Devkit 契约测试描述额外 Provider 类型，但当前 TokenHub 版本不会激活其命令型适配器。
 
 | Provider 类型 | 适配器与能力 |
 | --- | --- |
@@ -184,7 +179,7 @@ sequenceDiagram
         G->>H: 在适用的请求阶段投影获准数据
         H-->>G: 校验后的结构化结果
     end
-    Note over G,A: 调用已启用的内置适配器或外部 Provider 桥接
+    Note over G,A: 调用已启用的内置 Provider 适配器
     loop 可回退的候选路由
         G->>A: 统一请求 + 路由选择
         A->>U: Provider 协议请求

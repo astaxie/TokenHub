@@ -56,7 +56,35 @@ func (m Marketplace) List(ctx context.Context) ([]Descriptor, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeMarketplaceIndex(data)
+	return decodeOnlineMarketplaceIndex(data)
+}
+
+// Online channel indexes are discovery data until their detached signature and
+// revocation feed can be verified against operator-configured trust roots. Do
+// not expose self-asserted trust badges or an installable distribution from an
+// unauthenticated document.
+func decodeOnlineMarketplaceIndex(data []byte) ([]Descriptor, error) {
+	descriptors, err := decodeMarketplaceIndex(data)
+	if err != nil {
+		return nil, err
+	}
+	return sanitizeOnlineMarketplaceDescriptors(descriptors), nil
+}
+
+func sanitizeOnlineMarketplaceDescriptors(descriptors []Descriptor) []Descriptor {
+	for index := range descriptors {
+		descriptor := &descriptors[index]
+		descriptor.Distribution = nil
+		if descriptor.Marketplace == nil {
+			descriptor.Marketplace = &MarketplaceMetadata{}
+		}
+		if descriptor.Marketplace.Publisher != nil {
+			descriptor.Marketplace.Publisher.Verified = false
+		}
+		descriptor.Marketplace.Compatibility = &MarketplaceCompatibility{Verdict: MarketplaceCompatibilityUnknown}
+		*descriptor = NormalizeDescriptor(*descriptor)
+	}
+	return descriptors
 }
 
 func (m Marketplace) readOfflineMirror() ([]byte, bool, error) {

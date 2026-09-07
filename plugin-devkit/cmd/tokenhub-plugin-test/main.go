@@ -134,9 +134,13 @@ func runProvider(ctx context.Context, args []string, stdout io.Writer, stderr io
 		if err := assertProviderResult(testCase, result); err != nil {
 			return fmt.Errorf("%s: %w", testCase.Name, err)
 		}
-		fmt.Fprintf(stdout, "provider %s: ok\n", testCase.Name)
+		if _, err := fmt.Fprintf(stdout, "provider %s: ok\n", testCase.Name); err != nil {
+			return fmt.Errorf("write provider progress: %w", err)
+		}
 	}
-	fmt.Fprintf(stdout, "provider contract passed (%d cases, manifest %s %s)\n", len(fixture.Cases), manifest.ID, manifest.Version)
+	if _, err := fmt.Fprintf(stdout, "provider contract passed (%d cases, manifest %s %s)\n", len(fixture.Cases), manifest.ID, manifest.Version); err != nil {
+		return fmt.Errorf("write provider summary: %w", err)
+	}
 	return nil
 }
 
@@ -282,28 +286,17 @@ func executeProviderCase(ctx context.Context, packageDir string, commandPath str
 	if err != nil {
 		return providerResult{}, nil, fmt.Errorf("encode invocation: %w", err)
 	}
-	runCtx, cancel := context.WithTimeout(ctx, defaultCommandTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(runCtx, commandPath)
-	cmd.Dir = packageDir
-	cmd.Stdin = bytes.NewReader(payload)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if runCtx.Err() != nil {
-			return providerResult{}, stdout.Bytes(), runCtx.Err()
-		}
-		return providerResult{}, stdout.Bytes(), fmt.Errorf("command failed: %s", strings.TrimSpace(stderr.String()))
+	stdout, _, err := executeJSONCommand(ctx, packageDir, commandPath, payload)
+	if err != nil {
+		return providerResult{}, stdout, err
 	}
 	var result providerResult
-	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	decoder := json.NewDecoder(bytes.NewReader(stdout))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
-		return providerResult{}, stdout.Bytes(), fmt.Errorf("decode provider output: %w", err)
+		return providerResult{}, stdout, fmt.Errorf("decode provider output: %w", err)
 	}
-	return result, stdout.Bytes(), nil
+	return result, stdout, nil
 }
 
 func assertProviderResult(testCase providerCase, result providerResult) error {

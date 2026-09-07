@@ -1235,6 +1235,9 @@ func TestAdminPluginBackgroundJobRunRedactsErrorText(t *testing.T) {
 	if len(events) == 0 {
 		t.Fatal("expected a plugin background job audit event")
 	}
+	if events[0].Message != "Plugin background job failed" {
+		t.Fatalf("plugin background job audit message = %q, want safe failure message", events[0].Message)
+	}
 	if strings.Contains(events[0].BeforeSnapshot, "request-refresh-secret") || strings.Contains(events[0].AfterSnapshot, "request-refresh-secret") {
 		t.Fatalf("plugin background job error audit leaked secret text: %+v", events[0])
 	}

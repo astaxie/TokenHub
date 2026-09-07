@@ -18,6 +18,8 @@ import (
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+
+	"tokenhub/backend/internal/dbschema"
 )
 
 var errInjectedRedisBillingCommitFailure = errors.New("injected redis billing commit failure")
@@ -191,10 +193,9 @@ func newRedisBillingCommitFailureStore(t *testing.T) (*GormStore, *atomic.Bool, 
 	if err := migrateSchemaObjects(database, "sqlite"); err != nil {
 		t.Fatal(err)
 	}
-	for _, statement := range meteringMigration().Statements {
-		if err := database.Exec(statement).Error; err != nil {
-			t.Fatal(err)
-		}
+	migration := meteringMigration()
+	if err := migration.Go(context.Background(), directSQLMigrationExecer{DB: sqlDB}); err != nil {
+		t.Fatal(err)
 	}
 	billingRedis, err := newRedisBillingCoordinator(context.Background(), "redis://"+redisServer.Addr()+"/0", 2*time.Second)
 	if err != nil {
@@ -233,6 +234,14 @@ func newRedisBillingCommitFailureStore(t *testing.T) (*GormStore, *atomic.Bool, 
 	}
 	store.AddModel(Model{Name: "redis-billing-model", Modality: "chat", Status: StatusActive})
 	return store, failCommit, project, key
+}
+
+type directSQLMigrationExecer struct {
+	*sql.DB
+}
+
+func (e directSQLMigrationExecer) QueryRowContext(ctx context.Context, query string, args ...any) dbschema.RowScanner {
+	return e.DB.QueryRowContext(ctx, query, args...)
 }
 
 type commitFailureSQLiteDriver struct {

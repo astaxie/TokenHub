@@ -4,6 +4,8 @@ Language: [English](../../plugin-development/provider-plugins.md) | [简体中�
 
 Provider プラグインは TokenHub を上流モデルサービスまたは subscription account に接続します。最小契約は [`examples/provider-mock-go`](../../../plugin-devkit/examples/provider-mock-go) から始め、より広い operation は Kimi と GLM Example を参照します。
 
+> **ランタイムでの利用可否:** これらの外部 Provider の Example と Schema は開発契約です。パッケージのインストールと検証は可能ですが、ホストレベルの隔離をまだ強制できないため、現在の TokenHub ランタイムは外部 Provider コマンドを起動前に拒否します。プロセス内の組み込み Provider アダプターは引き続き動作します。
+
 TokenHub は、設定された `provider-catalog.json` の全 158 entry を組み込み Provider plugin package として表現します。各 package には検査可能な Manifest、README、license、catalog metadata があります。Catalog plugin は vendor identity、Provider 追加画面 metadata、詳細ページ、lifecycle を所有し、Host Adapter は `OpenAI-Compatible` などの実行可能 protocol を所有します。複数の Catalog plugin は実行コードを複製せずに 1 つの adapter を共有できます。無効にすると Provider 追加画面から vendor が除外され、再び有効にすると直ちに復元されます。
 
 Provider credential と connection 設定は Provider 管理ページに置き、架空の plugin Settings ページは作りません。Provider plugin の詳細ページから Provider 管理へ移動できます。model category は catalog metadata であり、独立した plugin ではありません。

@@ -35,7 +35,10 @@ func (s *Server) handleAdminPluginMarketplaceGet(w http.ResponseWriter, r *http.
 		return
 	}
 	response.Available = len(items) > 0 || response.SourceURL != ""
-	response.Plugins = s.annotatePluginMarketplace(items)
+	response.Plugins, err = s.annotatePluginMarketplace(items)
+	if err != nil {
+		response.Error = err.Error()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": response})
 }
 
@@ -50,13 +53,25 @@ func (s *Server) loadPluginMarketplace(ctx context.Context) ([]pluginmeta.Descri
 	return pluginmeta.NewMarketplace(s.config.PluginMarketplaceURL, client).List(ctx)
 }
 
-func (s *Server) annotatePluginMarketplace(items []pluginmeta.Descriptor) []adminPluginMarketplacePlugin {
+func (s *Server) annotatePluginMarketplace(items []pluginmeta.Descriptor) ([]adminPluginMarketplacePlugin, error) {
+	installedByID := map[string]pluginmeta.Descriptor{}
+	if s != nil && s.pluginRegistry != nil {
+		for _, descriptor := range s.pluginRegistry.List() {
+			installedByID[descriptor.ID] = descriptor
+		}
+	}
+	if s != nil && strings.TrimSpace(s.config.PluginDir) != "" {
+		packages, err := pluginmeta.NewRuntime(s.config.PluginDir).DiscoverRecoverable()
+		if err != nil {
+			return nil, err
+		}
+		for _, pkg := range packages {
+			installedByID[pkg.Manifest.ID] = pkg.Manifest.Descriptor()
+		}
+	}
 	annotated := make([]adminPluginMarketplacePlugin, 0, len(items))
 	for _, plugin := range items {
-		installed, ok := pluginmeta.Descriptor{}, false
-		if s != nil && s.pluginRegistry != nil {
-			installed, ok = s.pluginRegistry.Describe(plugin.ID)
-		}
+		installed, ok := installedByID[plugin.ID]
 		entry := adminPluginMarketplacePlugin{
 			Plugin:    plugin,
 			Installed: ok,
@@ -73,7 +88,7 @@ func (s *Server) annotatePluginMarketplace(items []pluginmeta.Descriptor) []admi
 		}
 		return annotated[i].Plugin.ID < annotated[j].Plugin.ID
 	})
-	return annotated
+	return annotated, nil
 }
 
 func marketplaceUpdateAvailable(installed pluginmeta.Descriptor, available pluginmeta.Descriptor) bool {

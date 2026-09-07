@@ -356,6 +356,8 @@ func responseWorkerStoreClosed(err error) bool {
 }
 
 func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time.Duration, resultTTL time.Duration) {
+	s.pluginRuntimeMu.RLock()
+	defer s.pluginRuntimeMu.RUnlock()
 	if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 		return
 	}

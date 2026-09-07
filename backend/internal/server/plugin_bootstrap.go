@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -18,7 +19,7 @@ type serverPluginBootstrap struct {
 	adapterRegistry        *AdapterRegistry
 }
 
-func bootstrapServerPlugins(store Store, config Config, adapters map[string]any) (serverPluginBootstrap, error) {
+func bootstrapServerPlugins(config Config, adapters map[string]any) (serverPluginBootstrap, error) {
 	pluginRegistry := pluginmeta.NewRegistry()
 	gatewayChain := pluginmeta.NewGatewayChainRegistry()
 	gatewayHooks := pluginmeta.NewGatewayHookRunner(gatewayChain)
@@ -42,17 +43,11 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]any)
 		return serverPluginBootstrap{}, fmt.Errorf("load TokenHub plugins: %w", err)
 	}
 	registerExternalProviderPluginAdapters(adapterRegistry, packages)
-	configureProviderResourceModelSupport(adapterRegistry.adapters, adapterRegistry)
-	configureProviderResourceTypeDefaults(store, adapterRegistry)
-	if err := configureProviderCredentialIdentityProfileHandlers(store, adapterRegistry); err != nil {
+	if _, err := adapterRegistry.ProviderCredentialIdentityProfileRegistrations(); err != nil {
 		return serverPluginBootstrap{}, fmt.Errorf("configure provider credential identity profiles: %w", err)
 	}
-	if err := configureProviderCredentialRefreshHandlers(store, adapterRegistry); err != nil {
+	if _, err := adapterRegistry.ProviderCredentialRefreshRegistrations(); err != nil {
 		return serverPluginBootstrap{}, fmt.Errorf("configure provider credential refresh handlers: %w", err)
-	}
-	reconcileProviderPluginPolicies(store, adapterRegistry)
-	if err := pluginRuntime.CompleteRuntimeRestart(); err != nil {
-		return serverPluginBootstrap{}, fmt.Errorf("complete TokenHub plugin runtime restart: %w", err)
 	}
 
 	return serverPluginBootstrap{
@@ -67,26 +62,50 @@ func bootstrapServerPlugins(store Store, config Config, adapters map[string]any)
 	}, nil
 }
 
-func (s *Server) installServerPluginHandlers() {
-	if s == nil {
+func (s *Server) installServerPluginHandlers(bootstrap *serverPluginBootstrap) {
+	if s == nil || bootstrap == nil {
 		return
 	}
-	registerBuiltinPluginActions(s)
-	registerBuiltinPluginBackgroundJobs(s)
-	if s.adapterRegistry != nil {
-		configureProviderImageCapabilityProfiles(s.adapterRegistry.adapters, func(providerType string) []providerImageCapabilityRouteProfile {
-			profiles := []providerImageCapabilityRouteProfile{}
-			for _, profile := range providerImageCapabilityRouteProfilesFromActions(s.pluginActions.List()) {
-				if profile.ProviderType == strings.TrimSpace(providerType) {
-					profiles = append(profiles, profile)
-				}
+	registerBuiltinPluginActions(s, bootstrap.pluginActions)
+	registerBuiltinPluginBackgroundJobs(s, bootstrap.pluginBackgroundJobs)
+	if s.credentialRefresh != nil && s.credentialRefresh.pluginRefresh == nil {
+		s.credentialRefresh.pluginRefresh = func(ctx context.Context, resource ProviderResource) (bool, error) {
+			s.pluginRuntimeMu.RLock()
+			defer s.pluginRuntimeMu.RUnlock()
+			return s.refreshProviderResourceCredentialsWithPluginAction(ctx, resource)
+		}
+		s.credentialRefresh.pluginJob = func(providerType string) bool {
+			s.pluginRuntimeMu.RLock()
+			defer s.pluginRuntimeMu.RUnlock()
+			return s.providerCredentialRefreshBackgroundJobRegistered(providerType)
+		}
+	}
+}
+
+func (s *Server) publishServerPluginStoreConfiguration(bootstrap *serverPluginBootstrap) error {
+	if s == nil || bootstrap == nil {
+		return nil
+	}
+	configureProviderResourceModelSupport(bootstrap.adapterRegistry.adapters, bootstrap.adapterRegistry)
+	configureProviderImageCapabilityProfiles(bootstrap.adapterRegistry.adapters, func(providerType string) []providerImageCapabilityRouteProfile {
+		profiles := []providerImageCapabilityRouteProfile{}
+		for _, profile := range providerImageCapabilityRouteProfilesFromActions(bootstrap.pluginActions.List()) {
+			if profile.ProviderType == strings.TrimSpace(providerType) {
+				profiles = append(profiles, profile)
 			}
-			return profiles
-		})
+		}
+		return profiles
+	})
+	configureProviderResourceTypeDefaults(s.store, bootstrap.adapterRegistry)
+	if err := configureProviderCredentialIdentityProfileHandlers(s.store, bootstrap.adapterRegistry); err != nil {
+		return err
 	}
-	s.syncProviderImageCapabilityRouteProfiles()
-	if s.credentialRefresh != nil {
-		s.credentialRefresh.pluginRefresh = s.refreshProviderResourceCredentialsWithPluginAction
-		s.credentialRefresh.pluginJob = s.providerCredentialRefreshBackgroundJobRegistered
+	if err := configureProviderCredentialRefreshHandlers(s.store, bootstrap.adapterRegistry); err != nil {
+		return err
 	}
+	reconcileProviderPluginPolicies(s.store, bootstrap.adapterRegistry)
+	if store, ok := s.store.(providerImageCapabilityProfileStore); ok {
+		store.setProviderImageCapabilityRouteProfiles(providerImageCapabilityRouteProfilesFromActions(bootstrap.pluginActions.List()))
+	}
+	return nil
 }

@@ -273,7 +273,9 @@ func validateBackgroundJobResult(schema map[string]any, data any) error {
 }
 
 type BackgroundJobRunner struct {
-	broker *BackgroundJobBroker
+	brokerMu                sync.RWMutex
+	broker                  *BackgroundJobBroker
+	schedulerSnapshotLocker sync.Locker
 
 	mu        sync.Mutex
 	running   map[string]int
@@ -313,11 +315,29 @@ func (r *BackgroundJobRunner) SetBroker(broker *BackgroundJobBroker) {
 	if r == nil {
 		return
 	}
+	r.brokerMu.Lock()
+	defer r.brokerMu.Unlock()
 	r.broker = broker
 }
 
+func (r *BackgroundJobRunner) SetSchedulerSnapshotLocker(locker sync.Locker) {
+	if r == nil {
+		return
+	}
+	r.schedulerSnapshotLocker = locker
+}
+
 func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobInvocation) (BackgroundJobRunRecord, error) {
-	if r == nil || r.broker == nil {
+	if r == nil {
+		return BackgroundJobRunRecord{}, fmt.Errorf("plugin background job runner is not configured")
+	}
+	r.brokerMu.RLock()
+	defer r.brokerMu.RUnlock()
+	return r.runWithBroker(ctx, r.broker, invocation)
+}
+
+func (r *BackgroundJobRunner) runWithBroker(ctx context.Context, broker *BackgroundJobBroker, invocation BackgroundJobInvocation) (BackgroundJobRunRecord, error) {
+	if broker == nil {
 		return BackgroundJobRunRecord{}, fmt.Errorf("plugin background job runner is not configured")
 	}
 	invocation.PluginID = strings.TrimSpace(invocation.PluginID)
@@ -325,7 +345,7 @@ func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobI
 	if invocation.Trigger == "" {
 		invocation.Trigger = "manual"
 	}
-	descriptor, ok := r.broker.Describe(invocation.PluginID, invocation.JobID)
+	descriptor, ok := broker.Describe(invocation.PluginID, invocation.JobID)
 	if !ok {
 		return BackgroundJobRunRecord{}, ErrPluginBackgroundJobNotFound
 	}
@@ -360,7 +380,7 @@ func (r *BackgroundJobRunner) Run(ctx context.Context, invocation BackgroundJobI
 		return record, ErrPluginBackgroundJobBusy
 	}
 	defer r.finish(descriptor)
-	record, err := r.executeWithRetry(runCtx, descriptor, invocation)
+	record, err := r.executeWithRetry(runCtx, broker, descriptor, invocation)
 	r.recordRun(record)
 	if record.Status == BackgroundJobRunFailed && descriptor.Retry.DeadLetter {
 		r.recordDeadLetter(record)
@@ -413,10 +433,20 @@ func (r *BackgroundJobRunner) DeadLetters() []BackgroundJobRunRecord {
 }
 
 func (r *BackgroundJobRunner) RunDue(ctx context.Context, now time.Time, trigger string) []BackgroundJobRunRecord {
-	if r == nil || r.broker == nil {
+	if r == nil {
 		return nil
 	}
-	jobs := r.broker.List()
+	if r.schedulerSnapshotLocker != nil {
+		r.schedulerSnapshotLocker.Lock()
+		defer r.schedulerSnapshotLocker.Unlock()
+	}
+	r.brokerMu.RLock()
+	defer r.brokerMu.RUnlock()
+	broker := r.broker
+	if broker == nil {
+		return nil
+	}
+	jobs := broker.List()
 	records := make([]BackgroundJobRunRecord, 0, len(jobs))
 	for _, job := range jobs {
 		if ctx.Err() != nil {
@@ -426,7 +456,7 @@ func (r *BackgroundJobRunner) RunDue(ctx context.Context, now time.Time, trigger
 		if !backgroundJobDue(job.Schedule, last, ok, now) {
 			continue
 		}
-		record, _ := r.Run(ctx, BackgroundJobInvocation{
+		record, _ := r.runWithBroker(ctx, broker, BackgroundJobInvocation{
 			PluginID: job.PluginID,
 			JobID:    job.JobID,
 			Trigger:  trigger,
@@ -436,7 +466,7 @@ func (r *BackgroundJobRunner) RunDue(ctx context.Context, now time.Time, trigger
 	return records
 }
 
-func (r *BackgroundJobRunner) executeWithRetry(ctx context.Context, descriptor BackgroundJobDescriptor, invocation BackgroundJobInvocation) (BackgroundJobRunRecord, error) {
+func (r *BackgroundJobRunner) executeWithRetry(ctx context.Context, broker *BackgroundJobBroker, descriptor BackgroundJobDescriptor, invocation BackgroundJobInvocation) (BackgroundJobRunRecord, error) {
 	startedAt := time.Now().UTC()
 	record := BackgroundJobRunRecord{
 		PluginID:  invocation.PluginID,
@@ -459,7 +489,7 @@ func (r *BackgroundJobRunner) executeWithRetry(ctx context.Context, descriptor B
 		if descriptor.TimeoutMillis > 0 {
 			attemptCtx, cancel = context.WithTimeout(ctx, time.Duration(descriptor.TimeoutMillis)*time.Millisecond)
 		}
-		result, err := r.broker.Execute(attemptCtx, invocation)
+		result, err := broker.Execute(attemptCtx, invocation)
 		if cancel != nil {
 			cancel()
 		}

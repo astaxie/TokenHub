@@ -77,6 +77,23 @@ describe("PluginDetailView", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renders when optional plugin extension collections are null", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(detailPayload()), { status: 200 })));
+    const data = appData();
+    Object.assign(data.pluginChain, { hooks: null });
+    Object.assign(data, {
+      pluginUI: null,
+      pluginActions: null,
+      pluginBackgroundJobs: null,
+    });
+
+    render(
+      <PluginDetailView api={api} data={data} pluginID="example.detail" section="overview" onBack={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
+  });
+
   it("leads with plain-language value and keeps implementation details collapsed", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(detailPayload()), { status: 200 })));
 
@@ -186,6 +203,23 @@ describe("PluginDetailView", () => {
 
     expect(await screen.findByText("为 TokenHub 提供此插件声明的扩展功能。")).toBeVisible();
     expect(screen.queryByText("未提供插件说明。")).not.toBeInTheDocument();
+  });
+
+  it("does not describe startup-failed command capabilities as operational", async () => {
+    const payload = detailPayload();
+    payload.data.plugin.status = "failed_startup";
+    payload.data.plugin.loadable = false;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })));
+
+    render(
+      <PluginDetailView api={api} data={emptyData()} pluginID="example.detail" section="overview" onBack={vi.fn()} onNavigate={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("启动失败")).toBeVisible();
+    expect(screen.getByText("当前只能在插件管理中检查此插件包；声明的外部命令不会执行。")).toBeVisible();
+    expect(screen.getByText("此功能已声明，但插件启动失败，当前不可用。")).toBeVisible();
+    expect(screen.queryByText("启用后自动在匹配的模型请求处理阶段运行。")).not.toBeInTheDocument();
+    expect(screen.queryByText("在模型请求通过网关时自动执行这个插件提供的处理逻辑。")).not.toBeInTheDocument();
   });
 
   it("keeps the plugin manager header available on secondary pages", async () => {

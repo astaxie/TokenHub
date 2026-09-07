@@ -200,63 +200,67 @@ func TestProviderMonitoringRecoversFromHistoricalFailure(t *testing.T) {
 }
 
 func TestCodexSubscriptionProbeAllowsFastModeForAnyModel(t *testing.T) {
-	adapter := CodexSubscriptionAdapter{
-		Client: &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			var payload map[string]any
-			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-				t.Fatal(err)
+	for _, profile := range []struct{ model, effort string }{{"gpt-5.4", "high"}, {"gpt-6-astra", "max"}} {
+		t.Run(profile.model, func(t *testing.T) {
+			adapter := CodexSubscriptionAdapter{
+				Client: &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+					var payload map[string]any
+					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+						t.Fatal(err)
+					}
+					reasoning, _ := payload["reasoning"].(map[string]any)
+					if payload["model"] != profile.model || payload["service_tier"] != "priority" || reasoning["effort"] != profile.effort {
+						t.Fatalf("unexpected fast probe payload: %#v", payload)
+					}
+					stream := strings.Join([]string{
+						"event: response.output_text.delta",
+						`data: {"type":"response.output_text.delta","delta":"Fast probe works."}`,
+						"",
+						"event: response.completed",
+						`data: {"type":"response.completed","response":{"id":"resp_fast_probe","status":"completed","service_tier":"priority","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+						"",
+					}, "\n")
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+						Body:       io.NopCloser(strings.NewReader(stream)),
+						Request:    req,
+					}, nil
+				})},
+				RefreshCredentials: func(context.Context, string, bool) (ProviderResourceCredentials, error) {
+					return ProviderResourceCredentials{AccessToken: "access_fast_probe", AccountID: "account_fast_probe"}, nil
+				},
 			}
-			reasoning, _ := payload["reasoning"].(map[string]any)
-			if payload["model"] != "gpt-5.4" || payload["service_tier"] != "priority" || reasoning["effort"] != "high" {
-				t.Fatalf("unexpected fast probe payload: %#v", payload)
+			provider := Provider{
+				ID:      "prv_fast_probe",
+				Name:    "Fast Probe",
+				Type:    ProviderOpenAICodex,
+				Status:  StatusActive,
+				Healthy: true,
+				Options: map[string]string{"resource_id": "rsrc_fast_probe"},
 			}
-			stream := strings.Join([]string{
-				"event: response.output_text.delta",
-				`data: {"type":"response.output_text.delta","delta":"Fast probe works."}`,
-				"",
-				"event: response.completed",
-				`data: {"type":"response.completed","response":{"id":"resp_fast_probe","status":"completed","service_tier":"priority","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`,
-				"",
-			}, "\n")
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-				Body:       io.NopCloser(strings.NewReader(stream)),
-				Request:    req,
-			}, nil
-		})},
-		RefreshCredentials: func(context.Context, string, bool) (ProviderResourceCredentials, error) {
-			return ProviderResourceCredentials{AccessToken: "access_fast_probe", AccountID: "account_fast_probe"}, nil
-		},
-	}
-	provider := Provider{
-		ID:      "prv_fast_probe",
-		Name:    "Fast Probe",
-		Type:    ProviderOpenAICodex,
-		Status:  StatusActive,
-		Healthy: true,
-		Options: map[string]string{"resource_id": "rsrc_fast_probe"},
-	}
-	resource := ProviderResource{
-		ID:           "rsrc_fast_probe",
-		ProviderID:   provider.ID,
-		Name:         "Fast Probe Account",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-	}
+			resource := ProviderResource{
+				ID:           "rsrc_fast_probe",
+				ProviderID:   provider.ID,
+				Name:         "Fast Probe Account",
+				ResourceType: ProviderResourceOpenAISubscription,
+				Status:       StatusActive,
+				Healthy:      true,
+			}
 
-	result, err := adapter.Probe(context.Background(), provider, resource, ProviderProbeRequest{
-		Model:           "gpt-5.4",
-		ReasoningEffort: "high",
-		Speed:           "fast",
-		Prompt:          "Confirm fast mode.",
-	})
-	if err != nil {
-		t.Fatalf("fast probe with non-Luna model failed: %v", err)
-	}
-	if result.Model != "gpt-5.4" || result.Speed != "fast" || result.UpstreamServiceTier != "priority" || result.OutputText != "Fast probe works." {
-		t.Fatalf("unexpected fast probe result: %+v", result)
+			result, err := adapter.Probe(context.Background(), provider, resource, ProviderProbeRequest{
+				Model:           profile.model,
+				ReasoningEffort: profile.effort,
+				Speed:           "fast",
+				Prompt:          "Confirm fast mode.",
+			})
+			if err != nil {
+				t.Fatalf("fast probe with non-Luna model failed: %v", err)
+			}
+			if result.Model != profile.model || result.Speed != "fast" || result.UpstreamServiceTier != "priority" || result.OutputText != "Fast probe works." {
+				t.Fatalf("unexpected fast probe result: %+v", result)
+			}
+		})
 	}
 }
 

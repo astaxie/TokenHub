@@ -559,7 +559,7 @@ func (a CodexSubscriptionAdapter) Probe(ctx context.Context, provider Provider, 
 	if models, _, cached := codexResourceCachedModels(&resource); cached && !codexModelInList(request.Model, models) {
 		return ProviderProbeResult{}, NewHTTPError(http.StatusBadRequest, "codex_model_invalid", "Select a supported Codex model")
 	}
-	if !stringInList(request.ReasoningEffort, []string{"none", "minimal", "low", "medium", "high", "xhigh"}) {
+	if !stringInList(request.ReasoningEffort, []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}) {
 		return ProviderProbeResult{}, NewHTTPError(http.StatusBadRequest, "codex_reasoning_effort_invalid", "Select a supported reasoning effort")
 	}
 	if request.Speed != "standard" && request.Speed != "fast" {

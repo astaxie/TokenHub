@@ -33,14 +33,14 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 	}
 	result, err := s.executeRawPluginAction(r.Context(), user, pluginID, actionID, payload)
 	if err != nil {
-		s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", err.Error())
+		s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", "Plugin action failed")
 		writeError(w, r, pluginActionHTTPError(err))
 		return
 	}
 	if descriptor, ok := s.pluginActions.Describe(pluginID, actionID); ok {
 		result, err = s.applyPluginActionSideEffects(r.Context(), descriptor, payload, result)
 		if err != nil {
-			s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", err.Error())
+			s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", "Plugin action failed")
 			writeError(w, r, err)
 			return
 		}
@@ -79,13 +79,13 @@ func (s *Server) handleAdminProviderActionPost(w http.ResponseWriter, r *http.Re
 	}
 	result, err := s.executeRawPluginAction(r.Context(), user, descriptor.PluginID, descriptor.ActionID, payload)
 	if err != nil {
-		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", err.Error())
+		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", "Plugin action failed")
 		writeError(w, r, pluginActionHTTPError(err))
 		return
 	}
 	result, err = s.applyPluginActionSideEffects(r.Context(), descriptor, payload, result)
 	if err != nil {
-		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", err.Error())
+		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", "Plugin action failed")
 		writeError(w, r, err)
 		return
 	}
@@ -125,7 +125,7 @@ func (s *Server) handleAdminPluginBackgroundJobRunPost(w http.ResponseWriter, r 
 	})
 	record = sanitizePluginBackgroundJobRunRecord(record)
 	if err != nil {
-		s.recordPluginBackgroundJobAudit(r, user, payload, record, "failed", err.Error())
+		s.recordPluginBackgroundJobAudit(r, user, payload, record, "failed", "Plugin background job failed")
 		writeError(w, r, pluginBackgroundJobHTTPError(err))
 		return
 	}

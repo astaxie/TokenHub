@@ -837,7 +837,7 @@ capabilities:
 	}
 }
 
-func TestServerExposesLocalProviderPluginsInCatalog(t *testing.T) {
+func TestServerQuarantinesLocalProviderCommandWithoutIsolation(t *testing.T) {
 	pluginDir := t.TempDir()
 	providerPluginDir := filepath.Join(pluginDir, "provider")
 	writeServerPluginManifest(t, providerPluginDir, `
@@ -885,41 +885,35 @@ printf '{"response":{},"usage":{}}'
 	}
 
 	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	if descriptor, ok := server.adapterRegistry.Describe("catalog_stdio"); ok {
+		t.Fatalf("quarantined provider command registered an adapter: %+v", descriptor)
+	}
 	catalog := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog", nil, "dev_admin_token")
 	if catalog.Code != http.StatusOK {
 		t.Fatalf("provider catalog status = %d body=%s", catalog.Code, catalog.Body)
 	}
-	if !strings.Contains(catalog.Body, `"id":"catalog_stdio"`) || !strings.Contains(catalog.Body, `"source":"plugin:local_file"`) {
-		t.Fatalf("provider catalog did not include local provider plugin: %s", catalog.Body)
+	if strings.Contains(catalog.Body, `"id":"catalog_stdio"`) || strings.Contains(catalog.Body, `"source":"plugin:local_file"`) {
+		t.Fatalf("provider catalog exposed quarantined provider command: %s", catalog.Body)
 	}
 	item := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog/catalog_stdio", nil, "dev_admin_token")
-	if item.Code != http.StatusOK || !strings.Contains(item.Body, `"type":"catalog_stdio"`) {
-		t.Fatalf("provider catalog item status = %d body=%s", item.Code, item.Body)
+	if item.Code != http.StatusNotFound {
+		t.Fatalf("quarantined provider catalog item status = %d body=%s, want 404", item.Code, item.Body)
 	}
-	var itemPayload struct {
-		Data ProviderCatalogEntry `json:"data"`
+	detail := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins/tokenhub.provider.catalog-stdio/detail", nil, "dev_admin_token")
+	if detail.Code != http.StatusOK {
+		t.Fatalf("quarantined provider detail status = %d body=%s", detail.Code, detail.Body)
 	}
-	if err := json.Unmarshal([]byte(item.Body), &itemPayload); err != nil {
-		t.Fatalf("decode plugin catalog item: %v", err)
+	var detailPayload struct {
+		Data adminPluginDetailResponse `json:"data"`
 	}
-	if itemPayload.Data.DisplayName != "Catalog Stdio" || itemPayload.Data.BaseURL != "https://stdio.example/v1" || itemPayload.Data.DocURL != "https://stdio.example/docs" {
-		t.Fatalf("plugin catalog metadata = %+v", itemPayload.Data)
+	if err := json.Unmarshal([]byte(detail.Body), &detailPayload); err != nil {
+		t.Fatalf("decode quarantined provider detail: %v", err)
 	}
-	if itemPayload.Data.ModelsCount != 1 || len(itemPayload.Data.Models) != 1 || itemPayload.Data.Models[0].ID != "plugin-model" || itemPayload.Data.Models[0].ContextWindow != 128000 {
-		t.Fatalf("plugin catalog models = %+v", itemPayload.Data.Models)
-	}
-	created := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
-		"catalog_id":        "catalog_stdio",
-		"api_key":           "provider-secret",
-		"selected_models":   []string{"plugin-model"},
-		"model_category":    "custom",
-		"model_access_mode": "inherit",
-	}, "dev_admin_token")
-	if created.Code != http.StatusCreated {
-		t.Fatalf("create provider from plugin catalog status = %d body=%s", created.Code, created.Body)
-	}
-	if !strings.Contains(created.Body, `"type":"catalog_stdio"`) || !strings.Contains(created.Body, `"catalog_source":"plugin:local_file"`) {
-		t.Fatalf("created provider did not use plugin catalog: %s", created.Body)
+	plugin := detailPayload.Data.Plugin
+	if plugin.Status != pluginmeta.StatusFailedStartup || plugin.Loadable ||
+		plugin.LastErrorCode != string(pluginmeta.PluginErrorPermissionUnsupported) ||
+		detailPayload.Data.Package == nil || detailPayload.Data.Package.FileCount == 0 {
+		t.Fatalf("quarantined provider detail = %+v, want inspectable startup failure", detailPayload.Data)
 	}
 }
 

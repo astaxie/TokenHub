@@ -66,10 +66,10 @@ export function PluginDetailView({
   const [fileError, setFileError] = useState("");
   const fallbackPlugin = data.plugins.find((plugin) => plugin.id === pluginID);
   const plugin = detail?.plugin ?? fallbackPlugin;
-  const hooks = useMemo(() => data.pluginChain.hooks.filter((hook) => hook.plugin_id === pluginID), [data.pluginChain.hooks, pluginID]);
-  const contributions = useMemo(() => data.pluginUI.filter((item) => item.plugin_id === pluginID), [data.pluginUI, pluginID]);
-  const actions = useMemo(() => data.pluginActions.filter((item) => item.plugin_id === pluginID), [data.pluginActions, pluginID]);
-  const jobs = useMemo(() => data.pluginBackgroundJobs.filter((item) => item.plugin_id === pluginID), [data.pluginBackgroundJobs, pluginID]);
+  const hooks = useMemo(() => (data.pluginChain?.hooks ?? []).filter((hook) => hook.plugin_id === pluginID), [data.pluginChain?.hooks, pluginID]);
+  const contributions = useMemo(() => (data.pluginUI ?? []).filter((item) => item.plugin_id === pluginID), [data.pluginUI, pluginID]);
+  const actions = useMemo(() => (data.pluginActions ?? []).filter((item) => item.plugin_id === pluginID), [data.pluginActions, pluginID]);
+  const jobs = useMemo(() => (data.pluginBackgroundJobs ?? []).filter((item) => item.plugin_id === pluginID), [data.pluginBackgroundJobs, pluginID]);
   const simRegistry = useMemo(() => {
     const hasPluginDescriptor = data.plugins.some((item) => item.id === pluginID);
     return simRegistryFromPlugins(hasPluginDescriptor || !detail?.plugin ? data.plugins : [...data.plugins, detail.plugin]);

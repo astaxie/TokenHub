@@ -70,7 +70,7 @@ func (r *BackgroundJobRunner) SchedulerState() BackgroundSchedulerState {
 }
 
 func (r *BackgroundJobRunner) StartScheduler(interval time.Duration) {
-	if r == nil || r.broker == nil {
+	if r == nil {
 		return
 	}
 	if r.scheduler == nil {
@@ -110,7 +110,12 @@ func (s *backgroundScheduler) State() BackgroundSchedulerState {
 }
 
 func (s *backgroundScheduler) Start(interval time.Duration) {
-	if s == nil || s.runner == nil || s.runner.broker == nil {
+	if s == nil || s.runner == nil {
+		return
+	}
+	s.runner.brokerMu.RLock()
+	defer s.runner.brokerMu.RUnlock()
+	if s.runner.broker == nil {
 		return
 	}
 	if interval <= 0 {
@@ -210,10 +215,20 @@ func (s *backgroundScheduler) markStopped(done chan struct{}) {
 }
 
 func (r *BackgroundJobRunner) runStartupJobs(ctx context.Context) []BackgroundJobRunRecord {
-	if r == nil || r.broker == nil {
+	if r == nil {
 		return nil
 	}
-	jobs := r.broker.List()
+	if r.schedulerSnapshotLocker != nil {
+		r.schedulerSnapshotLocker.Lock()
+		defer r.schedulerSnapshotLocker.Unlock()
+	}
+	r.brokerMu.RLock()
+	defer r.brokerMu.RUnlock()
+	broker := r.broker
+	if broker == nil {
+		return nil
+	}
+	jobs := broker.List()
 	records := make([]BackgroundJobRunRecord, 0, len(jobs))
 	for _, job := range jobs {
 		if ctx.Err() != nil {
@@ -222,7 +237,7 @@ func (r *BackgroundJobRunner) runStartupJobs(ctx context.Context) []BackgroundJo
 		if strings.TrimSpace(job.Schedule) != "@startup" {
 			continue
 		}
-		record, _ := r.Run(ctx, BackgroundJobInvocation{
+		record, _ := r.runWithBroker(ctx, broker, BackgroundJobInvocation{
 			PluginID: job.PluginID,
 			JobID:    job.JobID,
 			Trigger:  "startup",

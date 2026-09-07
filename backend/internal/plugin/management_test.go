@@ -78,3 +78,18 @@ func TestLifecycleFactsPreserveExplicitRestartRequirement(t *testing.T) {
 		t.Fatalf("lifecycle facts = %+v, want enabled plugin with restart required", facts)
 	}
 }
+
+func TestLifecycleFactsDoNotSuggestRestartForFailedFallback(t *testing.T) {
+	facts := DeriveLifecycleFacts(LifecycleFactsInput{
+		Available:      true,
+		Installed:      true,
+		Configured:     true,
+		DesiredState:   PackageState{Status: StatusFailedStartup, Health: PackageHealthUnhealthy},
+		ActiveStatus:   StatusEnabled,
+		DesiredVersion: "2.0.0",
+		ActiveVersion:  "1.0.0",
+	})
+	if facts.DesiredEnabled || !facts.ActiveEnabled || facts.RestartRequired {
+		t.Fatalf("failed fallback lifecycle facts = %+v", facts)
+	}
+}

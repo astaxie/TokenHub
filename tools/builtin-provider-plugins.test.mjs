@@ -53,3 +53,15 @@ test("templated Provider URLs remain catalog metadata instead of runtime default
     assert.match(catalogEntry.base_url || catalogEntry.api, /\$\{/);
   }
 });
+
+test("OpenAI Astra inventory stays synchronized with its built-in plugin", async () => {
+  const directory = path.join(packagesRoot, "openai");
+  const packaged = JSON.parse(await readFile(path.join(directory, "catalog.json"), "utf8"));
+  assert.deepEqual(packaged.models, catalog.providers.openai.models);
+  const manifest = await readFile(path.join(directory, "plugin.yaml"), "utf8");
+  assert.equal(Number(manifest.match(/models_count: (\d+)/)?.[1]), packaged.models.length);
+  const astra = packaged.models.find((model) => model.id === "gpt-6-astra");
+  assert.ok(astra);
+  assert.deepEqual(astra.reasoning_options[0].values, ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(astra.cost.tiers, [{ input: 20, output: 75, cache_read: 2, cache_write: 25, tier: { type: "context", size: 272000 } }]);
+});

@@ -33,6 +33,10 @@ kinds:
 			DownloadURL:    "https://plugins.example/kimi-1.1.0.zip",
 			ChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		},
+		Marketplace: &pluginmeta.MarketplaceMetadata{
+			Publisher:     &pluginmeta.MarketplacePublisher{ID: "legacy-publisher", Verified: true},
+			Compatibility: &pluginmeta.MarketplaceCompatibility{Verdict: pluginmeta.MarketplaceCompatibilityCompatible},
+		},
 	}
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"plugins": []pluginmeta.Descriptor{available}})
@@ -55,8 +59,13 @@ kinds:
 	if !body.Data.Available || body.Data.SourceURL != upstream.URL+"/index.json" {
 		t.Fatalf("marketplace response = %+v", body.Data)
 	}
-	if len(body.Data.Plugins) != 1 || !body.Data.Plugins[0].Installed || !body.Data.Plugins[0].UpdateAvailable || body.Data.Plugins[0].InstalledVersion != "1.0.0" {
+	if len(body.Data.Plugins) != 1 || !body.Data.Plugins[0].Installed || body.Data.Plugins[0].UpdateAvailable || body.Data.Plugins[0].InstalledVersion != "1.0.0" {
 		t.Fatalf("marketplace plugin annotation = %+v", body.Data.Plugins)
+	}
+	plugin := body.Data.Plugins[0].Plugin
+	if plugin.Distribution != nil || plugin.Marketplace == nil || plugin.Marketplace.Publisher == nil || plugin.Marketplace.Publisher.Verified ||
+		plugin.Marketplace.Compatibility == nil || plugin.Marketplace.Compatibility.Verdict != pluginmeta.MarketplaceCompatibilityUnknown {
+		t.Fatalf("legacy online marketplace entry was not sanitized: %+v", plugin)
 	}
 }
 
@@ -93,21 +102,18 @@ kinds:
 	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
 		t.Fatalf("decode marketplace response: %v", err)
 	}
-	if len(body.Data.Plugins) != 1 || !body.Data.Plugins[0].Installed || !body.Data.Plugins[0].UpdateAvailable {
+	if len(body.Data.Plugins) != 1 || !body.Data.Plugins[0].Installed || body.Data.Plugins[0].UpdateAvailable {
 		t.Fatalf("marketplace plugin annotation = %+v", body.Data.Plugins)
 	}
 	plugin := body.Data.Plugins[0].Plugin
-	if plugin.Version != "1.1.0" || plugin.Distribution == nil ||
-		plugin.Distribution.ChecksumSHA256 != strings.Repeat("4", 64) ||
-		plugin.Distribution.SignatureAlgorithm != pluginmeta.PluginSignatureAlgorithmEd25519 ||
-		plugin.Distribution.SignatureKeyID != "tokenhub-official-2026" {
-		t.Fatalf("marketplace plugin distribution = %+v", plugin)
+	if plugin.Version != "1.1.0" || plugin.Distribution != nil {
+		t.Fatalf("unverified online marketplace distribution = %+v", plugin)
 	}
 	if plugin.Marketplace == nil || plugin.Marketplace.Compatibility == nil ||
-		plugin.Marketplace.Compatibility.Verdict != pluginmeta.MarketplaceCompatibilityNeedsReview {
+		plugin.Marketplace.Compatibility.Verdict != pluginmeta.MarketplaceCompatibilityUnknown {
 		t.Fatalf("marketplace compatibility = %+v", plugin.Marketplace)
 	}
-	if plugin.Marketplace.Publisher == nil || !plugin.Marketplace.Publisher.Verified || plugin.Marketplace.Publisher.ID != "tokenhub-official" {
+	if plugin.Marketplace.Publisher == nil || plugin.Marketplace.Publisher.Verified || plugin.Marketplace.Publisher.ID != "tokenhub-official" {
 		t.Fatalf("marketplace publisher = %+v", plugin.Marketplace.Publisher)
 	}
 	if len(plugin.Marketplace.Advisories) != 1 || plugin.Marketplace.Advisories[0].Severity != "high" {

@@ -219,6 +219,9 @@ func TestBillingStatementLegacyProviderModelUsesRequestEvidence(t *testing.T) {
 	if err := s.db.Create(&RequestLog{ID: "log", RequestID: "request", ProviderModel: "wholesale", CreatedAt: at}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := s.db.Create(&UsageRecord{ID: "unknown", RequestID: "unknown-request", ProjectID: "project-a", ProviderID: "supplier", ModelName: "retail", CostUSD: 10, ProviderCostUSD: 3, CreatedAt: at}).Error; err != nil {
+		t.Fatal(err)
+	}
 	q := statementTestQuery("provider")
 	q.Model = "wholesale"
 	out, err := s.BillingStatement(context.Background(), q)

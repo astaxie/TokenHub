@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
+import { setActiveLanguage } from "../i18n/runtime";
+import { PluginPermissionDiffPreview } from "./plugin-permission-diff-preview";
 import { PluginsView } from "./plugins";
 
 describe("PluginsView permission diff preview", () => {
@@ -37,6 +39,21 @@ describe("PluginsView permission diff preview", () => {
     expect(container.textContent).not.toContain("secret.zip?token=raw");
     expect(container.textContent).not.toContain("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     expect(container.textContent).not.toContain("PUBLIC KEY");
+  });
+
+  it("renders dynamic permission labels from complete Japanese templates", () => {
+    setActiveLanguage("ja");
+    render(<PluginPermissionDiffPreview
+      draft={{ busy: false, error: "", preview: permissionDiffPayload("install") }}
+      onPreview={() => undefined}
+      showAction={false}
+    />);
+
+    expect(screen.getByText("最高機密度：シークレット")).toBeInTheDocument();
+    expect(screen.getByText("信頼状態：信頼済み")).toBeInTheDocument();
+    expect(screen.getByText("互換性：互換")).toBeInTheDocument();
+    expect(screen.getByText("候補バージョン：1.1.0")).toBeInTheDocument();
+    expect(screen.getByText("追加された権限：1")).toBeInTheDocument();
   });
 
 });

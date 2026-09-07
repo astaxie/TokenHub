@@ -43,7 +43,7 @@ esac
 			}
 
 			runner := NewProviderCommandRunner(dir, "provider.sh", PermissionGrant{
-				Enforced: true,
+				Enforced: false,
 				Permissions: []PermissionDescriptor{
 					{Kind: PermissionKindData, Name: string(DataProviderCredentials), Access: PermissionAccessRead},
 				},

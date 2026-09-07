@@ -13,7 +13,7 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 | Routing Policies | 细调 Provider 映射、优先级、权重、项目作用域和故障转移策略 |
 | Projects and Teams | 定义 Key、额度和成本归因的组织边界 |
 | Identity Sources | 配置 OAuth 或 OIDC 企业登录 |
-| 插件管理 | 安装、更新、启用、禁用、卸载并运行插件贡献的能力 |
+| 插件管理 | 安装和检查外部包、管理生命周期状态，并运行受支持的内置或声明式能力 |
 | Security and Audit | 审查请求日志、后台操作、Key 轮换和策略变更 |
 
 ## 生产上线顺序
@@ -31,7 +31,7 @@ Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上�
 
 ## 插件管理
 
-打开「插件管理」，可以按 Provider 集成、请求链路、UI 模板或自动化分类浏览统一的内置与已安装插件列表。每个详情页都会说明插件用途并展示插件包文件；只有插件确实声明设置时才显示设置页。从插件市场或本地包安装时，系统会校验 checksum，将包写入 `TOKENHUB_PLUGIN_DIR`，并通过运行时热加载生效。内置插件可以启用或禁用，但不能卸载；外部插件还可以更新或卸载。
+打开「插件管理」，可以按 Provider 集成、请求链路、UI 模板或自动化分类浏览统一的内置与已安装插件列表。每个详情页都会说明插件用途并展示插件包文件；只有已经实现的声明式设置界面才会显示设置页。从插件市场或本地包安装时，系统会校验 checksum，将包写入 `TOKENHUB_PLUGIN_DIR`，并通过运行时热加载评估。声明式界面包可以生效。带后端命令的启用外部包则会显示为「启动失败」，保持已安装且可检查，并且不会注册 Provider、Hook、任务或 Action，因为当前版本尚不支持外部执行。内置插件可以启用或禁用，但不能卸载；外部包还可以更新或卸载。
 
 Provider 插件可以在 manifest 中声明路由和凭据策略。对上游密钥必须放在 Provider Resource、而不是 Provider 自身上的订阅/账号型 Provider，设置 `capabilities.provider.credentials_scope: resource`。如果每次路由尝试都必须选中可用的 Provider Resource，则设置 `capabilities.provider.route_requires_resource: true`；Core 会在创建 Provider 时持久化这些策略，并应用与内置订阅 Provider 一致的缺失、禁用、不健康、冷却和资源组检查。设置 `capabilities.provider.reasoning_configurable` 可以显式显示或隐藏 Admin 推理参数控制；没有该字段的旧插件仍会回退到路由协议推断。
 
@@ -39,7 +39,7 @@ Provider 插件可以在 manifest 中声明路由和凭据策略。对上游密�
 
 支持请求会话亲和性的插件还可以在 `capabilities.gateway` 中声明 `session_affinity`，并把 `capabilities.provider.session_affinity_kind` 设置为 `provider_session` 或 `codex_session`。当 Responses、Chat、Anthropic、Gemini 或 Responses Compact 路由根据 session header 或请求 metadata 生成粘性 Provider Resource 绑定时，Core 会使用该策略。
 
-插件声明的后台任务可以在后台任务清单中手动运行。手动运行会使用与定时任务相同的 Core runner，包括输入 Schema 校验、重试设置、超时处理、并发限制、最近运行记录、结果脱敏和管理员审计事件。TokenHub 在把运行结果返回给控制台前，会遮蔽 access token、refresh token、API key、密码、cookie、私钥等疑似敏感字段。
+已注册的进程内后台任务可以在后台任务清单中手动运行。手动运行会使用与定时任务相同的 Core runner，包括输入 Schema 校验、重试设置、超时处理、并发限制、最近运行记录、结果脱敏和管理员审计事件。TokenHub 在把运行结果返回给控制台前，会遮蔽 access token、refresh token、API key、密码、cookie、私钥等疑似敏感字段。外部执行不可用期间，外部命令型任务不会注册。
 
 ## 模型演练场诊断
 
@@ -161,6 +161,13 @@ Provider 模型价格代表真实上游成本，用于内部审计；模型目�
 当 Provider 渠道、模型目录或路由策略还没有配置数据时，控制台会展示同一套三步引导：引入 Provider 库存、从内置模型目录中创建对外模型、再配置路由。主操作按钮始终指向最早尚未完成的前置步骤，避免管理员进入当前还无法完成的表单。
 
 「发布状态」与「运行健康」相互独立。模型要出现在 `GET /v1/models` 中，必须同时满足：对外 `Model` 已启用、至少有一条已启用 `ModelRoute`，且在 API Key 配置了模型白名单时获得授权。Provider 或 Provider Resource 短时不健康不会改变该列表，只会影响当前请求能否成功，并在目录和路由诊断中单独展示。下线对外模型会将它从 `GET /v1/models` 移除，但保留映射，便于之后重新发布。
+
+### GPT-6 Astra
+
+标准模型目录和内置 OpenAI Provider 库存已包含 `gpt-6-astra`。创建模型时选择它，并配置有访问权限的上游路由；目录收录不代表获得上游权限。Codex 订阅库存仍从账户发现。支持的推理档位为 `low`、`medium`、`high`、`xhigh`、`max`；Codex 探测和 Anthropic 到 Codex 的转换会保留 `max`。
+
+模板采用 OpenAI Standard 每百万 token 价格：输入 10 美元、缓存读取 1 美元、缓存写入 12.50 美元、输出 50 美元。输入超过 272,000 token 时，OpenAI 对整个请求的输入及缓存价格乘以 2，输出价格乘以 1.5。Provider 阶梯元数据记录了该差异；标准模板的固定价格不会自动应用上下文阶梯或 Batch/Flex/Fast 折扣及加价，请单独配置适用价格。参见 [OpenAI 模型说明](https://developers.openai.com/api/docs/models/gpt-6-astra)。
+
 
 ## 自定义上游请求头
 

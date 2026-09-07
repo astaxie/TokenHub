@@ -52,3 +52,37 @@ func TestGatewayCommandRunnerRejectsEscapingCommandPath(t *testing.T) {
 		t.Fatal("escaping command path was accepted")
 	}
 }
+
+func TestGatewayCommandRunnerRejectsExternalHookWithoutEnforcedIsolation(t *testing.T) {
+	runner := NewGatewayCommandRunner(t.TempDir(), "missing.sh", PermissionGrant{Enforced: true})
+	_, err := runner.ExecuteGatewayHook(t.Context(), GatewayHookInput{
+		RequestID: "req_1",
+		Stage:     StagePrivacyPre,
+	})
+	if err == nil {
+		t.Fatal("external gateway command ran without enforced isolation")
+	}
+	if code, ok := PluginErrorCodeOf(err); !ok || code != PluginErrorPermissionUnsupported {
+		t.Fatalf("error code = %q, %t; want %q for error %v", code, ok, PluginErrorPermissionUnsupported, err)
+	}
+}
+
+func trustedGatewayHookFixtureRunner(t *testing.T, pkg Package) *GatewayHookRunner {
+	t.Helper()
+	hooks := pkg.Manifest.GatewayHooks()
+	if len(hooks) != 1 {
+		t.Fatalf("gateway hooks = %d, want 1", len(hooks))
+	}
+	chain := NewGatewayChainRegistry()
+	if err := chain.RegisterHook(hooks[0]); err != nil {
+		t.Fatalf("register gateway hook: %v", err)
+	}
+	runner := NewGatewayHookRunner(chain)
+	// Contract fixtures bypass runtime permission enforcement to exercise only
+	// the stdio protocol, projection, and result-validation behavior.
+	handler := NewGatewayCommandRunner(pkg.Dir, pkg.Manifest.Entry.Backend.Command)
+	if err := runner.RegisterHandler(hooks[0], handler); err != nil {
+		t.Fatalf("register gateway hook handler: %v", err)
+	}
+	return runner
+}

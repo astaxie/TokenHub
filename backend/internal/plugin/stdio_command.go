@@ -52,6 +52,11 @@ func runCommandJSON(ctx context.Context, options CommandSandboxOptions, input an
 	if err != nil {
 		return err
 	}
+	if options.RequireEnforcedIsolation {
+		if err := requireCommandSandboxIsolation(policy); err != nil {
+			return err
+		}
+	}
 	cmd := exec.CommandContext(runCtx, policy.Executable)
 	cmd.Dir = policy.WorkDir
 	cmd.Env = policy.Env

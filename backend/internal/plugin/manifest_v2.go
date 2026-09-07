@@ -49,6 +49,9 @@ func validateManifestV2Metadata(manifest Manifest) error {
 		if _, exists := seenDependencies[id]; exists {
 			return fmt.Errorf("plugin dependency %q is duplicated", id)
 		}
+		if err := ValidatePluginVersionConstraint(dependency.Version); err != nil {
+			return fmt.Errorf("plugin dependency %q version: %w", id, err)
+		}
 		seenDependencies[id] = struct{}{}
 	}
 	seenScopes := map[string]struct{}{}

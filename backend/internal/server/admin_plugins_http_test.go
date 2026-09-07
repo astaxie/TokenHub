@@ -69,6 +69,65 @@ func TestAdminPluginInstallPostDownloadsAndInstallsPackage(t *testing.T) {
 	}
 }
 
+func TestAdminPluginInstallReportsExternalCommandStartupFailureAfterReload(t *testing.T) {
+	pluginDir := t.TempDir()
+	archive := adminPluginZip(t, map[string]string{
+		"plugin.yaml": `
+schema_version: 2
+id: tokenhub.external-command
+name: External Command
+version: 1.0.0
+summary: Exercises the unavailable external command runtime.
+category: automation
+tokenhub:
+  plugin_api: v2
+kinds: [extension]
+placement: [management_action]
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: bin/run
+capabilities:
+  actions:
+    - id: example.run
+      kind: mutate
+      title: Run example
+permissions:
+  data:
+    read: []
+    write: []
+`,
+		"bin/run": "#!/bin/sh\nprintf '{}'",
+	})
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer upstream.Close()
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	server.pluginInstallClient = upstream.Client()
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/install", map[string]any{
+		"download_url":    upstream.URL + "/external-command.zip",
+		"checksum_sha256": adminSHA256Hex(archive),
+		"enable":          true,
+	}, "dev_admin_token")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("POST external command plugin install: expected 201, got %d: %s", response.Code, response.Body)
+	}
+	var body struct {
+		Data adminPluginInstallResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(response.Body), &body); err != nil {
+		t.Fatalf("decode external command install response: %v", err)
+	}
+	plugin := body.Data.Plugin
+	if plugin.Status != pluginmeta.StatusFailedStartup || plugin.Loadable ||
+		plugin.Lifecycle.Enabled || plugin.Lifecycle.ActiveEnabled ||
+		plugin.LastErrorCode != string(pluginmeta.PluginErrorPermissionUnsupported) {
+		t.Fatalf("external command install response = %+v, want failed startup after reload", body.Data)
+	}
+}
+
 func TestAdminPluginInstallPostUploadsAndInstallsPackage(t *testing.T) {
 	pluginDir := t.TempDir()
 	archive := adminPluginZip(t, map[string]string{
@@ -976,6 +1035,12 @@ kinds:
 	}
 	store := NewMemoryStore()
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	quarantined := requireAdminPluginDescriptor(t, server, "tokenhub.provider.openai-codex")
+	if quarantined.Name != "External Codex" || quarantined.Version != "2.0.0" || quarantined.Source != pluginmeta.SourceLocalFile ||
+		quarantined.Lifecycle.DesiredVersion != "2.0.0" || quarantined.Lifecycle.ActiveVersion != pluginmeta.BuiltInVersion ||
+		quarantined.Lifecycle.DesiredEnabled || !quarantined.Lifecycle.ActiveEnabled || quarantined.Lifecycle.RestartRequired {
+		t.Fatalf("built-in fallback lifecycle = %+v", quarantined)
+	}
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/plugins/tokenhub.provider.openai-codex/rollback", map[string]any{
 		"reason": "operator fallback",

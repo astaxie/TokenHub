@@ -10,8 +10,8 @@ import (
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
-func registerBuiltinPluginActions(server *Server) {
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+func registerBuiltinPluginActions(server *Server, actions *pluginmeta.ActionBroker) {
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.oauth.start",
 		Kind:       pluginmeta.ActionKindExternalRedirect,
@@ -50,7 +50,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: response, RedirectURL: response.AuthURL}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.oauth.exchange",
 		Kind:       pluginmeta.ActionKindMutate,
@@ -99,7 +99,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: info}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.quota.read",
 		Kind:       pluginmeta.ActionKindRead,
@@ -142,7 +142,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: quota}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.quota.reset_credits.read",
 		Kind:       pluginmeta.ActionKindRead,
@@ -180,7 +180,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: credits}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.quota.reset",
 		Kind:       pluginmeta.ActionKindMutate,
@@ -246,7 +246,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: result}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.probe.run",
 		Kind:       pluginmeta.ActionKindTest,
@@ -303,7 +303,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: result}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.provider.probe.run",
 		Kind:       pluginmeta.ActionKindTest,
@@ -340,7 +340,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: result}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.models.read",
 		Kind:       pluginmeta.ActionKindRead,
@@ -386,7 +386,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: catalog}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.models.preview",
 		Kind:       pluginmeta.ActionKindRead,
@@ -432,7 +432,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: catalog}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.kronk",
 		ActionID:   "kronk.models.preview",
 		Kind:       pluginmeta.ActionKindRead,
@@ -478,7 +478,7 @@ func registerBuiltinPluginActions(server *Server) {
 		return pluginmeta.ActionResult{Data: catalog}, nil
 	}))
 	imageCapabilityAction := openAICodexImageCapabilityActionDescriptor()
-	mustRegisterPluginAction(server.pluginActions, imageCapabilityAction, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+	mustRegisterPluginAction(actions, imageCapabilityAction, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload struct {
 			ResourceID string `json:"resource_id"`
 			Enabled    bool   `json:"enabled"`
@@ -495,7 +495,7 @@ func registerBuiltinPluginActions(server *Server) {
 		}
 		return pluginmeta.ActionResult{Data: result}, nil
 	}))
-	mustRegisterPluginAction(server.pluginActions, pluginmeta.ActionDescriptor{
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.credentials.refresh",
 		Kind:       pluginmeta.ActionKindMutate,

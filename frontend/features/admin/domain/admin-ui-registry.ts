@@ -1,4 +1,5 @@
 import { type AdminUIContribution } from "../core/types";
+import { languageLocale } from "../i18n/runtime";
 
 export type AdminUIFieldType = "metric" | "text" | "code_viewer";
 
@@ -62,13 +63,13 @@ export function adminUIFields(contribution: AdminUIContribution): AdminUIField[]
   });
 }
 
-export function adminUIFieldValue(context: unknown, field: AdminUIField) {
+export function adminUIFieldValue(context: unknown, field: AdminUIField, locale = languageLocale()) {
   const rawValue = field.value ?? adminUISourceValue(context, field.source);
   if (rawValue === undefined || rawValue === null || rawValue === "") return "-";
-  if (field.format === "money_usd") return `$${formatMoney(Number(rawValue) || 0)}`;
-  if (field.format === "compact") return compactNumber(Number(rawValue) || 0);
-  if (field.format === "percent") return `${formatNumber(Number(rawValue) || 0)}%`;
-  if (typeof rawValue === "number") return formatNumber(rawValue);
+  if (field.format === "money_usd") return formatMoney(Number(rawValue) || 0, locale);
+  if (field.format === "compact") return compactNumber(Number(rawValue) || 0, locale);
+  if (field.format === "percent") return `${formatNumber(Number(rawValue) || 0, locale)}%`;
+  if (typeof rawValue === "number") return formatNumber(rawValue, locale);
   if (typeof rawValue === "boolean") return rawValue ? "true" : "false";
   if (field.type === "code_viewer" && typeof rawValue === "object") return JSON.stringify(rawValue, null, 2);
   return String(rawValue);
@@ -131,16 +132,19 @@ function schemaScalar(value: unknown) {
 
 const arrayIndexPattern = /^\d+$/;
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat().format(value || 0);
+function formatNumber(value: number, locale: string) {
+  return new Intl.NumberFormat(locale).format(value || 0);
 }
 
-function compactNumber(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
-  return formatNumber(value || 0);
+function compactNumber(value: number, locale: string) {
+  return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 2 }).format(value || 0);
 }
 
-function formatMoney(value: number) {
-  return (value || 0).toFixed(value >= 1 ? 2 : 6);
+function formatMoney(value: number, locale: string) {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: value >= 1 ? 2 : 6,
+    maximumFractionDigits: value >= 1 ? 2 : 6,
+  }).format(value || 0);
 }

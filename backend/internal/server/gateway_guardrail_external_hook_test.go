@@ -3,15 +3,14 @@ package server
 import (
 	"net/http"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
-func TestExternalGuardrailHookFixtureDeniesUnsafeCompletionOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("external guardrail hook fixture uses POSIX sh")
-	}
+func TestExternalGuardrailHookWithoutIsolationIsQuarantinedBeforeExecution(t *testing.T) {
+	pluginDir := copyExternalPluginFixtureForServerTest(t, filepath.Join("..", "plugin", "testdata", "external-guardrail-hook"))
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "External Guardrail Hook", Status: StatusActive})
 	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
@@ -27,8 +26,11 @@ func TestExternalGuardrailHookFixtureDeniesUnsafeCompletionOutput(t *testing.T) 
 	store.AddRoute(ModelRoute{ID: "route_external_guardrail", ModelName: "gpt-external-guardrail", ProviderID: provider.ID, ProviderModel: "upstream-chat", Status: StatusActive, Priority: 1, Weight: 100})
 	app := NewWithConfig(store, Config{
 		AdminToken: "external-guardrail-admin",
-		PluginDir:  filepath.Join("..", "plugin", "testdata", "external-guardrail-hook"),
+		PluginDir:  pluginDir,
 	})
+	if hooks := app.gatewayChain.Hooks(pluginmeta.StageGuardrailPost); len(hooks) != 0 {
+		t.Fatalf("quarantined guardrail hooks were published: %+v", hooks)
+	}
 
 	response := doJSON(t, app.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
 		"model": "gpt-external-guardrail",
@@ -36,22 +38,14 @@ func TestExternalGuardrailHookFixtureDeniesUnsafeCompletionOutput(t *testing.T) 
 			{"role": "user", "content": "unsafe prompt sentinel"},
 		},
 	}, secret)
-	if response.Code != http.StatusForbidden || !strings.Contains(response.Body, "gateway_hook_denied") {
-		t.Fatalf("guardrail response = %d %s, want 403 gateway_hook_denied", response.Code, response.Body)
+	if response.Code != http.StatusOK || strings.Contains(response.Body, "gateway_hook_failed") {
+		t.Fatalf("guardrail response = %d %s, want built-in flow without external hook", response.Code, response.Body)
 	}
-	var guardrailAudit string
 	for _, event := range store.ListAuditEvents() {
-		if event.Action == "plugin.gateway.guardrail_post" {
-			guardrailAudit = event.AfterSnapshot
-			break
-		}
-	}
-	if guardrailAudit == "" {
-		t.Fatalf("external guardrail hook audit event was not recorded: %+v", store.ListAuditEvents())
-	}
-	for _, forbidden := range []string{"unsafe prompt sentinel", "provider-secret"} {
-		if strings.Contains(guardrailAudit, forbidden) {
-			t.Fatalf("guardrail audit leaked %q: %s", forbidden, guardrailAudit)
+		for _, forbidden := range []string{"unsafe prompt sentinel", "provider-secret"} {
+			if strings.Contains(event.AfterSnapshot, forbidden) {
+				t.Fatalf("guardrail failure audit leaked %q: %s", forbidden, event.AfterSnapshot)
+			}
 		}
 	}
 }

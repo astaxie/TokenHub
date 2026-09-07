@@ -418,6 +418,41 @@ func (r Runtime) RollbackPackage(pluginID string, reason string) (Package, error
 	return pkg, nil
 }
 
+// DescribeRollbackPackage returns the preserved package that would replace the
+// current installation without changing either package on disk.
+func (r Runtime) DescribeRollbackPackage(pluginID string) (Package, bool, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return Package{}, false, nil
+	}
+	current, found, err := r.DescribeInstalledPackage(pluginID)
+	if err != nil || !found {
+		return Package{}, false, err
+	}
+	if !current.State.RollbackAvailable() || strings.TrimSpace(r.Dir) == "" {
+		return Package{}, false, nil
+	}
+	root, err := filepath.Abs(r.Dir)
+	if err != nil {
+		return Package{}, false, err
+	}
+	rollbackDir := rollbackPackageDir(root, pluginID)
+	if _, err := os.Stat(filepath.Join(rollbackDir, "plugin.yaml")); err != nil {
+		if os.IsNotExist(err) {
+			return Package{}, false, nil
+		}
+		return Package{}, false, err
+	}
+	pkg, err := readPackage(rollbackDir)
+	if err != nil {
+		return Package{}, false, err
+	}
+	if pkg.Manifest.ID != pluginID {
+		return Package{}, false, fmt.Errorf("rollback package id %s does not match %s", pkg.Manifest.ID, pluginID)
+	}
+	return pkg, true, nil
+}
+
 func (r Runtime) manifestPackageDirs() ([]string, error) {
 	if r.Dir == "" {
 		return nil, nil

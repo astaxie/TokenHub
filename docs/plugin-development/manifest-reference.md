@@ -23,6 +23,6 @@ Every package has one `plugin.yaml` at its package root. TokenHub validates it b
 
 Capability IDs and the plugin ID are compatibility contracts. Do not rename them in an update unless the migration deliberately preserves existing Provider, route, resource, and configuration references.
 
-Backend commands run as supervised, isolated processes using package-relative paths and the `stdio-json-v1` transport. The transport name is independent of Plugin API v2. Paths may not escape the package. Packages containing symlinks, ambiguous manifests, or incompatible declarations are rejected.
+Package-relative paths and the `stdio-json-v1` transport define the external backend command contract. The transport name is independent of Plugin API v2. Paths may not escape the package, and packages containing symlinks, ambiguous manifests, or incompatible declarations are rejected. The current runtime cannot enforce the required host-level process, network, and resource isolation, so it fails closed and rejects every runtime-loaded external command before launch. This restriction does not affect in-process built-ins or declarative presentation contributions.
 
 See the [complete guide](guide.md) for schemas, stage policies, and compatibility rules.

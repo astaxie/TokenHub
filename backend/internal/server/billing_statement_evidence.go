@@ -51,7 +51,7 @@ func buildStatement(tx *gorm.DB, out *statementResult) error {
 	query := tx.Where("created_at >= ? AND created_at < ? AND created_at <= ?", out.From, out.To, out.GeneratedAt).Where("NOT EXISTS (SELECT 1 FROM metering_entries WHERE kind = ? AND scope = usage_records.request_id)", "admission")
 	if out.Query.Side == "provider" {
 		if out.Query.Model != "" {
-			query = query.Where("(EXISTS (SELECT 1 FROM request_logs WHERE request_id = usage_records.request_id AND provider_model = ?) OR NOT EXISTS (SELECT 1 FROM request_logs WHERE request_id = usage_records.request_id AND COALESCE(provider_model, '') <> ''))", out.Query.Model)
+			query = query.Where("EXISTS (SELECT 1 FROM request_logs WHERE request_id = usage_records.request_id AND provider_model = ?)", out.Query.Model)
 		}
 		if out.Query.ProviderID != "" {
 			query = query.Where("provider_id = ?", out.Query.ProviderID)
@@ -287,7 +287,7 @@ func appendLegacyStatement(out *statementResult, u UsageRecord, upstreamModel st
 		if q.ProviderID != "" && q.ProviderID != u.ProviderID || q.ResourceID != "" && q.ResourceID != u.ProviderResourceID {
 			return
 		}
-		if q.Side == "provider" && q.Model != "" && upstreamModel != "" && q.Model != upstreamModel {
+		if q.Side == "provider" && q.Model != "" && q.Model != upstreamModel {
 			return
 		}
 		row := base

@@ -11,7 +11,7 @@ import (
 
 func TestBootstrapRegistersEveryTrackedProviderCatalogEntryAsPlugin(t *testing.T) {
 	catalogFile := filepath.Join("..", "..", "..", "data", "provider-catalog.json")
-	bootstrap, err := bootstrapServerPlugins(NewMemoryStore(), Config{ProviderCatalogFile: catalogFile}, map[string]any{
+	bootstrap, err := bootstrapServerPlugins(Config{ProviderCatalogFile: catalogFile}, map[string]any{
 		ProviderOpenAICodex: &CodexSubscriptionAdapter{},
 	})
 	if err != nil {
@@ -69,7 +69,7 @@ func TestDisabledProviderCatalogPluginIsRemovedFromProviderCatalog(t *testing.T)
 	if _, err := pluginmeta.NewRuntime(pluginDir).UpdateBuiltInPackageState(pluginID, pluginmeta.PackageState{Status: pluginmeta.StatusDisabled}); err != nil {
 		t.Fatalf("disable provider catalog plugin: %v", err)
 	}
-	bootstrap, err := bootstrapServerPlugins(NewMemoryStore(), Config{PluginDir: pluginDir, ProviderCatalogFile: catalogFile}, map[string]any{
+	bootstrap, err := bootstrapServerPlugins(Config{PluginDir: pluginDir, ProviderCatalogFile: catalogFile}, map[string]any{
 		ProviderOpenAICodex: &CodexSubscriptionAdapter{},
 	})
 	if err != nil {

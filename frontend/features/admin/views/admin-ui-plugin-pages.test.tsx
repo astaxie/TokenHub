@@ -171,7 +171,7 @@ describe("PluginPageView", () => {
 
     expect(pages[0]).toMatchObject({ key: "tokenhub.admin.runtime:runtime", title: "Runtime", description: "Runtime status" });
     expect(fields).toHaveLength(2);
-    expect(pluginPageFieldValue(data, fields[0])).toBe("1.20K");
+    expect(pluginPageFieldValue(data, fields[0])).toBe("1200");
     expect(pluginPageFieldValue(data, fields[1])).toContain("request_count");
   });
 

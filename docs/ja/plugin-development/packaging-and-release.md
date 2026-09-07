@@ -22,7 +22,7 @@ cd ../../..
 shasum -a 256 background-heartbeat-go.zip
 ```
 
-ZIP を作成する前に、パッケージに対応する Devkit 契約コマンドを実行します。アーカイブの構造と実行権限もリリース契約の一部なので、最終 ZIP は TokenHub でのインストールテストも行ってください。
+ZIP を作成する前に、パッケージに対応する Devkit 契約コマンドを実行します。最終 ZIP は TokenHub にインストールしてアーカイブの受理とファイル検査を確認できますが、実行動作は Devkit で検証してください。現行 TokenHub ランタイムは外部コマンドを起動しません。
 
 ## バージョンと公開
 
@@ -32,15 +32,15 @@ TokenHub Marketplace はリモートの HTTPS JSON インデックスです。�
 
 同じリリース URL で異なるバイト列を公開しないでください。チェックサムと署名は特定のアーカイブを保護するため、公開済みバージョンを再ビルドする場合は、新しいバージョンと成果物が必要です。
 
-## インストールと検証
+## インストールと検査
 
 管理者は**プラグイン管理 > プラグインを探す**から利用可能なリリースを選ぶか、**手動インストール**で直接 URL または ZIP を指定できます。導入前に互換性、チェックサム、信頼情報、権限差分を確認します。直接 URL にはパッケージのチェックサムが必要です。
 
-TokenHub は検証済みパッケージを `TOKENHUB_PLUGIN_DIR` に展開し、install、update、enable、disable、rollback の後に plugin runtime を再読み込みします。通常は TokenHub service の再起動は不要です。Installed、Enabled、Configured、In Use、Restart Required は独立した lifecycle fact であり、1 つの集約 status から推測しません。desired state と active runtime が実際にずれた場合だけ `restart_required` を表示し、service 起動時に desired state を正常に読み込むと marker を消去します。その後、次を検証します。
+TokenHub は検証済みパッケージを `TOKENHUB_PLUGIN_DIR` に展開し、install、update、enable、disable、rollback の後に再評価します。宣言的な画面の変更には通常 TokenHub service の再起動は不要です。`entry.backend.command` を持つパッケージは現行リリースでは動作できません。enable を試みると **Startup Failed** を記録し、インストール済みで検査可能なまま Provider、Hook、ジョブ、Action の機能を一切登録しません。lifecycle fact は独立しているため、Installed を実行可能または active と解釈してはいけません。その後、次を検証します。
 
 - 詳細ページでバージョン、互換性、信頼状態を確認する
 - ファイルページでファイル一覧と想定したパッケージ内容を照合する
-- 詳細ページで登録済みジョブ、Hook、UI 貢献を確認し、ファイルページの `plugin.yaml` で権限を確認する
-- 最初に非本番の認証情報で実際の Provider またはゲートウェイ動作を検証する
+- `plugin.yaml` で宣言済みジョブ、Hook、Action、権限を確認し、詳細ページで対応済みの宣言的 UI 貢献を確認する
+- 対応する Devkit 契約コマンドで実行動作を検証する。TokenHub 経由の実 Provider またはゲートウェイ外部実行は利用できない
 
 更新でも同じレビューと検証を繰り返します。永続データを変更する更新の前には TokenHub の関連状態をバックアップし、制御されたロールバックのために以前の不変 ZIP を保持してください。

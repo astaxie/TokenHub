@@ -61,11 +61,7 @@ func TestExternalGuardrailHookFixtureRunsThroughGatewayHookRunner(t *testing.T) 
 	if runtime.GOOS == "windows" {
 		t.Skip("external guardrail hook fixture uses POSIX sh")
 	}
-	chain := NewGatewayChainRegistry()
-	runner := NewGatewayHookRunner(chain)
-	if _, err := NewRuntime(externalGuardrailHookFixtureDir()).LoadIntoWithActions(NewRegistry(), chain, nil, nil, runner); err != nil {
-		t.Fatalf("load external guardrail hook fixture: %v", err)
-	}
+	runner := trustedGatewayHookFixtureRunner(t, loadExternalGuardrailHookFixture(t))
 
 	report, err := runner.RunStage(t.Context(), StageGuardrailPost, GatewayHookInput{
 		RequestID: "req_external_guardrail_contract",
@@ -131,11 +127,7 @@ func TestExternalGuardrailHookFixtureDenyIsFailClosed(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("external guardrail hook fixture uses POSIX sh")
 	}
-	chain := NewGatewayChainRegistry()
-	runner := NewGatewayHookRunner(chain)
-	if _, err := NewRuntime(externalGuardrailHookFixtureDir()).LoadIntoWithActions(NewRegistry(), chain, nil, nil, runner); err != nil {
-		t.Fatalf("load external guardrail hook fixture: %v", err)
-	}
+	runner := trustedGatewayHookFixtureRunner(t, loadExternalGuardrailHookFixture(t))
 
 	_, err := runner.RunStage(t.Context(), StageGuardrailPost, GatewayHookInput{
 		RequestID: "req_external_guardrail_fail_command",

@@ -542,7 +542,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           loaded.pluginMarketplaceError = payload.data?.error;
         } else if (name === "plugin-chain") {
           const payload = (await resp.json()) as { data: GatewayChainPlan };
-          loaded.pluginChain = payload.data ?? { hooks: [] };
+          loaded.pluginChain = payload.data ? { ...payload.data, hooks: payload.data.hooks ?? [] } : { hooks: [] };
         } else if (name === "plugin-ui") {
           const payload = (await resp.json()) as { data: AdminUIContribution[] };
           loaded.pluginUI = payload.data ?? [];

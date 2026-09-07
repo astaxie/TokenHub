@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -530,7 +529,7 @@ capabilities:
 	}
 }
 
-func TestRuntimeLoadIntoWithActionsBindsBackendCommand(t *testing.T) {
+func TestRuntimeLoadedActionCommandFailsClosedWithoutIsolation(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "action")
 	writeManifest(t, pluginDir, `
@@ -560,21 +559,22 @@ printf '{"data":{"status":"started"}}'
 		t.Fatal(err)
 	}
 	actions := NewActionBroker()
+	registry := NewRegistry()
 
-	if _, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), NewGatewayChainRegistry(), nil, actions); err != nil {
+	packages, err := NewRuntime(root).LoadIntoWithActions(registry, NewGatewayChainRegistry(), nil, actions)
+	if err != nil {
 		t.Fatalf("load runtime: %v", err)
 	}
-	result, err := actions.Execute(t.Context(), ActionInvocation{PluginID: "tokenhub.action", ActionID: "sync.run"})
-	if err != nil {
-		t.Fatalf("execute runtime-bound action: %v", err)
+	assertExternalCommandPackageFailedStartup(t, root, packages, "tokenhub.action")
+	if _, ok := registry.Describe("tokenhub.action"); ok {
+		t.Fatal("external action package was registered as active")
 	}
-	data := result.Data.(map[string]any)
-	if data["status"] != "started" {
-		t.Fatalf("action result = %+v, want started", data)
+	if descriptors := actions.List(); len(descriptors) != 0 {
+		t.Fatalf("external action descriptors were published: %+v", descriptors)
 	}
 }
 
-func TestRuntimeLoadIntoWithActionsAndBackgroundRegistersJobs(t *testing.T) {
+func TestRuntimeLoadedBackgroundCommandFailsClosedWithoutIsolation(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "jobs")
 	writeManifest(t, pluginDir, `
@@ -616,33 +616,22 @@ printf '{"data":{"refreshed":true}}'
 		t.Fatal(err)
 	}
 	jobs := NewBackgroundJobBroker()
+	registry := NewRegistry()
 
-	if _, err := NewRuntime(root).LoadIntoWithActionsAndBackground(NewRegistry(), NewGatewayChainRegistry(), nil, nil, jobs); err != nil {
+	packages, err := NewRuntime(root).LoadIntoWithActionsAndBackground(registry, NewGatewayChainRegistry(), nil, nil, jobs)
+	if err != nil {
 		t.Fatalf("load runtime: %v", err)
 	}
-	descriptor, ok := jobs.Describe("tokenhub.jobs", "quota.refresh")
-	if !ok {
-		t.Fatal("background job descriptor was not registered")
+	assertExternalCommandPackageFailedStartup(t, root, packages, "tokenhub.jobs")
+	if _, ok := registry.Describe("tokenhub.jobs"); ok {
+		t.Fatal("external background package was registered as active")
 	}
-	if descriptor.Schedule != "*/10 * * * *" || descriptor.Capability != "quota.refresh" || descriptor.Subject != "openai_codex" {
-		t.Fatalf("background job descriptor = %+v", descriptor)
-	}
-	result, err := jobs.Execute(t.Context(), BackgroundJobInvocation{
-		PluginID: "tokenhub.jobs",
-		JobID:    "quota.refresh",
-		Trigger:  "manual",
-		Payload:  json.RawMessage(`{"resource_id":"res_1"}`),
-	})
-	if err != nil {
-		t.Fatalf("execute background job: %v", err)
-	}
-	data := result.Data.(map[string]any)
-	if data["refreshed"] != true {
-		t.Fatalf("background job result = %+v, want refreshed", data)
+	if descriptors := jobs.List(); len(descriptors) != 0 {
+		t.Fatalf("external background job descriptors were published: %+v", descriptors)
 	}
 }
 
-func TestRuntimeLoadIntoWithActionsBindsGatewayHookCommand(t *testing.T) {
+func TestRuntimeLoadedGatewayHookCommandFailsClosedWithoutIsolation(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "hook")
 	writeManifest(t, pluginDir, `
@@ -662,16 +651,16 @@ entry:
     command: hook.sh
 capabilities:
   hooks:
-    - id: trace
-      stage: trace_export
+    - id: guardrail
+      stage: guardrail_post
       priority: 2300
-      failure_policy: observe_only
+      failure_policy: fail_closed
       reads:
-        - audit
+        - provider_response
 permissions:
  data:
     read:
-      - audit
+      - provider_response
 `)
 	if err := os.WriteFile(filepath.Join(pluginDir, "hook.sh"), []byte(`#!/bin/sh
 cat >/dev/null
@@ -681,22 +670,85 @@ printf '{"decision":"continue"}'
 	}
 	chain := NewGatewayChainRegistry()
 	runner := NewGatewayHookRunner(chain)
+	registry := NewRegistry()
 
-	if _, err := NewRuntime(root).LoadIntoWithActions(NewRegistry(), chain, nil, nil, runner); err != nil {
+	packages, err := NewRuntime(root).LoadIntoWithActions(registry, chain, nil, nil, runner)
+	if err != nil {
 		t.Fatalf("load runtime: %v", err)
 	}
-	report, err := runner.RunStage(t.Context(), StageTraceExport, GatewayHookInput{
-		RequestID: "req_1",
-		Stage:     StageTraceExport,
-		Data: GatewayHookData{
-			DataAudit: json.RawMessage(`{"request_id":"req_1"}`),
-		},
-	})
-	if err != nil {
-		t.Fatalf("run trace export: %v", err)
+	assertExternalCommandPackageFailedStartup(t, root, packages, "tokenhub.hook")
+	if _, ok := registry.Describe("tokenhub.hook"); ok {
+		t.Fatal("external gateway hook package was registered as active")
 	}
-	if len(report.Results) != 1 || report.Results[0].Status != HookRunSucceeded {
-		t.Fatalf("run report = %+v", report)
+	if hooks := chain.Hooks(StageGuardrailPost); len(hooks) != 0 {
+		t.Fatalf("external gateway hooks were published: %+v", hooks)
+	}
+	if report, err := runner.RunStage(t.Context(), StageGuardrailPost, GatewayHookInput{Stage: StageGuardrailPost}); err != nil || len(report.Results) != 0 {
+		t.Fatalf("gateway stage after quarantine = %+v, %v; want no external hook", report, err)
+	}
+}
+
+func TestRuntimeLoadedProviderCommandFailsStartupWithoutIsolation(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "provider")
+	writeManifest(t, pluginDir, `
+schema_version: 1
+id: tokenhub.provider
+name: Provider Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: provider.sh
+capabilities:
+  provider_types:
+    - external_provider
+  gateway:
+    - chat
+permissions:
+  data:
+    read:
+      - provider_credentials
+`)
+	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte("#!/bin/sh\nprintf '{}'"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+
+	packages, err := NewRuntime(root).LoadInto(registry, NewGatewayChainRegistry())
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	assertExternalCommandPackageFailedStartup(t, root, packages, "tokenhub.provider")
+	if _, ok := registry.Describe("tokenhub.provider"); ok {
+		t.Fatal("external Provider package was registered as active")
+	}
+}
+
+func assertExternalCommandPackageFailedStartup(t *testing.T, root string, packages []Package, pluginID string) {
+	t.Helper()
+	if len(packages) != 1 || packages[0].Manifest.ID != pluginID {
+		t.Fatalf("packages = %+v, want %s", packages, pluginID)
+	}
+	state := packages[0].State
+	if !state.FailedStartup() || state.Health != PackageHealthUnhealthy ||
+		state.LastErrorCode != string(PluginErrorPermissionUnsupported) ||
+		state.AuditEvent != PackageLifecycleStartupFailed ||
+		!strings.Contains(state.Reason, "OS-enforced isolation") {
+		t.Fatalf("package state = %+v, want unsupported external runtime startup failure", state)
+	}
+	inspection, err := NewRuntime(root).InspectPackage(pluginID)
+	if err != nil {
+		t.Fatalf("inspect quarantined package: %v", err)
+	}
+	if inspection.FileCount == 0 {
+		t.Fatalf("quarantined package inspection = %+v", inspection)
 	}
 }
 

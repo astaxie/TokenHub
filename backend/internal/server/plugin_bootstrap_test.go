@@ -35,7 +35,7 @@ permissions:
       - audit
 `)
 
-	bootstrap, err := bootstrapServerPlugins(NewMemoryStore(), Config{PluginDir: pluginDir}, map[string]any{
+	bootstrap, err := bootstrapServerPlugins(Config{PluginDir: pluginDir}, map[string]any{
 		ProviderMock:        MockAdapter{},
 		ProviderOpenAICodex: &CodexSubscriptionAdapter{},
 	})
@@ -123,7 +123,7 @@ func TestBootstrapServerPluginsSkipsDisabledBuiltInProviderAdapter(t *testing.T)
 		t.Fatalf("write built-in provider state: %v", err)
 	}
 
-	bootstrap, err := bootstrapServerPlugins(NewMemoryStore(), Config{PluginDir: pluginDir}, map[string]any{
+	bootstrap, err := bootstrapServerPlugins(Config{PluginDir: pluginDir}, map[string]any{
 		ProviderMock: MockAdapter{},
 		"qwen":       MockAdapter{},
 	})
@@ -147,8 +147,8 @@ func TestBootstrapServerPluginsSkipsDisabledBuiltInProviderAdapter(t *testing.T)
 	if err != nil || !found {
 		t.Fatalf("read built-in provider state found=%t err=%v", found, err)
 	}
-	if state.RestartRequired || state.Status != pluginmeta.StatusDisabled {
-		t.Fatalf("built-in provider state after bootstrap = %+v, want applied disabled state", state)
+	if !state.RestartRequired || state.Status != pluginmeta.StatusDisabled {
+		t.Fatalf("built-in provider state after bootstrap preparation = %+v, want unchanged restart marker", state)
 	}
 }
 

@@ -1,7 +1,7 @@
 import { Power, PowerOff, RotateCcw, Trash2 } from "lucide-react";
 import { type PluginDescriptor } from "../core/types";
 import { pluginManagerDisplayState, type PluginManagerDisplayState } from "../domain/plugin-manager";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 
 export type PluginStateDraft = {
@@ -69,8 +69,8 @@ export function PluginLifecycleControl({
   return (
     <div className="stacked-cell" data-plugin-manager-control="lifecycle">
       <StatusPill status={effectiveLifecycle.pillStatus} label={tx(effectiveLifecycle.labelKey)} />
-      {effectiveLifecycle.rollbackTarget ? <span>{tx("回滚目标")} {tx(effectiveLifecycle.rollbackTargetLabelKey)}</span> : null}
-      {effectiveLifecycle.rollbackAvailable && effectiveLifecycle.rollbackVersion ? <span>{tx("回滚版本")} {effectiveLifecycle.rollbackVersion}</span> : null}
+      {effectiveLifecycle.rollbackTarget ? <span>{formatTranslationTemplate(tx("回滚目标：{target}"), { target: tx(effectiveLifecycle.rollbackTargetLabelKey) })}</span> : null}
+      {effectiveLifecycle.rollbackAvailable && effectiveLifecycle.rollbackVersion ? <span>{formatTranslationTemplate(tx("回滚版本：{version}"), { version: effectiveLifecycle.rollbackVersion })}</span> : null}
       {canUpdate ? (
         <button
           className="secondary-button compact-button"

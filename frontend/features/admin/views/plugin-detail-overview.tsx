@@ -12,7 +12,7 @@ import { formatBytes } from "../domain/formatting";
 import { localizedContributionTitle } from "../domain/plugin-localization";
 import { pluginMarketplaceDisplay } from "../domain/plugin-marketplace";
 import { pluginManagerDisplayState } from "../domain/plugin-manager";
-import { languageLocale, tx } from "../i18n/runtime";
+import { formatLocaleNumber, formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 
 export type PluginPackageInspection = {
   file_count: number;
@@ -199,6 +199,7 @@ export function PluginOverview({
 }
 
 function pluginUsageLocation(plugin: PluginDescriptor, contributions: AdminUIContribution[]) {
+  if (plugin.status === "failed_startup") return tx("当前只能在插件管理中检查此插件包；声明的外部命令不会执行。");
   if (plugin.kinds.includes("provider")) return tx("在 Provider 管理中添加账号或连接，然后在模型路由中使用。");
   if (plugin.placements.includes("gateway_chain")) return tx("启用后自动在匹配的模型请求处理阶段运行。");
   if (plugin.kinds.includes("sim") || contributions.length > 0) return tx("在管理后台的相关页面或插件设置中使用。");
@@ -306,6 +307,9 @@ function pluginFeatures(plugin: PluginDescriptor, related: {
   if (related.jobs.length > 0 || plugin.placements.includes("background")) {
     rows.push({ key: "jobs", icon: <RefreshCw size={17} />, title: tx("自动任务"), description: tx("按计划在后台执行维护或同步任务。") });
   }
+  if (plugin.status === "failed_startup") {
+    return rows.map((row) => ({ ...row, description: tx("此功能已声明，但插件启动失败，当前不可用。") }));
+  }
   return rows;
 }
 
@@ -358,5 +362,8 @@ function compatibilityDescription(verdict: string) {
 
 function packageLabel(packageInspection?: PluginPackageInspection) {
   if (!packageInspection) return tx("内置实现");
-  return `${packageInspection.file_count} ${tx("个文件")} · ${formatBytes(packageInspection.total_size)}`;
+  return formatTranslationTemplate(tx("{count} 个文件 · {size}"), {
+    count: formatLocaleNumber(packageInspection.file_count),
+    size: formatBytes(packageInspection.total_size),
+  });
 }

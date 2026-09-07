@@ -6,7 +6,7 @@ Language: [English](../../plugin-development/guide.md) | 简体中文 | [日本�
 
 本文采用“先做出最小插件，再解释完整契约”的顺序。和 WordPress 通过插件主文件头发现插件类似，TokenHub 通过包根目录的 `plugin.yaml` 发现、校验和加载插件；区别是 TokenHub 插件必须显式声明运行位置、能力和最小权限。
 
-> **当前实现边界：** Plugin API v2 是当前 Manifest 契约；现有插件仍可通过 v1 适配器运行。界面模板是声明式主题和布局能力，并不是任意 React/JavaScript 扩展机制。每个内置插件都有可检查的包文件。只有 Manifest 声明了真实可编辑设置时才显示设置路由；源码仍只供只读预览，管理后台不能修改插件代码。
+> **当前实现边界：** Plugin API v2 是当前 Manifest 契约；现有插件仍可通过 v1 适配器运行。运行时目前还不能强制执行宿主级进程、网络和资源隔离，因此会在启动前拒绝所有动态加载的外部 Provider、请求链 Hook、后台任务和管理动作命令。本指南中的命令示例定义的是开发契约，而不是当前可部署的集成。界面模板是声明式主题和布局能力，并不是任意 React/JavaScript 扩展机制。每个内置插件都有可检查的包文件。只有 Manifest 声明了真实可编辑设置时才显示设置路由；源码仍只供只读预览，管理后台不能修改插件代码。
 
 TokenHub 会把 core 保持得很小：
 
@@ -182,7 +182,7 @@ Admin UI 贡献不是一个独立运行时能力面。它是声明式的面板�
 5. 添加 contract tests
 6. 本地运行
 7. 发布到 marketplace
-8. 安装后在 TokenHub 中验证
+8. 安装后在 TokenHub 中验证包检查与生命周期呈现
 
 写代码之前，先回答：
 
@@ -571,7 +571,7 @@ TokenHub 对 built-in 和 external 插件使用同一种包形态。
 - 许可证
 - 兼容性元数据
 
-插件市场地址默认是 `https://plugins.betokenhub.com`。运维可以从 Marketplace 或直接 ZIP URL 安装插件包并校验 checksum，TokenHub 会立即重新加载插件运行时。
+插件市场地址默认是 `https://plugins.betokenhub.com`。运维可以从 Marketplace 或直接 ZIP URL 安装插件包并校验 checksum。TokenHub 会立即重新评估插件包的校验与生命周期状态；这可以激活受支持的声明式贡献，但不会启用外部命令执行。
 
 ZIP 可以把 `plugin.yaml` 放在归档根目录，也可以只包一层插件目录；归档中必须且只能发现一个 `plugin.yaml`。不要包含 symlink。运行入口必须保留可执行权限，并且 `entry.backend.command` 必须是插件目录内的相对路径。
 
@@ -587,7 +587,7 @@ cd ../../..
 shasum -a 256 background-heartbeat-go.zip
 ```
 
-在管理后台打开“插件管理 > 浏览插件 > 手动安装”，可上传 ZIP，或提供 HTTPS `download_url` 与小写 SHA-256 checksum。安装成功后 TokenHub 会重新加载运行时。已安装、已启用、已配置、使用中和需要重启是相互独立的生命周期事实；只有期望状态与实际运行状态存在差异时才显示重启标记，服务成功启动并加载期望状态后会清除标记。
+在管理后台打开「插件管理 > 浏览插件 > 手动安装」，可上传 ZIP，或提供 HTTPS `download_url` 与小写 SHA-256 checksum。安装成功后 TokenHub 会重新评估插件包。声明式界面贡献可以生效；带外部命令的包会记录 `failed_startup`，保持可检查，并且不发布任何运行时能力。可执行契约测试必须使用 Devkit。
 
 ## 7. 版本与兼容性
 
@@ -626,7 +626,7 @@ shasum -a 256 background-heartbeat-go.zip
 4. 包级测试
 5. TokenHub 集成测试
 6. marketplace 和兼容性检查
-7. 安装、运行时重载与生命周期验证
+7. 安装、文件检查与生命周期失败验证
 
 各家族重点关注：
 

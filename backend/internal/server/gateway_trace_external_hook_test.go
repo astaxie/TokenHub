@@ -2,20 +2,17 @@ package server
 
 import (
 	"net/http"
+	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
 
-func TestExternalTraceHookFixtureRunsFromGatewayCompletion(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("external trace hook fixture uses POSIX sh")
-	}
+func TestExternalTraceHookWithoutIsolationIsSkippedByObserveOnlyPolicy(t *testing.T) {
 	store := NewMemoryStore()
 	app := NewWithConfig(store, Config{
 		AdminToken: "external-trace-admin",
-		PluginDir:  filepath.Join("..", "plugin", "testdata", "external-trace-hook"),
+		PluginDir:  copyExternalPluginFixtureForServerTest(t, filepath.Join("..", "plugin", "testdata", "external-trace-hook")),
 	})
 	emitter := &recordingTraceEmitter{}
 	app.traceEmitter = emitter
@@ -46,45 +43,18 @@ func TestExternalTraceHookFixtureRunsFromGatewayCompletion(t *testing.T) {
 		t.Fatalf("trace hook affected settlement logs: %+v", logs)
 	}
 
-	var traceAudit string
 	for _, event := range store.ListAuditEvents() {
 		if event.Action == "plugin.gateway.trace_export" && event.ResourceID == "req_external_trace_hook" {
-			traceAudit = event.AfterSnapshot
-			break
-		}
-	}
-	if traceAudit == "" {
-		t.Fatalf("external trace hook audit event was not recorded: %+v", store.ListAuditEvents())
-	}
-	for _, want := range []string{
-		`"event":"external_trace_hook"`,
-		`"saw_audit":true`,
-		`"saw_usage":true`,
-		`"leaked_request_body":false`,
-		`"leaked_credentials":false`,
-		`"leaked_prompt":false`,
-		`"decision":"continue"`,
-		`"status":"succeeded"`,
-	} {
-		if !strings.Contains(traceAudit, want) {
-			t.Fatalf("trace audit missing %q: %s", want, traceAudit)
-		}
-	}
-	for _, forbidden := range []string{"raw prompt sentinel", "provider-secret"} {
-		if strings.Contains(traceAudit, forbidden) {
-			t.Fatalf("trace audit leaked %q: %s", forbidden, traceAudit)
+			t.Fatalf("external trace hook executed without isolation: %s", event.AfterSnapshot)
 		}
 	}
 }
 
 func TestExternalTraceHookFixtureFailureDoesNotAffectGatewayCompletion(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("external trace hook fixture uses POSIX sh")
-	}
 	store := NewMemoryStore()
 	app := NewWithConfig(store, Config{
 		AdminToken: "external-trace-admin",
-		PluginDir:  filepath.Join("..", "plugin", "testdata", "external-trace-hook"),
+		PluginDir:  copyExternalPluginFixtureForServerTest(t, filepath.Join("..", "plugin", "testdata", "external-trace-hook")),
 	})
 	emitter := &recordingTraceEmitter{}
 	app.traceEmitter = emitter
@@ -114,4 +84,30 @@ func TestExternalTraceHookFixtureFailureDoesNotAffectGatewayCompletion(t *testin
 			t.Fatalf("failed trace hook leaked credentials: %s", event.AfterSnapshot)
 		}
 	}
+}
+
+func copyExternalPluginFixtureForServerTest(t *testing.T, source string) string {
+	t.Helper()
+	target := t.TempDir()
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		t.Fatalf("read external plugin fixture: %v", err)
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			t.Fatalf("external plugin fixture contains unsupported entry %q", entry.Name())
+		}
+		data, err := os.ReadFile(filepath.Join(source, entry.Name()))
+		if err != nil {
+			t.Fatalf("read external plugin fixture file %q: %v", entry.Name(), err)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			t.Fatalf("inspect external plugin fixture file %q: %v", entry.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(target, entry.Name()), data, info.Mode().Perm()); err != nil {
+			t.Fatalf("copy external plugin fixture file %q: %v", entry.Name(), err)
+		}
+	}
+	return target
 }

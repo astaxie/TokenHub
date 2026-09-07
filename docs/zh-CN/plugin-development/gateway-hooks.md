@@ -4,6 +4,8 @@ Language: [English](../../plugin-development/gateway-hooks.md) | 简体中文 | 
 
 网关 Hook 在 API Key 鉴权到最终响应之间的指定 stage 中执行。可从 [`examples/hook-trace-go`](../../../plugin-devkit/examples/hook-trace-go) 开始。
 
+> **运行能力：** 本页定义外部请求链 Hook 契约。插件包与 Hook 顺序可以完成校验，但由于宿主级隔离目前无法强制执行，TokenHub 运行时会在启动前拒绝外部请求链命令。Hook 的失败策略决定该拒绝如何影响请求；进程内的内置 Hook 不受影响。
+
 选择一个边界窄的 stage，例如 `privacy_pre`、`guardrail_pre`、`cache_lookup`、`route_candidates`、`route_rank`、`request_transform`、`provider_call`、`guardrail_post`、`usage_attribution`、`cache_write`、`settlement` 或 `trace_export`。精确声明 Hook 读写的数据类。TokenHub 会拒绝超出 stage 契约的写入，并保护模型标识等 Core 字段。
 
 Plugin API v2 使用显式 `before` 和 `after` 引用安排同一 stage 内的 Hook，不接受数字 `priority`。两个 v2 Hook 写入同一数据类时必须声明先后关系；循环依赖和顺序不明确的共享写入会被拒绝。独占 stage 只接受一个 v2 Hook。

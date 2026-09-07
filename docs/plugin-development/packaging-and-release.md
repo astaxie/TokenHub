@@ -22,7 +22,7 @@ cd ../../..
 shasum -a 256 background-heartbeat-go.zip
 ```
 
-Run the matching Devkit contract command against the package before creating the ZIP. Test the final archive through TokenHub as well, because archive layout and executable permissions are part of the release contract.
+Run the matching Devkit contract command against the package before creating the ZIP. Install the final archive in TokenHub to test archive acceptance and file inspection, but use the Devkit to test executable behavior: the current TokenHub runtime does not launch external commands.
 
 ## Version and Publish
 
@@ -32,15 +32,15 @@ TokenHub's Marketplace is a remote HTTPS JSON index. It describes plugins and re
 
 Never reuse a release URL for different bytes. Checksums and signatures protect the exact archive, so rebuilding a published version requires a new version and artifact.
 
-## Install and Verify
+## Install and Inspect
 
 From **Plugin Management > Browse Plugins**, operators can select an available release or use **Manual Install** with a direct URL or ZIP. Review compatibility, checksum, trust information, and the permission diff before installation. Direct URL installation requires the package checksum.
 
-TokenHub extracts accepted packages into `TOKENHUB_PLUGIN_DIR` and reloads the plugin runtime after install, update, enable, disable, or rollback. These operations normally take effect without restarting the TokenHub service. Lifecycle facts remain separate: Installed, Enabled, Configured, In Use, and Restart Required must not be inferred from one aggregate status. A `restart_required` marker indicates real desired/active runtime drift; a successful service startup clears it after loading the desired plugin state. Then verify:
+TokenHub extracts accepted packages into `TOKENHUB_PLUGIN_DIR` and reevaluates them after install, update, enable, disable, or rollback. Declarative presentation changes normally take effect without restarting the TokenHub service. A package with `entry.backend.command` cannot become operational in this release: an enable attempt records **Startup Failed**, keeps the package installed and inspectable, and registers none of its Provider, hook, job, or action capabilities. Lifecycle facts remain separate, so Installed must not be interpreted as executable or active. Then verify:
 
 - version, compatibility, and trust state on the Details page
 - file inventory and expected package contents on the Files page
-- registered jobs, hooks, and UI contributions on the Details page, and permissions in `plugin.yaml` on the Files page
-- the real Provider or gateway behavior with a non-production credential first
+- the declared jobs, hooks, actions, and permissions in `plugin.yaml`, plus any supported declarative UI contributions on the Details page
+- executable behavior with the matching Devkit contract command; real Provider and gateway execution is unavailable through TokenHub
 
 For updates, repeat the same review and verification. Back up relevant TokenHub state before an update that changes persisted data, and keep the previous immutable ZIP available for a controlled rollback.

@@ -92,14 +92,8 @@ func (s *Server) providerPluginUsageFacts() map[string]pluginUsageFacts {
 }
 
 func pluginDescriptorHasSettings(descriptor pluginmeta.Descriptor) bool {
-	if len(descriptor.Settings.Scopes) > 0 {
-		return true
-	}
 	for _, capability := range descriptor.Capabilities {
 		if capability.Kind == pluginmeta.CapabilityKindSIM && capability.Name == pluginmeta.SIMCapabilityThemeTokens {
-			return true
-		}
-		if capability.Kind == pluginmeta.CapabilityKindAdminUI && capability.Name == pluginmeta.AdminUICapabilityLegacySettingsPanel {
 			return true
 		}
 	}
@@ -125,4 +119,15 @@ func pluginDescriptorSummary(descriptor pluginmeta.Descriptor) string {
 		}
 	}
 	return strings.TrimSpace(descriptor.Description)
+}
+
+func (s *Server) reloadedInstalledPluginPackage(pluginID string) (pluginmeta.Package, error) {
+	pkg, found, err := pluginmeta.NewRuntime(s.config.PluginDir).DescribeInstalledPackage(pluginID)
+	if err != nil {
+		return pluginmeta.Package{}, err
+	}
+	if !found {
+		return pluginmeta.Package{}, pluginmeta.ErrPackageNotFound
+	}
+	return pkg, nil
 }

@@ -33,7 +33,7 @@ describe("PluginsView lifecycle controls", () => {
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
     expect(screen.getByText("可回滚")).toBeInTheDocument();
-    expect(screen.getByText("回滚版本 1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("回滚版本：1.0.0")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "回滚" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更新" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "卸载" })).toBeInTheDocument();
@@ -64,7 +64,7 @@ describe("PluginsView lifecycle controls", () => {
     render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
 
     expect(screen.getByText("启动失败")).toBeInTheDocument();
-    expect(screen.getByText("回滚目标 内置")).toBeInTheDocument();
+    expect(screen.getByText("回滚目标：内置")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "回滚" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "启用" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "禁用" })).not.toBeInTheDocument();
@@ -101,7 +101,7 @@ describe("PluginsView lifecycle controls", () => {
     expect(url).toBe("http://localhost:8080/api/admin/plugins/tokenhub.local-rollback/rollback");
     expect(init.method).toBe("POST");
     expect(init.body).toBeUndefined();
-    await waitFor(() => expect(screen.getByText("1.0.0 · 插件回滚完成，重启后生效")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("插件已回滚至 1.0.0，重启后生效")).toBeInTheDocument());
   });
 
   it("allows built-in plugins to be disabled from the installed list", () => {

@@ -58,9 +58,19 @@ test("admin UI registry parses fields and resolves source paths", () => {
   const fields = adminUIFields(contribution);
 
   assert.equal(fields.length, 3);
-  assert.equal(adminUIFieldValue({ summary: { request_count: 1200 }, plugins: [{ id: "tokenhub.one" }] }, fields[0]), "1.20K");
+  assert.equal(adminUIFieldValue({ summary: { request_count: 1200 }, plugins: [{ id: "tokenhub.one" }] }, fields[0]), "1.2K");
   assert.equal(adminUIFieldValue({ summary: {}, plugins: [{ id: "tokenhub.one" }] }, fields[1]), "tokenhub.one");
   assert.match(adminUIFieldValue({ summary: { request_count: 1200 }, plugins: [] }, fields[2]), /request_count/u);
+});
+
+test("admin UI registry formats metrics with the selected application locale", () => {
+  const compact = { name: "requests", type: "metric", label: "Requests", format: "compact", value: 1_200_000 };
+  const money = { name: "cost", type: "metric", label: "Cost", format: "money_usd", value: 1234.5 };
+
+  assert.equal(adminUIFieldValue({}, compact, "en-US"), "1.2M");
+  assert.equal(adminUIFieldValue({}, compact, "ja-JP"), "120万");
+  assert.equal(adminUIFieldValue({}, money, "en-US"), "$1,234.50");
+  assert.equal(adminUIFieldValue({}, money, "zh-CN"), "US$1,234.50");
 });
 
 test("admin UI registry action keys and redaction are shared across surfaces", () => {

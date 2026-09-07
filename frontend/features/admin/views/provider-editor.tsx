@@ -11,7 +11,7 @@ import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider
 import { defaultProviderSystemPromptTransformPolicy, providerSystemPromptTransformPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerResourceBaseURLForProviderUpdate, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
-import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, providerSaveMessage, tx } from "../i18n/runtime";
+import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, languageLocale, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceActionSelection, providerResourceDraftDefaults, providerResourceSelectionSupportsAction, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { providerTypeManagedHeaders, type ProviderTypeOption } from "../shared/ui";
@@ -1513,7 +1513,7 @@ export function ProviderUpsertModal({
                             </div>
                             {quota.fetched_at ? (
                               <div className="provider-quota-fetched-at">
-                                {tx("查询时间")} · {new Date(quota.fetched_at * 1000).toLocaleString()}
+                                {tx("查询时间")} · {new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "medium" }).format(new Date(quota.fetched_at * 1000))}
                               </div>
                             ) : null}
                             <details className="provider-quota-details">

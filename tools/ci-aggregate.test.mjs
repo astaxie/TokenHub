@@ -14,6 +14,7 @@ test("stable CI aggregate requires every compatibility job", () => {
     "backend-postgres",
     "deployment",
     "frontend",
+    "plugin-devkit",
     "repo-gates",
   ]);
 

@@ -21,6 +21,8 @@ import (
 )
 
 type Server struct {
+	pluginRuntimeMu         sync.RWMutex
+	pluginLifecycleMu       sync.Mutex
 	store                   Store
 	pluginRegistry          *pluginmeta.Registry
 	gatewayChain            *pluginmeta.GatewayChainRegistry
@@ -160,7 +162,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		SyntheticDNSPolicy:  syntheticDNSPolicy,
 		ProviderProxyPolicy: providerProxyPolicy,
 	})
-	pluginBootstrap, err := bootstrapServerPlugins(store, config, providerRuntime.adapters)
+	pluginBootstrap, err := bootstrapServerPlugins(config, providerRuntime.adapters)
 	if err != nil {
 		panic(err)
 	}
@@ -216,7 +218,14 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		syntheticDNSPolicy:  syntheticDNSPolicy,
 		providerProxyPolicy: providerProxyPolicy,
 	}
-	s.installServerPluginHandlers()
+	s.pluginBackgroundRunner.SetSchedulerSnapshotLocker(s.pluginRuntimeMu.RLocker())
+	s.installServerPluginHandlers(&pluginBootstrap)
+	if err := pluginmeta.NewRuntime(config.PluginDir).CompleteRuntimeRestart(); err != nil {
+		panic(fmt.Errorf("complete TokenHub plugin runtime restart: %w", err))
+	}
+	if err := s.publishServerPluginStoreConfiguration(&pluginBootstrap); err != nil {
+		panic(fmt.Errorf("publish TokenHub plugin store configuration: %w", err))
+	}
 	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
 		DecodeJSON:         s.decodeJSON,
 		DecodeJSONOptional: s.decodeJSONOptional,
@@ -265,7 +274,40 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	return s
 }
 func (s *Server) Handler() http.Handler {
-	return s.cors(s.mux)
+	return s.withPluginRuntimeSnapshot(s.cors(s.mux))
+}
+
+func (s *Server) withPluginRuntimeSnapshot(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if pluginRuntimeMutationRequest(r) {
+			s.pluginLifecycleMu.Lock()
+			defer s.pluginLifecycleMu.Unlock()
+			next.ServeHTTP(w, r)
+			return
+		}
+		s.pluginRuntimeMu.RLock()
+		defer s.pluginRuntimeMu.RUnlock()
+		next.ServeHTTP(w, r)
+	})
+}
+
+func pluginRuntimeMutationRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	path := strings.TrimSuffix(r.URL.Path, "/")
+	if r.Method == http.MethodPost && path == "/api/admin/plugins/install" {
+		return true
+	}
+	if r.Method == http.MethodDelete && strings.HasPrefix(path, "/api/admin/plugin-packages/") {
+		return true
+	}
+	if !strings.HasPrefix(path, "/api/admin/plugins/") {
+		return false
+	}
+	return r.Method == http.MethodDelete ||
+		r.Method == http.MethodPatch && strings.HasSuffix(path, "/state") ||
+		r.Method == http.MethodPost && (strings.HasSuffix(path, "/update") || strings.HasSuffix(path, "/rollback"))
 }
 func (s *Server) handleAdminProviderAdapters(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {

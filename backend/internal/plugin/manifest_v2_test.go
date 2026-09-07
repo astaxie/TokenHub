@@ -78,3 +78,28 @@ permissions:
 		t.Fatalf("error = %v, want plugin API v2 priority rejection", err)
 	}
 }
+
+func TestParseManifestRejectsInvalidDependencyConstraint(t *testing.T) {
+	_, err := ParseManifest([]byte(`
+schema_version: 2
+id: example.automation
+name: Example Automation
+version: 1.0.0
+summary: Runs example automation.
+category: automation
+tokenhub:
+  plugin_api: v2
+kinds: [extension]
+placement: []
+dependencies:
+  - id: example.core
+    version: not-a-constraint
+permissions:
+  data:
+    read: []
+    write: []
+`))
+	if err == nil || !strings.Contains(err.Error(), "invalid semantic version constraint") {
+		t.Fatalf("error = %v, want invalid dependency constraint", err)
+	}
+}

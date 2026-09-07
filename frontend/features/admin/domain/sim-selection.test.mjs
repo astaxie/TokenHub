@@ -201,6 +201,62 @@ test("SIM selection tolerates older backend payloads and malformed capability va
   assert.equal(selection.warnings.some((warning) => warning.code === "malformed_preference"), true);
 });
 
+test("SIM selection excludes a quarantined preferred plugin and uses the active fallback", () => {
+  const selection = resolveSIMSelection({
+    preference: { active_sim_plugin_id: "tokenhub.sim.quarantined" },
+    plugins: [
+      {
+        ...simPlugin("tokenhub.sim.quarantined", [
+          themeCapability("failed-theme", { default: true }),
+          layoutCapability("failed-layout", { default: true }),
+        ]),
+        status: "failed_startup",
+        loadable: false,
+        active_capabilities: [],
+        lifecycle: { active_enabled: false, active_version: "" },
+      },
+      simPlugin("tokenhub.sim.default", [
+        themeCapability("default-theme", { default: true }),
+        layoutCapability("default-layout", { default: true }),
+      ]),
+    ],
+  });
+
+  assert.equal(selection.activeSIMPluginID, "tokenhub.sim.default");
+  assert.equal(selection.activeSIMPlugin?.id, "tokenhub.sim.default");
+  assert.equal(selection.theme.capability?.pluginID, "tokenhub.sim.default");
+  assert.equal(selection.layout.capability?.pluginID, "tokenhub.sim.default");
+  assert.equal(selection.warnings.some((warning) => warning.code === "missing_preferred_sim"), true);
+});
+
+test("SIM selection does not inherit a failed SIM kind into a non-SIM active fallback", () => {
+  const selection = resolveSIMSelection({
+    preference: { active_sim_plugin_id: "tokenhub.shared" },
+    plugins: [
+      {
+        ...simPlugin("tokenhub.shared", [
+          themeCapability("failed-theme", { default: true }),
+          layoutCapability("failed-layout", { default: true }),
+        ]),
+        status: "failed_startup",
+        loadable: false,
+        active_capabilities: [{ kind: "provider", name: "chat_completions", subject: "shared" }],
+        lifecycle: { active_enabled: true, active_version: "builtin" },
+      },
+      simPlugin("tokenhub.sim.default", [
+        themeCapability("default-theme", { default: true }),
+        layoutCapability("default-layout", { default: true }),
+      ]),
+    ],
+  });
+
+  assert.equal(selection.activeSIMPluginID, "tokenhub.sim.default");
+  assert.equal(selection.activeSIMPlugin?.id, "tokenhub.sim.default");
+  assert.equal(selection.theme.capability?.pluginID, "tokenhub.sim.default");
+  assert.equal(selection.layout.capability?.pluginID, "tokenhub.sim.default");
+  assert.equal(selection.warnings.some((warning) => warning.code === "missing_preferred_sim"), true);
+});
+
 function simPlugin(id, capabilities) {
   return {
     id,

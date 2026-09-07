@@ -11,7 +11,12 @@ export type SIMPluginDescriptorLike = {
   id?: unknown;
   name?: unknown;
   version?: unknown;
+  kinds?: unknown;
+  status?: unknown;
+  loadable?: unknown;
   capabilities?: unknown;
+  active_capabilities?: unknown;
+  lifecycle?: unknown;
 };
 
 export type SIMJSONValue = string | number | boolean | null | SIMJSONValue[] | { [key: string]: SIMJSONValue };
@@ -71,7 +76,7 @@ export function simRegistryFromPlugins(plugins: readonly SIMPluginDescriptorLike
 
 export function simCapabilitiesFromPlugins(plugins: readonly SIMPluginDescriptorLike[] | undefined): SIMCapability[] {
   const capabilities: SIMCapability[] = [];
-  for (const plugin of plugins ?? []) {
+  for (const plugin of operationalSIMPlugins(plugins)) {
     const rawCapabilities = Array.isArray(plugin.capabilities) ? plugin.capabilities : [];
     for (const rawCapability of rawCapabilities) {
       if (!rawCapability || typeof rawCapability !== "object" || Array.isArray(rawCapability)) continue;
@@ -80,6 +85,51 @@ export function simCapabilitiesFromPlugins(plugins: readonly SIMPluginDescriptor
     }
   }
   return capabilities.sort(compareSIMCapabilities);
+}
+
+export function operationalSIMPlugins(plugins: readonly SIMPluginDescriptorLike[] | undefined): SIMPluginDescriptorLike[] {
+  return (plugins ?? []).flatMap((plugin) => {
+    const operational = operationalSIMPlugin(plugin);
+    return operational ? [operational] : [];
+  });
+}
+
+function operationalSIMPlugin(plugin: SIMPluginDescriptorLike): SIMPluginDescriptorLike | null {
+  const lifecycle = plugin.lifecycle && typeof plugin.lifecycle === "object" && !Array.isArray(plugin.lifecycle)
+    ? plugin.lifecycle as Record<string, unknown>
+    : null;
+  if (lifecycle && typeof lifecycle.active_enabled === "boolean") {
+    if (!lifecycle.active_enabled) return null;
+    const activeCapabilities = Array.isArray(plugin.active_capabilities) ? plugin.active_capabilities : [];
+    return {
+      ...plugin,
+      version: stringValue(lifecycle.active_version) || plugin.version,
+      kinds: activeCapabilityKinds(activeCapabilities),
+      capabilities: activeCapabilities,
+    };
+  }
+  return simPluginIsOperational(plugin) ? plugin : null;
+}
+
+function activeCapabilityKinds(capabilities: readonly unknown[]) {
+  return [...new Set(capabilities.flatMap((capability) => {
+    if (!capability || typeof capability !== "object" || Array.isArray(capability)) return [];
+    const kind = stringValue((capability as SIMPluginCapabilityDescriptorLike).kind);
+    return kind ? [kind] : [];
+  }))];
+}
+
+function simPluginIsOperational(plugin: SIMPluginDescriptorLike) {
+  if (plugin.loadable === false) return false;
+  switch (stringValue(plugin.status)) {
+    case "disabled":
+    case "pending_restart":
+    case "failed_validation":
+    case "failed_startup":
+      return false;
+    default:
+      return true;
+  }
 }
 
 export function parseSIMCapability(plugin: SIMPluginDescriptorLike, capability: SIMPluginCapabilityDescriptorLike): SIMCapability | null {

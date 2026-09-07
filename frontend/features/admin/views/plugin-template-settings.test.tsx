@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { simRegistryFromPlugins } from "../domain/sim-registry";
+import { setActiveLanguage } from "../i18n/runtime";
 import { PluginTemplateSettings } from "./plugin-template-settings";
 
 function registry() {
@@ -57,6 +58,14 @@ describe("PluginTemplateSettings", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "恢复默认" }));
     expect(onChange).toHaveBeenLastCalledWith(themeKey, {});
+  });
+
+  it("renders ARIA labels from complete Japanese templates", () => {
+    setActiveLanguage("ja");
+    render(<PluginTemplateSettings overrides={{}} pluginID="example.sim" registry={registry()} themeMode="light" />);
+
+    expect(screen.getByLabelText("アクセント色のカラーピッカー")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "アクセント色の現在値" })).toBeInTheDocument();
   });
 });
 

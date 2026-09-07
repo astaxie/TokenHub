@@ -6,7 +6,7 @@ Language: [English](../../plugin-development/guide.md) | [简体中文](../../zh
 
 このガイドは、まず最小のプラグインを動かし、その後で完全な契約を説明する順序で構成しています。WordPress がメインファイルのヘッダーからプラグインを検出するのと同様に、TokenHub はパッケージルートの `plugin.yaml` からプラグインを検出、検証、読み込みます。TokenHub ではさらに、配置先、capability、最小権限を明示的に宣言する必要があります。
 
-> **現在の実装範囲:** Plugin API v2 が現在の Manifest contract であり、既存 package は v1 adapter 経由で引き続き動作します。UI template は宣言的な theme/layout capability で、任意の React / JavaScript 拡張機構ではありません。すべての built-in plugin に検査可能な package file があります。Manifest が実在する編集可能設定を宣言した場合だけ Settings route を表示し、source file は read-only preview のままで管理画面から編集できません。
+> **現在の実装範囲:** Plugin API v2 が現在の Manifest contract であり、既存 package は v1 adapter 経由で引き続き動作します。ランタイムはホストレベルのプロセス、ネットワーク、リソース隔離をまだ強制できないため、動的に読み込まれた外部 Provider、Gateway Hook、バックグラウンドジョブ、管理 Action の各コマンドを起動前にすべて拒否します。このガイドのコマンド例は、現在デプロイ可能な integration ではなく、開発契約を定義するものです。UI template は宣言的な theme/layout capability で、任意の React / JavaScript 拡張機構ではありません。すべての built-in plugin に検査可能な package file があります。Manifest が実在する編集可能設定を宣言した場合だけ Settings route を表示し、source file は read-only preview のままで管理画面から編集できません。
 
 TokenHub は core を小さく保ちます。
 
@@ -182,7 +182,7 @@ Admin UI 貢献は独立した runtime 面ではありません。宣言的な p
 5. contract tests を追加する
 6. ローカルで実行する
 7. marketplace に公開する
-8. TokenHub にインストールして確認する
+8. TokenHub にインストールしてパッケージ検査とライフサイクル表示を確認する
 
 コードを書く前に次を答えます。
 
@@ -571,7 +571,7 @@ distribution metadata には少なくとも次を含めます。
 - license
 - compatibility metadata
 
-plugin marketplace の URL は既定で `https://plugins.betokenhub.com` です。運用者は Marketplace または直接の ZIP URL から package を導入して checksum を確認し、TokenHub は plugin runtime を直ちに再読み込みします。
+plugin marketplace の URL は既定で `https://plugins.betokenhub.com` です。運用者は Marketplace または直接の ZIP URL から package を導入して checksum を確認できます。TokenHub は package の検証結果とライフサイクル状態を直ちに再評価します。この処理で対応済みの宣言的な貢献を有効化できますが、外部コマンド実行は有効になりません。
 
 ZIP では `plugin.yaml` をアーカイブルート、または 1 階層だけの plugin directory に置けます。検出される manifest は必ず 1 つだけにしてください。symlink は含めないでください。runtime entrypoint の実行権限を保持し、`entry.backend.command` は plugin directory からの相対パスにします。
 
@@ -587,7 +587,7 @@ cd ../../..
 shasum -a 256 background-heartbeat-go.zip
 ```
 
-Admin console の **Plugin Management > Browse Plugins > Manual Install** で ZIP を upload するか、HTTPS `download_url` と小文字の SHA-256 checksum を指定します。install 成功後、TokenHub は runtime を再読み込みします。Installed、Enabled、Configured、In Use、Restart Required は独立した lifecycle fact です。desired state と active runtime がずれた場合だけ restart marker を表示し、service が desired state を正常に読み込むと marker を消去します。
+Admin console の **Plugin Management > Browse Plugins > Manual Install** で ZIP を upload するか、HTTPS `download_url` と小文字の SHA-256 checksum を指定します。install 成功後、TokenHub はパッケージを再評価します。宣言的な画面貢献は有効化できますが、外部コマンドを持つパッケージは `failed_startup` を記録し、検査可能なままランタイム機能を一切公開しません。実行可能契約のテストには Devkit を使用します。
 
 ## 7. バージョンと互換性
 
@@ -626,7 +626,7 @@ versioning は 3 つに分けて考えます。
 4. package-level tests
 5. TokenHub integration tests
 6. marketplace / compatibility checks
-7. install、runtime reload、lifecycle の検証
+7. install、ファイル検査、lifecycle failure の検証
 
 家族ごとの重点:
 

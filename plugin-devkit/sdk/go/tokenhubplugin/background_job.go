@@ -31,30 +31,25 @@ type BackgroundJobHandler func(context.Context, BackgroundJobInvocation) (Backgr
 
 func ServeBackgroundJob(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, handler BackgroundJobHandler) int {
 	if handler == nil {
-		fmt.Fprintln(stderr, "background job handler is required")
-		return 2
+		return diagnosticExit(stderr, 2, "background job handler is required")
 	}
 	var invocation BackgroundJobInvocation
 	decoder := json.NewDecoder(stdin)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&invocation); err != nil {
-		fmt.Fprintf(stderr, "decode background job invocation: %v\n", err)
-		return 2
+		return diagnosticExit(stderr, 2, "decode background job invocation: %v", err)
 	}
 	if strings.TrimSpace(invocation.PluginID) == "" || strings.TrimSpace(invocation.JobID) == "" {
-		fmt.Fprintln(stderr, "plugin_id and job_id are required")
-		return 2
+		return diagnosticExit(stderr, 2, "plugin_id and job_id are required")
 	}
 	result, err := handler(ctx, invocation)
 	if err != nil {
-		fmt.Fprintf(stderr, "execute background job %s/%s: %v\n", invocation.PluginID, invocation.JobID, err)
-		return 1
+		return diagnosticExit(stderr, 1, "execute background job %s/%s: %v", invocation.PluginID, invocation.JobID, err)
 	}
 	encoder := json.NewEncoder(stdout)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(result); err != nil {
-		fmt.Fprintf(stderr, "encode background job result: %v\n", err)
-		return 1
+		return diagnosticExit(stderr, 1, "encode background job result: %v", err)
 	}
 	return 0
 }

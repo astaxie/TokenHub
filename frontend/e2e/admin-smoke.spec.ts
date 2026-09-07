@@ -88,6 +88,15 @@ test("admin can inspect plugin details and files without fake settings", async (
   await expect(page).toHaveURL(/\/plugins$/);
 
   const pluginSearch = page.getByRole("searchbox", { name: "搜索插件" });
+  await page.getByRole("tab", { name: "Provider 集成" }).click();
+  await pluginSearch.fill("tokenhub.provider-catalog.requesty");
+  const catalogPluginRow = page.locator(".plugin-installed-row").filter({ hasText: "Requesty" });
+  await expect(catalogPluginRow).toBeVisible();
+  await expect(catalogPluginRow.getByText("待配置", { exact: true })).toBeVisible();
+  await expect(catalogPluginRow.getByRole("button", { name: "禁用", exact: true })).toBeVisible();
+  await expect(catalogPluginRow.getByRole("button", { name: "安装", exact: true })).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "全部插件" }).click();
   await pluginSearch.fill("TokenHub Default Interface Template");
   const configurableRow = page.locator(".plugin-installed-row").filter({
     has: page.getByRole("button", { name: "设置", exact: true }),
@@ -106,7 +115,20 @@ test("admin can inspect plugin details and files without fake settings", async (
   expect(settingsBox!.width).toBeGreaterThanOrEqual(80);
 
   await pluginSearch.fill("");
-  await page.getByRole("button", { name: "查看插件详情 TokenHub Core Provider Settings" }).click();
+  const detailOnlyRow = page.getByRole("button", { name: "查看插件 TokenHub Core Provider Settings 的详情" })
+    .locator("xpath=ancestor::article");
+  await expect(detailOnlyRow.getByRole("button", { name: "设置", exact: true })).toHaveCount(0);
+  const detailOnlyBox = await detailOnlyRow
+    .getByRole("button", { name: "详情", exact: true })
+    .boundingBox();
+  expect(detailOnlyBox).not.toBeNull();
+  expect(Math.abs(detailOnlyBox!.x - detailBox!.x)).toBeLessThan(1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expect.poll(() => page.locator(".plugin-installed-actions").evaluateAll((actions) => actions.every((item) => item.scrollWidth <= item.clientWidth))).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "查看插件 TokenHub Core Provider Settings 的详情" }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.admin\.core-provider$/);
   await expect(page.getByText("兼容", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "文件" }).click();
@@ -115,15 +137,22 @@ test("admin can inspect plugin details and files without fake settings", async (
   await expect(page.getByText("该内置插件没有独立安装包。")).toHaveCount(0);
   await page.getByRole("button", { name: "返回插件列表" }).click();
 
-  await page.getByRole("button", { name: "查看插件详情 External Trace Hook" }).click();
+  await page.getByRole("tab", { name: "全部插件" }).click();
+  await page.getByRole("searchbox", { name: "搜索插件" }).fill("External Trace Hook");
+  const externalTraceRow = page.locator(".plugin-installed-row").filter({ hasText: "External Trace Hook" });
+  await expect(externalTraceRow.getByText("启动失败", { exact: true })).toBeVisible();
+  await externalTraceRow.getByRole("button", { name: "详情", exact: true }).click();
   await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace$/);
   await expect(page.getByRole("heading", { name: "External Trace Hook" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "这个插件做什么" })).toBeVisible();
   await expect(page.getByText("Contract fixture for an external trace export gateway hook.", { exact: true })).toBeVisible();
   await expect(page.getByText("请求处理", { exact: true })).toBeVisible();
+  await expect(page.getByText("此功能已声明，但插件启动失败，当前不可用。", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前只能在插件管理中检查此插件包；声明的外部命令不会执行。", { exact: true })).toBeVisible();
   await expect(page.getByText("export", { exact: true })).not.toBeVisible();
   await page.getByText("开发者信息", { exact: true }).click();
-  await expect(page.getByText("export", { exact: true })).toBeVisible();
+  await expect(page.getByText("trace_export", { exact: true })).toBeVisible();
+  await expect(page.getByText("export", { exact: true })).not.toBeVisible();
   await expect(page.getByText("告诉 TokenHub 这个插件提供的一项扩展功能。", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);

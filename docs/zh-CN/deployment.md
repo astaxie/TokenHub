@@ -355,11 +355,11 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_MANAGED_UPDATES` | `false` | 允许容器部署执行在线更新与回退；原生部署始终允许 |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | 托管 Release 在线更新与回退使用的安装根目录 |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | 允许提供 `X-Forwarded-For`、`X-Forwarded-Host` 和 `X-Forwarded-Proto` 的代理 IP 或 CIDR，逗号分隔；可信代理必须覆盖这些请求头，不得透传客户端值 |
-| `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE` | `auto` | `auto` 允许管理员配置本机与内网模型，包括内网域名；`strict` 保留旧版仅允许字面量例外的访问规则。未知值按严格模式处理 |
+| `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE` | `strict` | `strict` 仅允许显式配置的字面量地址例外；设置为 `auto` 后才允许管理员配置本机与内网模型，包括内网域名。未知值按严格模式处理 |
 | `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL` | `false` | 本地上游默认绕过所选代理。设为 `true` 后本地目标也遵循所选代理策略；继承环境模式仍遵循 `NO_PROXY`。若需强制走代理，应同时选择“使用统一代理” |
 | `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` | 空 | 可选的限制性私网 CIDR 清单。自动模式为空时允许 RFC1918/ULA；非空时同时限制私网字面量和内网域名解析结果。严格模式只允许清单内的私网字面量。非空但无效的配置不会退回全部放行；特殊危险地址不能通过清单放行 |
 | `TOKENHUB_PROVIDER_UPSTREAM_NAT64_PREFIX` | 空 | 可选的 RFC 6052 DNS64/NAT64 前缀，用于识别其中嵌入的 IPv4 目标。支持 32、40、48、56、64、96 位前缀；使用 `64:ff9b:1::/48` 等网络专用前缀时需要配置，标准 `64:ff9b::/96` 前缀无需配置 |
-| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false`（旧版默认） | 仅严格模式或配置了非空私网清单时生效，此时 `true` 允许 localhost/127.0.0.1/::1。自动模式且清单为空时忽略旧模板值，默认允许回环；有意禁止回环的部署应选择严格模式 |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false` | 仅严格模式或配置了非空私网清单时生效，此时 `true` 允许 localhost/127.0.0.1/::1。自动模式且清单为空时忽略此值并允许回环 |
 | `HTTP_PROXY` / `HTTPS_PROXY` | 空 | 所有 HTTP Provider 通道使用的标准出站 forward proxy。代理选择由运维配置负责；未走代理的请求继续接受 TokenHub 的 DNS/IP 出站校验 |
 | `NO_PROXY` | 空 | 标准代理绕过列表，以逗号分隔；匹配的 Provider 请求使用带防护的直连路径 |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公网地址 | 允许调用后端的精确浏览器 Origin，逗号分隔；设置后，同一列表也是 OAuth 控制台回跳 Origin 的精确白名单。每项只能包含 scheme、host 和可选端口，不得包含路径 |
@@ -432,13 +432,13 @@ docker compose --env-file deploy/.env \
 
 ### 本机与内网模型服务
 
-默认自动模式下，管理员可以直接填写 `http://127.0.0.1:8000/v1`、私网 IPv4/IPv6 地址、`host.docker.internal`、Docker 服务名或企业内网域名，无需额外配置 CIDR 清单。地址须从后端所在环境可达；容器的回环地址指向容器自身。TokenHub 不会自动创建 DNS 记录、加入 Docker 网络或配置宿主机别名。
+显式选择自动模式后，管理员可以直接填写 `http://127.0.0.1:8000/v1`、私网 IPv4/IPv6 地址、`host.docker.internal`、Docker 服务名或企业内网域名，无需额外配置 CIDR 清单。地址须从后端所在环境可达；容器的回环地址指向容器自身。TokenHub 不会自动创建 DNS 记录、加入 Docker 网络或配置宿主机别名。
 
 保存时校验 URL 语法和字面量地址，不查询 DNS，因此离线服务也可配置，且不会阻塞存储操作。发送请求前，HTTP 域名必须全部解析为获准的本地地址；公网或混合公网／私网结果会在发送凭据和请求体前被拒绝。实际直连使用已校验地址，不再次解析；代理请求保留原始 Host 与 TLS 服务名。metadata、link-local、multicast 等特殊危险目标继续禁止。同协议、同地址及端口的重定向可以继续，包括内网同源跳转；跨源跳转仍被拒绝。
 
 HTTP 域名走代理时，TokenHub 使用 CONNECT 连接已验证 IP，并在隧道内保留原始 Host。代理须允许 CONNECT 到模型服务端口；拒绝时不会回退为直连。
 
-已有非空私网清单继续限制访问范围。旧模板普遍包含 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK=false`，这一值单独存在时不再关闭自动模式。确实需要保留旧访问边界的部署可设置 `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=strict`，继续使用原字面量 CIDR 和回环开关；如本地流量也必须遵循所选代理，再设置 `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL=true`。这些部署配置需重启后端或重建容器生效。
+严格模式是默认值。运维人员必须设置 `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto`，才会启用本机与私网的自动访问。两种模式下，非空私网清单都会继续限制访问范围；严格模式仍支持显式的字面量 CIDR 和 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`。如本地流量也必须遵循所选代理，需另外设置 `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL=true`。这些部署配置需重启后端或重建容器生效。
 
 无需重启也可以在「系统设置 → 基础设置 → Provider 出口模式」切换出口。升级默认使用「继承环境变量代理」，读取进程启动时捕获的 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY`；「直接连接」忽略这些变量；「使用统一代理」把一个 HTTP 或 HTTPS forward proxy 用于全部 Provider 上游通道，包括推理、流式、图片、模型发现、Provider catalog 刷新、额度查询和 Provider 凭据刷新。身份登录、通知、Tracing 和版本更新不受这项设置影响。
 
@@ -490,7 +490,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 ### 连接 Kronk
 
-TokenHub 只连接外部 Kronk Model Server，不安装 Kronk、不下载 GGUF 文件，也不在进程内嵌 llama.cpp。TokenHub 容器内的 `127.0.0.1` 指向容器自身，而不是 Docker 宿主机。Kronk 运行在宿主机时，应使用环境支持的宿主机可达地址（例如 `host.docker.internal`）；运行在其他容器时，应加入共享 Docker 网络并使用 Kronk 服务名。默认自动模式允许这些本地目标，无需额外放行。只有 TokenHub 与 Kronk 共享同一网络命名空间时才应使用回环地址；严格模式需要显式配置本地例外。
+TokenHub 只连接外部 Kronk Model Server，不安装 Kronk、不下载 GGUF 文件，也不在进程内嵌 llama.cpp。TokenHub 容器内的 `127.0.0.1` 指向容器自身，而不是 Docker 宿主机。Kronk 运行在宿主机时，应使用环境支持的宿主机可达地址（例如 `host.docker.internal`）；运行在其他容器时，应加入共享 Docker 网络并使用 Kronk 服务名。设置 `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto` 后，这些本地目标无需逐项放行。只有 TokenHub 与 Kronk 共享同一网络命名空间时才应使用回环地址；严格模式需要显式配置本地例外。
 
 Kronk 默认监听明文 HTTP。远程部署时应使用可信私网或 TLS 反向代理，并启用合适的 Kronk authorization mode。TokenHub 只访问推理、模型发现、存活和就绪端点，不代理模型下载、目录、安全管理、调试、pprof 或管理 UI 端点。
 

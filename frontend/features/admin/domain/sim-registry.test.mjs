@@ -110,6 +110,47 @@ test("SIM registry ignores malformed or unsupported capability values safely", (
   assert.equal(registry.shellLayouts.length, 0);
 });
 
+test("SIM registry excludes non-loadable plugin declarations", () => {
+  const capability = {
+    kind: "sim",
+    name: "theme_tokens",
+    value: JSON.stringify({ id: "quarantined", tokens: { accent: "#dc2626" } }),
+  };
+  const registry = simRegistryFromPlugins([
+    { id: "tokenhub.sim.failed", status: "failed_startup", loadable: false, capabilities: [capability] },
+    { id: "tokenhub.sim.disabled", status: "disabled", capabilities: [capability] },
+    { id: "tokenhub.sim.active", status: "enabled", loadable: true, capabilities: [capability] },
+  ]);
+
+  assert.deepEqual(registry.all.map((item) => item.pluginID), ["tokenhub.sim.active"]);
+});
+
+test("SIM registry preserves active built-in capabilities during failed package fallback", () => {
+  const desiredCapability = {
+    kind: "sim",
+    name: "theme_tokens",
+    value: JSON.stringify({ id: "quarantined", tokens: { accent: "#dc2626" } }),
+  };
+  const activeCapability = {
+    kind: "sim",
+    name: "theme_tokens",
+    value: JSON.stringify({ id: "built-in", tokens: { accent: "#2563eb" } }),
+  };
+  const registry = simRegistryFromPlugins([{
+    id: "tokenhub.sim.default",
+    name: "Quarantined Override",
+    version: "2.0.0",
+    status: "failed_startup",
+    loadable: false,
+    capabilities: [desiredCapability],
+    active_capabilities: [activeCapability],
+    lifecycle: { active_enabled: true, active_version: "1.0.0" },
+  }]);
+
+  assert.deepEqual(registry.all.map((item) => item.id), ["built-in"]);
+  assert.equal(registry.all[0].pluginVersion, "1.0.0");
+});
+
 test("SIM registry exposes deterministic ordering", () => {
   const plugins = [
     {

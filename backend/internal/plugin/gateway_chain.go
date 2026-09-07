@@ -207,9 +207,10 @@ func (r *GatewayChainRegistry) Plan() GatewayChainPlan {
 		return GatewayChainPlan{
 			Stages:    OrderedGatewayStages(),
 			Envelopes: GatewayStageEnvelopeContracts(),
+			Hooks:     []GatewayHookDescriptor{},
 		}
 	}
-	var hooks []GatewayHookDescriptor
+	hooks := make([]GatewayHookDescriptor, 0)
 	for _, stage := range OrderedGatewayStages() {
 		hooks = append(hooks, r.Hooks(stage)...)
 	}

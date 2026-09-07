@@ -22,7 +22,18 @@ func useAutoLocalUpstreams(t *testing.T) {
 	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL", "false")
 }
 
-func TestLocalUpstreamDefaultsAndLegacyRestrictions(t *testing.T) {
+func TestLocalUpstreamDefaultsToStrictAccess(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "")
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS", "")
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK", "false")
+	for _, host := range []string{"localhost", "127.0.0.1", "10.2.3.4", "172.16.0.4", "192.168.2.4", "[fd12::4]"} {
+		if err := ValidateProviderUpstreamBaseURL("http://" + host + "/v1"); err == nil {
+			t.Errorf("default access mode allowed local URL %s", host)
+		}
+	}
+}
+
+func TestLocalUpstreamAutoModeAndLegacyRestrictions(t *testing.T) {
 	useAutoLocalUpstreams(t)
 	for _, host := range []string{"localhost", "127.0.0.1", "127.0.0.2", "[::ffff:127.0.0.1]", "[::1]", "10.2.3.4", "172.16.0.4", "192.168.2.4", "[fd12::4]"} {
 		if err := ValidateProviderUpstreamBaseURL("http://" + host + ":8000/v1"); err != nil {

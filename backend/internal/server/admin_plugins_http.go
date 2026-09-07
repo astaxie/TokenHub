@@ -22,23 +22,24 @@ const (
 type adminPluginDescriptorResponse struct {
 	pluginmeta.Descriptor
 
-	Category          pluginmeta.Category              `json:"category"`
-	Summary           string                           `json:"summary"`
-	HasSettings       bool                             `json:"has_settings"`
-	Legacy            bool                             `json:"legacy"`
-	Reason            string                           `json:"reason,omitempty"`
-	RestartRequired   bool                             `json:"restart_required"`
-	Health            pluginmeta.PackageHealthStatus   `json:"health,omitempty"`
-	Mandatory         bool                             `json:"mandatory,omitempty"`
-	RollbackAvailable bool                             `json:"rollback_available"`
-	RollbackVersion   string                           `json:"rollback_version,omitempty"`
-	RollbackTarget    pluginmeta.PackageRollbackTarget `json:"rollback_target,omitempty"`
-	LastErrorCode     string                           `json:"last_error_code,omitempty"`
-	AuditEvent        pluginmeta.PackageLifecycleEvent `json:"audit_event,omitempty"`
-	Loadable          bool                             `json:"loadable"`
-	Lifecycle         adminPluginLifecycleResponse     `json:"lifecycle"`
-	Compatibility     adminPluginCompatibilityResponse `json:"compatibility"`
-	Trust             adminPluginTrustSummaryResponse  `json:"trust"`
+	Category           pluginmeta.Category               `json:"category"`
+	Summary            string                            `json:"summary"`
+	HasSettings        bool                              `json:"has_settings"`
+	Legacy             bool                              `json:"legacy"`
+	Reason             string                            `json:"reason,omitempty"`
+	RestartRequired    bool                              `json:"restart_required"`
+	Health             pluginmeta.PackageHealthStatus    `json:"health,omitempty"`
+	Mandatory          bool                              `json:"mandatory,omitempty"`
+	RollbackAvailable  bool                              `json:"rollback_available"`
+	RollbackVersion    string                            `json:"rollback_version,omitempty"`
+	RollbackTarget     pluginmeta.PackageRollbackTarget  `json:"rollback_target,omitempty"`
+	LastErrorCode      string                            `json:"last_error_code,omitempty"`
+	AuditEvent         pluginmeta.PackageLifecycleEvent  `json:"audit_event,omitempty"`
+	Loadable           bool                              `json:"loadable"`
+	ActiveCapabilities []pluginmeta.CapabilityDescriptor `json:"active_capabilities,omitempty"`
+	Lifecycle          adminPluginLifecycleResponse      `json:"lifecycle"`
+	Compatibility      adminPluginCompatibilityResponse  `json:"compatibility"`
+	Trust              adminPluginTrustSummaryResponse   `json:"trust"`
 }
 
 type adminPluginLifecycleResponse struct {
@@ -148,16 +149,19 @@ func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, erro
 			installed[pkg.Manifest.ID] = pkg
 		}
 	}
-	descriptors := s.pluginRegistry.List()
-	response := make([]adminPluginDescriptorResponse, 0, len(descriptors))
+	activeDescriptors := s.pluginRegistry.List()
+	response := make([]adminPluginDescriptorResponse, 0, len(activeDescriptors))
 	seen := map[string]bool{}
 	providerUsage := s.providerPluginUsageFacts()
-	for _, descriptor := range descriptors {
-		activeStatus := descriptor.Status
-		activeVersion := descriptor.Version
-		pkg, ok := installed[descriptor.ID]
+	for _, activeDescriptor := range activeDescriptors {
+		descriptor := activeDescriptor
+		pkg, packageInstalled := installed[activeDescriptor.ID]
+		if packageInstalled && activeDescriptor.Source == pluginmeta.SourceBuiltIn {
+			descriptor = pkg.Manifest.Descriptor()
+			descriptor.Status = pkg.State.Status
+		}
 		stateFound := false
-		if !ok && descriptor.Source == pluginmeta.SourceBuiltIn && strings.TrimSpace(s.config.PluginDir) != "" {
+		if !packageInstalled && descriptor.Source == pluginmeta.SourceBuiltIn && strings.TrimSpace(s.config.PluginDir) != "" {
 			state, found, err := pluginmeta.NewRuntime(s.config.PluginDir).ReadBuiltInPackageState(descriptor.ID)
 			if err != nil {
 				return nil, err
@@ -169,7 +173,7 @@ func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, erro
 			}
 		}
 		usage := providerUsage[descriptor.ID]
-		logicallyInstalled := ok || (descriptor.Source == pluginmeta.SourceBuiltIn && !pluginmeta.CatalogOnlyProvider(descriptor)) || stateFound || usage.configured
+		logicallyInstalled := packageInstalled || descriptor.Source == pluginmeta.SourceBuiltIn || stateFound || usage.configured
 		if !logicallyInstalled {
 			descriptor.Status = pluginmeta.StatusDisabled
 			pkg.State = pluginmeta.PackageState{Status: pluginmeta.StatusDisabled}
@@ -180,11 +184,13 @@ func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, erro
 			Configured:     usage.configured || !pluginDescriptorRequiresConfiguration(descriptor),
 			InUse:          usage.inUse,
 			DesiredState:   pkg.State,
-			ActiveStatus:   activeStatus,
+			ActiveStatus:   activeDescriptor.Status,
 			DesiredVersion: descriptor.Version,
-			ActiveVersion:  activeVersion,
+			ActiveVersion:  activeDescriptor.Version,
 		})
-		response = append(response, adminPluginDescriptorForPackageWithFacts(descriptor, pkg, ok, facts))
+		plugin := adminPluginDescriptorForPackageWithFacts(descriptor, pkg, packageInstalled, facts)
+		plugin.ActiveCapabilities = append([]pluginmeta.CapabilityDescriptor(nil), activeDescriptor.Capabilities...)
+		response = append(response, plugin)
 		seen[descriptor.ID] = true
 	}
 	for _, pkg := range installed {
@@ -193,23 +199,35 @@ func (s *Server) adminPluginDescriptors() ([]adminPluginDescriptorResponse, erro
 		}
 		descriptor := pkg.Manifest.Descriptor()
 		descriptor.Status = pkg.State.Status
-		response = append(response, adminPluginDescriptorForPackage(descriptor, pkg, true))
+		response = append(response, s.adminPluginDescriptorForPackage(descriptor, pkg, true, true))
 	}
 	return response, nil
 }
 
-func adminPluginDescriptorForPackage(descriptor pluginmeta.Descriptor, pkg pluginmeta.Package, installed bool) adminPluginDescriptorResponse {
+func (s *Server) adminPluginDescriptorForPackage(descriptor pluginmeta.Descriptor, pkg pluginmeta.Package, packageInstalled bool, installed bool) adminPluginDescriptorResponse {
+	activeStatus := pluginmeta.StatusDisabled
+	activeVersion := ""
+	var activeCapabilities []pluginmeta.CapabilityDescriptor
+	if s != nil && s.pluginRegistry != nil {
+		if active, ok := s.pluginRegistry.Describe(descriptor.ID); ok {
+			activeStatus = active.Status
+			activeVersion = active.Version
+			activeCapabilities = append(activeCapabilities, active.Capabilities...)
+		}
+	}
 	facts := pluginmeta.DeriveLifecycleFacts(pluginmeta.LifecycleFactsInput{
 		Available:      true,
 		Installed:      installed,
 		Configured:     installed,
 		InUse:          false,
 		DesiredState:   pkg.State,
-		ActiveStatus:   descriptor.Status,
+		ActiveStatus:   activeStatus,
 		DesiredVersion: descriptor.Version,
-		ActiveVersion:  descriptor.Version,
+		ActiveVersion:  activeVersion,
 	})
-	return adminPluginDescriptorForPackageWithFacts(descriptor, pkg, installed, facts)
+	plugin := adminPluginDescriptorForPackageWithFacts(descriptor, pkg, packageInstalled, facts)
+	plugin.ActiveCapabilities = activeCapabilities
+	return plugin
 }
 
 func adminPluginDescriptorForPackageWithFacts(descriptor pluginmeta.Descriptor, pkg pluginmeta.Package, packageInstalled bool, facts pluginmeta.LifecycleFacts) adminPluginDescriptorResponse {
@@ -237,7 +255,7 @@ func adminPluginDescriptorForPackageWithFacts(descriptor pluginmeta.Descriptor, 
 		Descriptor:        descriptor,
 		Category:          pluginmeta.PrimaryCategory(descriptor),
 		Summary:           pluginDescriptorSummary(descriptor),
-		HasSettings:       pluginDescriptorHasSettings(descriptor),
+		HasSettings:       lifecycle.Loadable && pluginDescriptorHasSettings(descriptor),
 		Legacy:            compatibility.PluginAPI == pluginmeta.PluginAPIV1,
 		Reason:            lifecycle.Reason,
 		RestartRequired:   lifecycle.RestartRequired,
@@ -480,10 +498,15 @@ func (s *Server) handleAdminPluginInstallPost(w http.ResponseWriter, r *http.Req
 		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_install_failed", "Plugin runtime could not be reloaded"))
 		return
 	}
+	pkg, err = s.reloadedInstalledPluginPackage(pkg.Manifest.ID)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_install_failed", "Plugin package state could not be inspected after reload"))
+		return
+	}
 	descriptor := pkg.Manifest.Descriptor()
 	descriptor.Status = pkg.State.Status
 	writeJSON(w, http.StatusCreated, map[string]any{"data": adminPluginInstallResponse{
-		Plugin:          adminPluginDescriptorForPackage(descriptor, pkg, true),
+		Plugin:          s.adminPluginDescriptorForPackage(descriptor, pkg, true, true),
 		RestartRequired: false,
 		Replaced:        payload.Replace,
 	}})
@@ -572,11 +595,24 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
 		return
 	}
-	descriptor, ok := s.pluginRegistry.Describe(pluginID)
-	if !ok {
+	runtime := pluginmeta.NewRuntime(s.config.PluginDir)
+	packages, err := runtime.DiscoverRecoverable()
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_install_failed", "Plugin package could not be inspected"))
+		return
+	}
+	current, found := pluginmeta.Package{}, false
+	for _, pkg := range packages {
+		if pkg.Manifest.ID == pluginID {
+			current, found = pkg, true
+			break
+		}
+	}
+	if !found {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
 		return
 	}
+	descriptor := current.Manifest.Descriptor()
 	distribution := descriptor.Distribution
 	if distribution == nil {
 		distribution = &pluginmeta.Distribution{}
@@ -597,19 +633,32 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, err)
 		return
 	}
-	current, _, err := pluginmeta.NewRuntime(s.config.PluginDir).DescribeInstalledPackage(pluginID)
+	candidate, err := pluginmeta.InspectInstallZipArchive(archive)
 	if err != nil {
-		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_install_failed", "Plugin package could not be inspected"))
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "plugin_package_inspection_failed", "Plugin package could not be inspected"))
 		return
 	}
-	if current.Manifest.ID == "" {
-		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+	if candidate.ID != pluginID {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "plugin_id_mismatch", "Candidate plugin ID does not match the requested plugin"))
 		return
 	}
 	updateState := current.State
+	if updateState.FailedStartup() || updateState.FailedValidation() {
+		updateState.Status = pluginmeta.StatusEnabled
+		updateState.Reason = ""
+	}
 	updateState.RestartRequired = false
-	updateState.RollbackVersion = current.Manifest.Version
-	if current.State.Enabled() {
+	updateState.Health = pluginmeta.PackageHealthUnknown
+	updateState.LastErrorCode = ""
+	preserveCurrentRollback := current.Manifest.Validate() == nil &&
+		!current.State.FailedValidation() && !current.State.FailedStartup()
+	if preserveCurrentRollback {
+		updateState.RollbackVersion = current.Manifest.Version
+		updateState.RollbackTarget = pluginmeta.PackageRollbackTargetPreviousPackage
+	} else if updateState.RollbackVersion == "" {
+		updateState.RollbackTarget = ""
+	}
+	if updateState.Enabled() {
 		updateState.AuditEvent = pluginmeta.PackageLifecycleEnabled
 	} else {
 		updateState.AuditEvent = pluginmeta.PackageLifecycleDisabled
@@ -618,7 +667,7 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		ChecksumSHA256:   checksum,
 		TrustPolicy:      payload.TrustPolicy,
 		Replace:          true,
-		PreserveRollback: true,
+		PreserveRollback: preserveCurrentRollback,
 		InitialState:     updateState,
 	}
 	options, err = s.applyAdminPluginInstallTrust(r, archive, options, payload.adminPluginInstallTrustPayload, distribution)
@@ -626,9 +675,11 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, err)
 		return
 	}
-	if err := pluginmeta.NewRuntime(s.config.PluginDir).PreserveRollbackPackage(pluginID, current.Dir); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_rollback_prepare_failed", "Plugin rollback package could not be prepared"))
-		return
+	if preserveCurrentRollback {
+		if err := runtime.PreserveRollbackPackage(pluginID, current.Dir); err != nil {
+			writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_rollback_prepare_failed", "Plugin rollback package could not be prepared"))
+			return
+		}
 	}
 	pkg, err := s.installPluginArchive(archive, options)
 	if err != nil {
@@ -639,10 +690,19 @@ func (s *Server) handleAdminPluginUpdatePost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_update_cleanup_failed", "Plugin package update cleanup failed"))
 		return
 	}
+	if err := s.reloadPluginRuntime(r.Context()); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_update_failed", "Plugin runtime could not be reloaded"))
+		return
+	}
+	pkg, err = s.reloadedInstalledPluginPackage(pkg.Manifest.ID)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_update_failed", "Plugin package state could not be inspected after reload"))
+		return
+	}
 	updated := pkg.Manifest.Descriptor()
 	updated.Status = pkg.State.Status
 	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginInstallResponse{
-		Plugin:          adminPluginDescriptorForPackage(updated, pkg, true),
+		Plugin:          s.adminPluginDescriptorForPackage(updated, pkg, true, true),
 		RestartRequired: false,
 		Replaced:        true,
 	}})
@@ -666,6 +726,26 @@ func (s *Server) handleAdminPluginRollbackPost(w http.ResponseWriter, r *http.Re
 		return
 	}
 	runtime := pluginmeta.NewRuntime(s.config.PluginDir)
+	if candidate, found, err := runtime.DescribeRollbackPackage(pluginID); err != nil {
+		s.recordPluginRollbackAudit(r, user, pluginID, "failed", "plugin_rollback_failed")
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_rollback_failed", "Plugin rollback package could not be inspected"))
+		return
+	} else if found {
+		candidateDescriptor := candidate.Manifest.Descriptor()
+		if current, installed, inspectErr := runtime.DescribeInstalledPackage(pluginID); inspectErr != nil {
+			s.recordPluginRollbackAudit(r, user, pluginID, "failed", "plugin_rollback_failed")
+			writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_rollback_failed", "Plugin package could not be inspected"))
+			return
+		} else if installed {
+			candidateDescriptor.Status = rollbackPackageStatus(current.State.Status)
+		}
+		descriptors := replacePluginDependencyDescriptor(s.pluginRegistry.List(), candidateDescriptor)
+		if dependencyErr := pluginmeta.ValidatePluginDependencySet(descriptors); dependencyErr != nil {
+			s.recordPluginRollbackAudit(r, user, pluginID, "failed", "plugin_dependency_unsatisfied")
+			writeError(w, r, NewHTTPError(http.StatusConflict, "plugin_dependency_unsatisfied", dependencyErr.Error()))
+			return
+		}
+	}
 	pkg, err := runtime.RollbackPackage(pluginID, payload.Reason)
 	if err != nil {
 		if errors.Is(err, pluginmeta.ErrPackageRollbackUnavailable) {
@@ -680,20 +760,44 @@ func (s *Server) handleAdminPluginRollbackPost(w http.ResponseWriter, r *http.Re
 		writeError(w, r, httpErr)
 		return
 	}
-	descriptor := pkg.Manifest.Descriptor()
-	descriptor.Status = pkg.State.Status
-	plugin := adminPluginDescriptorForPackage(descriptor, pkg, true)
 	s.recordPluginRollbackAudit(r, user, pluginID, "success", string(pluginmeta.PackageLifecycleRollbackStarted))
 	if err := s.reloadPluginRuntime(r.Context()); err != nil {
 		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_rollback_failed", "Plugin runtime could not be reloaded"))
 		return
 	}
+	pkg, err = s.reloadedInstalledPluginPackage(pkg.Manifest.ID)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_rollback_failed", "Plugin package state could not be inspected after reload"))
+		return
+	}
+	descriptor := pkg.Manifest.Descriptor()
+	descriptor.Status = pkg.State.Status
+	plugin := s.adminPluginDescriptorForPackage(descriptor, pkg, true, true)
 	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginRollbackResponse{
 		Plugin:          plugin,
 		RestartRequired: false,
 		RollbackVersion: pkg.Manifest.Version,
 		RollbackTarget:  pluginmeta.PackageRollbackTargetPreviousPackage,
 	}})
+}
+
+func rollbackPackageStatus(status pluginmeta.Status) pluginmeta.Status {
+	switch status {
+	case pluginmeta.StatusPendingRestart, pluginmeta.StatusFailedValidation, pluginmeta.StatusFailedStartup:
+		return pluginmeta.StatusDisabled
+	default:
+		return status
+	}
+}
+
+func replacePluginDependencyDescriptor(descriptors []pluginmeta.Descriptor, candidate pluginmeta.Descriptor) []pluginmeta.Descriptor {
+	for index := range descriptors {
+		if descriptors[index].ID == candidate.ID {
+			descriptors[index] = candidate
+			return descriptors
+		}
+	}
+	return append(descriptors, candidate)
 }
 
 func (s *Server) handleAdminPluginBuiltInFallbackRollback(w http.ResponseWriter, r *http.Request, user AdminUser, runtime pluginmeta.Runtime, pluginID string, reason string) bool {
@@ -705,13 +809,13 @@ func (s *Server) handleAdminPluginBuiltInFallbackRollback(w http.ResponseWriter,
 	if err != nil {
 		return false
 	}
-	descriptor.Status = pkg.State.Status
-	plugin := adminPluginDescriptorForPackage(descriptor, pluginmeta.Package{}, false)
 	s.recordPluginRollbackAudit(r, user, pluginID, "success", string(pluginmeta.PackageRollbackTargetBuiltIn))
 	if err := s.reloadPluginRuntime(r.Context()); err != nil {
 		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_rollback_failed", "Plugin runtime could not be reloaded"))
 		return true
 	}
+	descriptor.Status = pkg.State.Status
+	plugin := s.adminPluginDescriptorForPackage(descriptor, pluginmeta.Package{State: pkg.State}, false, true)
 	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginRollbackResponse{
 		Plugin:          plugin,
 		RestartRequired: false,
@@ -786,6 +890,10 @@ func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_state", err.Error()))
 		return
 	}
+	if err := s.validatePluginLifecycleDependencies(current.Manifest, pluginID, state.Enabled()); err != nil {
+		writeError(w, r, err)
+		return
+	}
 	pkg, err := runtime.UpdatePackageState(pluginID, state)
 	if err != nil {
 		if errors.Is(err, pluginmeta.ErrPackageNotFound) {
@@ -799,9 +907,14 @@ func (s *Server) handleAdminPluginStatePatch(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_state_update_failed", "Plugin runtime could not be reloaded"))
 		return
 	}
+	pkg, err = s.reloadedInstalledPluginPackage(pkg.Manifest.ID)
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_state_update_failed", "Plugin package state could not be inspected after reload"))
+		return
+	}
 	descriptor := pkg.Manifest.Descriptor()
 	descriptor.Status = pkg.State.Status
-	plugin := adminPluginDescriptorForPackage(descriptor, pkg, true)
+	plugin := s.adminPluginDescriptorForPackage(descriptor, pkg, true, true)
 	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginStateResponse{
 		PluginID:          pkg.Manifest.ID,
 		Status:            pkg.State.Status,
@@ -843,6 +956,10 @@ func (s *Server) handleAdminBuiltInPluginStatePatch(w http.ResponseWriter, r *ht
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_plugin_state", err.Error()))
 		return
 	}
+	if err := s.validatePluginLifecycleDependencies(pluginmeta.Manifest{Dependencies: descriptor.Dependencies}, pluginID, state.Enabled()); err != nil {
+		writeError(w, r, err)
+		return
+	}
 	state, err = runtime.UpdateBuiltInPackageState(pluginID, state)
 	if err != nil {
 		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_state_update_failed", "Plugin state could not be updated"))
@@ -853,7 +970,7 @@ func (s *Server) handleAdminBuiltInPluginStatePatch(w http.ResponseWriter, r *ht
 		return
 	}
 	descriptor.Status = state.Status
-	plugin := adminPluginDescriptorForPackage(descriptor, pluginmeta.Package{State: state}, false)
+	plugin := s.adminPluginDescriptorForPackage(descriptor, pluginmeta.Package{State: state}, false, true)
 	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginStateResponse{
 		PluginID:          descriptor.ID,
 		Status:            state.Status,
@@ -915,6 +1032,20 @@ func adminPluginLifecycleEventForStatus(status pluginmeta.Status) pluginmeta.Pac
 	}
 }
 
+func (s *Server) validatePluginLifecycleDependencies(manifest pluginmeta.Manifest, pluginID string, enabling bool) error {
+	descriptors := s.pluginRegistry.List()
+	if enabling {
+		if err := pluginmeta.ValidateManifestDependencies(manifest, descriptors); err != nil {
+			return NewHTTPError(http.StatusConflict, "plugin_dependency_unsatisfied", err.Error())
+		}
+		return nil
+	}
+	if err := pluginmeta.ValidatePluginDeactivation(pluginID, descriptors); err != nil {
+		return NewHTTPError(http.StatusConflict, "plugin_dependency_in_use", err.Error())
+	}
+	return nil
+}
+
 func (s *Server) handleAdminPluginDelete(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
@@ -922,6 +1053,10 @@ func (s *Server) handleAdminPluginDelete(w http.ResponseWriter, r *http.Request)
 	pluginID := strings.TrimSpace(r.PathValue("plugin_id"))
 	if pluginID == "" {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "plugin_not_found", "Plugin not found"))
+		return
+	}
+	if err := pluginmeta.ValidatePluginDeactivation(pluginID, s.pluginRegistry.List()); err != nil {
+		writeError(w, r, NewHTTPError(http.StatusConflict, "plugin_dependency_in_use", err.Error()))
 		return
 	}
 	pkg, err := pluginmeta.NewRuntime(s.config.PluginDir).UninstallPackage(pluginID)
@@ -1099,6 +1234,34 @@ func removeSupersededPluginPackageDir(root string, previousDir string, installed
 }
 
 func (s *Server) installPluginArchive(archive []byte, options pluginmeta.InstallOptions) (pluginmeta.Package, error) {
+	manifest, err := pluginmeta.InspectInstallZipArchive(archive)
+	if err != nil {
+		return pluginmeta.Package{}, err
+	}
+	descriptors := s.pluginRegistry.List()
+	if err := pluginmeta.ValidateManifestDependencies(manifest, descriptors); err != nil {
+		return pluginmeta.Package{}, err
+	}
+	state, err := pluginmeta.NormalizePackageState(options.InitialState)
+	if err != nil {
+		return pluginmeta.Package{}, err
+	}
+	candidate := manifest.Descriptor()
+	candidate.Status = state.Status
+	replaced := false
+	for index := range descriptors {
+		if descriptors[index].ID == candidate.ID {
+			descriptors[index] = candidate
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		descriptors = append(descriptors, candidate)
+	}
+	if err := pluginmeta.ValidatePluginDependencySet(descriptors); err != nil {
+		return pluginmeta.Package{}, err
+	}
 	return pluginmeta.NewRuntime(s.config.PluginDir).InstallZipArchive(archive, options)
 }
 
@@ -1108,6 +1271,8 @@ func pluginInstallHTTPError(err error) error {
 		return NewHTTPError(http.StatusBadRequest, "plugin_checksum_mismatch", "Plugin package checksum verification failed")
 	case errors.Is(err, pluginmeta.ErrInstallPackageExists):
 		return NewHTTPError(http.StatusConflict, "plugin_package_exists", "Plugin package is already installed")
+	case errors.Is(err, pluginmeta.ErrPluginDependencyUnsatisfied):
+		return NewHTTPError(http.StatusConflict, "plugin_dependency_unsatisfied", err.Error())
 	default:
 		return NewHTTPError(http.StatusBadRequest, "plugin_install_failed", err.Error())
 	}

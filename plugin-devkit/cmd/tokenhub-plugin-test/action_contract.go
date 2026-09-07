@@ -89,9 +89,13 @@ func runAction(ctx context.Context, args []string, stdout io.Writer, stderr io.W
 		if err := assertActionResult(testCase, result); err != nil {
 			return fmt.Errorf("%s: %w", testCase.Name, err)
 		}
-		fmt.Fprintf(stdout, "action %s: ok\n", testCase.Name)
+		if _, err := fmt.Fprintf(stdout, "action %s: ok\n", testCase.Name); err != nil {
+			return fmt.Errorf("write action progress: %w", err)
+		}
 	}
-	fmt.Fprintf(stdout, "action contract passed (%d cases, manifest %s %s)\n", len(fixture.Cases), manifest.ID, manifest.Version)
+	if _, err := fmt.Fprintf(stdout, "action contract passed (%d cases, manifest %s %s)\n", len(fixture.Cases), manifest.ID, manifest.Version); err != nil {
+		return fmt.Errorf("write action summary: %w", err)
+	}
 	return nil
 }
 

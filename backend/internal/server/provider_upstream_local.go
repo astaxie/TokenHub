@@ -9,11 +9,12 @@ import (
 	"time"
 )
 
-// Auto mode supports administrator-configured self-hosted services. Strict
-// mode retains the legacy literal-only exceptions. Unknown modes fail closed.
+// Auto mode supports administrator-configured self-hosted services. Strict is
+// the default and retains the legacy literal-only exceptions. Unknown modes
+// fail closed.
 func providerUpstreamAutoAccess() bool {
-	mode := strings.ToLower(strings.TrimSpace(getenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "auto")))
-	return mode == "" || mode == "auto"
+	mode := strings.ToLower(strings.TrimSpace(getenv("TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE", "strict")))
+	return mode == "auto"
 }
 
 func providerUpstreamLocalIPAllowed(ip net.IP, allowedPrivate []*net.IPNet) bool {

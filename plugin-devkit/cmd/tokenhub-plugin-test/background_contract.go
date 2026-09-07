@@ -95,9 +95,13 @@ func runBackground(ctx context.Context, args []string, stdout io.Writer, stderr 
 		if err := assertBackgroundResult(testCase, result); err != nil {
 			return fmt.Errorf("%s: %w", testCase.Name, err)
 		}
-		fmt.Fprintf(stdout, "background %s: ok\n", testCase.Name)
+		if _, err := fmt.Fprintf(stdout, "background %s: ok\n", testCase.Name); err != nil {
+			return fmt.Errorf("write background progress: %w", err)
+		}
 	}
-	fmt.Fprintf(stdout, "background contract passed (%d cases, manifest %s %s)\n", len(fixture.Cases), manifest.ID, manifest.Version)
+	if _, err := fmt.Fprintf(stdout, "background contract passed (%d cases, manifest %s %s)\n", len(fixture.Cases), manifest.ID, manifest.Version); err != nil {
+		return fmt.Errorf("write background summary: %w", err)
+	}
 	return nil
 }
 

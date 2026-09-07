@@ -4,7 +4,7 @@ import { isSafePluginCSSValue, pluginThemeTokenEntries } from "../domain/plugin-
 import { type PluginThemeOverrides } from "../domain/plugin-theme-overrides";
 import { localizedCapabilityTitle } from "../domain/plugin-localization";
 import { type SIMRegistry, type SIMThemeTokens } from "../domain/sim-registry";
-import { languageLocale, tx } from "../i18n/runtime";
+import { formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 
 const emptyTokenOverrides: Record<string, string> = {};
 
@@ -133,7 +133,7 @@ function ThemeSettings({
                   <span className="plugin-setting-control">
                     {pickerValue ? (
                       <input
-                        aria-label={`${label} ${tx("颜色")}`}
+                        aria-label={formatTranslationTemplate(tx("{label} 颜色"), { label })}
                         className="plugin-theme-color-input"
                         type="color"
                         value={pickerValue}
@@ -141,7 +141,7 @@ function ThemeSettings({
                       />
                     ) : null}
                     <input
-                      aria-label={`${label} ${tx("当前值")}`}
+                      aria-label={formatTranslationTemplate(tx("{label} 当前值"), { label })}
                       type="text"
                       value={value}
                       onChange={(event) => setDraft((current) => ({ ...current, [name]: event.target.value }))}

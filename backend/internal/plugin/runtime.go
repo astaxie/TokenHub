@@ -61,8 +61,9 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 		hookRunner:     hookRunner,
 	}
 	packageDirsByID := map[string]string{}
-	packages := make([]Package, 0, len(dirs))
-	for _, dir := range dirs {
+	packagesByDirectory := make([]*Package, len(dirs))
+	pending := make([]runtimePendingPackage, 0, len(dirs))
+	for index, dir := range dirs {
 		candidate, err := readPackageForLoad(dir)
 		if err != nil {
 			failed, ok, failErr := r.markPackageLoadFailure(dir, targets, StatusFailedValidation, PackageLifecycleValidationFailed, err)
@@ -70,7 +71,7 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 				return nil, failErr
 			}
 			if ok {
-				packages = append(packages, failed)
+				packagesByDirectory[index] = &failed
 			}
 			continue
 		}
@@ -81,34 +82,113 @@ func (r Runtime) loadInto(plugins *Registry, chain *GatewayChainRegistry, adminU
 				return nil, failErr
 			}
 			if ok {
-				packages = append(packages, failed)
+				packagesByDirectory[index] = &failed
 			}
 			continue
 		}
 		packageDirsByID[pkg.Manifest.ID] = pkg.Dir
 		if pkg.State.FailedValidation() || pkg.State.FailedStartup() {
-			packages = append(packages, pkg)
+			packagesByDirectory[index] = &pkg
 			continue
 		}
 		if !candidate.ManifestValidated && !pkg.State.Enabled() {
-			packages = append(packages, pkg)
+			packagesByDirectory[index] = &pkg
 			continue
 		}
-		staged := targets.clone()
-		if err := staged.activatePackage(pkg); err != nil {
-			failed, ok, failErr := r.markPackageLoadFailure(pkg.Dir, targets, StatusFailedStartup, PackageLifecycleStartupFailed, err)
-			if failErr != nil {
-				return nil, failErr
+		if pkg.State.Enabled() {
+			pending = append(pending, runtimePendingPackage{directoryIndex: index, pkg: pkg})
+			continue
+		}
+		activated, err := r.activatePackage(pkg, targets)
+		if err != nil {
+			return nil, err
+		}
+		packagesByDirectory[index] = &activated
+	}
+
+	for len(pending) > 0 {
+		remaining := make([]runtimePendingPackage, 0, len(pending))
+		progressed := false
+		for _, candidate := range pending {
+			if err := ValidateManifestDependencies(candidate.pkg.Manifest, targets.plugins.List()); err != nil {
+				remaining = append(remaining, candidate)
+				continue
+			}
+			activated, err := r.activatePackage(candidate.pkg, targets)
+			if err != nil {
+				return nil, err
+			}
+			packagesByDirectory[candidate.directoryIndex] = &activated
+			progressed = true
+		}
+		if progressed {
+			pending = remaining
+			continue
+		}
+		for _, candidate := range remaining {
+			dependencyErr := ValidateManifestDependencies(candidate.pkg.Manifest, targets.plugins.List())
+			failed, ok, err := r.markPackageLoadFailure(candidate.pkg.Dir, targets, StatusFailedStartup, PackageLifecycleStartupFailed, dependencyErr)
+			if err != nil {
+				return nil, err
 			}
 			if ok {
-				packages = append(packages, failed)
+				packagesByDirectory[candidate.directoryIndex] = &failed
 			}
-			continue
 		}
-		targets.commitFrom(staged)
-		packages = append(packages, pkg)
+		break
+	}
+
+	packages := make([]Package, 0, len(dirs))
+	for _, pkg := range packagesByDirectory {
+		if pkg != nil {
+			packages = append(packages, *pkg)
+		}
 	}
 	return packages, nil
+}
+
+type runtimePendingPackage struct {
+	directoryIndex int
+	pkg            Package
+}
+
+func (r Runtime) activatePackage(pkg Package, targets runtimeLoadTargets) (Package, error) {
+	staged := targets.clone()
+	err := validateExternalPackageRuntime(pkg)
+	if err == nil {
+		err = staged.activatePackage(pkg)
+	}
+	if err != nil {
+		failed, ok, failErr := r.markPackageLoadFailure(pkg.Dir, targets, StatusFailedStartup, PackageLifecycleStartupFailed, err)
+		if failErr != nil {
+			return Package{}, failErr
+		}
+		if ok {
+			return failed, nil
+		}
+		return Package{}, err
+	}
+	targets.commitFrom(staged)
+	return pkg, nil
+}
+
+func validateExternalPackageRuntime(pkg Package) error {
+	if !pkg.State.Enabled() || pkg.Manifest.Entry.Backend == nil {
+		return nil
+	}
+	command := strings.TrimSpace(pkg.Manifest.Entry.Backend.Command)
+	if command == "" {
+		return nil
+	}
+	policy, err := BuildCommandSandboxPolicy(CommandSandboxOptions{
+		Dir:         pkg.Dir,
+		Command:     command,
+		Permissions: PermissionGrantFromManifest(pkg.Manifest.Permissions),
+	})
+	if err != nil {
+		return err
+	}
+	return requireCommandSandboxIsolation(policy)
 }
 
 type packageLoadCandidate struct {

@@ -57,11 +57,7 @@ func TestExternalTraceHookFixtureRunsThroughGatewayHookRunner(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("external trace hook fixture uses POSIX sh")
 	}
-	chain := NewGatewayChainRegistry()
-	runner := NewGatewayHookRunner(chain)
-	if _, err := NewRuntime(externalTraceHookFixtureDir()).LoadIntoWithActions(NewRegistry(), chain, nil, nil, runner); err != nil {
-		t.Fatalf("load external trace hook fixture: %v", err)
-	}
+	runner := trustedGatewayHookFixtureRunner(t, loadExternalTraceHookFixture(t))
 
 	report, err := runner.RunStage(t.Context(), StageTraceExport, GatewayHookInput{
 		RequestID: "req_external_trace_contract",
@@ -116,11 +112,7 @@ func TestExternalTraceHookFixtureFailureIsObserveOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("external trace hook fixture uses POSIX sh")
 	}
-	chain := NewGatewayChainRegistry()
-	runner := NewGatewayHookRunner(chain)
-	if _, err := NewRuntime(externalTraceHookFixtureDir()).LoadIntoWithActions(NewRegistry(), chain, nil, nil, runner); err != nil {
-		t.Fatalf("load external trace hook fixture: %v", err)
-	}
+	runner := trustedGatewayHookFixtureRunner(t, loadExternalTraceHookFixture(t))
 
 	report, err := runner.RunStage(t.Context(), StageTraceExport, GatewayHookInput{
 		RequestID: "req_external_trace_fail_command",

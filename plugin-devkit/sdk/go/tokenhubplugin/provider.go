@@ -106,30 +106,25 @@ type ProviderHandler func(context.Context, ProviderInvocation) (ProviderResult, 
 
 func ServeProvider(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, handler ProviderHandler) int {
 	if handler == nil {
-		fmt.Fprintln(stderr, "provider handler is required")
-		return 2
+		return diagnosticExit(stderr, 2, "provider handler is required")
 	}
 	var invocation ProviderInvocation
 	decoder := json.NewDecoder(stdin)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&invocation); err != nil {
-		fmt.Fprintf(stderr, "decode provider invocation: %v\n", err)
-		return 2
+		return diagnosticExit(stderr, 2, "decode provider invocation: %v", err)
 	}
 	if strings.TrimSpace(invocation.Operation) == "" {
-		fmt.Fprintln(stderr, "provider operation is required")
-		return 2
+		return diagnosticExit(stderr, 2, "provider operation is required")
 	}
 	result, err := handler(ctx, invocation)
 	if err != nil {
-		fmt.Fprintf(stderr, "execute provider operation %q: %v\n", invocation.Operation, err)
-		return 1
+		return diagnosticExit(stderr, 1, "execute provider operation %q: %v", invocation.Operation, err)
 	}
 	encoder := json.NewEncoder(stdout)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(result); err != nil {
-		fmt.Fprintf(stderr, "encode provider result: %v\n", err)
-		return 1
+		return diagnosticExit(stderr, 1, "encode provider result: %v", err)
 	}
 	return 0
 }

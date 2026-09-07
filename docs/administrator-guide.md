@@ -13,7 +13,7 @@ This guide is for platform administrators, security operators, and infrastructur
 | Routing Policies | Fine-tune Provider mappings, priority, weight, project scope, and failover strategy |
 | Projects and Teams | Define ownership boundaries for keys, quota, and cost attribution |
 | Identity Sources | Configure OAuth or OIDC login providers for enterprise sign-in |
-| Plugin Management | Install, update, enable, disable, uninstall, and operate plugin-contributed capabilities |
+| Plugin Management | Install and inspect external packages, manage lifecycle state, and operate supported built-in or declarative capabilities |
 | Security and Audit | Review request logs, admin events, key rotation, and policy changes |
 
 ## Production Setup Order
@@ -31,7 +31,7 @@ Anthropic Providers use `x-api-key` authentication by default. If an Anthropic-c
 
 ## Plugin Management
 
-Open **Plugin Management** to browse the unified list of built-in and installed plugins by Provider Integration, Request Pipeline, UI Template, or Automation. Each detail page explains the plugin's purpose and exposes package files; settings appear only when the plugin declares them. Marketplace and local package installs are validated by checksum, written to `TOKENHUB_PLUGIN_DIR`, and activated by a runtime reload. Built-ins can be enabled or disabled but not uninstalled; external plugins can also be updated or uninstalled.
+Open **Plugin Management** to browse the unified list of built-in and installed plugins by Provider Integration, Request Pipeline, UI Template, or Automation. Each detail page explains the plugin's purpose and exposes package files; settings appear only for implemented declarative settings surfaces. Marketplace and local package installs are validated by checksum, written to `TOKENHUB_PLUGIN_DIR`, and evaluated by a runtime reload. Declarative presentation packages can become active. An enabled external package with a backend command is instead shown as **Startup Failed**, remains installed and inspectable, and does not register its Provider, hook, job, or action because external execution is unavailable in this release. Built-ins can be enabled or disabled but not uninstalled; external packages can also be updated or uninstalled.
 
 Provider plugins can declare routing and credential policy in their manifest. Set `capabilities.provider.credentials_scope: resource` for subscription/account-style Providers whose upstream secrets must live on Provider Resources rather than the Provider itself. Set `capabilities.provider.route_requires_resource: true` when every route attempt must select an eligible Provider Resource; Core persists these policies on created Providers and applies the same missing, disabled, unhealthy, cooldown, and resource-group checks that built-in subscription Providers use. Set `capabilities.provider.reasoning_configurable` to show or hide the Admin reasoning-parameter controls explicitly; older plugins without that field still fall back to route-protocol inference.
 
@@ -39,7 +39,7 @@ Provider plugins that accept Responses-shaped requests behind a compatibility br
 
 Plugins that support request session affinity can also declare `session_affinity` in `capabilities.gateway` and set `capabilities.provider.session_affinity_kind` to `provider_session` or `codex_session`. Core uses that policy when Responses, Chat, Anthropic, Gemini, or Responses Compact routes derive sticky Provider Resource bindings from session headers or request metadata.
 
-Background jobs declared by plugins can be run manually from the background job manifest table. Manual runs use the same Core runner as scheduled jobs, including input schema validation, retry settings, timeout handling, concurrency limits, last-run tracking, result sanitization, and admin audit events. TokenHub redacts secret-looking fields such as access tokens, refresh tokens, API keys, passwords, cookies, and private keys before returning run results to the console.
+Registered in-process background jobs can be run manually from the background job manifest table. Manual runs use the same Core runner as scheduled jobs, including input schema validation, retry settings, timeout handling, concurrency limits, last-run tracking, result sanitization, and admin audit events. TokenHub redacts secret-looking fields such as access tokens, refresh tokens, API keys, passwords, cookies, and private keys before returning run results to the console. External command jobs are not registered while external execution is unavailable.
 
 ## Model Playground Diagnostics
 
@@ -161,6 +161,13 @@ Provider-model prices represent actual upstream cost and are used for internal a
 When Provider Channels, Model Directory, or Routing Policies has no configured data, the console shows the same three-step setup guide: import Provider inventory, create an external model from the built-in model catalog, then configure routing. The primary action always points to the earliest incomplete prerequisite, so administrators are not sent into a form that cannot yet be completed.
 
 Publication and runtime health are different states. Membership in `GET /v1/models` requires an active external `Model`, at least one active `ModelRoute`, and API-key access when a model allowlist is configured. It does not change when a Provider or Provider Resource is temporarily unhealthy. Health affects whether a request can be served and is shown separately in the directory and routing diagnostics. Disabling the external model removes it from `GET /v1/models` while retaining its mappings for later re-publication.
+
+### GPT-6 Astra
+
+The standard model directory and built-in OpenAI Provider inventory include `gpt-6-astra`. Select it when creating a model and configure an authorized upstream route; catalog inclusion does not grant upstream access. Codex subscription inventory remains account-discovered. Supported reasoning efforts are `low`, `medium`, `high`, `xhigh`, and `max`; Codex probes and Anthropic-to-Codex conversion preserve `max`.
+
+The template uses OpenAI Standard prices per million tokens: $10 input, $1 cached input, $12.50 cache writes, and $50 output. Above 272,000 input tokens, OpenAI doubles input/cache rates and multiplies output rates by 1.5 for the full request. Provider tier metadata records this distinction; the standard template's fixed prices do not automatically apply context tiers or Batch/Flex/Fast discounts and surcharges. Configure applicable pricing separately. See [OpenAI model specifications](https://developers.openai.com/api/docs/models/gpt-6-astra).
+
 
 ## Custom Upstream Request Headers
 

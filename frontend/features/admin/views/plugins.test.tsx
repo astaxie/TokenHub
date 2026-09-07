@@ -160,7 +160,7 @@ describe("PluginsView", () => {
       replace: false,
       enable: false,
     });
-    expect(await screen.findByText("tokenhub.example · 插件安装完成")).toBeInTheDocument();
+    expect(await screen.findByText("tokenhub.example 安装完成")).toBeInTheDocument();
   });
 
   it("updates a marketplace plugin through the unified row action", async () => {
@@ -207,7 +207,7 @@ describe("PluginsView", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://localhost:8080/api/admin/plugin-packages/tokenhub.local.privacy");
     expect(init.method).toBe("DELETE");
-    expect(await screen.findByText("tokenhub.local.privacy · 插件卸载完成")).toBeInTheDocument();
+    expect(await screen.findByText("插件 tokenhub.local.privacy 已卸载")).toBeInTheDocument();
   });
 
   it("shows available catalog entries in Browse without mixing them into Installed", () => {

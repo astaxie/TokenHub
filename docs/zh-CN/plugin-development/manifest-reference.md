@@ -23,6 +23,6 @@ Language: [English](../../plugin-development/manifest-reference.md) | 简体中�
 
 能力 ID 和插件 ID 都是兼容性契约。除非迁移会显式保留现有 Provider、路由、资源和配置引用，否则不要在更新中重命名。
 
-后端命令以受监管的隔离进程运行，使用包内相对路径和 `stdio-json-v1` 传输协议；传输协议名称与 Plugin API v2 相互独立。路径不能逃离插件包；包含 symlink、多个 Manifest 或不兼容声明的包会被拒绝。
+包内相对路径与 `stdio-json-v1` 传输协议定义了外部后端命令契约；传输协议名称与 Plugin API v2 相互独立。路径不能逃离插件包；包含 symlink、多个 Manifest 或不兼容声明的包会被拒绝。当前运行时无法强制执行所需的宿主级进程、网络和资源隔离，因此会采取失败关闭策略，在启动前拒绝所有动态加载的外部命令。该限制不影响进程内置插件或声明式界面贡献。
 
 Schema、stage 策略和兼容性规则见[完整指南](guide.md)。

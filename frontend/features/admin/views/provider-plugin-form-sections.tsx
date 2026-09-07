@@ -106,7 +106,7 @@ export function ProviderPluginFormSections({
       if (field.type === "oauth_button" && redirectURL) window.open(redirectURL, "_blank", "noopener,noreferrer");
       updateActionState(key, { busy: false, result: JSON.stringify(result.data ?? result.metadata ?? {}, null, 2) });
     } catch (err) {
-      updateActionState(key, { busy: false, error: err instanceof Error ? err.message : tx("插件动作执行失败") });
+      updateActionState(key, { busy: false, error: err instanceof Error ? err.message : tx("执行插件动作失败") });
     }
   }
 

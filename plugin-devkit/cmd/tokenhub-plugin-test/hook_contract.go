@@ -95,9 +95,13 @@ func runHook(ctx context.Context, args []string, stdout io.Writer, stderr io.Wri
 		if err := assertHookResult(testCase, result); err != nil {
 			return fmt.Errorf("%s: %w", testCase.Name, err)
 		}
-		fmt.Fprintf(stdout, "hook %s: ok\n", testCase.Name)
+		if _, err := fmt.Fprintf(stdout, "hook %s: ok\n", testCase.Name); err != nil {
+			return fmt.Errorf("write hook progress: %w", err)
+		}
 	}
-	fmt.Fprintf(stdout, "hook contract passed (%d cases, manifest %s %s)\n", len(fixture.Cases), manifest.ID, manifest.Version)
+	if _, err := fmt.Fprintf(stdout, "hook contract passed (%d cases, manifest %s %s)\n", len(fixture.Cases), manifest.ID, manifest.Version); err != nil {
+		return fmt.Errorf("write hook summary: %w", err)
+	}
 	return nil
 }
 

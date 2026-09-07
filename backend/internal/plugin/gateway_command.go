@@ -29,11 +29,12 @@ func (r GatewayCommandRunner) PluginPermissionGrant() PermissionGrant {
 func (r GatewayCommandRunner) ExecuteGatewayHook(ctx context.Context, input GatewayHookInput) (GatewayHookResult, error) {
 	var result GatewayHookResult
 	if err := runCommandJSON(ctx, CommandSandboxOptions{
-		Dir:         r.Dir,
-		Command:     r.Command,
-		Timeout:     r.Timeout,
-		Permissions: r.permissions,
-		Plane:       CommandPlaneGateway,
+		Dir:                      r.Dir,
+		Command:                  r.Command,
+		Timeout:                  r.Timeout,
+		Permissions:              r.permissions,
+		Plane:                    CommandPlaneGateway,
+		RequireEnforcedIsolation: r.permissions.Enforced,
 	}, input, &result); err != nil {
 		return GatewayHookResult{}, err
 	}

@@ -355,11 +355,11 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_MANAGED_UPDATES` | `false` | コンテナデプロイでオンライン更新とロールバックを許可します。ネイティブデプロイでは常に許可されます |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | 管理対象 Release のオンライン更新とロールバックで使用するインストールルート |
 | `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | `X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto` を提供できるプロキシ IP または CIDR（カンマ区切り）。信頼済みプロキシはクライアント値を転送せず、これらのヘッダーを上書きする必要があります |
-| `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE` | `auto` | `auto` は管理者が設定したローカル／プライベート上流と内部 DNS 名を許可します。`strict` は従来のリテラル限定の例外を維持します。不明な値は厳格モードとして扱います |
+| `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE` | `strict` | `strict` は明示的なリテラルアドレスの例外だけを許可します。`auto` を設定すると、管理者が設定したローカル／プライベート上流と内部 DNS 名を許可します。不明な値は厳格モードとして扱います |
 | `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL` | `false` | ローカル上流は既定で選択済みプロキシを迂回します。`true` でローカル対象にも選択済みポリシーを適用しますが、環境継承モードは引き続き `NO_PROXY` に従います。強制する場合は統一プロキシも選択してください |
 | `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` | 空 | 任意の制限用プライベート CIDR リスト。auto で空なら RFC1918/ULA を許可し、空でなければリテラルと内部 DNS の両方を制限します。strict ではリテラルだけを許可します。無効な非空設定で制限が解除されることはなく、特殊な危険アドレスは許可できません |
 | `TOKENHUB_PROVIDER_UPSTREAM_NAT64_PREFIX` | 空 | 埋め込まれた IPv4 宛先を分類するための任意の RFC 6052 DNS64/NAT64 プレフィックス。32、40、48、56、64、96 ビット長をサポートします。`64:ff9b:1::/48` などのネットワーク固有プレフィックスを使用する場合に設定します。標準の `64:ff9b::/96` は設定不要です |
-| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false`（旧既定値） | strict または非空のプライベートリストで有効です。その場合 `true` で localhost/127.0.0.1/::1 を許可します。auto かつリストが空なら旧テンプレート値にかかわらずループバックを許可します。意図的な禁止を維持するには strict を選択してください |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false` | strict または非空のプライベートリストで有効です。その場合 `true` で localhost/127.0.0.1/::1 を許可します。auto かつリストが空ならこの値にかかわらずループバックを許可します |
 | `HTTP_PROXY` / `HTTPS_PROXY` | 空 | すべての HTTP Provider チャネルが使用する標準の送信 forward proxy。プロキシ選択は運用者が管理し、プロキシを使用しないリクエストには TokenHub の DNS/IP 送信先検証が引き続き適用されます |
 | `NO_PROXY` | 空 | 標準のカンマ区切りプロキシ除外リスト。一致した Provider リクエストは保護された直接接続経路を使用します |
 | `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公開 URL | バックエンドを呼び出せる正確なブラウザー Origin（カンマ区切り）。設定時は同じ一覧が OAuth コンソールの戻り先 Origin の完全一致 allowlist にもなります。各値には scheme、host、任意の port だけを含め、path は含めません |
@@ -432,13 +432,13 @@ docker compose --env-file deploy/.env \
 
 ### ローカルおよび内部モデルサービス
 
-既定の auto モードでは、管理者は `http://127.0.0.1:8000/v1`、プライベート IPv4/IPv6、`host.docker.internal`、Docker サービス名、企業の内部 DNS 名を追加の CIDR 設定なしで入力できます。アドレスはバックエンドから到達可能である必要があります。コンテナーのループバックはコンテナー自身を指します。TokenHub が DNS レコード、Docker ネットワーク接続、ホスト別名を自動作成することはありません。
+auto モードを明示的に選択すると、管理者は `http://127.0.0.1:8000/v1`、プライベート IPv4/IPv6、`host.docker.internal`、Docker サービス名、企業の内部 DNS 名を追加の CIDR 設定なしで入力できます。アドレスはバックエンドから到達可能である必要があります。コンテナーのループバックはコンテナー自身を指します。TokenHub が DNS レコード、Docker ネットワーク接続、ホスト別名を自動作成することはありません。
 
 保存時は URL 構文とリテラルアドレスを検証し、DNS 問い合わせは行いません。オフラインのサービスも設定でき、ストレージ操作をブロックしません。送信前に HTTP ホスト名が許可済みローカルアドレスだけへ解決される必要があります。公開アドレスや公開／内部の混合結果は認証情報と本文の送信前に拒否します。直接接続は再度名前解決せず検証済みアドレスを使い、プロキシは元の Host と TLS サーバー名を維持します。metadata、link-local、multicast など危険な特殊用途アドレスは引き続き拒否します。同じスキームと authority へのリダイレクトは内部サービスでも許可し、クロスオリジンのリダイレクトは拒否します。
 
 HTTP ホスト名をプロキシ経由で接続する場合、検証済み IP への CONNECT を使用し、トンネル内で元の Host を維持します。プロキシはモデルサービスのポートへの CONNECT を許可する必要があります。拒否時に直接接続へフォールバックしません。
 
-既存の非空プライベートリストは制限を維持します。旧テンプレートには通常 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK=false` が含まれるため、この値だけで auto を無効にはしません。従来の境界を意図的に維持する場合は `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=strict` と従来のリテラル CIDR／ループバック設定を使用してください。ローカル通信も選択済みプロキシに従わせる場合は、別途 `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL=true` を指定します。これらの設定にはバックエンドの再起動またはコンテナーの再作成が必要です。
+strict モードが既定値です。ローカル／プライベートアクセスを自動的に許可するには、運用者が `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto` を設定する必要があります。どちらのモードでも非空のプライベートリストは制限を維持し、strict モードでは明示的なリテラル CIDR と `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` が引き続き有効です。ローカル通信も選択済みプロキシに従わせる場合は、別途 `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL=true` を指定します。これらの設定にはバックエンドの再起動またはコンテナーの再作成が必要です。
 
 再起動せずに **システム設定 → 基本設定 → Provider エグレスモード** で送信経路を変更できます。アップグレード時の既定値である「環境変数のプロキシを継承」は、プロセス起動時に取得した `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` を使用します。「直接接続」はこれらを無視し、「統一プロキシを使用」は 1 つの HTTP または HTTPS forward proxy を推論、ストリーミング、画像、モデル検出、Provider catalog 更新、Quota、Provider 資格情報更新を含むすべての Provider 上流チャネルに適用します。ID ログイン、通知、Tracing、バージョン更新には適用されません。
 
@@ -490,7 +490,7 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 
 ### Kronk への接続
 
-TokenHub は外部の Kronk Model Server に接続するだけで、Kronk のインストール、GGUF ファイルのダウンロード、llama.cpp の組み込みは行いません。TokenHub コンテナ内の `127.0.0.1` は Docker ホストではなく、そのコンテナ自身を指します。Kronk をホストで実行する場合は、環境で利用可能な `host.docker.internal` などのホスト到達可能なアドレスを使用してください。別コンテナで実行する場合は、共有 Docker ネットワークと Kronk のサービス名を使用します。既定の auto モードではこれらのローカル対象に追加の許可設定は不要です。ループバックは TokenHub と Kronk が同じネットワーク名前空間を共有する場合に使用し、strict モードでは明示的なローカル例外を設定してください。
+TokenHub は外部の Kronk Model Server に接続するだけで、Kronk のインストール、GGUF ファイルのダウンロード、llama.cpp の組み込みは行いません。TokenHub コンテナ内の `127.0.0.1` は Docker ホストではなく、そのコンテナ自身を指します。Kronk をホストで実行する場合は、環境で利用可能な `host.docker.internal` などのホスト到達可能なアドレスを使用してください。別コンテナで実行する場合は、共有 Docker ネットワークと Kronk のサービス名を使用します。`TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto` を設定すると、これらのローカル対象に個別の許可設定は不要です。ループバックは TokenHub と Kronk が同じネットワーク名前空間を共有する場合に使用し、strict モードでは明示的なローカル例外を設定してください。
 
 Kronk は既定で平文 HTTP を待ち受けます。リモート配置では、信頼済みプライベートネットワークまたは TLS リバースプロキシを使用し、適切な Kronk authorization mode を有効にしてください。TokenHub は推論、モデル検出、liveness、readiness エンドポイントだけを使用し、モデルダウンロード、ディレクトリ、セキュリティ管理、debug、pprof、管理 UI の各エンドポイントはプロキシしません。
 

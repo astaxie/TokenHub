@@ -3,15 +3,14 @@ package server
 import (
 	"net/http"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
-func TestExternalPrivacyHookFixtureMasksRequestBodyBeforeCompletion(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("external privacy hook fixture uses POSIX sh")
-	}
+func TestExternalPrivacyHookWithoutIsolationIsQuarantinedBeforeExecution(t *testing.T) {
+	pluginDir := copyExternalPluginFixtureForServerTest(t, filepath.Join("..", "plugin", "testdata", "external-privacy-hook"))
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "External Privacy Hook", Status: StatusActive})
 	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
@@ -27,8 +26,11 @@ func TestExternalPrivacyHookFixtureMasksRequestBodyBeforeCompletion(t *testing.T
 	store.AddRoute(ModelRoute{ID: "route_external_privacy", ModelName: "gpt-privacy", ProviderID: provider.ID, ProviderModel: "upstream-chat", Status: StatusActive, Priority: 1, Weight: 100})
 	app := NewWithConfig(store, Config{
 		AdminToken: "external-privacy-admin",
-		PluginDir:  filepath.Join("..", "plugin", "testdata", "external-privacy-hook"),
+		PluginDir:  pluginDir,
 	})
+	if hooks := app.gatewayChain.Hooks(pluginmeta.StagePrivacyPre); len(hooks) != 0 {
+		t.Fatalf("quarantined privacy hooks were published: %+v", hooks)
+	}
 
 	response := doJSON(t, app.Handler(), http.MethodPost, "/v1/chat/completions", map[string]any{
 		"model": "gpt-privacy",
@@ -36,28 +38,14 @@ func TestExternalPrivacyHookFixtureMasksRequestBodyBeforeCompletion(t *testing.T
 			{"role": "user", "content": "raw prompt sentinel"},
 		},
 	}, secret)
-	if response.Code != http.StatusOK {
-		t.Fatalf("privacy response = %d %s, want 200", response.Code, response.Body)
+	if response.Code != http.StatusOK || strings.Contains(response.Body, "gateway_hook_failed") {
+		t.Fatalf("privacy response = %d %s, want built-in flow without external hook", response.Code, response.Body)
 	}
-	if strings.Contains(response.Body, "raw prompt sentinel") {
-		t.Fatalf("privacy response leaked raw prompt: %s", response.Body)
-	}
-	if !strings.Contains(response.Body, "[masked-by-privacy]") {
-		t.Fatalf("privacy response = %s, want masked output", response.Body)
-	}
-	var traceAudit string
 	for _, event := range store.ListAuditEvents() {
-		if event.Action == "plugin.gateway.privacy_pre" {
-			traceAudit = event.AfterSnapshot
-			break
-		}
-	}
-	if traceAudit == "" {
-		t.Fatalf("external privacy hook audit event was not recorded: %+v", store.ListAuditEvents())
-	}
-	for _, forbidden := range []string{"raw prompt sentinel", "provider-secret"} {
-		if strings.Contains(traceAudit, forbidden) {
-			t.Fatalf("privacy audit leaked %q: %s", forbidden, traceAudit)
+		for _, forbidden := range []string{"raw prompt sentinel", "provider-secret"} {
+			if strings.Contains(event.AfterSnapshot, forbidden) {
+				t.Fatalf("privacy failure audit leaked %q: %s", forbidden, event.AfterSnapshot)
+			}
 		}
 	}
 }

@@ -2,7 +2,9 @@
 
 Language: English | [简体中文](../zh-CN/plugin-development/background-jobs.md) | [日本語](../ja/plugin-development/background-jobs.md)
 
-Use a background job plugin for work that does not belong on the model request path, such as quota refresh, account synchronization, cleanup, reporting, and health checks. A job may run on a declared schedule or be triggered by an operator from Plugin Management.
+The background-job contract covers work that does not belong on the model request path, such as quota refresh, account synchronization, cleanup, reporting, and health checks. A registered in-process job may run on a declared schedule or be triggered by an operator from Plugin Management; external command jobs cannot currently be registered.
+
+> **Runtime availability:** This page defines the external background-job contract. Packages and schedules can be validated, but the current TokenHub runtime rejects external background commands before launch because host-level isolation is not yet enforceable. In-process built-in jobs are unaffected.
 
 ## Declare a Job
 
@@ -56,6 +58,6 @@ go run ./cmd/tokenhub-plugin-test background \
   --package "$PWD/examples/background-heartbeat-go"
 ```
 
-Copy the fixture into a separate plugin workspace, then update the manifest, handler checks, schemas, and tests together. After installation, inspect the registered job in collapsed **Developer Information** on the plugin's **Details** page. Scheduled jobs run from their declared schedule; operator-triggered controls belong on the plugin's declared target page rather than a separate extension-type table.
+Copy the fixture into a separate plugin workspace, then update the manifest, handler checks, schemas, and tests together. Use the Devkit output to verify the declared job contract. After installation in the current TokenHub release, the declaration remains visible under collapsed **Developer Information** on the plugin's **Details** page, but the package is marked **Startup Failed** and the scheduler does not register or run the job. Declared schedules and operator-triggered controls describe the future external runtime contract only.
 
 See the [complete guide](guide.md) for the invocation example and the [Packaging and Release](packaging-and-release.md) guide before distribution.

@@ -8,7 +8,7 @@ Language: [English](../architecture.md) | [简体中文](../zh-CN/architecture.m
 
 Go バックエンドの 1 プロセスで管理 API、OpenAI 互換モデル API、ルーティング、Provider アダプター、監査、永続化を提供します。Next.js は管理コンソールです。コントロールプレーンとデータプレーンは論理的な境界であり、既定構成では 1 つのバックエンドとデータベースを共有します。マルチインスタンス構成では PostgreSQL を介して状態を共有します。
 
-バックエンドは Core、内蔵プラグイン、外部プラグインで構成されます。Core は公開 API の互換性、認証・認可、ルーティングの准入制御、永続化、計量、監査を担当します。プラグインは宣言された Provider 能力、ゲートウェイフック、バックグラウンドジョブ、画面メタデータを提供し、外部実行プラグインはバックエンドから子プロセスとして呼び出されます。
+バックエンドは Core、内蔵プラグイン、インストール可能な外部パッケージで構成されます。Core は公開 API の互換性、認証・認可、ルーティングの准入制御、永続化、計量、監査を担当します。内蔵プラグインは Provider、ゲートウェイ、ジョブ、Action の実行機能をプロセス内で提供します。外部パッケージが現在提供できるのは、検証済みメタデータと宣言的な画面だけで、実行エントリポイントは起動されません。
 
 ```mermaid
 flowchart TB
@@ -43,12 +43,8 @@ flowchart TB
         routing <--> hooks
     end
 
-    external["外部プラグインプロセス\nstdio-json-v1"]
-    packages["プラグインパッケージとライフサイクル状態"]
+    packages["外部プラグインパッケージ\nライフサイクルと宣言的画面"]
     packages --> plugins
-    plugins --> external
-    hooks --> external
-    adapters --> external
 
     subgraph persistence["永続化と設定"]
         sqlite[("SQLite\n既定の単一インスタンス")]
@@ -67,7 +63,6 @@ flowchart TB
     admin --> ingress --> frontend
     frontend -->|"TOKENHUB_API_BASE_URL"| backend
     app --> ingress -->|"/v1/*"| backend
-    external --> upstream
     backend --> adminApi
     backend --> modelApi
     builtin --> compatible
@@ -113,19 +108,19 @@ flowchart LR
 
 ## プラグインランタイムと境界
 
-`backend/internal/server/plugin_bootstrap.go` は、プラグインレジストリ、ゲートウェイチェーンと実行器、管理 UI レジストリ、Action Broker、バックグラウンドジョブの Broker/Runner、アダプターレジストリを組み立てます。内蔵機能を登録し、`TOKENHUB_PLUGIN_DIR` からパッケージを読み込み、有効な外部 Provider アダプターを接続します。内蔵と外部のプラグインはメタデータと能力の契約を共有しますが、内蔵実装は Go プロセス内で、外部コマンドは `stdio-json-v1` 経由で実行されます。
+`backend/internal/server/plugin_bootstrap.go` は、プラグインレジストリ、ゲートウェイチェーンと実行器、管理 UI レジストリ、Action Broker、バックグラウンドジョブの Broker/Runner、アダプターレジストリを組み立てます。内蔵機能を登録し、`TOKENHUB_PLUGIN_DIR` のパッケージを検査して、対応済みの宣言的貢献を公開します。内蔵と外部のパッケージはメタデータと能力の契約を共有しますが、Go プロセス内で実行されるのは内蔵プラグインだけです。`stdio-json-v1` は Devkit と将来のランタイム契約を定義するもので、現行リリースで動作する外部実行経路ではありません。
 
 | 能力面 | 実装入口 | 責務と境界 |
 | --- | --- | --- |
 | パッケージ契約と読み込み | `backend/internal/plugin/manifest.go`、`runtime.go`、`registry.go` | 登録前に manifest schema、Plugin API 互換性、権限、パッケージ状態を検証 |
-| Provider | `backend/internal/server/provider_plugin_adapter.go`、`adapter_registry.go` | Provider・リソース・認証情報の投影を使って宣言された操作を呼び出す。ルーティングと計量は Core が担当 |
-| ゲートウェイチェーン | `backend/internal/plugin/gateway_chain.go`、`gateway_runner.go`、`backend/internal/server/gateway_plugin_hooks.go` | 各段階のフックに許可されたデータを渡し、構造化結果と変更範囲を検証 |
-| バックグラウンドジョブと管理操作 | `backend/internal/plugin/background_scheduler.go`、`background_job.go`、`action_broker.go` | 宣言されたジョブの実行と管理操作を仲介。永続化されたバックグラウンド Responses ジョブとは別の仕組み |
+| Provider | `backend/internal/server/provider_plugin_adapter.go`、`adapter_registry.go` | 内蔵アダプターが Provider・リソース・認証情報の投影を使って宣言された操作を呼び出す。ルーティングと計量は Core が担当 |
+| ゲートウェイチェーン | `backend/internal/plugin/gateway_chain.go`、`gateway_runner.go`、`backend/internal/server/gateway_plugin_hooks.go` | プロセス内の各段階のフックに許可されたデータを渡し、構造化結果と変更範囲を検証 |
+| バックグラウンドジョブと管理操作 | `backend/internal/plugin/background_scheduler.go`、`background_job.go`、`action_broker.go` | プロセス内ジョブの実行と管理操作を仲介。永続化されたバックグラウンド Responses ジョブとは別の仕組み |
 | 画面 | `backend/internal/plugin/admin_ui.go`、`sim.go` | 宣言的なパネル、設定、テーマ、レイアウトをコンソールが描画。任意のプラグイン React や JavaScript は実行しない |
 
-パッケージは `plugin.yaml` で manifest schema `2` と Plugin API `v2` を宣言します。schema `1` と API `v1` は互換アダプターを通じて引き続きサポートします。権限は呼び出しに投影できる Core データと、Core が受け入れる構造化変更を制限します。これは OS サンドボックスではありません。コマンドポリシーではネットワークとリソースの強制隔離は現在 `unsupported` です。外部コマンドには制限された環境変数、パッケージ相対の実行パス、入出力上限、タイムアウトを適用します。汎用コマンドの既定値は 30 秒、入力 4 MiB、出力 1 MiB で、各能力面には独自のタイムアウトがあります。例えばゲートウェイフックの既定値は 5 秒です。ストリーミング対応はアダプターごとに確認が必要です。現在の外部 Provider ブリッジはコマンド結果のイベント配列を解析し、子プロセスの出力をリアルタイムに中継するものではありません。
+パッケージは `plugin.yaml` で manifest schema `2` と Plugin API `v2` を宣言します。schema `1` と API `v1` は互換アダプターを通じて引き続きサポートします。権限は将来の呼び出しに投影できる Core データと、Core が受け入れられる構造化変更を制限します。これは OS サンドボックスではありません。コマンドポリシーではネットワークとリソースの強制隔離は現在 `unsupported` です。そのため、ホストがプロセス、ネットワーク、リソースの隔離を強制できるようになるまで、TokenHub はフェイルクローズし、ランタイムから読み込まれた外部 Action、バックグラウンドジョブ、Provider コマンド、ゲートウェイコマンドをすべて起動前に拒否します。実行可能バックエンドエントリを持つ有効なパッケージは `failed_startup` として永続化され、インストール済みで検査可能なまま、ランタイム機能を一切公開しません。宣言的な画面だけを持つパッケージとプロセス内の組み込みプラグインには影響しません。汎用コマンドの制限は将来の実行契約として維持され、既定値は 30 秒、入力 4 MiB、出力 1 MiB です。各能力面には、ゲートウェイ Hook の既定 5 秒など、独自の制限もあります。外部コマンドが無効な間は、外部 Provider のストリーミングも利用できません。現在のプロトコル形態はイベント配列を記述するもので、子プロセス出力のライブ中継ではありません。
 
-3 種類の Compose はいずれも `tokenhub-plugins` を `/app/plugins` にマウントし、`TOKENHUB_PLUGIN_DIR` と `TOKENHUB_PLUGIN_MARKETPLACE_URL` を提供します。ファイルとライフサイクル状態はファイルシステムに保存され、レジストリと実行器はプロセスごとに保持されます。プラグインのライフサイクル操作はリクエストを処理したサーバープロセスのランタイムをホットリロードするため、通常の単一インスタンスではインストール、更新、有効化/無効化、ロールバック、アンインストールのためにサービスを再起動する必要はありません。PostgreSQL はプラグインバイナリの配布や全レプリカのレジストリ更新を行わないため、複数インスタンス構成ではパッケージバージョンを揃え、各レプリカをリロードする必要があります。
+3 種類の Compose はいずれも `tokenhub-plugins` を `/app/plugins` にマウントし、`TOKENHUB_PLUGIN_DIR` と `TOKENHUB_PLUGIN_MARKETPLACE_URL` を提供します。ファイルとライフサイクル状態はファイルシステムに保存され、レジストリと実行器はプロセスごとに保持されます。プラグインのライフサイクル操作はリクエストを処理したサーバープロセスのランタイムをホットリロードするため、パッケージ検証、宣言的貢献の変更、ライフサイクル失敗の表示にサービス再起動は不要です。リロードは外部コマンドパッケージを評価しますが、実行可能にはしません。PostgreSQL はプラグインバイナリの配布や全レプリカのレジストリ更新を行わないため、複数インスタンス構成ではパッケージバージョンを揃え、各レプリカをリロードする必要があります。
 
 インストールとマーケットプレイスのコードには、チェックサム検証、署名付きマーケットプレイスの信頼検証、権限レビュー、失敗したパッケージの隔離、ロールバック経路があります。これらは全レプリカの原子的な有効化やホストリソースの隔離を保証しません。詳細な契約とライフサイクル操作は[プラグイン開発ガイド](plugin-development/README.md)を参照してください。
 
@@ -140,7 +135,7 @@ flowchart LR
 | Provider アダプター | `builtin_provider_plugins.go`、`provider_plugin_adapter.go`、`provider_account_codex.go` | プロトコル変換、Codex Subscription の OAuth、更新、セッションアフィニティ |
 | Store | `store.go` | GORM、クォータ、認証情報暗号化、SQLite バックアップ、PostgreSQL リース、クラスタロック |
 
-以下は代表的な内蔵登録であり、固定された全 Provider 一覧ではありません。実際の能力は有効なプラグインとアダプターの記述、Provider ポリシー、モデルとリソースの対応状況で決まります。外部プラグインは Provider 型を追加できます。
+以下は現在動作する内蔵 Provider 登録です。実際の能力は有効な内蔵プラグインとアダプターの記述、Provider ポリシー、モデルとリソースの対応状況で決まります。外部 manifest はパッケージ検査と Devkit 契約テスト用に追加の Provider 型を記述できますが、現行 TokenHub リリースはコマンド型アダプターを有効化しません。
 
 | Provider 型 | アダプターと能力 |
 | --- | --- |
@@ -181,7 +176,7 @@ sequenceDiagram
         G->>H: 該当するリクエスト段階で許可データを投影
         H-->>G: 検証済みの構造化結果
     end
-    Note over G,A: 有効な内蔵アダプターまたは外部 Provider ブリッジを呼び出す
+    Note over G,A: 有効な内蔵 Provider アダプターを呼び出す
     loop フェイルオーバー可能な候補ルート
         G->>A: 正規化済みリクエストとルート選択
         A->>U: Provider プロトコルリクエスト

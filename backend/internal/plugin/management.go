@@ -91,9 +91,12 @@ func DeriveLifecycleFacts(input LifecycleFactsInput) LifecycleFacts {
 	activeVersion := strings.TrimSpace(input.ActiveVersion)
 	desiredEnabled := input.Installed && desired.Loadable()
 	activeEnabled := input.Installed && active.Loadable()
-	restartRequired := input.Installed && (desired.RestartRequired || desiredEnabled != activeEnabled)
-	if desiredVersion != "" && activeVersion != "" && desiredVersion != activeVersion {
-		restartRequired = true
+	restartRequired := false
+	if input.Installed && !desired.FailedValidation() && !desired.FailedStartup() {
+		restartRequired = desired.RestartRequired || desiredEnabled != activeEnabled
+		if desiredVersion != "" && activeVersion != "" && desiredVersion != activeVersion {
+			restartRequired = true
+		}
 	}
 	configured := input.Installed && input.Configured
 	inUse := configured && input.InUse

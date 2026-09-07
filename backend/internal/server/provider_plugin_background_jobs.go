@@ -11,8 +11,8 @@ const (
 	providerQuotaRefreshDueJobCapability      = "quota.refresh_due"
 )
 
-func registerBuiltinPluginBackgroundJobs(server *Server) {
-	mustRegisterPluginBackgroundJob(server.pluginBackgroundJobs, pluginmeta.BackgroundJobDescriptor{
+func registerBuiltinPluginBackgroundJobs(server *Server, jobs *pluginmeta.BackgroundJobBroker) {
+	mustRegisterPluginBackgroundJob(jobs, pluginmeta.BackgroundJobDescriptor{
 		PluginID:       "tokenhub.provider.openai-codex",
 		JobID:          "openai_codex.credentials.refresh_due",
 		Title:          "Refresh due OpenAI Codex account credentials",
@@ -25,7 +25,7 @@ func registerBuiltinPluginBackgroundJobs(server *Server) {
 	}, pluginmeta.BackgroundJobHandlerFunc(func(ctx context.Context, _ pluginmeta.BackgroundJobInvocation) (pluginmeta.BackgroundJobResult, error) {
 		return pluginmeta.BackgroundJobResult{Data: server.refreshDueProviderCredentialsWithPluginJob(ctx, ProviderOpenAICodex)}, nil
 	}))
-	mustRegisterPluginBackgroundJob(server.pluginBackgroundJobs, pluginmeta.BackgroundJobDescriptor{
+	mustRegisterPluginBackgroundJob(jobs, pluginmeta.BackgroundJobDescriptor{
 		PluginID:       "tokenhub.provider.openai-codex",
 		JobID:          "openai_codex.quota.refresh_due",
 		Title:          "Refresh due OpenAI Codex account quotas",

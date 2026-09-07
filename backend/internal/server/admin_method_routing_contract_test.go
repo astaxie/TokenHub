@@ -185,6 +185,9 @@ func TestAdminMethodRoutePluginChainReachesHandler(t *testing.T) {
 	if !strings.Contains(body, `"data"`) || !strings.Contains(body, `"decode_normalize"`) {
 		t.Fatalf("GET /api/admin/plugin-chain: response does not include host stage contracts: %s", body)
 	}
+	if !strings.Contains(body, `"hooks":[]`) {
+		t.Fatalf("GET /api/admin/plugin-chain: empty hooks must encode as an array: %s", body)
+	}
 	var payload struct {
 		Data pluginmeta.GatewayChainPlan `json:"data"`
 	}

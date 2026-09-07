@@ -52,11 +52,12 @@ type uploadedImage struct {
 }
 
 type imageJobWork struct {
-	job       ImageJob
-	call      CallContext
-	clientIP  string
-	userAgent string
-	done      chan struct{}
+	job                 ImageJob
+	call                CallContext
+	clientIP            string
+	userAgent           string
+	done                chan struct{}
+	runtimeSnapshotHeld bool
 }
 
 type imageRunResult struct {
@@ -139,6 +140,7 @@ func (s *Server) handleImageGenerations(w http.ResponseWriter, r *http.Request) 
 	}
 	if !prefersAsyncImageResponse(r) {
 		work.done = make(chan struct{})
+		work.runtimeSnapshotHeld = true
 	}
 	if err := s.enqueueImageJob(work); err != nil {
 		httpErr := AsHTTPError(err)
@@ -324,6 +326,7 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 	}
 	if !prefersAsyncImageResponse(r) {
 		work.done = make(chan struct{})
+		work.runtimeSnapshotHeld = true
 	}
 	if err := s.enqueueImageJob(work); err != nil {
 		httpErr := AsHTTPError(err)
@@ -683,6 +686,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) processImageJob(work imageJobWork) {
+	if !work.runtimeSnapshotHeld {
+		s.pluginRuntimeMu.RLock()
+		defer s.pluginRuntimeMu.RUnlock()
+	}
 	if work.done != nil {
 		defer close(work.done)
 	}

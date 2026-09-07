@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { ProviderAccountQuota, ProviderQuotaMetric, ProviderQuotaWindow, ProviderResource } from "../core/types";
 import { copyText } from "../domain/clipboard";
 import type { ImageCapabilityProfile } from "../domain/provider-image-capability";
-import { tx } from "../i18n/runtime";
+import { languageLocale, tx } from "../i18n/runtime";
 
 export { ProviderAccountTokenRenewal } from "./provider-account-token-renewal";
 
@@ -90,7 +90,7 @@ export function providerResourceAccountLabel(resource: ProviderResource) {
 export function formatProviderAccountDate(value?: string) {
   if (!value) return "-";
   const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? value : new Date(timestamp).toLocaleString();
+  return Number.isNaN(timestamp) ? value : new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "medium" }).format(new Date(timestamp));
 }
 
 export function formatQuotaPercent(value: number) {
@@ -104,7 +104,7 @@ export function quotaUsagePercent(window?: ProviderQuotaWindow) {
 
 export function quotaWindowResetLabel(window?: ProviderQuotaWindow) {
   if (!window) return "-";
-  if ((window.reset_at ?? 0) > 0) return new Date((window.reset_at ?? 0) * 1000).toLocaleString();
+  if ((window.reset_at ?? 0) > 0) return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "medium" }).format(new Date((window.reset_at ?? 0) * 1000));
   if ((window.reset_after_seconds ?? 0) > 0) {
     const minutes = Math.ceil((window.reset_after_seconds ?? 0) / 60);
     return minutes >= 60 ? `${Math.ceil(minutes / 60)} ${tx("小时后")}` : `${minutes} ${tx("分钟后")}`;

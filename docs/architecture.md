@@ -8,7 +8,7 @@ This document describes the architecture implemented in this repository for deve
 
 The Go backend hosts the Admin API, OpenAI-compatible model API, routing, provider adapters, audit, and persistence in one process. The Next.js application is the admin console. Control plane and data plane are logical boundaries: they share one backend and database by default, while multi-instance deployments share state through PostgreSQL.
 
-The backend is organized as Core plus built-in and external plugins. Core retains public API compatibility, authentication, authorization, routing admission, persistence, metering, and audit. Plugins contribute declared provider capabilities, gateway hooks, background jobs, and presentation metadata; the backend invokes external executable plugins as child processes.
+The backend is organized as Core, built-in plugins, and installable external packages. Core retains public API compatibility, authentication, authorization, routing admission, persistence, metering, and audit. Built-in plugins provide executable Provider, gateway, job, and action capabilities in process. External packages currently provide validated metadata and declarative presentation only; their executable entry points are not launched.
 
 ```mermaid
 flowchart TB
@@ -43,12 +43,8 @@ flowchart TB
         routing <--> hooks
     end
 
-    external["External plugin processes\nstdio-json-v1"]
-    packages["Plugin packages and lifecycle state"]
+    packages["External plugin packages\nlifecycle and declarative presentation"]
     packages --> plugins
-    plugins --> external
-    hooks --> external
-    adapters --> external
 
     subgraph persistence["Persistence and configuration"]
         sqlite[("SQLite\ndefault single instance")]
@@ -67,7 +63,6 @@ flowchart TB
     admin --> ingress --> frontend
     frontend -->|"TOKENHUB_API_BASE_URL"| backend
     app --> ingress -->|"/v1/*"| backend
-    external --> upstream
     backend --> adminApi
     backend --> modelApi
     builtin --> compatible
@@ -113,19 +108,19 @@ The default image uses the model catalog bundled at build time so the executable
 
 ## Plugin Runtime and Boundaries
 
-`backend/internal/server/plugin_bootstrap.go` assembles the plugin registry, gateway chain and runner, admin UI registry, action broker, background-job broker/runner, and adapter registry. It registers built-in contributions, loads packages from `TOKENHUB_PLUGIN_DIR`, and attaches enabled external Provider adapters. Built-in and external plugins share metadata and capability contracts, but built-ins execute inside the Go process and external commands execute through `stdio-json-v1`.
+`backend/internal/server/plugin_bootstrap.go` assembles the plugin registry, gateway chain and runner, admin UI registry, action broker, background-job broker/runner, and adapter registry. It registers built-in contributions, inspects packages from `TOKENHUB_PLUGIN_DIR`, and publishes supported declarative contributions. Built-in and external packages share metadata and capability contracts, but only built-ins execute inside the Go process. `stdio-json-v1` defines a Devkit and future runtime contract; it is not an operational external execution path in the current release.
 
 | Surface | Implementation entry points | Responsibility and boundary |
 | --- | --- | --- |
 | Package contract and loading | `backend/internal/plugin/manifest.go`, `runtime.go`, `registry.go` | Validate manifest schema, Plugin API compatibility, permissions, and package state before registration |
-| Provider | `backend/internal/server/provider_plugin_adapter.go`, `adapter_registry.go` | Invoke declared operations using provider/resource/credential projections; Core retains routing and accounting |
-| Gateway chain | `backend/internal/plugin/gateway_chain.go`, `gateway_runner.go`; `backend/internal/server/gateway_plugin_hooks.go` | Run stage-specific hooks with permitted data, validate structured results, and enforce stage mutation rules |
-| Background jobs and actions | `backend/internal/plugin/background_scheduler.go`, `background_job.go`, `action_broker.go` | Schedule declared jobs and broker operator actions; these are separate from durable background Responses jobs |
+| Provider | `backend/internal/server/provider_plugin_adapter.go`, `adapter_registry.go` | Built-in adapters invoke declared operations using provider/resource/credential projections; Core retains routing and accounting |
+| Gateway chain | `backend/internal/plugin/gateway_chain.go`, `gateway_runner.go`; `backend/internal/server/gateway_plugin_hooks.go` | Run in-process stage-specific hooks with permitted data, validate structured results, and enforce stage mutation rules |
+| Background jobs and actions | `backend/internal/plugin/background_scheduler.go`, `background_job.go`, `action_broker.go` | Schedule in-process jobs and broker operator actions; these are separate from durable background Responses jobs |
 | Presentation | `backend/internal/plugin/admin_ui.go`, `sim.go` | Declarative panels, settings, themes, and layouts rendered by the console; no arbitrary plugin React or JavaScript execution |
 
-Packages declare `plugin.yaml` with manifest schema `2` and Plugin API `v2`; schema `1` and API `v1` remain supported through the compatibility adapter. Permissions constrain which Core data is projected into an invocation and which structured changes Core accepts. This is not an operating-system sandbox: the command policy currently reports network and resource enforcement as `unsupported`. External commands use a restricted environment, package-relative executable paths, bounded input/output, and timeouts. The generic command defaults are 30 seconds, 4 MiB input, and 1 MiB output; individual runtime surfaces can apply their own timeout, including a 5-second default gateway-hook timeout. Streaming support must be checked per adapter; the external Provider bridge currently decodes an event array from a command result rather than forwarding a live child-process stream.
+Packages declare `plugin.yaml` with manifest schema `2` and Plugin API `v2`; schema `1` and API `v1` remain supported through the compatibility adapter. Permissions constrain which Core data would be projected into an invocation and which structured changes Core would accept. This is not an operating-system sandbox: the command policy currently reports network and resource enforcement as `unsupported`. TokenHub therefore fails closed and rejects every runtime-loaded external action, background job, Provider command, and gateway command before launch until process, network, and resource isolation can be enforced by the host. An enabled package with an executable backend entry is persisted as `failed_startup`, remains installed and inspectable, and publishes none of its runtime capabilities. Purely declarative presentation packages and in-process built-ins are unaffected. The generic command limits remain part of the future execution contract: 30 seconds, 4 MiB input, and 1 MiB output by default, with surface-specific limits such as the 5-second default gateway-hook timeout. External Provider streaming is likewise unavailable while external commands are disabled; its current protocol shape describes an event array rather than a live child-process stream.
 
-All three Compose variants mount `tokenhub-plugins` at `/app/plugins` and expose `TOKENHUB_PLUGIN_DIR` and `TOKENHUB_PLUGIN_MARKETPLACE_URL`. Package files and lifecycle state live on the filesystem, while registries and runners are process-local. Plugin lifecycle operations reload the runtime in the server that handles the request, so normal single-instance installs, updates, enable/disable changes, rollbacks, and uninstalls do not require a service restart. PostgreSQL does not distribute plugin binaries or refresh every replica's registry; multi-instance deployments must coordinate package versions and reload each replica.
+All three Compose variants mount `tokenhub-plugins` at `/app/plugins` and expose `TOKENHUB_PLUGIN_DIR` and `TOKENHUB_PLUGIN_MARKETPLACE_URL`. Package files and lifecycle state live on the filesystem, while registries and runners are process-local. Plugin lifecycle operations reload the runtime in the server that handles the request, so package validation, declarative contribution changes, and lifecycle failure reporting do not require a service restart. Reloading evaluates external command packages but does not make them executable. PostgreSQL does not distribute plugin binaries or refresh every replica's registry; multi-instance deployments must coordinate package versions and reload each replica.
 
 Installation and marketplace code provide checksum verification, signed-marketplace trust checks, permission review, failed-package quarantine, and rollback paths. These controls do not establish atomic fleet-wide activation or isolation from host resources. See the [Plugin Development Guide](plugin-development/README.md) for the detailed contract and lifecycle procedures.
 
@@ -140,7 +135,7 @@ Installation and marketplace code provide checksum verification, signed-marketpl
 | Provider adapters | `builtin_provider_plugins.go`, `provider_plugin_adapter.go`, `provider_account_codex.go` | Protocol translation; Codex subscription OAuth, refresh, and session affinity |
 | Store | `store.go` | GORM access, quotas, credential encryption, SQLite backups, PostgreSQL leases, and cluster locks |
 
-The following are representative built-in registrations, not a closed list of supported providers. Effective capabilities come from the enabled plugin and adapter descriptors, provider policy, and model/resource support. External plugins may add provider types.
+The following are the operational built-in Provider registrations. Effective capabilities come from the enabled built-in plugin and adapter descriptors, Provider policy, and model/resource support. External manifests may describe additional Provider types for package inspection and Devkit contract testing, but current TokenHub releases do not activate their command-backed adapters.
 
 | Provider type | Adapter and capabilities |
 | --- | --- |
@@ -181,7 +176,7 @@ sequenceDiagram
         G->>H: At applicable request stages: permitted data projection
         H-->>G: Validated structured result
     end
-    Note over G,A: Invoke enabled built-in adapter or external Provider bridge
+    Note over G,A: Invoke an enabled built-in Provider adapter
     loop Failover-capable candidate routes
         G->>A: Normalized request and route selection
         A->>U: Provider protocol request

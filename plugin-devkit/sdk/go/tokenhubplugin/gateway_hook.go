@@ -3,7 +3,6 @@ package tokenhubplugin
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 )
@@ -52,24 +51,20 @@ type GatewayHookHandler func(context.Context, GatewayHookInput) (GatewayHookResu
 
 func ServeGatewayHook(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, handler GatewayHookHandler) int {
 	if handler == nil {
-		fmt.Fprintln(stderr, "gateway hook handler is required")
-		return 2
+		return diagnosticExit(stderr, 2, "gateway hook handler is required")
 	}
 	var input GatewayHookInput
 	decoder := json.NewDecoder(stdin)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
-		fmt.Fprintf(stderr, "decode gateway hook input: %v\n", err)
-		return 2
+		return diagnosticExit(stderr, 2, "decode gateway hook input: %v", err)
 	}
 	if strings.TrimSpace(input.RequestID) == "" || strings.TrimSpace(input.Stage) == "" {
-		fmt.Fprintln(stderr, "request_id and stage are required")
-		return 2
+		return diagnosticExit(stderr, 2, "request_id and stage are required")
 	}
 	result, err := handler(ctx, input)
 	if err != nil {
-		fmt.Fprintf(stderr, "execute gateway hook %s/%s: %v\n", input.Stage, input.RequestID, err)
-		return 1
+		return diagnosticExit(stderr, 1, "execute gateway hook %s/%s: %v", input.Stage, input.RequestID, err)
 	}
 	if result.Decision == "" {
 		result.Decision = HookDecisionContinue
@@ -77,8 +72,7 @@ func ServeGatewayHook(ctx context.Context, stdin io.Reader, stdout io.Writer, st
 	encoder := json.NewEncoder(stdout)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(result); err != nil {
-		fmt.Fprintf(stderr, "encode gateway hook result: %v\n", err)
-		return 1
+		return diagnosticExit(stderr, 1, "encode gateway hook result: %v", err)
 	}
 	return 0
 }

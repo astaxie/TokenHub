@@ -25,12 +25,34 @@ const (
 )
 
 type CommandSandboxOptions struct {
-	Dir         string
-	Command     string
-	Timeout     time.Duration
-	Permissions PermissionGrant
-	Plane       CommandPlane
-	TempDir     string
+	Dir                      string
+	Command                  string
+	Timeout                  time.Duration
+	Permissions              PermissionGrant
+	Plane                    CommandPlane
+	TempDir                  string
+	RequireEnforcedIsolation bool
+}
+
+func requireCommandSandboxIsolation(policy CommandSandboxPolicy) error {
+	var unsupported []string
+	if policy.ProcessEnforcement != SandboxEnforcementEnforced {
+		unsupported = append(unsupported, "process")
+	}
+	if policy.NetworkEnforcement != SandboxEnforcementEnforced {
+		unsupported = append(unsupported, "network")
+	}
+	if policy.ResourceEnforcement != SandboxEnforcementEnforced {
+		unsupported = append(unsupported, "resource")
+	}
+	if len(unsupported) == 0 {
+		return nil
+	}
+	return pluginContractErrorf(
+		PluginErrorPermissionUnsupported,
+		"plugin command requires OS-enforced isolation for: %s",
+		strings.Join(unsupported, ", "),
+	)
 }
 
 type CommandSandboxPolicy struct {

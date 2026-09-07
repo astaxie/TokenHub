@@ -128,6 +128,52 @@ func TestMarketplaceListConsumesChannelIndexFromOfflineMirror(t *testing.T) {
 	}
 }
 
+func TestDecodeOnlineMarketplaceIndexSanitizesLegacyFormats(t *testing.T) {
+	descriptor := Descriptor{
+		ID:      "tokenhub.legacy-marketplace",
+		Name:    "Legacy Marketplace Plugin",
+		Version: "1.0.0",
+		Source:  SourceMarketplace,
+		Distribution: &Distribution{
+			DownloadURL:    "https://attacker.example/plugin.zip",
+			ChecksumSHA256: strings.Repeat("a", 64),
+		},
+		Marketplace: &MarketplaceMetadata{
+			Publisher:     &MarketplacePublisher{ID: "untrusted", Verified: true},
+			Compatibility: &MarketplaceCompatibility{Verdict: MarketplaceCompatibilityCompatible},
+		},
+	}
+	formats := map[string]any{
+		"descriptor array": []Descriptor{descriptor},
+		"plugins object":   MarketplaceIndex{Plugins: []Descriptor{descriptor}},
+	}
+	for name, format := range formats {
+		t.Run(name, func(t *testing.T) {
+			data, err := json.Marshal(format)
+			if err != nil {
+				t.Fatalf("marshal legacy index: %v", err)
+			}
+			descriptors, err := decodeOnlineMarketplaceIndex(data)
+			if err != nil {
+				t.Fatalf("decode online legacy index: %v", err)
+			}
+			if len(descriptors) != 1 {
+				t.Fatalf("descriptors = %d, want 1", len(descriptors))
+			}
+			got := descriptors[0]
+			if got.Distribution != nil {
+				t.Fatalf("unverified distribution = %+v, want nil", got.Distribution)
+			}
+			if got.Marketplace == nil || got.Marketplace.Publisher == nil || got.Marketplace.Publisher.Verified {
+				t.Fatalf("unverified publisher = %+v", got.Marketplace)
+			}
+			if got.Marketplace.Compatibility == nil || got.Marketplace.Compatibility.Verdict != MarketplaceCompatibilityUnknown {
+				t.Fatalf("unverified compatibility = %+v", got.Marketplace.Compatibility)
+			}
+		})
+	}
+}
+
 func TestDecodeMarketplaceIndexRejectsInvalidChannelIndexBeforeLegacyFallback(t *testing.T) {
 	data := []byte(`{"schema_version":2,"repository_id":"tokenhub-official-marketplace","channel":"stable","sequence":1,"plugins":[{"id":"tokenhub.blank"}]}`)
 

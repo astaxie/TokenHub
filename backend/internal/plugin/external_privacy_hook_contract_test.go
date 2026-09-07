@@ -56,11 +56,7 @@ func TestExternalPrivacyHookFixtureRunsThroughGatewayHookRunner(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("external privacy hook fixture uses POSIX sh")
 	}
-	chain := NewGatewayChainRegistry()
-	runner := NewGatewayHookRunner(chain)
-	if _, err := NewRuntime(externalPrivacyHookFixtureDir()).LoadIntoWithActions(NewRegistry(), chain, nil, nil, runner); err != nil {
-		t.Fatalf("load external privacy hook fixture: %v", err)
-	}
+	runner := trustedGatewayHookFixtureRunner(t, loadExternalPrivacyHookFixture(t))
 
 	report, err := runner.RunStage(t.Context(), StagePrivacyPre, GatewayHookInput{
 		RequestID: "req_external_privacy_contract",
@@ -130,11 +126,7 @@ func TestExternalPrivacyHookFixtureFailureIsFailClosed(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("external privacy hook fixture uses POSIX sh")
 	}
-	chain := NewGatewayChainRegistry()
-	runner := NewGatewayHookRunner(chain)
-	if _, err := NewRuntime(externalPrivacyHookFixtureDir()).LoadIntoWithActions(NewRegistry(), chain, nil, nil, runner); err != nil {
-		t.Fatalf("load external privacy hook fixture: %v", err)
-	}
+	runner := trustedGatewayHookFixtureRunner(t, loadExternalPrivacyHookFixture(t))
 
 	_, err := runner.RunStage(t.Context(), StagePrivacyPre, GatewayHookInput{
 		RequestID: "req_external_privacy_fail_command",

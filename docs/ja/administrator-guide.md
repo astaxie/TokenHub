@@ -13,7 +13,7 @@ Language: [English](../administrator-guide.md) | [简体中文](../zh-CN/adminis
 | Routing Policies | Provider マッピング、優先度、重み、プロジェクトスコープ、フェイルオーバー戦略を調整します |
 | Projects and Teams | Key、クォータ、コスト配賦の組織境界を定義します |
 | Identity Sources | OAuth または OIDC の企業ログインを設定します |
-| Plugin Management | プラグイン提供の機能をインストール、更新、有効化、無効化、アンインストール、実行します |
+| Plugin Management | 外部パッケージのインストールと検査、ライフサイクル状態の管理、対応済みの内蔵または宣言的機能の運用を行います |
 | Security and Audit | リクエストログ、管理操作、Key ローテーション、ポリシー変更を確認します |
 
 ## 本番設定順序
@@ -31,7 +31,7 @@ Anthropic Provider は既定で `x-api-key` 認証を使用します。Anthropic
 
 ## プラグイン管理
 
-**Plugin Management** では、組み込みおよびインストール済みプラグインの統一リストを Provider Integration、Request Pipeline、UI Template、Automation ごとに参照できます。各詳細ページはプラグインの用途とパッケージファイルを表示し、プラグインが実際に設定を宣言している場合だけ設定ページを表示します。Marketplace またはローカルパッケージからのインストールは checksum で検証され、`TOKENHUB_PLUGIN_DIR` に書き込まれ、ランタイムのホットリロードで有効になります。組み込みプラグインは有効化または無効化できますがアンインストールできません。外部プラグインは更新とアンインストールもできます。
+**Plugin Management** では、組み込みおよびインストール済みプラグインの統一リストを Provider Integration、Request Pipeline、UI Template、Automation ごとに参照できます。各詳細ページはプラグインの用途とパッケージファイルを表示し、実装済みの宣言的設定画面だけに設定ページを表示します。Marketplace またはローカルパッケージからのインストールは checksum で検証され、`TOKENHUB_PLUGIN_DIR` に書き込まれ、ランタイムのホットリロードで評価されます。宣言的な画面パッケージは有効化できます。バックエンドコマンドを持つ有効な外部パッケージは、現行リリースで外部実行を利用できないため **Startup Failed** と表示され、インストール済みで検査可能なまま Provider、Hook、ジョブ、Action を登録しません。組み込みプラグインは有効化または無効化できますがアンインストールできません。外部パッケージは更新とアンインストールもできます。
 
 Provider プラグインは manifest でルーティングと認証情報のポリシーを宣言できます。上流シークレットを Provider 自体ではなく Provider Resource に置くサブスクリプション/アカウント型 Provider では、`capabilities.provider.credentials_scope: resource` を設定します。各ルート試行で利用可能な Provider Resource の選択を必須にする場合は `capabilities.provider.route_requires_resource: true` を設定します。Core は Provider 作成時にこれらのポリシーを永続化し、組み込みサブスクリプション Provider と同じ、欠落、無効化、不健康、クールダウン、リソースグループの各チェックを適用します。`capabilities.provider.reasoning_configurable` を設定すると、Admin の推論パラメーターコントロールを明示的に表示または非表示にできます。このフィールドがない古いプラグインは、引き続きルートプロトコルから推定します。
 
@@ -39,7 +39,7 @@ Provider プラグインは manifest でルーティングと認証情報のポ�
 
 リクエストのセッションアフィニティをサポートするプラグインは、`capabilities.gateway` に `session_affinity` を宣言し、`capabilities.provider.session_affinity_kind` を `provider_session` または `codex_session` に設定できます。Responses、Chat、Anthropic、Gemini、Responses Compact ルートが session header や request metadata から粘着的な Provider Resource binding を生成するとき、Core はこのポリシーを使用します。
 
-プラグインが宣言したバックグラウンドジョブは、バックグラウンドジョブマニフェスト表から手動実行できます。手動実行はスケジュール実行と同じ Core runner を使い、入力 Schema 検証、再試行設定、タイムアウト処理、同時実行制限、最新実行記録、結果のサニタイズ、管理者監査イベントを適用します。TokenHub は実行結果をコンソールへ返す前に、access token、refresh token、API key、パスワード、cookie、秘密鍵などの機密らしいフィールドをマスクします。
+登録済みのプロセス内バックグラウンドジョブは、バックグラウンドジョブマニフェスト表から手動実行できます。手動実行はスケジュール実行と同じ Core runner を使い、入力 Schema 検証、再試行設定、タイムアウト処理、同時実行制限、最新実行記録、結果のサニタイズ、管理者監査イベントを適用します。TokenHub は実行結果をコンソールへ返す前に、access token、refresh token、API key、パスワード、cookie、秘密鍵などの機密らしいフィールドをマスクします。外部実行を利用できない間、外部コマンドジョブは登録されません。
 
 ## Model Playground の診断
 
@@ -161,6 +161,13 @@ Provider モデルの価格は実際の上流コストを表し、内部監査�
 Provider Channels、Model Directory、Routing Policies に設定データがない場合、コンソールには同じ 3 ステップのガイドが表示されます。Provider インベントリの取り込み、組み込みモデルカタログからの外部モデル作成、ルーティング設定の順です。主アクションは常に最初の未完了前提条件へ移動するため、まだ完了できないフォームに管理者を誘導しません。
 
 「公開状態」と「実行時ヘルス」は独立しています。`GET /v1/models` に含まれるには、外部 `Model` が有効、1 つ以上の `ModelRoute` が有効、さらに API Key にモデル許可リストがある場合は対象モデルが許可済みである必要があります。Provider または Provider Resource の一時的な不健全は一覧の所属を変更せず、現在のリクエストを処理できるかどうかだけに影響し、ディレクトリとルーティング診断に別状態として表示されます。外部モデルを非公開にすると `GET /v1/models` から削除されますが、後で再公開できるようマッピングは保持されます。
+
+### GPT-6 Astra
+
+標準モデルディレクトリと組み込み OpenAI Provider インベントリには `gpt-6-astra` が含まれます。モデル作成時に選択し、アクセス権のある上流ルートを設定してください。カタログへの掲載は上流のアクセス権を付与しません。Codex サブスクリプションのインベントリは引き続きアカウントから取得します。推論レベルは `low`、`medium`、`high`、`xhigh`、`max` に対応し、Codex プローブと Anthropic から Codex への変換は `max` を保持します。
+
+テンプレートは OpenAI Standard の 100 万トークン単価を使用します。入力 10 ドル、キャッシュ読み取り 1 ドル、キャッシュ書き込み 12.50 ドル、出力 50 ドルです。入力が 272,000 トークンを超える場合、OpenAI はリクエスト全体の入力とキャッシュ単価を 2 倍、出力単価を 1.5 倍にします。Provider の段階別メタデータにはこの違いを記録していますが、標準テンプレートの固定単価ではコンテキスト別料金や Batch/Flex/Fast の割引・割増は自動適用されません。適用料金を別途設定してください。[OpenAI モデル仕様](https://developers.openai.com/api/docs/models/gpt-6-astra)を参照してください。
+
 
 ## カスタム上流リクエストヘッダー
 

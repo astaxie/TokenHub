@@ -94,10 +94,11 @@ func (r ProviderCommandRunner) ExecuteProviderCommand(ctx context.Context, invoc
 		return err
 	}
 	return runCommandJSON(ctx, CommandSandboxOptions{
-		Dir:         r.Dir,
-		Command:     r.Command,
-		Timeout:     r.Timeout,
-		Permissions: r.permissions,
-		Plane:       CommandPlaneProvider,
+		Dir:                      r.Dir,
+		Command:                  r.Command,
+		Timeout:                  r.Timeout,
+		Permissions:              r.permissions,
+		Plane:                    CommandPlaneProvider,
+		RequireEnforcedIsolation: r.permissions.Enforced,
 	}, invocation, output)
 }

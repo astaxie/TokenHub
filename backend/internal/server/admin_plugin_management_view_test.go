@@ -27,7 +27,7 @@ func TestBuiltInPluginPackagesUseValidV2Manifests(t *testing.T) {
 	}
 }
 
-func TestPluginManagementViewKeepsAvailableProviderSeparateFromInstalled(t *testing.T) {
+func TestPluginManagementViewTreatsBuiltInProviderCatalogAsInstalled(t *testing.T) {
 	catalogFile := filepath.Join("..", "..", "..", "data", "provider-catalog.json")
 	server := NewWithConfig(NewMemoryStore(), Config{
 		AdminToken:          "plugin-management-test-token",
@@ -39,8 +39,8 @@ func TestPluginManagementViewKeepsAvailableProviderSeparateFromInstalled(t *test
 	if plugin.Category != pluginmeta.CategoryProviderIntegration {
 		t.Fatalf("provider category = %q", plugin.Category)
 	}
-	if !plugin.Lifecycle.Available || plugin.Lifecycle.Installed || plugin.Lifecycle.Enabled || plugin.Lifecycle.Configured || plugin.Lifecycle.InUse {
-		t.Fatalf("available provider lifecycle = %+v", plugin.Lifecycle)
+	if !plugin.Lifecycle.Available || !plugin.Lifecycle.Installed || !plugin.Lifecycle.Enabled || plugin.Lifecycle.Configured || plugin.Lifecycle.InUse || !plugin.Lifecycle.SetupRequired {
+		t.Fatalf("built-in provider lifecycle = %+v", plugin.Lifecycle)
 	}
 }
 

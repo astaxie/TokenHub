@@ -4,6 +4,8 @@ Language: [English](../../plugin-development/getting-started.md) | [简体中文
 
 [`plugin-devkit`](../../../plugin-devkit/README.md) を使って Plugin API v2 を学び、検証します。Devkit は互換性のため v1 manifest も認識します。`examples/` は contract fixture であり、本番 integration ではありません。
 
+現行 TokenHub ランタイムでは外部コマンドを実行できません。以下のワークフローは将来のランタイム向け `stdio-json-v1` 契約を開発、テストするためのものです。コマンドを持つパッケージをインストールしても、検証、保存、ファイル検査だけを行い、その後 `failed_startup` ライフサイクル状態を記録します。
+
 ## 1. Devkit を検証する
 
 ```bash
@@ -44,8 +46,8 @@ go run ./cmd/tokenhub-plugin-test background --package /path/to/your-plugin
 go run ./cmd/tokenhub-plugin-test action --package /path/to/your-plugin
 ```
 
-## 4. package を導入する
+## 4. パッケージ化して検査する
 
-実行ファイルを build し、`plugin.yaml` を 1 つだけ含む ZIP と SHA-256 checksum を作成し、**Plugin Management > Browse Plugins > Manual Install** から導入します。成功すると TokenHub は package を `TOKENHUB_PLUGIN_DIR` に書き込み、plugin runtime を再読み込みします。`plugin-devkit/examples/` にあるだけでは読み込まれません。
+実行ファイルを build し、`plugin.yaml` を 1 つだけ含む ZIP と SHA-256 checksum を作成します。**Plugin Management > Browse Plugins > Manual Install** からインストールして、パッケージの受理と manifest、ファイルの検査を確認できます。TokenHub は検証済みパッケージを `TOKENHUB_PLUGIN_DIR` に書き込み、ライフサイクル状態を再読み込みします。`entry.backend.command` を持つパッケージは **Startup Failed** と表示され、Provider、Hook、ジョブ、Action の機能を一切登録しません。コマンドの動作は実際の TokenHub Provider やゲートウェイリクエストではなく、Devkit の契約コマンドで検証してください。`plugin-devkit/examples/` にあるだけでは検出されません。
 
 次に [Manifest リファレンス](manifest-reference.md) と[パッケージと公開](packaging-and-release.md) を参照してください。

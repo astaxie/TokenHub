@@ -13,7 +13,7 @@ import { pluginManagerDisplayState, pluginManagerLifecycleState } from "../domai
 import { localizedPluginName } from "../domain/plugin-localization";
 import { type PluginDetailSection } from "../domain/plugin-detail-route";
 import { type PluginPermissionDiffPreviewPayload } from "../domain/plugin-permission-diff";
-import { languageLocale, tx } from "../i18n/runtime";
+import { formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { PaginationControls, usePagination } from "../shared/pagination";
 import { StatusPill } from "../shared/ui";
@@ -211,7 +211,9 @@ export function PluginsView({
         ...draft,
         busy: false,
         error: "",
-        result: `${pluginID} · ${payload.data?.restart_required ? tx("插件安装完成，重启后生效") : tx("插件安装完成")}`,
+        result: payload.data?.restart_required
+          ? formatTranslationTemplate(tx("{plugin} 安装完成，重启后生效"), { plugin: pluginID })
+          : formatTranslationTemplate(tx("{plugin} 安装完成"), { plugin: pluginID }),
       }));
     } catch (reason) {
       if (isAuthExpiredError(reason)) return;
@@ -271,7 +273,9 @@ export function PluginsView({
         [plugin.id]: {
           busy: false,
           error: "",
-          result: `${label} · ${payload.data?.restart_required ? tx("插件更新完成，重启后生效") : tx("插件更新完成")}`,
+          result: payload.data?.restart_required
+            ? formatTranslationTemplate(tx("插件已更新至 {version}，重启后生效"), { version: label })
+            : formatTranslationTemplate(tx("插件已更新至 {version}"), { version: label }),
         },
       }));
     } catch (reason) {
@@ -305,7 +309,9 @@ export function PluginsView({
         [plugin.id]: {
           busy: false,
           error: "",
-          result: `${pluginID} · ${payload.data?.restart_required ? tx("插件卸载完成，重启后生效") : tx("插件卸载完成")}`,
+          result: payload.data?.restart_required
+            ? formatTranslationTemplate(tx("插件 {plugin} 已卸载，重启后生效"), { plugin: pluginID })
+            : formatTranslationTemplate(tx("插件 {plugin} 已卸载"), { plugin: pluginID }),
         },
       }));
     } catch (reason) {
@@ -340,7 +346,9 @@ export function PluginsView({
         [plugin.id]: {
           busy: false,
           error: "",
-          result: `${rollbackVersion} · ${payload.data?.restart_required ? tx("插件回滚完成，重启后生效") : tx("插件回滚完成")}`,
+          result: payload.data?.restart_required
+            ? formatTranslationTemplate(tx("插件已回滚至 {version}，重启后生效"), { version: rollbackVersion })
+            : formatTranslationTemplate(tx("插件已回滚至 {version}"), { version: rollbackVersion }),
         },
       }));
     } catch (reason) {
@@ -623,7 +631,7 @@ function InstalledPluginTitle({ plugin, onSelect }: { plugin: PluginDescriptor; 
     <div className="plugin-title-cell plugin-installed-title-cell">
       <div className="plugin-installed-title-line" title={plugin.id}>
         {onSelect ? (
-          <button className="plugin-title-link" type="button" onClick={() => onSelect(plugin.id)} aria-label={`${tx("查看插件详情")} ${name}`}>
+          <button className="plugin-title-link" type="button" onClick={() => onSelect(plugin.id)} aria-label={formatTranslationTemplate(tx("查看插件 {name} 的详情"), { name })}>
             {name}
           </button>
         ) : (

@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -63,6 +64,10 @@ async function rewriteRelativeImports(outputText, fileName, rootDir, outputDir, 
 function resolveTypeScriptImport(baseDir, specifier) {
   const resolved = resolve(baseDir, specifier);
   if (extname(resolved)) return resolved;
+  for (const extension of [".ts", ".tsx"]) {
+    const candidate = `${resolved}${extension}`;
+    if (existsSync(candidate)) return candidate;
+  }
   return `${resolved}.ts`;
 }
 
