@@ -256,6 +256,9 @@ func TestCanonicalMarketplaceIndexJSONSortsSetLikeFields(t *testing.T) {
 		PluginFeatureStdioJSONV1,
 		PluginFeatureMarketplaceDistribution,
 	}
+	index.Plugins[0].Releases[0].Artifacts[0].Target = "linux-amd64"
+	index.Plugins[0].Releases[0].Artifacts[0].URL = "https://plugins.example/tokenhub.openai-codex/1.0.0/tokenhub.openai-codex_1.0.0_linux-amd64.zip"
+	index.Plugins[0].Releases[0].Artifacts[0].Signature.URL = "https://plugins.example/tokenhub.openai-codex/1.0.0/tokenhub.openai-codex_1.0.0_linux-amd64.zip.sig"
 	index.Plugins[0].Releases[0].Artifacts = append(index.Plugins[0].Releases[0].Artifacts, MarketplaceArtifact{
 		Target: "any",
 		URL:    "https://plugins.example/tokenhub.openai-codex/1.0.0/tokenhub.openai-codex_1.0.0_any.zip",
@@ -379,14 +382,14 @@ func validMarketplacePluginForTest(id string, origin MarketplaceOrigin, verifica
 			ManifestSHA256:    strings.Repeat("b", 64),
 			PermissionsSHA256: strings.Repeat("c", 64),
 			Artifacts: []MarketplaceArtifact{{
-				Target: "linux-amd64",
-				URL:    "https://plugins.example/" + id + "/1.0.0/" + id + "_1.0.0_linux-amd64.zip",
+				Target: "any",
+				URL:    "https://plugins.example/" + id + "/1.0.0/" + id + "_1.0.0_any.zip",
 				Size:   1024,
 				SHA256: strings.Repeat("d", 64),
 				Signature: MarketplaceArtifactSignature{
 					Algorithm: PluginSignatureAlgorithmEd25519,
 					KeyID:     publisherID + "-2026",
-					URL:       "https://plugins.example/" + id + "/1.0.0/" + id + "_1.0.0_linux-amd64.zip.sig",
+					URL:       "https://plugins.example/" + id + "/1.0.0/" + id + "_1.0.0_any.zip.sig",
 				},
 			}},
 			ReleaseNotes: &MarketplaceObjectRef{

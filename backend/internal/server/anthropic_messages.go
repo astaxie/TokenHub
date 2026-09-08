@@ -1007,6 +1007,10 @@ func (s *Server) handleAnthropicMessagesStream(
 				return struct{}{}, Usage{}, prepareErr
 			}
 			attemptReq := anthropicRequestForRoute(req, prepared)
+			protocol := anthropicGatewayRouteProtocol(s.adapterRegistry, prepared)
+			if transformErr := s.runGatewayAnthropicRequestTransformHooks(ctx, routed.Call, prepared, &attemptReq, protocol); transformErr != nil {
+				return struct{}{}, Usage{}, transformErr
+			}
 			// Defer the response headers until the first byte is written, at which
 			// point prepared is the route that actually served the request.
 			tracker.onFirstWrite = func() {
@@ -1020,7 +1024,6 @@ func (s *Server) handleAnthropicMessagesStream(
 			var streamErr error
 			streamWriter := io.Writer(tracker)
 			var transformer *gatewayStreamTransformWriter
-			protocol := anthropicGatewayRouteProtocol(s.adapterRegistry, prepared)
 			if s.hasGatewayStreamTransformHooksForRoute(prepared, protocol) {
 				transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, protocol, tracker)
 				streamWriter = transformer

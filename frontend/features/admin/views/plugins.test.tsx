@@ -244,7 +244,7 @@ describe("PluginsView", () => {
 
     expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.example/custom");
     data.resources.settings[0].fields = { plugin_marketplace_url: "javascript:alert(1)" };
-    expect(pluginMarketplaceWebsiteURL(data)).toBe("https://plugins.betokenhub.com");
+    expect(pluginMarketplaceWebsiteURL(data)).toBe("https://plugins.thinkinai.xyz");
   });
 });
 

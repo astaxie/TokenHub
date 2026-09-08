@@ -126,6 +126,64 @@ func TestResponsesStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
 	}
 }
 
+func TestResponsesStreamRequestTransformHookRewritesRequestBeforeUpstream(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Stream Request Transform Responses App", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
+		Name:    "stream-request-transform-responses-key",
+		Allowed: []string{"gpt-stream-request-transform-responses"},
+		Status:  StatusActive,
+	}, "thk_stream_request_transform_responses")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{
+		ID: "prv_stream_request_transform_responses", Name: "Stream Request Transform Responses",
+		Type: "stream_request_transform_responses", Status: StatusActive, Healthy: true,
+	})
+	store.AddModel(Model{Name: "gpt-stream-request-transform-responses", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID: "route_stream_request_transform_responses", ModelName: "gpt-stream-request-transform-responses",
+		ProviderID: provider.ID, ProviderModel: "upstream-responses", Status: StatusActive, Priority: 1, Weight: 100,
+	})
+	server := New(store)
+	adapter := &responsesRequestTransformStreamAdapter{}
+	server.adapterRegistry.Register("stream_request_transform_responses", adapter, AdapterCapabilityResponses, AdapterCapabilityResponseStream)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-stream",
+		HookID:        "rewrite-responses-request",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderRequestPatch(t, map[string]any{
+			"model":  "gpt-stream-request-transform-responses",
+			"stream": true,
+			"input":  "[stream-responses-shaped]",
+		}), nil
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	resp := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
+		"model":  "gpt-stream-request-transform-responses",
+		"stream": true,
+		"input":  "original",
+	}, secret)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body)
+	}
+	if adapter.seen.Input != "[stream-responses-shaped]" {
+		t.Fatalf("upstream streaming responses request input = %#v, want stream-responses-shaped", adapter.seen.Input)
+	}
+}
+
 func TestAnthropicNativeStreamTransformHookCanRewriteSSEEventData(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "text/event-stream")
@@ -181,6 +239,66 @@ func TestAnthropicNativeStreamTransformHookCanRewriteSSEEventData(t *testing.T) 
 	}
 	if !strings.Contains(resp.Body.String(), "Plugin stream") || strings.Contains(resp.Body.String(), "Native stream") {
 		t.Fatalf("native Anthropic stream body was not transformed: %s", resp.Body)
+	}
+}
+
+func TestAnthropicNativeStreamRequestTransformHookRewritesRequestBeforeUpstream(t *testing.T) {
+	var upstreamPayload map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&upstreamPayload); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+		}
+		w.Header().Set("content-type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: message_start\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_request_transform\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"upstream-model\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1}}}\n\n")
+		_, _ = io.WriteString(w, "event: message_delta\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":1}}\n\n")
+		_, _ = io.WriteString(w, "event: message_stop\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer upstream.Close()
+
+	server, _, secret := newAnthropicGatewayServer(t, upstream.URL, ProviderAnthropic)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-stream",
+		HookID:        "rewrite-native-anthropic-request",
+		Stage:         pluginmeta.StageRequestTransform,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register request transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderRequestPatch(t, map[string]any{
+			"model":      "claude-tokenhub-test",
+			"max_tokens": 32,
+			"stream":     true,
+			"messages": []any{
+				map[string]any{"role": "user", "content": "[anthropic-stream-shaped]"},
+			},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register request transform handler: %v", err)
+	}
+
+	resp := doAnthropicRequest(t, server.Handler(), "/v1/messages", map[string]any{
+		"model":      "claude-tokenhub-test",
+		"max_tokens": 32,
+		"stream":     true,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "original"},
+		},
+	}, "Bearer "+secret, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	messages, _ := upstreamPayload["messages"].([]any)
+	first, _ := messages[0].(map[string]any)
+	if first["content"] != "[anthropic-stream-shaped]" {
+		t.Fatalf("upstream Anthropic streaming request messages = %#v, want transformed content", messages)
 	}
 }
 
@@ -465,6 +583,15 @@ func (a responsesStreamTransformAdapter) OpenResponses(context.Context, Provider
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}, nil
+}
+
+type responsesRequestTransformStreamAdapter struct {
+	seen ResponsesRequest
+}
+
+func (a *responsesRequestTransformStreamAdapter) OpenResponses(_ context.Context, _ Provider, _ string, request ResponsesRequest, _ http.Header) (*http.Response, error) {
+	a.seen = request
+	return responsesStreamTransformAdapter{}.OpenResponses(context.Background(), Provider{}, "", request, nil)
 }
 
 func streamEventPatchResult(t *testing.T, value any) pluginmeta.GatewayHookResult {

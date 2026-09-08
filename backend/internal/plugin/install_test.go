@@ -107,6 +107,146 @@ func TestRuntimeInstallZipArchiveReplaceControlsUpdates(t *testing.T) {
 	}
 }
 
+func TestRuntimeInstallZipArchiveKeepsDistinctPluginIDsIsolated(t *testing.T) {
+	root := t.TempDir()
+	runtime := NewRuntime(root)
+	colonID := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml":  {Body: minimalPluginManifest("vendor:plugin", "Colon Plugin", "1.0.0"), Mode: 0o644},
+		"identity.txt": {Body: "colon", Mode: 0o644},
+	})
+	hyphenID := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml":  {Body: minimalPluginManifest("vendor-plugin", "Hyphen Plugin", "1.0.0"), Mode: 0o644},
+		"identity.txt": {Body: "hyphen", Mode: 0o644},
+	})
+
+	colonPackage, err := runtime.InstallZipArchive(colonID, InstallOptions{})
+	if err != nil {
+		t.Fatalf("install colon plugin: %v", err)
+	}
+	hyphenPackage, err := runtime.InstallZipArchive(hyphenID, InstallOptions{Replace: true})
+	if err != nil {
+		t.Fatalf("install hyphen plugin: %v", err)
+	}
+	if colonPackage.Dir == hyphenPackage.Dir {
+		t.Fatalf("distinct plugin ids share package directory %q", colonPackage.Dir)
+	}
+	for _, testCase := range []struct {
+		id       string
+		identity string
+	}{
+		{id: "vendor:plugin", identity: "colon"},
+		{id: "vendor-plugin", identity: "hyphen"},
+	} {
+		pkg, found, err := runtime.DescribeInstalledPackage(testCase.id)
+		if err != nil || !found {
+			t.Fatalf("describe %s found=%t err=%v", testCase.id, found, err)
+		}
+		identity, err := os.ReadFile(filepath.Join(pkg.Dir, "identity.txt"))
+		if err != nil || string(identity) != testCase.identity {
+			t.Fatalf("%s identity = %q err=%v, want %q", testCase.id, identity, err, testCase.identity)
+		}
+	}
+}
+
+func TestRuntimeInstallZipArchiveSupportsLongLossyPluginID(t *testing.T) {
+	pluginID := "vendor:" + strings.Repeat("long-plugin-id", 20)
+	archive := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml": {Body: minimalPluginManifest(pluginID, "Long Plugin ID", "1.0.0"), Mode: 0o644},
+	})
+
+	pkg, err := NewRuntime(t.TempDir()).InstallZipArchive(archive, InstallOptions{})
+	if err != nil {
+		t.Fatalf("install long lossy plugin id: %v", err)
+	}
+	if pkg.Manifest.ID != pluginID {
+		t.Fatalf("installed plugin id = %q, want %q", pkg.Manifest.ID, pluginID)
+	}
+}
+
+func TestRuntimeInstallZipArchiveRejectsReplacementAcrossPluginIDs(t *testing.T) {
+	root := t.TempDir()
+	legacyDir := filepath.Join(root, "vendor-plugin")
+	writeManifest(t, legacyDir, minimalPluginManifest("vendor:plugin", "Legacy Colon Plugin", "1.0.0"))
+	if err := os.WriteFile(filepath.Join(legacyDir, "identity.txt"), []byte("colon"), 0o644); err != nil {
+		t.Fatalf("write legacy package identity: %v", err)
+	}
+	hyphenID := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml":  {Body: minimalPluginManifest("vendor-plugin", "Hyphen Plugin", "1.0.0"), Mode: 0o644},
+		"identity.txt": {Body: "hyphen", Mode: 0o644},
+	})
+
+	_, err := NewRuntime(root).InstallZipArchive(hyphenID, InstallOptions{Replace: true})
+	if !errors.Is(err, ErrInstallPackageExists) {
+		t.Fatalf("cross-plugin replacement error = %v, want ErrInstallPackageExists", err)
+	}
+	manifest, readErr := readManifestOnly(legacyDir)
+	if readErr != nil || manifest.ID != "vendor:plugin" {
+		t.Fatalf("preserved legacy package id = %q err=%v, want vendor:plugin", manifest.ID, readErr)
+	}
+	identity, readErr := os.ReadFile(filepath.Join(legacyDir, "identity.txt"))
+	if readErr != nil || string(identity) != "colon" {
+		t.Fatalf("preserved legacy package identity = %q err=%v, want colon", identity, readErr)
+	}
+}
+
+func TestRuntimeInstallZipArchiveReplacesMatchingLegacyPluginDirectory(t *testing.T) {
+	root := t.TempDir()
+	legacyDir := filepath.Join(root, "vendor-plugin")
+	writeManifest(t, legacyDir, minimalPluginManifest("vendor:plugin", "Legacy Colon Plugin", "1.0.0"))
+	if err := os.WriteFile(filepath.Join(legacyDir, "identity.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatalf("write legacy package identity: %v", err)
+	}
+	archive := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml":  {Body: minimalPluginManifest("vendor:plugin", "Colon Plugin", "2.0.0"), Mode: 0o644},
+		"identity.txt": {Body: "new", Mode: 0o644},
+	})
+
+	pkg, err := NewRuntime(root).InstallZipArchive(archive, InstallOptions{Replace: true})
+	if err != nil {
+		t.Fatalf("replace legacy plugin package: %v", err)
+	}
+	if pkg.Dir != legacyDir || pkg.Manifest.Version != "2.0.0" {
+		t.Fatalf("updated package = %+v, want version 2.0.0 in %s", pkg, legacyDir)
+	}
+	identity, err := os.ReadFile(filepath.Join(legacyDir, "identity.txt"))
+	if err != nil || string(identity) != "new" {
+		t.Fatalf("updated legacy package identity = %q err=%v, want new", identity, err)
+	}
+	packages, err := NewRuntime(root).Discover()
+	if err != nil {
+		t.Fatalf("discover updated legacy package: %v", err)
+	}
+	if len(packages) != 1 || packages[0].Manifest.ID != "vendor:plugin" || packages[0].Manifest.Version != "2.0.0" {
+		t.Fatalf("packages after legacy update = %+v, want one updated package", packages)
+	}
+}
+
+func TestRuntimeInstallZipArchiveReplacesSemanticallyInvalidMatchingTarget(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "tokenhub.invalid")
+	writeManifest(t, target, `
+schema_version: 1
+id: tokenhub.invalid
+name: Invalid Plugin
+version: 1.0.0
+tokenhub:
+  plugin_api: unsupported
+kinds:
+  - extension
+`)
+	archive := pluginZip(t, map[string]zipFixtureFile{
+		"plugin.yaml": {Body: minimalPluginManifest("tokenhub.invalid", "Recovered Plugin", "2.0.0"), Mode: 0o644},
+	})
+
+	pkg, err := NewRuntime(root).InstallZipArchive(archive, InstallOptions{Replace: true})
+	if err != nil {
+		t.Fatalf("replace semantically invalid package: %v", err)
+	}
+	if pkg.Manifest.ID != "tokenhub.invalid" || pkg.Manifest.Version != "2.0.0" {
+		t.Fatalf("recovered package = %+v, want valid version 2.0.0", pkg)
+	}
+}
+
 func TestRuntimeInstallZipArchivePreservesRollbackPackage(t *testing.T) {
 	root := t.TempDir()
 	runtime := NewRuntime(root)

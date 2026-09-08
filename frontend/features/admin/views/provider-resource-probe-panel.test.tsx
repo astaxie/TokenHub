@@ -84,6 +84,63 @@ describe("ProviderResourceProbePanel", () => {
     });
     expect(await screen.findByText("pong")).toBeInTheDocument();
   });
+
+  it("localizes probe result labels and formats metrics for the selected language", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      data: {
+        model: "kimi-fast",
+        speed: "fast",
+        upstream_service_tier: "priority",
+        latency_ms: 1234,
+        usage: { prompt_tokens: 1234, completion_tokens: 56, total_tokens: 1290 },
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } })));
+    setActiveLanguage("en");
+
+    render(
+      <ProviderResourceProbePanel
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        accountCatalogErrors={{}}
+        accountCatalogLoading={false}
+        accountResources={[resource()]}
+        pluginActions={[{
+          plugin_id: "tokenhub.provider.kimi",
+          action_id: "kimi.probe.run",
+          kind: "test",
+          capability: "probe.run",
+          subject: "kimi_subscription",
+          metadata: {
+            default_payload_json: `{"model":"kimi-fast"}`,
+            probe_fields: "model,prompt",
+            provider_resource_type: "kimi_subscription_account",
+          },
+        }]}
+        providerType="kimi_subscription"
+        selectedAccountCatalog={{
+          id: "kimi-subscription",
+          name: "Kimi Subscription",
+          display_name: "Kimi Subscription",
+          type: "kimi_subscription",
+          models_count: 1,
+          source: "test",
+          models: [{ id: "kimi-fast", name: "kimi-fast" }],
+        }}
+        selectedAccountID="rsrc_kimi"
+        selectedAccountResources={[resource()]}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Live prompt"), "ping");
+    await user.click(screen.getByRole("button", { name: "Send Live Test" }));
+
+    expect(await screen.findByText("Request Speed")).toBeInTheDocument();
+    expect(screen.getByText("Upstream Service Tier")).toBeInTheDocument();
+    expect(screen.getByText("Duration")).toBeInTheDocument();
+    expect(screen.getByText("1,234 ms")).toBeInTheDocument();
+    expect(screen.getByText("1,234")).toBeInTheDocument();
+    expect(screen.getByText("1,290")).toBeInTheDocument();
+  });
 });
 
 function resource() {

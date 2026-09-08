@@ -73,9 +73,21 @@ func (r Runtime) InstallZipArchive(archive []byte, options InstallOptions) (Pack
 		return Package{}, err
 	}
 	target := filepath.Join(root, packageDirName(manifest.ID))
+	if options.Replace && legacyPackageDirName(manifest.ID) != strings.TrimSpace(manifest.ID) {
+		existingTarget, found, err := existingPackageDirByID(root, manifest.ID)
+		if err != nil {
+			return Package{}, err
+		}
+		if found {
+			target = existingTarget
+		}
+	}
 	rollbackBackupDir := ""
 	if options.PreserveRollback {
 		rollbackBackupDir = rollbackPackageDir(root, manifest.ID)
+	}
+	if err := validateReplacementTarget(target, manifest.ID); err != nil {
+		return Package{}, err
 	}
 	if err := replacePackageDir(packageDir, target, options.Replace, rollbackBackupDir); err != nil {
 		return Package{}, err
@@ -270,8 +282,18 @@ func stagedPackageDir(staging string) (string, Manifest, error) {
 }
 
 func packageDirName(pluginID string) string {
+	pluginID = strings.TrimSpace(pluginID)
+	legacyName := legacyPackageDirName(pluginID)
+	if legacyName == pluginID {
+		return legacyName
+	}
+	sum := sha256.Sum256([]byte(pluginID))
+	return "encoded~" + hex.EncodeToString(sum[:])
+}
+
+func legacyPackageDirName(pluginID string) string {
 	var builder strings.Builder
-	for _, char := range strings.TrimSpace(pluginID) {
+	for _, char := range pluginID {
 		switch {
 		case char >= 'a' && char <= 'z':
 			builder.WriteRune(char)
@@ -290,6 +312,60 @@ func packageDirName(pluginID string) string {
 		return "plugin"
 	}
 	return name
+}
+
+func validateReplacementTarget(target string, pluginID string) error {
+	if _, err := os.Stat(target); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	targetID, err := readManifestIDOnly(target)
+	if err != nil {
+		return err
+	}
+	if targetID != pluginID {
+		return fmt.Errorf("%w: target belongs to plugin %s", ErrInstallPackageExists, targetID)
+	}
+	return nil
+}
+
+func readManifestIDOnly(dir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "plugin.yaml"))
+	if err != nil {
+		return "", err
+	}
+	manifest, err := parseManifestDocument(data)
+	if err != nil {
+		return "", err
+	}
+	pluginID := strings.TrimSpace(manifest.ID)
+	if pluginID == "" {
+		return "", fmt.Errorf("plugin id is required")
+	}
+	return pluginID, nil
+}
+
+func existingPackageDirByID(root string, pluginID string) (string, bool, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return "", false, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		dir := filepath.Join(root, entry.Name())
+		candidateID, err := readManifestIDOnly(dir)
+		if err != nil {
+			continue
+		}
+		if candidateID == pluginID {
+			return dir, true, nil
+		}
+	}
+	return "", false, nil
 }
 
 func replacePackageDir(source string, target string, replace bool, rollbackBackupDir string) error {

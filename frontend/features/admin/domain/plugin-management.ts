@@ -6,7 +6,7 @@ export type PluginExtensionCategoryKey = "provider" | "chain" | "ui" | "jobs";
 
 export type PluginStatusFilterKey = "all" | "enabled" | "disabled" | "setup" | "updates";
 
-export const defaultPluginMarketplaceWebsiteURL = "https://plugins.betokenhub.com";
+export const defaultPluginMarketplaceWebsiteURL = "https://plugins.thinkinai.xyz";
 
 export const pluginManagerTabs: Array<{ key: PluginManagerTabKey; label: string }> = [
   { key: "installed", label: "已安装插件" },

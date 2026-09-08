@@ -22,6 +22,8 @@ export default defineConfig([
   globalIgnores([
     ".next/**",
     ".next-e2e/**",
+    ".next-ui/**",
+    "ui-test-results/**",
     "node_modules/**",
     "next-env.d.ts",
     "playwright-report/**",

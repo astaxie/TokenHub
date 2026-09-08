@@ -69,6 +69,10 @@ npm run test:security-policy
 
 Start the full local development stack from the repository root with `./start.sh`. Start the containerized stack with the commands documented in `docs/deployment.md`.
 
+## UI acceptance fixtures
+
+For page interactions, layouts, or UI fixture changes, read [docs/development/ui-testing.md](docs/development/ui-testing.md). Maintain the relevant named scenarios and run them with `npm run test:ui`; use `npm run capture:ui` to inspect changed screens before handoff. Keep fixtures synthetic and fail on undeclared API requests. UI fixture results establish frontend behavior only; backend contracts, authorization, billing, and persistence remain covered by their existing tests.
+
 ## Optional development workflows
 
 TokenHub provides two optional AI-agent workflows:

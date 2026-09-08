@@ -1,7 +1,7 @@
 import { Send } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { type ApiContext, type PluginActionDescriptor, type ProviderCatalogEntry, type ProviderResource } from "../core/types";
-import { tx } from "../i18n/runtime";
+import { formatLocaleNumber, tx } from "../i18n/runtime";
 import { isAuthExpiredError } from "../resources/payloads";
 import { providerPluginActionDefaultPayload, providerPluginActionForResourceCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { providerResourceAccountLabel, QuotaMetric } from "./provider-account-ui";
@@ -185,10 +185,10 @@ function ProbeResourceResultCard({ error, resource, result }: { error?: string; 
             {result.reasoning_effort ? <QuotaMetric label="推理强度" value={result.reasoning_effort} /> : null}
             {result.speed ? <QuotaMetric label="请求速度" value={result.speed === "fast" ? "快速" : "标准"} /> : null}
             {result.upstream_service_tier ? <QuotaMetric label="上游 Service Tier" value={result.upstream_service_tier || "未返回"} /> : null}
-            {result.latency_ms !== undefined ? <QuotaMetric label="耗时" value={`${result.latency_ms} ms`} /> : null}
-            {result.usage?.prompt_tokens !== undefined ? <QuotaMetric label="输入 Token" value={String(result.usage.prompt_tokens)} /> : null}
-            {result.usage?.completion_tokens !== undefined ? <QuotaMetric label="输出 Token" value={String(result.usage.completion_tokens)} /> : null}
-            {result.usage?.total_tokens !== undefined ? <QuotaMetric label="总 Token" value={String(result.usage.total_tokens)} /> : null}
+            {result.latency_ms !== undefined ? <QuotaMetric label="耗时" value={`${formatLocaleNumber(result.latency_ms)} ms`} /> : null}
+            {result.usage?.prompt_tokens !== undefined ? <QuotaMetric label="输入 Token" value={formatLocaleNumber(result.usage.prompt_tokens)} /> : null}
+            {result.usage?.completion_tokens !== undefined ? <QuotaMetric label="输出 Token" value={formatLocaleNumber(result.usage.completion_tokens)} /> : null}
+            {result.usage?.total_tokens !== undefined ? <QuotaMetric label="总 Token" value={formatLocaleNumber(result.usage.total_tokens)} /> : null}
           </div>
           {result.output_text ? <pre>{result.output_text}</pre> : null}
         </div>

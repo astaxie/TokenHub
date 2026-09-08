@@ -365,38 +365,25 @@ func (r Runtime) RollbackPackage(pluginID string, reason string) (Package, error
 	if err != nil {
 		return Package{}, err
 	}
-	rollbackDir := rollbackPackageDir(root, pluginID)
-	if _, err := os.Stat(filepath.Join(rollbackDir, "plugin.yaml")); err != nil {
+	rollbackDir, err := rollbackPackageDirForRead(root, pluginID)
+	if err != nil {
+		return Package{}, err
+	}
+	pkg, err := readPackage(rollbackDir)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return Package{}, ErrPackageRollbackUnavailable
 		}
 		return Package{}, err
 	}
-	target := filepath.Join(root, packageDirName(pluginID))
-	replacedDir := filepath.Join(root, ".rollback", packageDirName(pluginID)+".replaced")
-	_ = os.RemoveAll(replacedDir)
-	if err := os.MkdirAll(filepath.Dir(replacedDir), 0o755); err != nil {
-		return Package{}, err
-	}
-	if _, err := os.Stat(target); err == nil {
-		if err := os.Rename(target, replacedDir); err != nil {
-			return Package{}, err
-		}
-	} else if !os.IsNotExist(err) {
-		return Package{}, err
-	}
-	if err := os.Rename(rollbackDir, target); err != nil {
-		if _, restoreErr := os.Stat(replacedDir); restoreErr == nil {
-			_ = os.Rename(replacedDir, target)
-		}
-		return Package{}, err
-	}
-	pkg, err := readPackage(target)
-	if err != nil {
-		return Package{}, err
+	if pkg.Manifest.ID != pluginID {
+		return Package{}, fmt.Errorf("rollback package id %s does not match %s", pkg.Manifest.ID, pluginID)
 	}
 	state := pkg.State
 	state.Status = current.State.Status
+	if state.Status == StatusRollbackAvailable {
+		state.Status = StatusEnabled
+	}
 	if state.Status == StatusPendingRestart || state.Status == StatusFailedValidation || state.Status == StatusFailedStartup {
 		state.Status = StatusDisabled
 	}
@@ -411,9 +398,45 @@ func (r Runtime) RollbackPackage(pluginID string, reason string) (Package, error
 	if err != nil {
 		return Package{}, err
 	}
-	if err := writePackageState(target, state); err != nil {
+	preparedRoot, err := os.MkdirTemp(root, ".rollback-prepare-*")
+	if err != nil {
 		return Package{}, err
 	}
+	defer func() { _ = os.RemoveAll(preparedRoot) }()
+	preparedDir := filepath.Join(preparedRoot, "package")
+	if err := copyPluginPackageDir(rollbackDir, preparedDir); err != nil {
+		return Package{}, err
+	}
+	if err := writePackageState(preparedDir, state); err != nil {
+		return Package{}, err
+	}
+	if _, err := readPackage(preparedDir); err != nil {
+		return Package{}, err
+	}
+	target := current.Dir
+	replacedRoot, err := os.MkdirTemp(root, ".rollback-replaced-*")
+	if err != nil {
+		return Package{}, err
+	}
+	defer func() { _ = os.RemoveAll(replacedRoot) }()
+	replacedDir := filepath.Join(replacedRoot, "package")
+	if _, err := os.Stat(target); err == nil {
+		if err := os.Rename(target, replacedDir); err != nil {
+			return Package{}, err
+		}
+	} else if !os.IsNotExist(err) {
+		return Package{}, err
+	}
+	if err := os.Rename(preparedDir, target); err != nil {
+		if _, restoreErr := os.Stat(replacedDir); restoreErr == nil {
+			if restoreErr := os.Rename(replacedDir, target); restoreErr != nil {
+				return Package{}, fmt.Errorf("activate rollback package: %w; restore current package: %v", err, restoreErr)
+			}
+		}
+		return Package{}, err
+	}
+	_ = os.RemoveAll(rollbackDir)
+	pkg.Dir = target
 	pkg.State = state
 	return pkg, nil
 }
@@ -436,7 +459,10 @@ func (r Runtime) DescribeRollbackPackage(pluginID string) (Package, bool, error)
 	if err != nil {
 		return Package{}, false, err
 	}
-	rollbackDir := rollbackPackageDir(root, pluginID)
+	rollbackDir, err := rollbackPackageDirForRead(root, pluginID)
+	if err != nil {
+		return Package{}, false, err
+	}
 	if _, err := os.Stat(filepath.Join(rollbackDir, "plugin.yaml")); err != nil {
 		if os.IsNotExist(err) {
 			return Package{}, false, nil
@@ -522,4 +548,24 @@ func writePackageState(dir string, state PackageState) error {
 
 func rollbackPackageDir(root string, pluginID string) string {
 	return filepath.Join(root, ".rollback", packageDirName(pluginID))
+}
+
+func rollbackPackageDirForRead(root string, pluginID string) (string, error) {
+	target := rollbackPackageDir(root, pluginID)
+	if _, err := os.Stat(filepath.Join(target, "plugin.yaml")); err == nil {
+		return target, nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	existing, found, err := existingPackageDirByID(filepath.Join(root, ".rollback"), pluginID)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return target, nil
+		}
+		return "", err
+	}
+	if found {
+		return existing, nil
+	}
+	return target, nil
 }

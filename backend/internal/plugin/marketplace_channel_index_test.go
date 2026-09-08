@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,7 @@ import (
 func TestMarketplaceDescriptorsFromChannelIndexProjectsReleaseMetadata(t *testing.T) {
 	index := validMarketplaceIndexForTest()
 	release := &index.Plugins[0].Releases[0]
-	release.Artifacts = append(release.Artifacts, MarketplaceArtifact{
+	release.Artifacts[0] = MarketplaceArtifact{
 		Target: "any",
 		URL:    "https://plugins.example/tokenhub.openai-codex/1.0.0/tokenhub.openai-codex_1.0.0_any.zip",
 		Size:   2048,
@@ -22,7 +23,7 @@ func TestMarketplaceDescriptorsFromChannelIndexProjectsReleaseMetadata(t *testin
 			KeyID:     "tokenhub-official-2026",
 			URL:       "https://plugins.example/tokenhub.openai-codex/1.0.0/tokenhub.openai-codex_1.0.0_any.zip.sig",
 		},
-	})
+	}
 
 	descriptors, err := MarketplaceDescriptorsFromChannelIndex(index)
 	if err != nil {
@@ -57,6 +58,50 @@ func TestMarketplaceDescriptorsFromChannelIndexProjectsReleaseMetadata(t *testin
 		len(metadata.ReleaseNotes[0].Items) != 1 ||
 		metadata.ReleaseNotes[0].Items[0] != "sha256:"+strings.Repeat("e", 64) {
 		t.Fatalf("release notes = %+v", metadata.ReleaseNotes)
+	}
+}
+
+func TestMarketplaceDescriptorsFromChannelIndexPrefersExactRuntimeArtifact(t *testing.T) {
+	index := validMarketplaceIndexForTest()
+	release := &index.Plugins[0].Releases[0]
+	artifact := release.Artifacts[0]
+	artifact.Target = "any"
+	artifact.URL = "https://plugins.example/tokenhub.openai-codex/1.0.0/tokenhub.openai-codex_1.0.0_any.zip"
+	artifact.Signature.URL = artifact.URL + ".sig"
+	exact := artifact
+	exact.Target = runtime.GOOS + "-" + runtime.GOARCH
+	exact.URL = "https://plugins.example/tokenhub.openai-codex/1.0.0/tokenhub.openai-codex_1.0.0_" + exact.Target + ".zip"
+	exact.Signature.URL = exact.URL + ".sig"
+	release.Artifacts = []MarketplaceArtifact{artifact, exact}
+
+	descriptors, err := MarketplaceDescriptorsFromChannelIndex(index)
+	if err != nil {
+		t.Fatalf("project channel index: %v", err)
+	}
+	if len(descriptors) != 1 || descriptors[0].Distribution == nil || descriptors[0].Distribution.DownloadURL != exact.URL {
+		t.Fatalf("descriptor distribution = %+v, want exact runtime artifact %s", descriptors, exact.URL)
+	}
+}
+
+func TestMarketplaceDescriptorsFromChannelIndexRejectsOtherPlatformArtifact(t *testing.T) {
+	index := validMarketplaceIndexForTest()
+	release := &index.Plugins[0].Releases[0]
+	otherTarget := "linux-amd64"
+	if runtime.GOOS+"-"+runtime.GOARCH == otherTarget {
+		otherTarget = "darwin-arm64"
+	}
+	release.Artifacts[0].Target = otherTarget
+
+	descriptors, err := MarketplaceDescriptorsFromChannelIndex(index)
+	if err != nil {
+		t.Fatalf("project channel index: %v", err)
+	}
+	if len(descriptors) != 1 || descriptors[0].Distribution != nil {
+		t.Fatalf("descriptor distribution = %+v, want no installable artifact", descriptors)
+	}
+	compatibility := descriptors[0].Marketplace.Compatibility
+	if compatibility == nil || compatibility.Verdict != MarketplaceCompatibilityIncompatible {
+		t.Fatalf("descriptor compatibility = %+v, want incompatible", compatibility)
 	}
 }
 

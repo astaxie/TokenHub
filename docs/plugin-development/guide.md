@@ -571,7 +571,7 @@ Distribution metadata should include:
 - license
 - compatibility metadata
 
-The plugin marketplace URL defaults to `https://plugins.betokenhub.com`. Operators can install a package from that marketplace or from a direct ZIP URL and validate its checksum. TokenHub immediately reevaluates package validation and lifecycle state; this may activate supported declarative contributions, but it does not enable external command execution.
+The plugin marketplace URL defaults to `https://plugins.thinkinai.xyz`. Operators can install a package from that marketplace or from a direct ZIP URL and validate its checksum. TokenHub immediately reevaluates package validation and lifecycle state; this may activate supported declarative contributions, but it does not enable external command execution.
 
 The ZIP may place `plugin.yaml` at the archive root or inside one top-level plugin directory; exactly one manifest must be discoverable. Do not include symlinks. Preserve executable permissions on the runtime entry, and keep `entry.backend.command` relative to the plugin directory.
 

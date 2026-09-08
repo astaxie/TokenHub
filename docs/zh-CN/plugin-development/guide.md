@@ -571,7 +571,7 @@ TokenHub 对 built-in 和 external 插件使用同一种包形态。
 - 许可证
 - 兼容性元数据
 
-插件市场地址默认是 `https://plugins.betokenhub.com`。运维可以从 Marketplace 或直接 ZIP URL 安装插件包并校验 checksum。TokenHub 会立即重新评估插件包的校验与生命周期状态；这可以激活受支持的声明式贡献，但不会启用外部命令执行。
+插件市场地址默认是 `https://plugins.thinkinai.xyz`。运维可以从 Marketplace 或直接 ZIP URL 安装插件包并校验 checksum。TokenHub 会立即重新评估插件包的校验与生命周期状态；这可以激活受支持的声明式贡献，但不会启用外部命令执行。
 
 ZIP 可以把 `plugin.yaml` 放在归档根目录，也可以只包一层插件目录；归档中必须且只能发现一个 `plugin.yaml`。不要包含 symlink。运行入口必须保留可执行权限，并且 `entry.backend.command` 必须是插件目录内的相对路径。
 

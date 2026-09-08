@@ -421,6 +421,9 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 		if omitReasoningEffort {
 			upstreamRequest = withoutResponsesReasoningEffort(upstreamRequest)
 		}
+		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, prepared, &upstreamRequest); transformErr != nil {
+			return nil, Usage{}, transformErr
+		}
 		opened, err := streamAdapter.OpenResponses(ctx, prepared.Provider, prepared.ProviderModel, upstreamRequest, r.Header)
 		if providerResourceModelUnsupportedError(err) {
 			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)

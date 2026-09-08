@@ -571,7 +571,7 @@ distribution metadata には少なくとも次を含めます。
 - license
 - compatibility metadata
 
-plugin marketplace の URL は既定で `https://plugins.betokenhub.com` です。運用者は Marketplace または直接の ZIP URL から package を導入して checksum を確認できます。TokenHub は package の検証結果とライフサイクル状態を直ちに再評価します。この処理で対応済みの宣言的な貢献を有効化できますが、外部コマンド実行は有効になりません。
+plugin marketplace の URL は既定で `https://plugins.thinkinai.xyz` です。運用者は Marketplace または直接の ZIP URL から package を導入して checksum を確認できます。TokenHub は package の検証結果とライフサイクル状態を直ちに再評価します。この処理で対応済みの宣言的な貢献を有効化できますが、外部コマンド実行は有効になりません。
 
 ZIP では `plugin.yaml` をアーカイブルート、または 1 階層だけの plugin directory に置けます。検出される manifest は必ず 1 つだけにしてください。symlink は含めないでください。runtime entrypoint の実行権限を保持し、`entry.backend.command` は plugin directory からの相対パスにします。
 

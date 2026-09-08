@@ -62,7 +62,7 @@ describe("PluginsView marketplace view", () => {
     }];
 
     const { container } = render(<PluginsView api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }} data={data} />);
-    expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.betokenhub.com");
+    expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.thinkinai.xyz");
     expect(screen.getByRole("button", { name: "安装本地插件" })).toBeInTheDocument();
     expect(container.querySelector('[data-plugin-marketplace-block="status"]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-plugin-marketplace-block="compatibility-badges"]')).not.toBeInTheDocument();

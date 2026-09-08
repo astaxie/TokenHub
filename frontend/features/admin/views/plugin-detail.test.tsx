@@ -241,7 +241,7 @@ describe("PluginDetailView", () => {
 
     expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "已安装插件" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.betokenhub.com");
+    expect(screen.getByRole("link", { name: "插件市场" })).toHaveAttribute("href", "https://plugins.thinkinai.xyz");
     expect(container.querySelector(".plugin-detail-surface")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "浏览插件" }));

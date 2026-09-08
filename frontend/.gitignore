@@ -1,3 +1,6 @@
 playwright-report/
 test-results/
 .next-e2e/
+.next-ui/
+ui-test-results/
+.ui-test.lock

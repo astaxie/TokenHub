@@ -90,16 +90,16 @@ func marketplacePreferredArtifact(artifacts []MarketplaceArtifact) (MarketplaceA
 	}
 	currentTarget := runtime.GOOS + "-" + runtime.GOARCH
 	for _, artifact := range artifacts {
-		if strings.TrimSpace(artifact.Target) == "any" {
-			return artifact, true
-		}
-	}
-	for _, artifact := range artifacts {
 		if strings.TrimSpace(artifact.Target) == currentTarget {
 			return artifact, true
 		}
 	}
-	return artifacts[0], true
+	for _, artifact := range artifacts {
+		if strings.TrimSpace(artifact.Target) == "any" {
+			return artifact, true
+		}
+	}
+	return MarketplaceArtifact{}, false
 }
 
 func marketplaceDistributionFromRelease(release MarketplaceIndexRelease, artifact MarketplaceArtifact, ok bool) *Distribution {

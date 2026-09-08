@@ -1016,7 +1016,7 @@ func TestRuntimeRollbackPackageRestoresRollbackPackage(t *testing.T) {
 		Replace:          true,
 		PreserveRollback: true,
 		InitialState: PackageState{
-			Status:          StatusEnabled,
+			Status:          StatusRollbackAvailable,
 			RestartRequired: true,
 			RollbackVersion: "1.0.0",
 		},
@@ -1028,7 +1028,7 @@ func TestRuntimeRollbackPackageRestoresRollbackPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rollback package: %v", err)
 	}
-	if pkg.Manifest.Version != "1.0.0" || pkg.State.AuditEvent != PackageLifecycleRollbackStarted ||
+	if pkg.Manifest.Version != "1.0.0" || pkg.State.Status != StatusEnabled || pkg.State.AuditEvent != PackageLifecycleRollbackStarted ||
 		!pkg.State.RestartRequired || pkg.State.RollbackVersion != "" {
 		t.Fatalf("rollback package = %+v, want restored version with rollback-started state", pkg)
 	}
@@ -1038,6 +1038,74 @@ func TestRuntimeRollbackPackageRestoresRollbackPackage(t *testing.T) {
 	}
 	if string(data) != "old" {
 		t.Fatalf("restored package data = %q, want old", data)
+	}
+}
+
+func TestRuntimeRollbackPackageRestoresLegacyLossyDirectory(t *testing.T) {
+	root := t.TempDir()
+	pluginID := "vendor:plugin"
+	currentDir := filepath.Join(root, "vendor-plugin")
+	writeManifest(t, currentDir, minimalPluginManifest(pluginID, "Legacy Colon Plugin", "2.0.0"))
+	if err := writePackageState(currentDir, PackageState{
+		Status:          StatusRollbackAvailable,
+		RestartRequired: true,
+		RollbackVersion: "1.0.0",
+	}); err != nil {
+		t.Fatalf("write current package state: %v", err)
+	}
+	rollbackDir := filepath.Join(root, ".rollback", "vendor-plugin")
+	writeManifest(t, rollbackDir, minimalPluginManifest(pluginID, "Legacy Colon Plugin", "1.0.0"))
+	if err := writePackageState(rollbackDir, PackageState{Status: StatusEnabled}); err != nil {
+		t.Fatalf("write rollback package state: %v", err)
+	}
+
+	pkg, err := NewRuntime(root).RollbackPackage(pluginID, "operator rollback")
+	if err != nil {
+		t.Fatalf("rollback legacy lossy package: %v", err)
+	}
+	if pkg.Dir != currentDir || pkg.Manifest.Version != "1.0.0" || pkg.State.Status != StatusEnabled {
+		t.Fatalf("rolled back package = %+v, want legacy directory restored to version 1.0.0", pkg)
+	}
+}
+
+func TestRuntimeRollbackPackagePreservesOtherRollbackPackages(t *testing.T) {
+	root := t.TempDir()
+	runtime := NewRuntime(root)
+	installUpdate := func(pluginID string) {
+		t.Helper()
+		first := pluginZip(t, map[string]zipFixtureFile{
+			"plugin.yaml": {Body: minimalPluginManifest(pluginID, pluginID, "1.0.0"), Mode: 0o644},
+		})
+		if _, err := runtime.InstallZipArchive(first, InstallOptions{}); err != nil {
+			t.Fatalf("install %s first package: %v", pluginID, err)
+		}
+		next := pluginZip(t, map[string]zipFixtureFile{
+			"plugin.yaml": {Body: minimalPluginManifest(pluginID, pluginID, "2.0.0"), Mode: 0o644},
+		})
+		if _, err := runtime.InstallZipArchive(next, InstallOptions{
+			Replace:          true,
+			PreserveRollback: true,
+			InitialState: PackageState{
+				Status:          StatusRollbackAvailable,
+				RestartRequired: true,
+				RollbackVersion: "1.0.0",
+			},
+		}); err != nil {
+			t.Fatalf("install %s update package: %v", pluginID, err)
+		}
+	}
+
+	for _, pluginID := range []string{"alpha", "alpha.prepared", "alpha.replaced"} {
+		installUpdate(pluginID)
+	}
+	if _, err := runtime.RollbackPackage("alpha", "operator rollback"); err != nil {
+		t.Fatalf("rollback alpha: %v", err)
+	}
+	for _, pluginID := range []string{"alpha.prepared", "alpha.replaced"} {
+		pkg, found, err := runtime.DescribeRollbackPackage(pluginID)
+		if err != nil || !found || pkg.Manifest.ID != pluginID || pkg.Manifest.Version != "1.0.0" {
+			t.Fatalf("rollback package %s = %+v found=%t err=%v, want preserved version 1.0.0", pluginID, pkg, found, err)
+		}
 	}
 }
 
