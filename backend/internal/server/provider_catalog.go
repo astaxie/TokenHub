@@ -408,6 +408,11 @@ func normalizeProviderCatalogModelWithCategories(raw map[string]any, modelCatego
 			break
 		}
 	}
+	for source, key := range map[string]string{"input": "input_price_configured", "output": "output_price_configured", "cache_read": "cache_read_price_configured"} {
+		if catalogNumberFieldConfigured(cost, source) {
+			metadata[key] = "true"
+		}
+	}
 	model := ProviderCatalogModel{
 		ID:                        id,
 		Name:                      name,

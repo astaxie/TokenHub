@@ -12,6 +12,9 @@ const (
 )
 
 type providerModelPatchRequest struct {
+	InputPriceConfigured     *bool `json:"input_price_configured"`
+	OutputPriceConfigured    *bool `json:"output_price_configured"`
+	CacheReadPriceConfigured *bool `json:"cache_read_price_configured"`
 	ProviderModel
 	InputPriceUSDPer1M          *float64 `json:"input_price_usd_per_1m"`
 	CacheReadPriceUSDPer1M      *float64 `json:"cache_read_price_usd_per_1m"`
@@ -78,6 +81,7 @@ func (patch providerModelPatchRequest) withCurrentCosts(current ProviderModel) P
 	if patch.ProviderModel.PricingPeriods != nil {
 		model.PricingPeriods = patch.ProviderModel.PricingPeriods
 	}
+	applyProviderPricePresence(&model, current, patch)
 	return model
 }
 

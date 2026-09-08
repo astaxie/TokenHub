@@ -21,11 +21,16 @@ func anthropicUsageFromRawMap(raw map[string]any) Usage {
 		CompletionTokens:        int64FromAny(raw["output_tokens"]),
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	usage.Evidence = captureAnthropicUsageEvidence(raw, usage)
 	return usage
 }
 
 // anthropicUsage reads the snapshot off a complete non-streaming response body.
 func anthropicUsage(body map[string]any) Usage {
 	usageMap, _ := body["usage"].(map[string]any)
-	return anthropicUsageFromRawMap(usageMap)
+	usage := anthropicUsageFromRawMap(usageMap)
+	if id, ok := body["id"].(string); ok {
+		usage.Evidence.ResponseID = boundedUsageID(id)
+	}
+	return usage
 }

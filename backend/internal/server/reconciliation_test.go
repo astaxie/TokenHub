@@ -58,6 +58,11 @@ func TestReconciliationRunClassifiesLocksAndExportsSafely(t *testing.T) {
 	}
 
 	detail := getReconciliationTestDetail(t, app, run.ID)
+	semantic := doJSON(t, app, http.MethodGet, "/api/admin/billing/reconciliations/"+run.ID, nil, "")
+	if !strings.Contains(semantic.Body, `"comparison_scope":"amount_only"`) || !strings.Contains(semantic.Body, `"token_comparison":"not_performed"`) {
+		t.Fatalf("reconciliation meaning is ambiguous: %s", semantic.Body)
+	}
+
 	if len(detail.Items) != 4 {
 		t.Fatalf("expected four reconciliation buckets, got %#v", detail.Items)
 	}
@@ -356,6 +361,15 @@ func createReconciliationUsageRecords(t *testing.T, store *GormStore, records []
 	if err := store.db.Create(&records).Error; err != nil {
 		t.Fatal(err)
 	}
+	for _, record := range records {
+		if record.RequestID != "" {
+			log := RequestLog{ID: NewID("log"), RequestID: record.RequestID, UpstreamRequestID: record.RequestID, ProviderModel: record.ModelName, CreatedAt: record.CreatedAt}
+			if err := store.db.Create(&log).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
 }
 
 func runReconciliationTestRule(t *testing.T, app http.Handler, ruleID string, from time.Time, to time.Time) ReconciliationRun {
@@ -390,5 +404,30 @@ func assertReconciliationCounts(t *testing.T, run ReconciliationRun, matched int
 	t.Helper()
 	if run.MatchedCount != matched || run.ProviderOnlyCount != providerOnly || run.TokenHubOnlyCount != tokenHubOnly || run.AmountMismatchCount != mismatch {
 		t.Fatalf("unexpected reconciliation counts: %#v", run)
+	}
+}
+
+func TestReconciliationDoesNotTreatLocalIDAsSupplierIdentity(t *testing.T) {
+	store := NewMemoryStore()
+	defer func() { _ = store.Close() }()
+	connector := createReconciliationTestConnector(t, store, "missing-supplier-id")
+	at := time.Now().UTC().Add(-time.Hour)
+	createReconciliationBillingRecords(t, store, []BillingRecord{{ID: "supplier-line", ConnectorID: connector.ID, ExternalID: "supplier-line", SourceType: BillingConnectorOneAPI, Currency: "USD", Model: "m", NetAmount: "1", ExternalRequestID: "local-only", UsageStartAt: at}})
+	// No supplier invocation ID was recorded for this historical local request.
+	if err := store.db.Create(&UsageRecord{ID: "local-usage", RequestID: "local-only", ProviderID: BillingConnectorOneAPI, ModelName: "m", ProviderCostUSD: 1, CreatedAt: at}).Error; err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	created := doJSON(t, app, http.MethodPost, "/api/admin/billing/reconciliation-rules", map[string]any{"name": "identity check", "connector_id": connector.ID, "granularity": "detail", "match_dimensions": []string{"request_id", "currency"}, "amount_tolerance": "0", "ratio_tolerance": "0", "usd_exchange_rate": "1", "timezone": "UTC", "currency": "USD"}, "")
+	if created.Code != 201 {
+		t.Fatalf("rule: %d %s", created.Code, created.Body)
+	}
+	var rule ReconciliationRule
+	if err := json.Unmarshal([]byte(created.Body), &rule); err != nil {
+		t.Fatal(err)
+	}
+	run := runReconciliationTestRule(t, app, rule.ID, at.Add(-time.Minute), at.Add(time.Minute))
+	if run.MatchedCount != 0 || run.ProviderOnlyCount != 1 || run.TokenHubOnlyCount != 1 {
+		t.Fatalf("local ID falsely matched supplier: %+v", run)
 	}
 }

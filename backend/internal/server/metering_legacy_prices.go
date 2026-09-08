@@ -17,13 +17,13 @@ func providerLegacyMeteringRates(original, resolved Model, rates metering.Rates,
 			break
 		}
 	}
-	if resolved.InputPriceUSDPer1M == 0 && period.InputPriceUSDPer1M == nil {
+	if resolved.InputPriceUSDPer1M == 0 && period.InputPriceUSDPer1M == nil && original.Metadata["input_price_configured"] != "true" {
 		rates.Input = ""
 	}
-	if resolved.OutputPriceUSDPer1M == 0 && period.OutputPriceUSDPer1M == nil {
+	if resolved.OutputPriceUSDPer1M == 0 && period.OutputPriceUSDPer1M == nil && original.Metadata["output_price_configured"] != "true" {
 		rates.Output = ""
 	}
-	if resolved.CacheReadPriceUSDPer1M == 0 && period.CacheReadPriceUSDPer1M == nil {
+	if resolved.CacheReadPriceUSDPer1M == 0 && period.CacheReadPriceUSDPer1M == nil && original.Metadata[cacheReadConfiguredKey] != "true" {
 		rates.CacheRead = ""
 	}
 	if !resolved.CacheWritePriceConfigured {

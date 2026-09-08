@@ -256,7 +256,7 @@ func (s *Server) writeReconciliationCSV(w http.ResponseWriter, run Reconciliatio
 	writer := csv.NewWriter(w)
 	_ = writer.Write([]string{
 		"status", "bucket_start", "bucket_end", "request_id", "provider", "resource_account", "model", "project", "currency",
-		"provider_amount", "tokenhub_amount", "difference_amount", "difference_ratio", "possible_reason", "provider_record_ids", "tokenhub_record_ids",
+		"provider_amount", "tokenhub_amount", "difference_amount", "difference_ratio", "possible_reason", "provider_record_ids", "tokenhub_record_ids", "comparison_scope", "token_comparison",
 	})
 	for afterID := ""; ; {
 		items := s.store.ListReconciliationItemBatch(run.ID, status, afterID, status == "", 500)
@@ -269,7 +269,7 @@ func (s *Server) writeReconciliationCSV(w http.ResponseWriter, run Reconciliatio
 				safeReconciliationCSVCell(item.RequestID), safeReconciliationCSVCell(item.Provider), safeReconciliationCSVCell(item.ResourceAccountMasked),
 				safeReconciliationCSVCell(item.Model), safeReconciliationCSVCell(item.Project), safeReconciliationCSVCell(item.Currency),
 				item.ProviderAmount, item.TokenHubAmount, item.DifferenceAmount, item.DifferenceRatio, safeReconciliationCSVCell(item.PossibleReason),
-				safeReconciliationCSVCell(strings.Join(item.ProviderRecordIDs, "|")), safeReconciliationCSVCell(strings.Join(item.TokenHubRecordIDs, "|")),
+				safeReconciliationCSVCell(strings.Join(item.ProviderRecordIDs, "|")), safeReconciliationCSVCell(strings.Join(item.TokenHubRecordIDs, "|")), "amount_only", "not_performed",
 			})
 		}
 		afterID = items[len(items)-1].ID

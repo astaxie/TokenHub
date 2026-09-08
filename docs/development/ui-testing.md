@@ -39,7 +39,7 @@ These tests establish UI behavior only. A sample response containing an amount d
 
 For an affected page, cover its normal path and relevant empty, loading, failure, permission or long-content states. Prefer role/label selectors; scope repeated controls to their section. Assert the state before capturing it. Control loading with a releasable response instead of a timing sleep. Never recreate the production billing algorithm inside a fixture.
 
-Initial coverage includes customer/provider/margin statements, unknown versus zero amounts, empty/loading/error states, CSV from the displayed snapshot, filter invalidation, mobile actions, and the base branch's pricing preview/shadow-publication flow. The gallery adapts the earlier hybrid billing screenshot experiment; its scenarios target the checked-out product, not unmerged pricing redesigns.
+Initial coverage includes customer/provider/margin statements, unknown versus zero amounts, empty/loading/error states, CSV from the displayed snapshot, filter invalidation, mobile actions, and Model Directory price confirmation, cancellation, applied-change readback after reload, and advanced simulation input validation. Mock writes and later reads share test-local state; the retired shadow-card publication workflow is not restored.
 
 ## Review screenshots
 

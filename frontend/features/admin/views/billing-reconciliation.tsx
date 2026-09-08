@@ -95,7 +95,7 @@ export function ReconciliationManager({ api, data, loading, onReload }: { api: A
 
   return (
     <>
-      <DataSection title="成本对账规则">
+      <DataSection title="成本对账规则"><p className="billing-hint">{tx("当前核对金额与容差，不代表各项 Token 已核实；上游缺少明细或调用标识时不能逐请求比较。")}</p>
         <div className="billing-connector-toolbar">
           <div className="billing-connector-status" aria-live="polite">
             {error ? <span className="billing-inline-error">{error}</span> : null}
@@ -185,7 +185,7 @@ function ReconciliationDetailPanel({ detail, loading, onClose, onPage }: { detai
     <DataSection title="对账差异明细">
       <div className="reconciliation-detail-head">
         <div className="reconciliation-summary-grid">
-          <ReconciliationMetric label="已匹配" value={run.matched_count} />
+          <ReconciliationMetric label="金额已匹配" value={run.matched_count} />
           <ReconciliationMetric label="仅 Provider 存在" value={run.provider_only_count} />
           <ReconciliationMetric label="仅 TokenHub 存在" value={run.tokenhub_only_count} />
           <ReconciliationMetric label="金额不一致" value={run.amount_mismatch_count} />
@@ -196,7 +196,7 @@ function ReconciliationDetailPanel({ detail, loading, onClose, onPage }: { detai
       <SimpleTable
         columns={["结果", "时间桶", "匹配维度", "Provider 金额", "TokenHub 金额", "差异 / 比例", "可能原因", "源记录"]}
         rows={detail.items.map((item) => [
-          <StatusPill key={`${item.id}:status`} status={item.status} />,
+          <StatusPill key={`${item.id}:status`} status={item.status} label={item.status === "matched" ? tx("金额已匹配") : undefined} />,
           formatReconciliationDate(item.bucket_start),
           reconciliationDimensionSummary(item),
           formatReconciliationMoney(item.provider_amount, item.currency),
@@ -390,7 +390,7 @@ function reconciliationReasonLabel(value: string) {
   return tx(({
     within_tolerance: "在容差范围内", provider_amount_higher: "Provider 金额更高", tokenhub_amount_higher: "TokenHub 金额更高",
     missing_tokenhub_usage_or_late_data: "TokenHub 漏记或迟到数据", provider_bill_delayed_or_unmapped: "Provider 账单延迟或未映射",
-    currency_mismatch_or_missing_fx: "币种不一致或缺少汇率", outside_time_window: "超出匹配时间窗口",
+    missing_supplier_request_id: "缺少可比较的供应商调用标识", currency_mismatch_or_missing_fx: "币种不一致或缺少汇率", outside_time_window: "超出匹配时间窗口",
   } as Record<string, string>)[value] || value);
 }
 

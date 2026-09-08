@@ -1,7 +1,7 @@
 import type { AdminUser, Model, Project, Summary, UsageBreakdown } from "../../../features/admin/core/types";
 
 export const fixedTime = "2026-09-07T02:00:00.000Z";
-export const model = { id: "mdl_ui", name: "ui-review-model", family: "test", modality: "chat", status: "active", input_price_usd_per_1m: 2, output_price_usd_per_1m: 6 } satisfies Model;
+export const model = { id: "mdl_ui", name: "ui-review-model", family: "test", modality: "chat", status: "active", input_price_usd_per_1m: 2, output_price_usd_per_1m: 6, metadata: { directory_role: "external" } } satisfies Model;
 export const project = { id: "prj_ui", name: "UI Review Project", status: "active" } satisfies Project;
 export const user = { id: "usr_ui", username: "ui-admin", name: "UI Review Admin", email: "ui-admin@example.test", role: "admin", status: "active" } satisfies AdminUser;
 const summary = { request_count: 3, input_tokens: 1000000, output_tokens: 10000, total_tokens: 1010000, estimated_cost_usd: 1.08, errors: 0 } satisfies Summary;

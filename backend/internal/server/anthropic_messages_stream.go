@@ -25,7 +25,8 @@ func (s *Server) streamNativeAnthropicMessages(
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyNativeAnthropicStreamForProvider(writer, resp.Body, req.Model, route.Provider)
+	usage, err := copyNativeAnthropicStreamForProvider(writer, resp.Body, req.Model, route.Provider)
+	return withUsageResponseMetadata(usage, resp.Header, route.Provider), err
 }
 
 // copyNativeAnthropicStream forwards an upstream Anthropic event stream to the
@@ -35,11 +36,11 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 	return copyNativeAnthropicStreamForProvider(writer, body, model, Provider{})
 }
 
-func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, model string, provider Provider) (Usage, error) {
+func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, model string, provider Provider) (usage Usage, resultErr error) {
 	events := newSSEDecoder(body)
-	var usage Usage
 	sawEvent := false
 	sawMessageStop := false
+	defer func() { usage = markUsageStream(usage, sawMessageStop && resultErr == nil) }()
 	for {
 		event, err := events.Next()
 		if err == io.EOF {
@@ -77,6 +78,10 @@ func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, mode
 				message["model"] = model
 				if eventUsage, ok := message["usage"].(map[string]any); ok {
 					usage = mergeAnthropicStreamUsage(usage, eventUsage)
+				}
+				if id, ok := message["id"].(string); ok {
+					usage.Evidence = cloneUsageEvidence(evidenceForUsage(usage))
+					usage.Evidence.ResponseID = boundedUsageID(id)
 				}
 			}
 			if eventUsage, ok := payload["usage"].(map[string]any); ok {
@@ -186,17 +191,30 @@ func anthropicErrorStatus(errorType string) int {
 // restates all of them. The output count is merged on its own.
 func mergeAnthropicStreamUsage(current Usage, raw map[string]any) Usage {
 	snapshot := anthropicUsageFromRawMap(raw)
-	if snapshot.PromptTokens > 0 || snapshot.CachedInputTokens > 0 || snapshot.CacheWriteInputTokens > 0 {
+	evidence := cloneUsageEvidence(current.Evidence)
+	if evidence == nil {
+		evidence = captureAnthropicUsageEvidence(nil, Usage{})
+	}
+	inputPresent := raw["input_tokens"] != nil || raw["cache_read_input_tokens"] != nil || raw["cache_creation_input_tokens"] != nil
+	if inputPresent {
 		current.PromptTokens = snapshot.PromptTokens
 		current.CachedInputTokens = snapshot.CachedInputTokens
 		current.CacheWriteInputTokens = snapshot.CacheWriteInputTokens
 		current.CacheWrite5mInputTokens = snapshot.CacheWrite5mInputTokens
 		current.CacheWrite1hInputTokens = snapshot.CacheWrite1hInputTokens
+		for _, key := range []string{"input_uncached", "input_total", "cache_read", "cache_write_total", "cache_write_5m", "cache_write_1h"} {
+			evidence.Fields[key] = snapshot.Evidence.Fields[key]
+		}
 	}
-	if snapshot.CompletionTokens > 0 {
+	if raw["output_tokens"] != nil {
 		current.CompletionTokens = snapshot.CompletionTokens
+		evidence.Fields["output"] = snapshot.Evidence.Fields["output"]
 	}
-	current.TotalTokens = current.PromptTokens + current.CompletionTokens
+	current.TotalTokens = saturatingAddNonNegative(current.PromptTokens, current.CompletionTokens)
+	if evidence.has("input_total") && evidence.has("output") {
+		evidence.Fields["total"] = derivedEvidence(current.TotalTokens)
+	}
+	current.Evidence = evidence
 	return current
 }
 
@@ -224,14 +242,20 @@ func (s *Server) streamOpenAIAsAnthropic(
 	if err := converter.closeStream(); err != nil {
 		return usage, err
 	}
-	if usage.TotalTokens == 0 {
+	if usage.TotalTokens == 0 && !usageReports(usage, "input_total") && !usageReports(usage, "output") {
+		previousEvidence := usage.Evidence
 		usage = converter.usage
+		if usage.Evidence == nil {
+			usage.Evidence = cloneUsageEvidence(previousEvidence)
+		}
 	}
-	if usage.PromptTokens == 0 {
+	if usage.PromptTokens == 0 && !usageReports(usage, "input_total") {
 		usage.PromptTokens = estimateAnthropicInputTokens(req.Raw)
+		recordUsageEstimate(&usage, "input_total", usage.PromptTokens)
 	}
-	if usage.CompletionTokens == 0 {
+	if usage.CompletionTokens == 0 && !usageReports(usage, "output") {
 		usage.CompletionTokens = EstimateTextTokens(converter.reasoning.String() + converter.outputText.String() + converter.toolArgumentText())
+		recordUsageEstimate(&usage, "output", usage.CompletionTokens)
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	if err := converter.Finalize(usage); err != nil {

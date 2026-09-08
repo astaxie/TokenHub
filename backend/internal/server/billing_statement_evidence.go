@@ -172,11 +172,15 @@ func buildStatement(tx *gorm.DB, out *statementResult) error {
 	if err != nil {
 		return err
 	}
+	invocationIDs, err := statementLegacyInvocationIDs(tx, legacy)
+	if err != nil {
+		return err
+	}
 	for _, row := range legacy {
 		if item := evidence[row.RequestID]; item != nil && item.Admission != nil {
 			continue
 		}
-		appendLegacyStatement(out, row, legacyModels[row.RequestID])
+		appendLegacyStatement(out, row, legacyModels[row.RequestID], invocationIDs[row.RequestID])
 	}
 	sort.Slice(out.Rows, func(i, j int) bool {
 		if out.Rows[i].At.Equal(out.Rows[j].At) {
@@ -189,12 +193,13 @@ func buildStatement(tx *gorm.DB, out *statementResult) error {
 
 func appendTenantStatement(out *statementResult, item *statementEvidence, model string) {
 	a := item.Admission
-	row := statementRow{ID: a.RequestID + ":tenant", RequestID: a.RequestID, Source: "tenant", At: item.At, Timezone: out.Query.Timezone, ProjectID: a.ProjectID, TeamID: a.TeamID, APIKeyID: a.APIKeyID, Model: model, Currency: "USD", Status: "pending", Reason: "settlement_missing"}
+	row := statementRow{ID: a.RequestID + ":tenant", RequestID: a.RequestID, Source: "tenant", At: item.At, Timezone: out.Query.Timezone, ProjectID: a.ProjectID, ProjectName: a.ProjectName, UserID: a.UserID, TenantModel: model, TeamID: a.TeamID, APIKeyID: a.APIKeyID, Model: model, Currency: "USD", Status: "pending", Reason: "settlement_missing"}
 	if item.Settlement != nil {
 		t := item.Settlement.Tenant
 		row.Amount = statementString(t.LegacyUSD)
 		row.USD = row.Amount
 		row.Units = t.Units
+		row.Evidence = t.Evidence
 		row.Status = "legacy_incomplete"
 		row.Reason = "historical_price_incomplete"
 		// Shadow rate cards do not change the actual charged amount. Only attach
@@ -233,17 +238,20 @@ func appendAttemptStatements(out *statementResult, item *statementEvidence, mode
 		if q.Side == "provider" && q.Model != "" && q.Model != attempt.UpstreamModel {
 			continue
 		}
-		row := statementRow{ID: attempt.ID, RequestID: a.RequestID, Source: "provider_estimate", At: attempt.At, Timezone: q.Timezone, ProjectID: a.ProjectID, TeamID: a.TeamID, APIKeyID: a.APIKeyID, Model: attempt.UpstreamModel, ProviderID: attempt.ProviderID, ResourceID: attempt.ResourceID, Currency: "USD", Status: "pending", Reason: "possibly_sent", Price: attempt.Price}
+		row := statementRow{ID: attempt.ID, RequestID: a.RequestID, Source: "provider_estimate", At: attempt.At, Timezone: q.Timezone, ProjectID: a.ProjectID, ProjectName: a.ProjectName, UserID: a.UserID, TenantModel: model, TeamID: a.TeamID, APIKeyID: a.APIKeyID, Model: attempt.UpstreamModel, ProviderID: attempt.ProviderID, ProviderName: attempt.ProviderName, ResourceID: attempt.ResourceID, ResourceName: attempt.ResourceName, Currency: "USD", Status: "pending", Reason: "possibly_sent", Price: attempt.Price}
 		if attempt.Price != nil {
 			row.Currency = attempt.Price.Currency
 		}
 		if item.Settlement != nil {
 			for _, completion := range item.Settlement.Attempts {
 				if completion.ID == attempt.ID {
+					row.ExternalRequestID = completion.UpstreamRequestID
+					row.AttemptFinished = !completion.EndedAt.IsZero()
 					priced := completion.Charge
 					row.Status = priced.Status
 					row.Reason = priced.Reason
 					row.Units = priced.Units
+					row.Evidence = priced.Evidence
 					if priced.Charge != nil {
 						row.Amount = statementString(priced.Charge.Amount)
 						row.Currency = priced.Charge.Currency
@@ -265,7 +273,7 @@ func appendAttemptStatements(out *statementResult, item *statementEvidence, mode
 	}
 }
 
-func appendLegacyStatement(out *statementResult, u UsageRecord, upstreamModel string) {
+func appendLegacyStatement(out *statementResult, u UsageRecord, upstreamModel string, invocationID ...string) {
 	q := out.Query
 	matchQuery := q
 	if q.Side == "provider" {
@@ -274,7 +282,10 @@ func appendLegacyStatement(out *statementResult, u UsageRecord, upstreamModel st
 	if !statementMatches(matchQuery, u.ProjectID, u.ModelName) {
 		return
 	}
-	base := statementRow{ID: u.ID, RequestID: u.RequestID, At: u.CreatedAt, Timezone: q.Timezone, ProjectID: u.ProjectID, APIKeyID: u.APIKeyID, Model: u.ModelName, Currency: "USD", Status: "legacy_incomplete", Reason: "historical_evidence_incomplete", Units: metering.Units{Input: u.InputTokens - u.CachedInputTokens - u.CacheWriteTokens, CacheRead: u.CachedInputTokens, CacheWrite: u.CacheWriteTokens - u.CacheWrite5mTokens - u.CacheWrite1hTokens, CacheWrite5m: u.CacheWrite5mTokens, CacheWrite1h: u.CacheWrite1hTokens, Output: u.OutputTokens}}
+	base := statementRow{ID: u.ID, RequestID: u.RequestID, At: u.CreatedAt, Timezone: q.Timezone, ProjectID: u.ProjectID, UserID: u.AttributedUserID, TenantModel: u.ModelName, APIKeyID: u.APIKeyID, Model: u.ModelName, Currency: "USD", Status: "legacy_incomplete", Reason: "historical_evidence_incomplete", Units: metering.Units{Input: u.InputTokens - u.CachedInputTokens - u.CacheWriteTokens, CacheRead: u.CachedInputTokens, CacheWrite: u.CacheWriteTokens - u.CacheWrite5mTokens - u.CacheWrite1hTokens, CacheWrite5m: u.CacheWrite5mTokens, CacheWrite1h: u.CacheWrite1hTokens, Output: u.OutputTokens}}
+	if len(invocationID) > 0 {
+		base.ExternalRequestID = invocationID[0]
+	}
 	if q.Side != "provider" {
 		row := base
 		row.Source = "tenant"

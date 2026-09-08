@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -70,25 +69,4 @@ func saveMeteringEntry(tx *gorm.DB, id, kind, scope string, value any, at time.T
 		return err
 	}
 	return tx.Create(&meteringEntry{ID: id, Kind: kind, Scope: scope, Payload: payload, CreatedAt: at}).Error
-}
-func loadMeteringCard(tx *gorm.DB, kind, target string, at time.Time) (*meteringRateCard, error) {
-	var rows []meteringEntry
-	if err := tx.Where("kind = ? AND scope = ?", "rate_card", kind+":"+target).Order("created_at DESC, id DESC").Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	var selected *meteringRateCard
-	for _, row := range rows {
-		var card meteringRateCard
-		if err := json.Unmarshal([]byte(row.Payload), &card); err != nil {
-			return nil, err
-		}
-		if at.Before(card.EffectiveFrom) {
-			continue
-		}
-		if selected == nil || card.EffectiveFrom.After(selected.EffectiveFrom) || card.EffectiveFrom.Equal(selected.EffectiveFrom) && card.Revision > selected.Revision {
-			copy := card
-			selected = &copy
-		}
-	}
-	return selected, nil
 }

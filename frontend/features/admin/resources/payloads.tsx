@@ -277,6 +277,16 @@ export function modelPayload(values: Record<string, string>, existingMetadata?: 
   return payload;
 }
 
+// Existing-model metadata edits must not carry stale pricing back to the server.
+export function modelMetadataEditPayload(values: Record<string, string>, existingMetadata?: Record<string, string>) {
+  const payload = modelPayload(values, existingMetadata);
+  for (const key of Object.keys(payload)) if (key.includes("price_") || key === "pricing_periods" || key === "modality") delete payload[key];
+  const metadata = { ...(payload.metadata as Record<string, string> | undefined) };
+  for (const key of ["cache_read_price_configured", "cache_read_estimate_ratio", "cached_input_price_usd_per_1m", "cache_read_price_usd_per_1m", "cached_read_price_usd_per_1m"]) delete metadata[key];
+  payload.metadata = metadata;
+  return payload;
+}
+
 export function routePayload(values: Record<string, string>) {
   const payload: Record<string, unknown> = {
     model_name: values.model_name,

@@ -1,52 +1,56 @@
-# Time and cache pricing
+# Model pricing and platform statements
 
-## Current behavior
+## Model price changes
 
-Model and Provider model pricing periods support `weekdays` (0 = Sunday, 6 = Saturday), IANA timezones, RFC3339 effective ranges, and overrides for input, cache read, generic/5-minute/1-hour cache writes, and output. Omitted weekdays mean every day. Overnight windows belong to their starting weekday. Boundaries include the start and exclude the end; identical start/end clocks mean the entire selected day.
+Platform administrators open **Model Directory → Pricing and margin** for a token-priced chat or embedding model. Edit global input, output, cache prices and time windows directly. Historical analysis and the advanced single-request simulator are optional; neither is required to change a price.
 
-Configure no more than 64 periods. Overlapping weekly windows are rejected when their effective ranges overlap. Such ranges must use one timezone. Defaults cover times outside the configured windows. An omitted period price inherits its default; an explicit zero is free.
+1. Edit the prices. The ordinary model metadata editor does not overwrite token prices.
+2. Optionally expand historical analysis, select dates, timezone, projects and cost basis. Project filters select evidence only: the saved model price remains global.
+3. Select **Review and save**, review old/new prices and any loss, unknown-evidence or missing-analysis warnings, and acknowledge the impact and risks.
+4. Confirm to apply. Cancel writes nothing. New requests use the change immediately; in-flight requests retain their admission-time configuration.
 
-The Model Directory cache-read field now preserves explicit zero through save and reload. HTTP model PATCH preserves omitted prices. Use `cache_read_price_usd_per_1m: null` to restore legacy estimation, or `metadata.cache_read_price_configured: "false"` with a zero price. Updating unrelated metadata preserves the configured-free state. Cache-write PATCH accepts zero as free and null as inherited. Token quotas and TPM continue to count actual tokens independently of price discounts.
+Analysis defaults to the previous 30 complete calendar days, excluding today, with a 7-day shortcut and custom ranges up to 93 days. Dates use the selected IANA timezone. Requests belong to their admission date; all recorded attempts, including retries across midnight, are evaluated at a fixed analysis cutoff. Above 10000 evidence rows the request fails and requires a narrower range; it never samples or truncates silently.
 
-Tenant legacy pricing remains tied to admission. Routed Provider costs capture the Provider model configuration before each attempt, so an in-flight edit cannot change that attempt's cost. Missing Provider prices remain explicit in the new evidence instead of inventing a known cost.
+The result separates recorded historical charges, current-price replay and candidate-price replay. Historical cost uses saved attempt estimates. Current-procurement scenarios reprice those same attempts at their original times, routes and cache/retry distribution using current inventory prices; they are not forecasts. Absolute effective dates remain unchanged, and rules not exercised by the sample are identified. Revenue is counted once per request and costs include every attempt. Provider/resource combinations form separate margin groups.
 
-## Exact shadow pricing
+Computable samples are not supplier-verified. Request coverage and known recorded-charge coverage are separate, with unknown charges counted separately. Zero denominators display no percentage. Missing evidence makes overall margin unavailable; the computable subset is shown without extrapolation. Losses and incomplete or absent analysis require acknowledgement but do not prohibit saving. Model-price changes invalidate the confirmation; current-procurement basis changes invalidate that analysis receipt. Repeating an identical change request does not duplicate the change or its audit.
 
-Platform administrators can open **Billing → Exact pricing and shadow comparison**, select a tenant model or Provider/model pair, enter decimal-string rates and time windows, preview a specific instant, and publish a new immutable shadow version. Preview success is required before publishing from the form. Changing the form invalidates that preview. Select at least one weekday in each form window.
+Blank cache-read prices retain the model's default estimation rule; blank cache-write prices inherit default input/write rates. Explicit `0` means free. Provider input, output and cache-read costs distinguish missing configuration from explicit free prices: saving blank inventory fields means unknown, while `0` means free. Unknown costs never fall back to tenant charges. Reimporting an existing Provider model refreshes catalog details while preserving saved prices, time windows and price-presence flags; change costs explicitly in inventory.
 
-Shadow rates do not replace current charges or reserve budget. They record comparisons for new requests. Legacy configurations are identified as `legacy_float_configuration`; converting them to decimal strings does not create historical exact-price evidence. Adapter usage currently remains unverified for field presence and provider charging-time rules. Contradictory usage, missing rates, missing usage, or uncertain delivery produces pending evidence. No supplier reconciliation claim is implied.
+Time windows support weekdays (0 = Sunday, 6 = Saturday), IANA timezones, inclusive starts/exclusive ends, and input/cache/output overrides. Overnight windows belong to their starting day. Up to 64 non-overlapping windows are allowed. The preview picker displays the browser's local timezone; each window matches in its own timezone. Embedding windows are unsupported.
 
-Rates allow at most 18 integer digits and 12 fractional digits. Charges sum exact rational components before rounding once to 12 decimals using half-even. Currency conversion uses the unrounded sum. Missing FX leaves the original-currency amount available and USD absent. Tenant cards use USD. All six tenant rate fields are currently required; a distinct not-applicable category is not yet supported.
+**Price changes** lists only applied changes, retaining model, actor, timestamp, old/new configuration and effective base-price evidence, up to the latest 100 entries. Standalone shadow-card publication is retired; `/api/admin/billing/rate-cards` returns 410. Existing evidence is not deleted and historical charges are not recalculated.
 
-Administrator-only endpoints:
+Applied changes also retain the analysis summary and cost basis, or explicitly record that analysis was not performed. Drafts and each individual analysis are not saved as price versions.
+
+Usage evidence is collected independently of pricing. Request detail and applied-change history expose reported, derived, estimated, missing, invalid and legacy-unverified fields, explicit zero values, stream completion and attempts. Supplier invocation ID, response ID and trace ID remain separate; a local request ID cannot substitute for a supplier ID. External reconciliation compares amounts only: an amount match does not establish token-field equivalence.
+
+## Platform statements
+
+**Cost Billing → Platform statements** requires no billing connector. Choose a month or custom date range, view tenant charges separately from provider cost estimates, group by Provider, resource account, model or project, inspect paginated details, and export CSV.
+
+- Tenant amounts come from settled platform charges, grouped by admission time. Already-posted charges for failed or partially delivered requests remain included; internal retries do not duplicate tenant charges.
+- Provider estimates include each upstream attempt and its recorded prices/usage, including retries. Missing prices, usage, completion or conversion evidence remains pending.
+- Known subtotals include known amounts only. Pending or incomplete historical evidence makes coverage incomplete, never a supplier-confirmed cost.
+- Historical rows use persisted amounts and identities, without recalculation using current prices.
+- Summaries, details and reconciliation share the statement-evidence projection. Queries above 10000 rows fail explicitly and require narrower ranges/filters; they are not silently truncated. Platform ranges allow up to 366 days; standalone customer/provider statement previews retain their 93-day range limit.
+
+**Customer statements and margin** preserves the existing detailed preview. Model Directory and Provider inventory can also launch scoped statements. This view requires explicit customer projects, exports the displayed snapshot, and keeps supplier-billed amounts separate from estimates rather than adding them together.
+
+**External reconciliation** compares connector bills with local provider costs. Connectors are optional for platform estimates. Unknown provider cost cannot be reconciled as zero or substituted with a tenant charge; evidence must be completed first. Explicitly free provider cost can be compared as zero. This increment adds no platform-statement locking, PDF, or manual external-bill import.
+
+## Administration API
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET, POST | `/api/admin/billing/rate-cards` | List or publish immutable shadow cards |
-| POST | `/api/admin/billing/preview` | Preview `{card, at, usage, exchange_rate}` |
-| POST | `/api/admin/billing/exchange-rates` | Publish `{currency, rate, source, effective_from?}`; one original currency unit equals `rate` USD |
-| GET | `/api/admin/billing/evidence/{request_id}` | Read admission, prepared attempts, and shadow settlement evidence |
+| GET | `/api/admin/billing/models/{model}/pricing` | Current pricing configuration and concurrency fingerprint |
+| POST | `/api/admin/billing/model-pricing/check` | Validate prices without sample usage |
+| POST | `/api/admin/billing/model-pricing/impact` | Analyze `{card, fingerprint, basis, from, to, timezone, project_ids}` and issue a confirmation receipt |
+| POST | `/api/admin/billing/preview` | Preview `{card, usage, at, exchange_rate?}`; tenant previews use actual billing logic |
+| POST | `/api/admin/billing/model-pricing/apply` | Apply `{card, fingerprint, request_id, confirmed:true, risk_acknowledged:true, analysis_receipt?}` |
+| GET | `/api/admin/billing/price-changes` | Recent applied price changes |
+| GET | `/api/admin/billing/statements` | `kind=tenant/provider`, RFC3339 `from/to`, filters, grouping and pagination; `format=csv` exports |
+| POST | `/api/admin/billing/statements` | Existing customer/provider/margin statement preview |
+| GET | `/api/admin/billing/evidence/{request_id}` | Original request and upstream-attempt evidence |
 
-A card contains `kind` (`tenant` or `provider`), `target` (model name or `provider_id:upstream_model`), `currency`, `source`, optional `effective_from`, `rates`, and optional `periods`. Rate keys are `input`, `cache_read`, `cache_write`, `cache_write_5m`, `cache_write_1h`, and `output`. Periods combine the schedule fields above with a `rates` override object. The latest applicable effective time wins; immediate publications sharing a database timestamp use the card revision. Existing snapshots retain their original version. FX selection is frozen with each Provider attempt. Publishing a rate or FX version records an administrator audit event.
-
-New evidence captures project/key IDs and names, user/team/cost-center IDs, UTC admission day/month, and per-attempt Provider/resource identity, prices, FX, upstream request ID and outcome. It stores no prompt, response body or credentials. A prepared attempt without completion evidence means possibly sent; it must not be automatically retried or treated as free. Shadow settlement is committed in the existing request settlement transaction, with one base record per server request ID.
-
-## Rollout and remaining work
-
-Schema expansion 4 adds `metering_entries` and an index without rewriting historical usage or baseline migrations. Runtime compatibility requires schema 4; normal startup upgrades older databases. Restore/rollback must preserve the evidence table and use a compatible binary. Evidence currently has no automatic retention cleanup.
-
-This release is a pricing and shadow-evidence increment. Durable all-scope money reservations, active exact charging, protocol field-presence evidence, crash recovery and the 24-hour manual queue, immutable adjustments, ordinary-user evidence views, not-applicable categories, and links to existing reconciliation workflows remain follow-up work. The reservation rounding helper is tested but is not an active admission control. Background transports that bypass the routed attempt loop do not yet capture equivalent per-attempt evidence. No production PostgreSQL concurrency or supplier-bill equivalence has been validated by this increment.
-
-Model price updates reject non-finite or negative base prices. Legacy Provider zero values without configuration evidence remain unknown per usage category, including inherited cache-write prices; an explicit shadow card or time-window override can declare a free rate. Missing legacy prices leave `legacy_usd` empty even when an exact card supplies a known shadow charge. `tokenhub db verify` validates the expanded schema, including the evidence table and index, while adoption still checks the unchanged historical baseline.
-
-## Cost statements
-
-Platform administrators can open statements from Billing, public model rows, or Provider model cost settings. Choose a date range (exclusive end, up to 93 days) and time zone, preview, then export CSV. Export uses the exact preview payload; changing filters clears it. Statements do not confirm agreement or payment.
-
-Customer statements require a customer label and explicit project selection. The label does not create a tenant or grant access. Projects, captured teams and API keys provide detail; exports omit supplier identities and procurement prices. Historical team attribution uses admission snapshots.
-
-Provider statements include individual attempts and retries. Local estimates and supplier amounts are separate source/currency totals, never additive. Supplier rows retain external identifiers, quantity/unit, original currency and time zone. Overlapping records retain their full amount and are marked, not prorated. Without allocation evidence, supplier bills cannot be assigned to customer projects.
-
-Estimated margin uses recorded customer charges minus local costs of the same requests, including cross-month retries; it is not net profit or cash balance. Unknown cost, missing FX, incomplete historical evidence or unfinished attempts suppress the margin number. Supplier totals do not replace request costs. Shadow rate cards do not change actual customer charges. Historical prices are displayed only when they explain recorded amounts; old rows without snapshots use completion time and remain marked incomplete. Legacy zero provider cost is unknown, not retail price or proof of free service; explicit zero-price evidence remains zero. Request charging and confirmation/dispute/payment workflows are unchanged.
-
-The read-only POST /api/admin/billing/statements endpoint is platform-admin-only. JSON fields: side (tenant/provider/margin), from, to (YYYY-MM-DD), timezone, customer, project_ids, and optional provider_id, resource_id, model. Tenant requires customer and projects; tenant/margin reject supplier filters. Provider model filters use upstream names, others use public names. Results exceeding 10,000 rows fail instead of truncating; narrow the range or filters.
+These endpoints are restricted to platform administrators. Model prices and the applied-change record commit in one transaction. CSV excludes credentials, prompts and response bodies, and neutralizes formula prefixes. Existing schema version 4 supports these records; historical migrations are unchanged. Request evidence continues to accumulate without automatic retention cleanup.

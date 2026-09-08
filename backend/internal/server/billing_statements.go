@@ -28,6 +28,13 @@ type statementQuery struct {
 }
 
 type statementRow struct {
+	AttemptFinished   bool                   `json:"attempt_finished,omitempty"`
+	Evidence          *usageEvidence         `json:"usage_evidence,omitempty"`
+	ProviderName      string                 `json:"provider_name,omitempty"`
+	ResourceName      string                 `json:"resource_name,omitempty"`
+	ProjectName       string                 `json:"project_name,omitempty"`
+	UserID            string                 `json:"user_id,omitempty"`
+	TenantModel       string                 `json:"tenant_model,omitempty"`
 	ExternalID        string                 `json:"external_id,omitempty"`
 	ExternalRequestID string                 `json:"external_request_id,omitempty"`
 	UsageQuantity     int64                  `json:"usage_quantity,omitempty"`

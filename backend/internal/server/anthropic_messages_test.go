@@ -1330,8 +1330,10 @@ func newAnthropicGatewayServer(t *testing.T, upstreamURL string, providerType st
 }
 
 func newAnthropicGatewayServerWithOptions(t *testing.T, upstreamURL string, providerType string, options map[string]string) (*Server, *GormStore, string) {
+	return newAnthropicGatewayServerOnStore(t, upstreamURL, providerType, options, NewMemoryStore())
+}
+func newAnthropicGatewayServerOnStore(t *testing.T, upstreamURL string, providerType string, options map[string]string, store *GormStore) (*Server, *GormStore, string) {
 	t.Helper()
-	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Claude Code Project", Status: StatusActive})
 	_, secret, err := store.CreateAPIKey(project.ID, APIKey{
 		Name:    "claude-code-key",

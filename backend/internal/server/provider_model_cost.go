@@ -103,6 +103,7 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 func providerModelCostModel(providerModel ProviderModel) Model {
 	return Model{
 		Modality:                  providerModel.Modality,
+		Metadata:                  cloneStringMap(providerModel.Metadata),
 		InputPriceUSDPer1M:        providerModel.InputPriceUSDPer1M,
 		CacheReadPriceUSDPer1M:    providerModel.CacheReadPriceUSDPer1M,
 		CacheWritePriceUSDPer1M:   providerModel.CacheWritePriceUSDPer1M,

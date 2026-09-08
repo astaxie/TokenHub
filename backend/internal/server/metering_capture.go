@@ -43,6 +43,7 @@ type meteringAttemptSnapshot struct {
 }
 
 type meteringShadowCharge struct {
+	Evidence    *usageEvidence         `json:"usage_evidence,omitempty"`
 	Status      string                 `json:"status"`
 	Reason      string                 `json:"reason,omitempty"`
 	UsageSource string                 `json:"usage_source"`
@@ -84,15 +85,7 @@ func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext) error 
 		return nil
 	}
 	price := legacyMeteringPrice(call.Model, call.StartedAt, false)
-	card, err := loadMeteringCard(tx, "tenant", call.Model.Name, call.StartedAt)
-	if err != nil {
-		return err
-	}
-	if card != nil {
-		price = card.at(call.StartedAt)
-	}
-	legacyPrice := legacyMeteringPrice(call.Model, call.StartedAt, false)
-	snapshot := meteringRequestSnapshot{ModelName: call.Model.Name, LegacyPrice: &legacyPrice, RequestID: call.RequestID, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
+	snapshot := meteringRequestSnapshot{LegacyPrice: &price, RequestID: call.RequestID, ModelName: call.Model.Name, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
 	return saveMeteringEntry(tx, call.RequestID+":admission", "admission", call.RequestID, snapshot, call.StartedAt)
 }
 
@@ -113,14 +106,6 @@ func (s *GormStore) PrepareMeteringAttempt(requestID string, number int, route R
 			legacy := providerModelCostModel(model)
 			snapshot.LegacyModel = &legacy
 			price := legacyMeteringPrice(legacy, at, true)
-			snapshot.Price = &price
-		}
-		card, err := loadMeteringCard(tx, "provider", route.Provider.ID+":"+route.ProviderModel, at)
-		if err != nil {
-			return err
-		}
-		if card != nil {
-			price := card.at(at)
 			snapshot.Price = &price
 		}
 		if snapshot.Price != nil && snapshot.Price.Currency != "USD" {
@@ -146,11 +131,7 @@ func (s *GormStore) PrepareMeteringAttempt(requestID string, number int, route R
 }
 
 func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) meteringShadowCharge {
-	result := meteringShadowCharge{Status: "pending", UsageSource: "legacy_adapter_unverified", Price: price, LegacyUSD: strconv.FormatFloat(legacy, 'f', -1, 64)}
-	if price == nil {
-		result.Reason = "missing_price"
-		return result
-	}
+	result := meteringShadowCharge{Status: "pending", UsageSource: "legacy_adapter_unverified", Evidence: evidenceForUsage(usage), Price: price, LegacyUSD: strconv.FormatFloat(legacy, 'f', -1, 64)}
 	units, err := meteringUnits(usage)
 	if usage.MeteringInvalid {
 		err = fmt.Errorf("invalid original usage")
@@ -163,7 +144,18 @@ func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) mete
 		return result
 	}
 	result.Units = units
-	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+	if price == nil {
+		result.Reason = "missing_price"
+		return result
+	}
+	if reason := usageEvidenceReason(result.Evidence); reason != "" {
+		result.Reason = reason
+		return result
+	}
+	if result.Evidence.Protocol != "legacy" {
+		result.UsageSource = result.Evidence.Protocol
+	}
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && result.Evidence.Protocol == "legacy" {
 		result.Reason = "usage_presence_unknown"
 		return result
 	}

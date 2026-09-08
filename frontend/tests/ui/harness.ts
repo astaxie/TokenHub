@@ -12,6 +12,9 @@ export const test = base.extend<{ api: MockAPI }>({
       const [method, pathname] = key.split(" ");
       api.respond(method, pathname, json);
     }
+    api.define("GET", "/api/admin/billing/statements", input => ({ json: { kind: input.query.get("kind"), from: input.query.get("from"), to: input.query.get("to"), known_amount_usd: "0", records: 0, pending: 0, legacy: 0, complete: true, offset: 0, limit: 100, groups: [], items: [] } }), query => {
+      expect(Object.fromEntries(query)).toEqual({ kind: "provider", group_by: "provider", provider_id: "", project_id: "", model: "", from: "2026-08-31T16:00:00.000Z", to: "2026-09-30T16:00:00.000Z", offset: "0", limit: "100" });
+    });
     await api.install(context);
     await page.clock.setFixedTime(new Date(fixedTime));
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -40,6 +43,7 @@ export function section(page: Page, title: string): Locator {
 export async function openBilling(page: Page) {
   await page.goto("/billing");
   await expect(page.locator(".app-shell")).toBeVisible();
+  await page.locator("summary").filter({ hasText: "客户对账单与毛利" }).click();
   await expect(section(page, "费用对账单").getByRole("option", { name: "UI Review Project (prj_ui)", exact: true })).toBeAttached();
 }
 export async function capture(page: Page, testInfo: TestInfo, subject: Locator, id: string, title: string, mode: "section" | "viewport" = "section") {

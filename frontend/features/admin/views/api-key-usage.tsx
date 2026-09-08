@@ -421,7 +421,7 @@ function APIKeyRequestExplorer({ api, data, user, keyID, range, modelOptions }: 
           </div>
           <PaginationControls pagination={pagination} totalItems={payload.pagination.total} />
         </div>
-        <RequestDetailPanel data={data} requestID={selectedRequestID} detail={detail?.log.request_id === selectedRequestID ? detail : null} loading={detailLoading} error={detailError} showProviderCost={appRole(user.role) === "admin"} />
+        <RequestDetailPanel api={api} data={data} requestID={selectedRequestID} detail={detail?.log.request_id === selectedRequestID ? detail : null} loading={detailLoading} error={detailError} showProviderCost={appRole(user.role) === "admin"} />
       </div>
     </DataSection>
   );

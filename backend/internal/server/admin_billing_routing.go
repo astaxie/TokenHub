@@ -26,7 +26,6 @@ func (s *Server) registerBillingRoutes() {
 	s.mux.HandleFunc("/api/admin/billing/connectors/", s.handleAdminBillingConnectorItem)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/billing/records", s.handleAdminBillingRecordsGet, s.adminMethodNotAllowed("billing", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/billing/sync-runs", s.handleAdminBillingSyncRunsGet, s.adminMethodNotAllowed("billing", http.MethodGet))
-	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/billing/statements", s.handleBillingStatement, s.adminMethodNotAllowed("billing", http.MethodPost))
 	s.registerReconciliationRoutes()
 	s.registerMeteringRoutes()
 }
