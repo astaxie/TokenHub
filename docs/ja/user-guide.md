@@ -236,7 +236,7 @@ Gemini CLI は TokenHub の Gemini ネイティブ `v1beta` API に直接接続�
 
 `POST /v1/images/generations` は OpenAI 互換の `model`、`prompt`、`quality`、`size`、`n`、`response_format` を受け付けます。公開仮想モデル `model: "codex-gpt-image-2"` と `n: 1` を使用してください。`gpt-image-2` は通常、別の標準 API モデルのままです。限定的な互換処理として、Codex の `originator` または `x-codex-image-turn-id` ヘッダーが付いた生成リクエストは `codex-gpt-image-2` にマッピングされ、`b64_json` が返されます。API キーでは `codex-gpt-image-2` を許可する必要があります。`Prefer: respond-async` を付けると画像ジョブが返り、`GET /v1/image-jobs/{id}` でポーリングできます。
 
-`POST /v1/images/edits` は multipart の `image` または `image[]` で参照画像を受け付けます。`gpt-image-2` は単一の `mask` を OpenAI API に転送できますが、Codex サブスクリプションではマスク編集は利用できません。TokenHub は Codex CLI をインストールまたは起動せず、Codex サブスクリプションの Images エンドポイントを直接呼び出します。プロンプトはデータベースで暗号化され、入力画像と出力画像はサーバーに保持されます。署名付きダウンロード URL の有効期間は 24 時間です。URL の期限後もファイルは残り、ジョブを再取得すると新しい URL が発行されます。選択された Codex アカウントには画像生成権限が必要です。
+`POST /v1/images/edits` は通常、multipart の `image` または `image[]` で最大 16 枚の参照画像を受け付けます。ネイティブクライアント向けの限定的な互換処理として、設定済みの画像 alias header または originator prefix が付いたリクエストは、`application/json` を使用し、`images[].image_url` に Base64 data URL を指定できます。Codex として識別された JSON 編集では、TokenHub は `gpt-image-2` を `codex-gpt-image-2` にマッピングし、常に `b64_json` を返します。デコード後の画像は 1 枚 50 MB、リクエスト全体は 128 MB が上限です。通常の JSON クライアントには引き続き `415 invalid_content_type` が返されます。`gpt-image-2` は multipart の単一 `mask` を OpenAI API に転送できますが、Codex サブスクリプションではマスク編集は利用できません。TokenHub は Codex CLI をインストールまたは起動せず、Codex サブスクリプションの Images エンドポイントを直接呼び出します。プロンプトはデータベースで暗号化され、入力画像と出力画像はサーバーに保持されます。署名付きダウンロード URL の有効期間は 24 時間です。URL の期限後もファイルは残り、ジョブを再取得すると新しい URL が発行されます。選択された Codex アカウントには画像生成権限が必要です。
 
 画像ジョブの既定の実行タイムアウトは 5 分で、`TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` で変更できます。
 
