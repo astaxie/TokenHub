@@ -67,7 +67,7 @@ TokenHub separates everyday model usage, team governance, and platform administr
 - Clean console with compact role-aware navigation, global search, light/dark mode, and split-view API documentation.
 - SQLite-first private deployment with native systemd and Docker Compose options.
 - PostgreSQL supports multi-instance deployments: share state through remote PostgreSQL, scale frontend and backend replicas horizontally, and configure connection pools. See the [deployment guide](docs/deployment.md) and [PostgreSQL setup guide](docs/postgresql-setup.md).
-- Console language switching for English, Chinese, and Japanese.
+- Console language switching for English, Chinese, Japanese, and Russian.
 
 ## Provider Ecosystem
 
