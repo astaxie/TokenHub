@@ -103,6 +103,25 @@ TokenHub は、最後に正常に読み込んだ Provider カタログをデー�
 モデル選択画面は `GET /v1/models` から現在のインベントリを検出し、`/`、`:`、量子化サフィックスを含む Kronk モデル ID 全体を保持します。選択したインベントリを取り込んだ後、**Model Directory** で外部標準モデル名を作成し、**Routing Policies** で Kronk モデル ID にマッピングします。繰り返し取り込んでも冪等です。後続の検出が成功すると、Kronk から削除されたモデルはインベントリやルートを削除せず利用不可としてマークされます。検出に失敗した場合、既存設定は変更されません。
 
 Kronk ルートは SSE ストリーミングを含む OpenAI 互換 Chat Completions、Responses、Embeddings をサポートします。TokenHub は引き続きクライアント認証、Project 分離、クォータ、監査、ルーティング、フェイルオーバーを適用します。呼び出し元の `Authorization` ヘッダーを Kronk へ転送せず、保存済み Kronk token を管理レスポンス、監査ペイロード、ログ、上流エラーレスポンスへ公開しません。
+
+### Dify アプリケーション
+
+タイプ `dify` の Provider を作成すると、Dify アプリケーションを 1 件、chat-completion モデルとして公開できます。Base URL には Dify インスタンスのルートを指定します（末尾の `/v1` は正規化されます）。API key には対象アプリの「API アクセス」ページにある Service API key を指定します。1 つの Provider が 1 つの Dify アプリに正確に対応し、Provider へルーティングされるモデル名は TokenHub ローカルの名前です。通常どおり **Model Directory** で外部モデルを作成し、**Routing Policies** でマッピングしてください。この Provider は管理 API で `"type": "dify"` を指定して作成し、アプリのインベントリをカスタムモデルとして取り込みます。接続テストはモデル一覧ではなく `GET /v1/parameters` でアプリキーを検証します。
+
+Provider オプションでアプリのプロトコルを制御します:
+
+| オプション | 意味 |
+| --- | --- |
+| `dify_app_type` | `chat`（既定）は Chatflow、Agent、Chatbot アプリで `/v1/chat-messages` を使用。`workflow` は Workflow アプリで `/v1/workflows/run` を使用 |
+| `dify_input_variable` | 平文化した会話全体を受け取る Workflow 入力変数名。既定は `query` |
+| `dify_output_variable` | 回答を保持する Workflow 出力変数名。既定は `answer` で、見つからない場合は `text`、`result`、`output`、唯一の文字列出力の順にフォールバック |
+
+ゲートウェイは Dify に対してステートレスです。各リクエストは新しい Dify 会話を開始し、OpenAI のメッセージ一覧全体が呼び出しに平文化されて含まれるため、Dify 側の会話メモリは使用されません。Chat 系アプリは Dify の `metadata.usage` から prompt、completion、total の使用量を完全に報告します。Workflow 実行は `total_tokens` の実行合計のみを報告し、TokenHub は入出力の分割を捏造せずそのまま記録します。そのためワークフロー前提モデルのコンポーネント単位の原価計算は、そのモデルの価格設定に依存します。
+
+ストリーミングでは Dify の SSE イベント（chat アプリは `message` と `message_end`、workflow アプリは `text_chunk` と `workflow_finished`）を OpenAI チャンクへマッピングし、終端イベントなしに閉じた Dify ストリームは完了ではなく打ち切りとして扱われます。Dify Provider がサポートするのは chat とストリーミング chat のみで、Responses と embeddings は `501 provider_capability_not_supported` を返します。
+
+逆方向で Dify アプリから TokenHub 経由でモデルを呼び出すには、Dify 側で TokenHub の `/v1` エンドポイントと TokenHub API key を指す `OpenAI-API-compatible` モデルプロバイダーを追加するだけでよく、TokenHub 側の設定は不要です。
+
 ## Claude Code 帰属ブロックの処理
 
 Claude Code は、Anthropic Messages リクエストの `system` 配列の先頭に帰属テキストブロックを挿入する場合があります。このブロックにはリクエストごとに変化し得るクライアントメタデータが含まれ、サードパーティー上流で本来安定しているプロンプト接頭辞を再利用できなくなることがあります。

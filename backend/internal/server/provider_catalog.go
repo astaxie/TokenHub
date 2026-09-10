@@ -797,6 +797,8 @@ func inferProviderType(id string, baseURL string) string {
 		return "local"
 	case strings.Contains(normalized, "kronk"):
 		return ProviderKronk
+	case strings.Contains(normalized, "dify"):
+		return ProviderDify
 	default:
 		return ProviderOpenAICompatible
 	}

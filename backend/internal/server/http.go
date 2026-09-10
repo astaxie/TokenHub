@@ -171,6 +171,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 		ProviderAnthropic:        AnthropicAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 		ProviderGemini:           GeminiAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
+		ProviderDify:             DifyAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
 	}
 	registry := NewAdapterRegistry()
 	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
@@ -181,6 +182,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
 	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	registry.Register(ProviderDify, adapters[ProviderDify], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
 	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
 		registry.Register(adapterType, adapters[adapterType], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
 	}

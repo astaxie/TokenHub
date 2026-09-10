@@ -103,6 +103,25 @@ Choose **Kronk** in **Provider Channels** to connect an independently running Kr
 The model picker discovers the live inventory from `GET /v1/models` and preserves each complete Kronk model ID, including `/`, `:`, and quantization suffixes. Import the selected inventory, then create the external standard name in **Model Directory** and map it to the Kronk ID under **Routing Policies**. Repeated imports are idempotent. A successful later discovery marks missing Kronk models unavailable without deleting their inventory or routes; a failed discovery leaves existing configuration unchanged.
 
 Kronk routes support OpenAI-compatible Chat Completions, Responses, and Embeddings, including SSE streaming. TokenHub continues to enforce its client authentication, project isolation, quota, audit, routing, and failover policies. It never forwards the caller's `Authorization` header to Kronk and does not expose the saved Kronk token in management responses, audit payloads, logs, or upstream error responses.
+
+### Dify applications
+
+Create a Provider with type `dify` to expose a Dify application as a chat-completion model. Set the Base URL to the Dify instance root (a trailing `/v1` is accepted and normalized) and the API key to the application's Service API key from its API Access page. One provider maps to exactly one Dify app; the model routed to the provider is a TokenHub-local name, so create the external model in **Model Directory** and map it under **Routing Policies** as usual. The provider is created through the admin API with `"type": "dify"`, its app inventory imported as custom models, and connection testing validates the app key via `GET /v1/parameters` instead of a model listing.
+
+Provider options control the app protocol:
+
+| Option | Meaning |
+| --- | --- |
+| `dify_app_type` | `chat` (default) for Chatflow, Agent, and Chatbot apps through `/v1/chat-messages`; `workflow` for Workflow apps through `/v1/workflows/run` |
+| `dify_input_variable` | Workflow input variable that receives the flattened conversation; default `query` |
+| `dify_output_variable` | Workflow output variable that holds the answer; default `answer`, with `text`, `result`, `output`, or the sole string output accepted as fallbacks |
+
+The gateway is stateless toward Dify: every request starts a new Dify conversation and the full OpenAI message list is flattened into the call, so Dify-side conversation memory is not used. Chat apps report full prompt, completion, and total usage from Dify's `metadata.usage`. Workflow runs report only the run total in `total_tokens`; TokenHub records it without inventing an input/output split, so per-component cost accounting for workflow-backed models depends on how that model is priced.
+
+Streaming maps Dify SSE events (`message` and `message_end` for chat apps, `text_chunk` and `workflow_finished` for workflows) onto OpenAI chunks, and a Dify stream that ends without its terminal event is treated as truncated rather than completed. Dify providers support chat and streaming chat only; Responses and embeddings answer `501 provider_capability_not_supported`.
+
+To let a Dify app call models through TokenHub in the opposite direction, add an `OpenAI-API-compatible` model provider inside Dify pointing at the TokenHub `/v1` endpoint with a TokenHub API key. No TokenHub-side configuration is required.
+
 ## Claude Code Attribution Handling
 
 Claude Code can place an attribution text block at the start of an Anthropic Messages `system` array. The block contains client metadata that can vary between requests and prevent a third-party upstream from reusing an otherwise stable prompt prefix.

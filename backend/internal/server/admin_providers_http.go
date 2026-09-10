@@ -587,6 +587,19 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 		if err == nil {
 			catalog, err = KronkProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
 		}
+	} else if strings.TrimSpace(req.Type) == ProviderDify {
+		// Dify apps have no /models endpoint; the parameters probe is the
+		// credential check, and the app inventory is whatever custom models the
+		// administrator declared.
+		adapter, ok := resolveTypedAdapter[DifyAdapter](s.adapterRegistry, ProviderDify)
+		if !ok {
+			writeError(w, r, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Dify adapter is unavailable"))
+			return
+		}
+		provider := Provider{Name: req.Name, Type: ProviderDify, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
+		if _, err = adapter.Probe(ctx, provider, ProviderResource{}, adapter.DefaultProbeRequest()); err == nil {
+			catalog = customProviderCatalogFromModels(req.CustomModels, req.ModelCategory)
+		}
 	} else {
 		catalog, err = CustomProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
 	}

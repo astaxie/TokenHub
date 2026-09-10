@@ -103,6 +103,25 @@ TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中�
 模型选择器通过 `GET /v1/models` 发现实时库存，并完整保留 Kronk 模型 ID 中的 `/`、`:` 和量化后缀。引入选中的库存后，在「模型目录」中创建对外标准模型名，再到「路由策略」将其映射到 Kronk 模型 ID。重复引入保持幂等。后续模型发现成功时，已从 Kronk 移除的模型会被标记为不可用，但不会删除其库存或路由；发现失败不会改写现有配置。
 
 Kronk 路由支持 OpenAI-compatible Chat Completions、Responses 和 Embeddings，包括 SSE 流式输出。TokenHub 继续执行客户端认证、项目隔离、配额、审计、路由与故障转移策略；不会把调用方的 `Authorization` 请求头转发给 Kronk，也不会在管理响应、审计载荷、日志或上游错误响应中暴露保存的 Kronk token。
+
+### Dify 应用
+
+创建类型为 `dify` 的 Provider，即可把一个 Dify 应用作为 chat-completion 模型对外提供。Base URL 填 Dify 实例根地址（末尾带 `/v1` 会被自动归一），API key 填该应用「API 访问」页面中的 Service API key。一个 Provider 恰好对应一个 Dify 应用；路由到该 Provider 的模型名是 TokenHub 本地名称，照常在「模型目录」创建对外模型，再到「路由策略」完成映射。该 Provider 通过管理 API 以 `"type": "dify"` 创建，应用清单以自定义模型导入，连接测试通过 `GET /v1/parameters` 校验应用密钥，而不拉取模型列表。
+
+Provider 选项决定应用协议：
+
+| 选项 | 含义 |
+| --- | --- |
+| `dify_app_type` | `chat`（默认）对应 Chatflow、Agent、Chatbot 应用，走 `/v1/chat-messages`；`workflow` 对应 Workflow 应用，走 `/v1/workflows/run` |
+| `dify_input_variable` | 接收拼接后完整对话的 Workflow 输入变量名；默认 `query` |
+| `dify_output_variable` | 保存回答的 Workflow 输出变量名；默认 `answer`，找不到时依次尝试 `text`、`result`、`output` 以及唯一的字符串输出 |
+
+网关对 Dify 无状态：每个请求都会开启新的 Dify 会话，完整的 OpenAI 消息列表会被拼接进请求，因此不会使用 Dify 侧的会话记忆。Chat 类应用从 Dify 的 `metadata.usage` 上报完整的 prompt、completion 和 total 用量；Workflow 运行只在 `total_tokens` 中上报运行总量，TokenHub 如实记录、不虚构输入/输出拆分，因此基于组件计价的成本核算取决于该模型的定价方式。
+
+流式请求把 Dify SSE 事件（chat 应用为 `message` 与 `message_end`，workflow 应用为 `text_chunk` 与 `workflow_finished`）映射为 OpenAI 分片；未收到终止事件就结束的 Dify 流会被视为截断而非完成。Dify Provider 仅支持 chat 与流式 chat；Responses 与 embeddings 请求返回 `501 provider_capability_not_supported`。
+
+如果想让 Dify 应用反向通过 TokenHub 调用模型，在 Dify 内添加指向 TokenHub `/v1` 端点、使用 TokenHub API key 的 `OpenAI-API-compatible` 模型供应商即可，TokenHub 侧无需任何配置。
+
 ## Claude Code 归因块处理
 
 Claude Code 可能在 Anthropic Messages 请求的 `system` 数组开头插入归因文本块。该块包含可能随请求变化的客户端元数据，可能导致第三方上游无法复用原本稳定的提示词前缀。
