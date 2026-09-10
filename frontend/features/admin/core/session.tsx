@@ -78,7 +78,7 @@ export function parseProviderAccountOAuthResult(source: string, allowGenericToke
     result.id_token = firstParam(params, marked ? ["account_id_token", "id_token"] : ["account_id_token"]);
     result.session_id = firstParam(params, ["provider_account_oauth_session_id", "account_oauth_session_id", "session_id"]);
     result.state = firstParam(params, ["provider_account_oauth_state", "account_oauth_state", "state"]);
-    result.error = firstParam(params, ["provider_account_oauth_error", "oauth_error", "error"]);
+    result.error = firstParam(params, marked ? ["provider_account_oauth_error", "oauth_error", "error"] : ["provider_account_oauth_error"]);
     result.account_email = firstParam(params, ["account_email", "email", "login", "username"]);
     result.account_id = firstParam(params, ["account_id", "sub", "user_id"]);
     result.organization_id = firstParam(params, ["organization_id", "org_id"]);
@@ -86,7 +86,7 @@ export function parseProviderAccountOAuthResult(source: string, allowGenericToke
     result.token_type = firstParam(params, ["token_type"]);
     result.expires_at = firstParam(params, ["expires_at", "token_expires_at"]);
     result.scopes = firstParam(params, ["scope", "scopes"]);
-    result.authorization_code = firstParam(params, ["code", "authorization_code"]);
+    result.authorization_code = marked ? firstParam(params, ["code", "authorization_code"]) : "";
     if (result.error) return result;
     if (result.access_token || result.refresh_token || result.id_token) return result;
     if (result.authorization_code) return result;
