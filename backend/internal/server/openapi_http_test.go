@@ -332,6 +332,11 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireSchemaNoProperty(t, document, "ResponseJob", "response")
 	requireRequestContentType(t, document, "/v1/images/edits", "post", "multipart/form-data")
 	requireRequestExampleFieldForMedia(t, document, "/v1/images/edits", "post", "multipart/form-data", "editWithMask", "image", "@portrait.png")
+	requireRequestContentType(t, document, "/v1/images/edits", "post", "application/json")
+	requireRequestSchemaRef(t, document, "/v1/images/edits", "post", "#/components/schemas/NativeCodexImageEditRequest")
+	requireRequestExampleField(t, document, "/v1/images/edits", "post", "nativeCodexEdit", "model", openAIImageModelName)
+	requireSchemaRequired(t, document, "NativeCodexImageEditRequest", []string{"model", "prompt", "images"})
+	requireSchemaArrayBounds(t, document, "NativeCodexImageEditRequest", "images", 1, maxImageEditInputCount)
 	requireOperationParameter(t, document, "/v1/images/generations", "post", "header", "Prefer")
 	requireOperationParameter(t, document, "/v1/images/generations", "post", "header", "x-tokenhub-async")
 	requireOperationParameter(t, document, "/v1/images/edits", "post", "header", "Prefer")
@@ -842,6 +847,19 @@ func requireSchemaProperty(t *testing.T, document map[string]any, schemaName str
 	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
 	if _, ok := properties[property]; !ok {
 		t.Fatalf("schema %s must document property %s", schemaName, property)
+	}
+}
+
+func requireSchemaArrayBounds(t *testing.T, document map[string]any, schemaName string, property string, minItems int, maxItems int) {
+	t.Helper()
+	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
+	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
+	propertySchema := asMap(t, properties[property], "components.schemas."+schemaName+".properties."+property)
+	if got := propertySchema["minItems"]; got != minItems {
+		t.Fatalf("schema %s property %s minItems=%v, want %d", schemaName, property, got, minItems)
+	}
+	if got := propertySchema["maxItems"]; got != maxItems {
+		t.Fatalf("schema %s property %s maxItems=%v, want %d", schemaName, property, got, maxItems)
 	}
 }
 

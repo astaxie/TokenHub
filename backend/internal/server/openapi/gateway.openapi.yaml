@@ -557,10 +557,13 @@ paths:
       tags: [Images]
       summary: Edit images.
       description: >-
-        Accepts multipart image edits. Send `Prefer: respond-async` or
-        `x-tokenhub-async: true` to receive a `202` image job. Browser execution
-        is disabled in the hosted docs because callers must provide local image
-        files explicitly.
+        Accepts multipart image edits with up to 16 input images. Recognized
+        native clients may instead send JSON containing Base64 data URLs; the
+        request must carry the configured image alias header or originator
+        prefix, and JSON responses always use `b64_json`. Send
+        `Prefer: respond-async` or `x-tokenhub-async: true` to receive a `202`
+        image job. Browser execution is disabled in the hosted docs because
+        multipart callers must provide local image files explicitly.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: false
       parameters:
@@ -579,6 +582,19 @@ paths:
                   prompt: Replace the background with a quiet office.
                   image: "@portrait.png"
                   mask: "@mask.png"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeCodexImageEditRequest"
+            examples:
+              nativeCodexEdit:
+                value:
+                  model: gpt-image-2
+                  prompt: Replace the background with a snowy city at night.
+                  images:
+                    - image_url: data:image/png;base64,iVBORw0KGgo...
+                  n: 1
+                  quality: low
+                  size: 1024x1024
       responses:
         "200":
           description: Edited image payload.
@@ -2232,6 +2248,8 @@ components:
             - type: string
               format: binary
             - type: array
+              minItems: 1
+              maxItems: 16
               items:
                 type: string
                 format: binary
@@ -2242,6 +2260,38 @@ components:
           format: binary
         size:
           type: string
+    NativeCodexImageEditRequest:
+      type: object
+      required: [model, prompt, images]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        prompt:
+          type: string
+        images:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/NativeCodexImageInput"
+        n:
+          type: integer
+        quality:
+          type: string
+        size:
+          type: string
+        response_format:
+          type: string
+          description: Ignored for native JSON edits; responses always use b64_json.
+    NativeCodexImageInput:
+      type: object
+      required: [image_url]
+      additionalProperties: true
+      properties:
+        image_url:
+          type: string
+          description: Base64 data URL containing a PNG, JPEG, or WebP image.
     ImageResponse:
       type: object
       additionalProperties: true
