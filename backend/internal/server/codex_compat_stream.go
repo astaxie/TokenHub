@@ -88,8 +88,8 @@ func (s *Server) streamCodexCompatibility(
 		codexCompatibilityHeaders(headers),
 	)
 	if err != nil {
-		if isCodexModelUnsupportedError(err) {
-			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+		if providerResourceModelUnsupportedError(err) {
+			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
 		}
 		return Usage{}, err
 	}
@@ -97,8 +97,8 @@ func (s *Server) streamCodexCompatibility(
 
 	usage, streamErr := consumeCodexCompatibilityStream(opened.Body, sink)
 	applyCodexResponseMetadata(&usage, opened.Header)
-	if isCodexModelUnsupportedError(streamErr) {
-		s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+	if providerResourceModelUnsupportedError(streamErr) {
+		s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
 	}
 	return usage, streamErr
 }

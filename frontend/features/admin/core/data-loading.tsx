@@ -19,7 +19,14 @@ export type LoadPlan = {
   timeseries: boolean;
   users: boolean;
   providerCatalog: boolean;
+  providerAdapters: boolean;
   providerMonitoring: boolean;
+  plugins: boolean;
+  pluginMarketplace: boolean;
+  pluginChain: boolean;
+  pluginUI: boolean;
+  pluginActions: boolean;
+  pluginBackgroundJobs: boolean;
 	billingConnectors: boolean;
 	billingRecords: boolean;
 	billingSyncRuns: boolean;
@@ -51,7 +58,14 @@ export function emptyLoadPlan(): LoadPlan {
     timeseries: false,
     users: false,
     providerCatalog: false,
+    providerAdapters: false,
     providerMonitoring: false,
+    plugins: false,
+    pluginMarketplace: false,
+    pluginChain: false,
+    pluginUI: false,
+    pluginActions: false,
+    pluginBackgroundJobs: false,
 		billingConnectors: false,
 		billingRecords: false,
 		billingSyncRuns: false,
@@ -76,6 +90,12 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.overview = true;
       plan.breakdown = true;
       plan.timeseries = true;
+      plan.plugins = true;
+      plan.pluginMarketplace = true;
+      plan.pluginChain = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
+      plan.pluginBackgroundJobs = true;
       plan.logs = can("audit");
       plan.users = appRole(user.role) === "team_leader";
       if (appRole(user.role) === "team_leader") {
@@ -104,6 +124,9 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.timeseries = true;
       plan.users = can("users") || appRole(user.role) === "team_leader";
       if (appRole(user.role) !== "user") {
+        plan.pluginUI = true;
+        plan.pluginActions = true;
+        plan.pluginBackgroundJobs = true;
         addResourceDependency(plan, "teams");
         addResourceDependency(plan, "cost-centers");
       }
@@ -112,6 +135,8 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.breakdown = true;
       plan.users = appRole(user.role) === "team_leader";
 		if (appRole(user.role) === "admin") {
+			plan.overview = true;
+			plan.providerModels = true;
 			plan.billingConnectors = true;
 			plan.billingRecords = true;
 			plan.billingSyncRuns = true;
@@ -126,6 +151,11 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       break;
     case "providers":
       plan.providers = true;
+      plan.plugins = true;
+      plan.pluginMarketplace = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
+      plan.pluginBackgroundJobs = true;
       plan.providerResources = true;
       plan.overview = true;
       plan.routes = true;
@@ -133,8 +163,21 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.auditEvents = canViewAdminAudit(user);
       plan.breakdown = can("usage") || can("billing");
       plan.providerCatalog = true;
+      plan.providerAdapters = true;
       plan.providerModels = true;
       plan.providerMonitoring = true;
+      break;
+    case "plugins":
+    case "plugin-pages":
+      plan.plugins = true;
+      plan.pluginMarketplace = true;
+      plan.providerAdapters = true;
+      plan.pluginChain = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
+      plan.pluginBackgroundJobs = true;
+      plan.overview = view === "plugin-pages";
+      addResourceDependency(plan, "settings");
       break;
     case "models":
       plan.overview = true;
@@ -146,6 +189,9 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.overview = true;
       plan.routes = true;
       plan.providerModels = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
+      plan.pluginBackgroundJobs = true;
       break;
     case "routing-policies":
       plan.overview = true;
@@ -188,7 +234,13 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "role-configs");
       break;
     case "settings":
-	  plan.providers = true;
+      plan.providers = true;
+      plan.plugins = true;
+      plan.pluginMarketplace = true;
+      plan.pluginChain = true;
+      plan.pluginUI = true;
+      plan.pluginActions = true;
+      plan.pluginBackgroundJobs = true;
       addResourceDependency(plan, "settings");
       addResourceDependency(plan, "role-configs");
       addResourceDependency(plan, "identity-providers");
@@ -255,7 +307,18 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     timeseries: loaded.timeseries ?? current.timeseries,
     keys: loaded.keys ?? current.keys,
     providerCatalog: loaded.providerCatalog ?? current.providerCatalog,
+    providerAdapters: loaded.providerAdapters ?? current.providerAdapters,
     providerMonitoring: loaded.providerMonitoring ?? current.providerMonitoring,
+    plugins: loaded.plugins ?? current.plugins,
+    pluginMarketplace: loaded.pluginMarketplace ?? current.pluginMarketplace,
+    pluginMarketplaceSourceURL: loaded.pluginMarketplaceSourceURL ?? current.pluginMarketplaceSourceURL,
+    pluginMarketplaceAvailable: loaded.pluginMarketplaceAvailable ?? current.pluginMarketplaceAvailable,
+    pluginMarketplaceError: loaded.pluginMarketplaceError ?? current.pluginMarketplaceError,
+    pluginChain: loaded.pluginChain ?? current.pluginChain,
+    pluginUI: loaded.pluginUI ?? current.pluginUI,
+    pluginActions: loaded.pluginActions ?? current.pluginActions,
+    pluginBackgroundJobs: loaded.pluginBackgroundJobs ?? current.pluginBackgroundJobs,
+    pluginBackgroundRuns: loaded.pluginBackgroundRuns ?? current.pluginBackgroundRuns,
 		billingConnectors: loaded.billingConnectors ?? current.billingConnectors,
 		billingRecords: loaded.billingRecords ?? current.billingRecords,
 		billingSyncRuns: loaded.billingSyncRuns ?? current.billingSyncRuns,

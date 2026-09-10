@@ -1,12 +1,72 @@
-export function providerAnthropicAuthType(values: Record<string, string>) {
-  if (values.type !== "anthropic") return "";
-  return values.anthropic_auth_type || "x-api-key";
+import { type PluginActionDescriptor, type ProviderCatalogEntry } from "../core/types";
+
+type ProviderAuthModeOption = {
+  value: string;
+  authModes?: string[];
+  apiKeyRequired?: boolean;
+  defaultCatalogProviderType?: boolean;
+};
+
+const providerModelsPreviewCapability = "models.preview";
+export const providerAuthModeField = "provider_auth_mode";
+export const legacyProviderAuthModeField = "anthropic_auth_type";
+
+export function defaultProviderTypeValue(providerTypeOptions: ProviderAuthModeOption[] = []) {
+  return providerTypeOptions.find((option) => option.defaultCatalogProviderType)?.value ??
+    providerTypeOptions[0]?.value ??
+    "";
 }
 
-const providerConnectionTestFields = new Set(["base_url", "api_key", "type", "anthropic_auth_type", "custom_headers"]);
+export function providerTypeValue(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
+  return values.type || defaultProviderTypeValue(providerTypeOptions);
+}
+
+export function providerAuthMode(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
+  const providerType = providerTypeValue(values, providerTypeOptions);
+  const modes = providerAuthModes(providerTypeOptions, providerType);
+  if (modes.length === 0) return "";
+  const configured = (values[providerAuthModeField] || values[legacyProviderAuthModeField])?.trim();
+  if (configured && modes.includes(configured)) return configured;
+  return preferredProviderAuthMode(modes);
+}
+
+const providerConnectionTestFields = new Set(["base_url", "api_key", "clear_api_key", "type", providerAuthModeField, legacyProviderAuthModeField, "custom_headers"]);
 
 export function providerConnectionTestRunAfterUpdate(currentRun: number, key: string) {
   return providerConnectionTestFields.has(key) ? currentRun + 1 : currentRun;
+}
+
+export function providerResourceBaseURLForProviderUpdate(value: string, entry: ProviderCatalogEntry | null | undefined) {
+  return value || entry?.base_url || "";
+}
+
+export function providerCatalogModelsPreviewAction(entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  if (!entry?.type) return undefined;
+  return actions.find((action) => action.capability === providerModelsPreviewCapability && action.subject === entry.type);
+}
+
+export function providerCatalogSupportsModelPreview(entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  return Boolean(providerCatalogModelsPreviewAction(entry, actions));
+}
+
+export function providerCatalogUsesDiscoveryPreview(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  return catalogID === "custom" || providerCatalogSupportsModelPreview(entry, actions);
+}
+
+export function providerCatalogDiscoveryRouteID(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = []) {
+  if (catalogID === "custom") return "custom";
+  return providerCatalogSupportsModelPreview(entry, actions) ? catalogID : "";
+}
+
+export function providerCatalogAPIKeyRequired(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = [], providerTypeOptions: ProviderAuthModeOption[] = [], currentProviderType = "") {
+  const providerType = catalogID === "custom" ? currentProviderType || defaultProviderTypeValue(providerTypeOptions) : entry?.type;
+  const option = providerTypeOptions.find((item) => item.value === providerType);
+  if (option?.apiKeyRequired === false) return false;
+  if (option?.apiKeyRequired === true) return true;
+  if (catalogID === "custom") return true;
+  const action = providerCatalogModelsPreviewAction(entry, actions);
+  if (!action) return true;
+  return pluginActionRequiredFields(action).has("api_key");
 }
 
 export function customUpstreamDiscoveryPayload(
@@ -14,31 +74,49 @@ export function customUpstreamDiscoveryPayload(
   providerID: string,
   modelCategory: string,
   headers: Record<string, unknown> = {},
+  providerTypeOptions: ProviderAuthModeOption[] = [],
 ) {
+  const authMode = providerAuthMode(values, providerTypeOptions);
   return {
     provider_id: providerID,
     name: values.name,
-    type: values.type || "openai_compatible",
+    type: providerTypeValue(values, providerTypeOptions),
     base_url: values.base_url,
     api_key: values.api_key,
+    ...(values.clear_api_key === "true" ? { clear_api_key: true } : {}),
     ...headers,
-    anthropic_auth_type: providerAnthropicAuthType(values),
+    [providerAuthModeField]: authMode,
+    [legacyProviderAuthModeField]: authMode,
     model_category: modelCategory,
   };
 }
 
 // Identifies the upstream a custom Provider's model list was loaded from. The
-// Provider type and effective Anthropic auth mode affect the discovery request,
+// Provider type and effective auth mode affect the discovery request,
 // so changing either one must invalidate the cached list even when the Base URL
 // and API key stay the same.
-export function customUpstreamConnectionKey(values: Record<string, string>) {
+export function customUpstreamConnectionKey(values: Record<string, string>, providerTypeOptions: ProviderAuthModeOption[] = []) {
   return JSON.stringify([
     values.base_url,
     values.api_key,
-    values.type || "openai_compatible",
-    providerAnthropicAuthType(values),
+    values.clear_api_key === "true",
+    providerTypeValue(values, providerTypeOptions),
+    providerAuthMode(values, providerTypeOptions),
     values.custom_headers,
   ]);
+}
+
+function providerAuthModes(providerTypeOptions: ProviderAuthModeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
+}
+
+function pluginActionRequiredFields(action: PluginActionDescriptor) {
+  const required = action.input_schema?.required;
+  return new Set(Array.isArray(required) ? required.filter((item): item is string => typeof item === "string") : []);
+}
+
+function preferredProviderAuthMode(modes: string[]) {
+  return modes.includes("x-api-key") ? "x-api-key" : modes[0] ?? "";
 }
 
 export function customUpstreamModelsVisible(

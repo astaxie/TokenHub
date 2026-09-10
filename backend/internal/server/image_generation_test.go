@@ -18,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestImageJobErrorStatus(t *testing.T) {
@@ -146,9 +148,10 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 		},
 		ProviderModel: openAIImageModelName,
 	}
-	generated, revisedPrompt, usage, err := server.executeOpenAIImage(context.Background(), route, ImageJob{
+	generationJob := ImageJob{
 		Action: "generate", Prompt: "platform generation", Quality: "low", Size: "1024x1024",
-	})
+	}
+	generated, revisedPrompt, usage, err := server.imageRunnerForRoute(generationJob, route)(context.Background(), route, generationJob)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,14 +219,14 @@ func TestImageModelsUseSeparateProviderTypes(t *testing.T) {
 	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "separate-image-routes-secret"})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 
-	platformRoutes, err := server.imageRouteCandidates(openAIImageModelName)
+	platformRoutes, err := server.imageRouteCandidates(CallContext{}, openAIImageModelName)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(platformRoutes) != 1 || platformRoutes[0].Provider.Type != ProviderOpenAI {
 		t.Fatalf("gpt-image-2 must only use OpenAI Platform routes: %+v", platformRoutes)
 	}
-	subscriptionRoutes, err := server.imageRouteCandidates(codexImageModelName)
+	subscriptionRoutes, err := server.imageRouteCandidates(CallContext{}, codexImageModelName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,48 +427,6 @@ func TestStaleUnsupportedCodexImageRouteIsRetried(t *testing.T) {
 	}
 }
 
-func TestCodexImageForbiddenMarksResourceUnsupportedAndAllowsFailover(t *testing.T) {
-	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
-		ID:      "prv_image_capability",
-		Name:    "Codex Image Capability",
-		Type:    ProviderOpenAICodex,
-		Status:  StatusActive,
-		Healthy: true,
-	})
-	resource, err := store.AddProviderResource(ProviderResource{
-		ID:           "rsrc_image_capability",
-		ProviderID:   provider.ID,
-		Name:         "Codex Image Account",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := NewWithConfig(store, Config{
-		AdminToken: "test-admin-token",
-		SecretKey:  "image-capability-test-secret",
-	})
-	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	forbidden := server.codexImageForbiddenError(resource.ID)
-	if !shouldFailoverRoutedError(forbidden, false) {
-		t.Fatal("image entitlement failure must allow failover to another account")
-	}
-	if !providerAttemptOutcome(forbidden).CountsAsHealthy() {
-		t.Fatal("image entitlement failure must not degrade account health")
-	}
-	updated, ok := server.providerResourceByID(resource.ID)
-	if !ok {
-		t.Fatal("provider resource disappeared")
-	}
-	if updated.Options[codexImageCapabilityOption] != codexImageCapabilityUnsupported ||
-		updated.Options[codexImageCapabilityCheckedAtOption] == "" {
-		t.Fatalf("image capability was not persisted: %+v", updated.Options)
-	}
-}
-
 type imageStartRejectStore struct {
 	*GormStore
 }
@@ -515,6 +476,66 @@ func TestImageAuthorizationHappensBeforeJobOrAssetPersistence(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("rejected request wrote image files: %+v", entries)
+	}
+}
+
+func TestImageRouteCandidatesHookCanSelectApprovedImageRoute(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Route Plugin Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-route-plugin-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_route_plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstProvider := store.AddProvider(Provider{ID: "prv_image_route_a", Name: "Image Route A", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	secondProvider := store.AddProvider(Provider{ID: "prv_image_route_b", Name: "Image Route B", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	firstResource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_route_a", ProviderID: firstProvider.ID, Name: "Image Route A Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondResource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_route_b", ProviderID: secondProvider.ID, Name: "Image Route B Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_a", ModelName: openAIImageModelName, ProviderID: firstProvider.ID, ProviderResourceID: firstResource.ID, ProviderModel: "image-upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_image_b", ModelName: openAIImageModelName, ProviderID: secondProvider.ID, ProviderResourceID: secondResource.ID, ProviderModel: "image-upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-route-plugin-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-router",
+		HookID:        "select-second-image-route",
+		Stage:         pluginmeta.StageRouteCandidates,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register route candidates hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Data[pluginmeta.DataRouteCandidates]) == 0 {
+			t.Fatal("image route candidates were not available to the hook")
+		}
+		return routeRankPatchResult(t, "route_image_b"), nil
+	})); err != nil {
+		t.Fatalf("register route candidates handler: %v", err)
+	}
+	var selectedRoute RouteSelection
+	server.imageRunner = func(_ context.Context, route RouteSelection, _ ImageJob) ([]byte, string, Usage, error) {
+		selectedRoute = route
+		return imageBytes, "", Usage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4}, nil
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "Draw route-selected image.", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image generation failed: %d %s", response.Code, response.Body)
+	}
+	if selectedRoute.Route.ID != "route_image_b" || selectedRoute.Provider.ID != "prv_image_route_b" {
+		t.Fatalf("selected route = %s/%s, want route_image_b/prv_image_route_b", selectedRoute.Route.ID, selectedRoute.Provider.ID)
 	}
 }
 
@@ -634,6 +655,7 @@ func TestImageAdmissionAndJobCreationRollbackTogether(t *testing.T) {
 
 func TestCodexImageVirtualModelRequiresSupportedSubscriptionAccount(t *testing.T) {
 	store := NewMemoryStore()
+	syncBuiltInImageCapabilityProfilesForTest(store)
 	project := store.CreateProject(Project{Name: "Codex Image Model Project"})
 	key, _, err := store.CreateAPIKey(project.ID, APIKey{
 		Name:    "codex-image-model-key",
@@ -1169,7 +1191,7 @@ func TestImageGenerationAsyncUsesCodexSubscriptionAndPersistsImage(t *testing.T)
 		SecretKey:  "image-signing-and-encryption-secret",
 	})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	server.imageStorageDir = t.TempDir()
 	handler := server.Handler()
 

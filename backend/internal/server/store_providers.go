@@ -31,12 +31,10 @@ func (s *GormStore) AddProvider(provider Provider) Provider {
 	if provider.CreatedAt.IsZero() {
 		provider.CreatedAt = time.Now().UTC()
 	}
-	if provider.Type == ProviderOpenAICodex {
+	if providerUsesResourceCredentials(provider) {
 		provider.APIKey = ""
-		if codexProviderBaseURLNeedsNormalization(provider.BaseURL) {
-			provider.BaseURL = openAICodexBaseURL
-		}
 	}
+	s.applyProviderTypeDefaults(&provider)
 	if headers, sensitive, err := s.protectProviderHeaders(provider.Headers, provider.SensitiveHeaders, nil, nil); err == nil {
 		provider.Headers = headers
 		provider.SensitiveHeaders = sensitive
@@ -147,8 +145,8 @@ func (s *GormStore) UpdateProvider(id string, patch Provider) (Provider, error) 
 	if patch.ClearAPIKey {
 		provider.APIKey = ""
 	} else if patch.APIKey != "" {
-		if firstNonEmpty(patch.Type, provider.Type) == ProviderOpenAICodex {
-			return Provider{}, NewHTTPError(409, "provider_adapter_credential_conflict", "Codex Subscription credentials must be stored on account resources")
+		if providerUsesResourceCredentials(patchedProviderPolicy(provider, patch)) {
+			return Provider{}, NewHTTPError(409, "provider_adapter_credential_conflict", "Provider credentials must be stored on account resources")
 		}
 		provider.APIKey = s.encryptSecret(patch.APIKey)
 	}
@@ -190,6 +188,38 @@ func (s *GormStore) UpdateProvider(id string, patch Provider) (Provider, error) 
 	provider.APIKey = ""
 	provider.Headers = maskedProviderHeaders(s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), provider.SensitiveHeaders)
 	return provider, nil
+}
+
+func (s *GormStore) ReconcileProviderPluginPolicies(registry *AdapterRegistry) (int, error) {
+	if registry == nil {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var providers []Provider
+	if err := s.db.Find(&providers).Error; err != nil {
+		return 0, err
+	}
+	updated := 0
+	for _, provider := range providers {
+		descriptor, ok := registry.Describe(provider.Type)
+		if !ok {
+			continue
+		}
+		before := cloneStringMap(provider.Options)
+		after := cloneStringMap(provider.Options)
+		provider.Options = after
+		applyProviderPluginPolicy(&provider, descriptor)
+		if !providerPolicyOptionsChanged(before, provider.Options) {
+			continue
+		}
+		if err := s.db.Model(&provider).Select("Options").Updates(provider).Error; err != nil {
+			return updated, err
+		}
+		updated++
+	}
+	return updated, nil
 }
 
 func (s *GormStore) DeleteProvider(id string) error {
@@ -259,7 +289,7 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := validateClaudeCodeAttributionOptions(resource.Options); err != nil {
+	if err := validateSystemPromptTransformOptions(resource.Options); err != nil {
 		return ProviderResource{}, err
 	}
 	var provider Provider
@@ -269,6 +299,7 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	if err := ensureProviderResourceAdapterCompatibility(s.db, &provider, resource.ResourceType); err != nil {
 		return ProviderResource{}, err
 	}
+	s.applyProviderResourceTypeDefaults(provider.Type, &resource)
 	resource.Name = strings.TrimSpace(resource.Name)
 	// routeSelection lets a non-empty resource BaseURL override the provider's
 	// validated one, so resource-level URLs must pass the same SSRF guard at
@@ -311,13 +342,13 @@ func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderReso
 	); err != nil {
 		return ProviderResource{}, err
 	}
-	s.prepareProviderResourceForCreate(&resource)
+	s.prepareProviderResourceForCreate(provider.Type, &resource)
 	resource.APIKey = s.encryptSecret(resource.APIKey)
 	if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&resource).Error; err != nil {
 		return ProviderResource{}, err
 	}
 	resource.Headers = maskedProviderHeaders(s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders), resource.SensitiveHeaders)
-	redactProviderResourceSecrets(&resource)
+	s.redactProviderResourceSecrets(provider.Type, &resource)
 	return resource, nil
 }
 
@@ -341,12 +372,15 @@ func (s *GormStore) ListProviderResources() []ProviderResource {
 			copy := observation
 			items[i].Observation = &copy
 		}
-		redactProviderResourceSecrets(&items[i])
-		items[i].Headers, items[i].HeaderValidationErrors = s.revealProviderHeaderConfig(items[i].Headers, items[i].SensitiveHeaders)
 		if provider, ok := providersByID[items[i].ProviderID]; ok {
+			s.redactProviderResourceSecrets(provider.Type, &items[i])
+			items[i].Headers, items[i].HeaderValidationErrors = s.revealProviderHeaderConfig(items[i].Headers, items[i].SensitiveHeaders)
 			if err := validateEffectiveProviderHeaders(provider.Type, s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), items[i].Headers); err != nil {
 				items[i].HeaderValidationErrors = []string{AsHTTPError(err).Code}
 			}
+		} else {
+			redactProviderResourceSecrets(&items[i])
+			items[i].Headers, items[i].HeaderValidationErrors = s.revealProviderHeaderConfig(items[i].Headers, items[i].SensitiveHeaders)
 		}
 		items[i].Headers = maskedProviderHeaders(items[i].Headers, items[i].SensitiveHeaders)
 	}
@@ -362,15 +396,73 @@ func (s *GormStore) GetProviderResource(id string) (ProviderResource, bool) {
 	resource.Headers, resource.HeaderValidationErrors = s.revealProviderHeaderConfig(resource.Headers, resource.SensitiveHeaders)
 	var provider Provider
 	if err := s.db.First(&provider, "id = ?", resource.ProviderID).Error; err == nil {
+		resource.CredentialSummary = s.providerResourceCredentialSummary(provider.Type, resource)
 		if validationErr := validateEffectiveProviderHeaders(provider.Type, s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), resource.Headers); validationErr != nil {
 			resource.HeaderValidationErrors = []string{AsHTTPError(validationErr).Code}
 		}
+	} else {
+		resource.CredentialSummary = providerResourceCredentialSummary(resource)
 	}
 	return resource, true
 }
 
 func providerResourceMutationLeaseName(resourceID string) string {
 	return "provider-resource-mutation:" + strings.TrimSpace(resourceID)
+}
+
+func (s *GormStore) setProviderImageCapabilityRouteProfiles(profiles []providerImageCapabilityRouteProfile) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.imageCapabilityProfiles = dedupeProviderImageCapabilityRouteProfiles(profiles)
+}
+
+func (s *GormStore) providerImageCapabilityRouteProfiles() []providerImageCapabilityRouteProfile {
+	return dedupeProviderImageCapabilityRouteProfiles(s.imageCapabilityProfiles)
+}
+
+func (s *GormStore) providerImageCapabilityRouteProfilesForResource(provider Provider, resource ProviderResource) []providerImageCapabilityRouteProfile {
+	profiles := s.providerImageCapabilityRouteProfiles()
+	matches := make([]providerImageCapabilityRouteProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		if providerImageCapabilityProfileMatchesResource(profile, provider, resource) {
+			matches = append(matches, profile)
+		}
+	}
+	return matches
+}
+
+func mergeProviderImageCapabilityRouteProfiles(left []providerImageCapabilityRouteProfile, right []providerImageCapabilityRouteProfile) []providerImageCapabilityRouteProfile {
+	merged := append([]providerImageCapabilityRouteProfile{}, left...)
+	merged = append(merged, right...)
+	return dedupeProviderImageCapabilityRouteProfiles(merged)
+}
+
+func providerImageCapabilityBindingChanged(
+	profile providerImageCapabilityRouteProfile,
+	before ProviderResource,
+	beforeCredentials ProviderResourceCredentials,
+	after ProviderResource,
+	afterCredentials ProviderResourceCredentials,
+) bool {
+	profile.withDefaults()
+	if before.ProviderID != after.ProviderID ||
+		before.ResourceType != after.ResourceType ||
+		before.Group != after.Group ||
+		strings.TrimSpace(before.BaseURL) != strings.TrimSpace(after.BaseURL) ||
+		strings.TrimSpace(before.Options["allowed_codex_hosts"]) != strings.TrimSpace(after.Options["allowed_codex_hosts"]) {
+		return true
+	}
+	return !openAIAccountAuthenticationEqual(beforeCredentials, afterCredentials) ||
+		strings.TrimSpace(beforeCredentials.AccountID) != strings.TrimSpace(afterCredentials.AccountID)
+}
+
+func clearProviderImageCapabilityOptions(options map[string]string, profiles []providerImageCapabilityRouteProfile) {
+	for _, profile := range profiles {
+		profile.withDefaults()
+		delete(options, profile.CapabilityOption)
+		delete(options, profile.CapabilityCheckedAtOption)
+		delete(options, profile.RouteBackfillOption)
+	}
 }
 
 func updateExistingProviderResourceColumns(db *gorm.DB, resource *ProviderResource, columns ...string) error {
@@ -402,7 +494,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 	defer s.mu.Unlock()
 	db := s.db.WithContext(ctx)
 
-	if err := validateClaudeCodeAttributionOptions(patch.Options); err != nil {
+	if err := validateSystemPromptTransformOptions(patch.Options); err != nil {
 		return ProviderResource{}, err
 	}
 	var resource ProviderResource
@@ -410,13 +502,24 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
 	}
 	before := resource
-	beforeCredentials := s.providerResourceCredentialsForRuntime(before)
-	beforeImageCapability := strings.TrimSpace(before.Options[codexImageCapabilityOption])
+	var beforeProvider Provider
+	if err := db.First(&beforeProvider, "id = ?", before.ProviderID).Error; err != nil {
+		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
+	}
+	beforeCredentials := s.providerResourceCredentialsForRuntimeForProvider(beforeProvider.Type, before)
+	beforeImageCapabilityProfiles := s.providerImageCapabilityRouteProfilesForResource(beforeProvider, before)
+	beforeImageCapabilities := make(map[string]string, len(beforeImageCapabilityProfiles))
+	for _, profile := range beforeImageCapabilityProfiles {
+		beforeImageCapabilities[profile.key()] = strings.TrimSpace(before.Options[profile.CapabilityOption])
+	}
+	var provider Provider
 	if patch.ProviderID != "" && patch.ProviderID != resource.ProviderID {
-		if err := db.First(&Provider{}, "id = ?", patch.ProviderID).Error; err != nil {
+		if err := db.First(&provider, "id = ?", patch.ProviderID).Error; err != nil {
 			return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 		}
 		resource.ProviderID = patch.ProviderID
+	} else if err := db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
+		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 	}
 	if patch.Name != "" {
 		nextName := strings.TrimSpace(patch.Name)
@@ -432,6 +535,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		resource.ResourceType = patch.ResourceType
 	}
 	resource.BaseURL = patch.BaseURL
+	s.applyProviderResourceTypeDefaults(provider.Type, &resource)
 	// Same SSRF persistence guard as AddProviderResource: an empty value
 	// clears the override (the provider URL applies again), a non-empty one
 	// must be a routable upstream.
@@ -467,15 +571,11 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		resource.SensitiveHeaders = sensitive
 	}
 	if patch.Options != nil {
-		if isOpenAIAccountResource(resource.ResourceType) {
-			resource.Options = preserveOpenAIAccountProtectedOptions(resource.Options, patch)
+		if s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) {
+			resource.Options = s.preserveProviderAccountProtectedOptions(resource.Options, patch, resource.ResourceType)
 		} else {
 			resource.Options = patch.Options
 		}
-	}
-	var provider Provider
-	if err := db.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
-		return ProviderResource{}, notFound(err, "provider_not_found", "Provider not found")
 	}
 	if err := ensureProviderResourceAdapterCompatibility(db, &provider, resource.ResourceType); err != nil {
 		return ProviderResource{}, err
@@ -488,22 +588,25 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		return ProviderResource{}, err
 	}
 	resource.UpdatedAt = time.Now().UTC()
-	s.prepareProviderResourceForUpdate(&resource, patch)
-	imageBindingChanged := isOpenAIAccountResource(before.ResourceType) && openAIAccountImageBindingChanged(
-		before,
-		beforeCredentials,
-		resource,
-		s.providerResourceCredentialsForRuntime(resource),
+	s.prepareProviderResourceForUpdate(provider.Type, &resource, patch)
+	afterCredentials := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
+	imageCapabilityProfiles := mergeProviderImageCapabilityRouteProfiles(
+		beforeImageCapabilityProfiles,
+		s.providerImageCapabilityRouteProfilesForResource(provider, resource),
 	)
-	if imageBindingChanged {
-		delete(resource.Options, codexImageCapabilityOption)
-		delete(resource.Options, codexImageCapabilityCheckedAtOption)
-		delete(resource.Options, codexImageRouteBackfillOption)
+	changedImageCapabilityProfiles := make([]providerImageCapabilityRouteProfile, 0, len(imageCapabilityProfiles))
+	for _, profile := range imageCapabilityProfiles {
+		if providerImageCapabilityBindingChanged(profile, before, beforeCredentials, resource, afterCredentials) {
+			changedImageCapabilityProfiles = append(changedImageCapabilityProfiles, profile)
+		}
+	}
+	if len(changedImageCapabilityProfiles) > 0 {
+		clearProviderImageCapabilityOptions(resource.Options, changedImageCapabilityProfiles)
 	}
 	if patch.Credentials != nil && strings.TrimSpace(patch.Credentials.AccessToken) != "" {
 		shouldEncryptAPIKey = true
 	}
-	if isOpenAIAccountResource(resource.ResourceType) && strings.TrimSpace(resource.APIKey) != "" && !strings.HasPrefix(resource.APIKey, "enc:v1:") {
+	if s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) && strings.TrimSpace(resource.APIKey) != "" && !strings.HasPrefix(resource.APIKey, "enc:v1:") {
 		shouldEncryptAPIKey = true
 	}
 	if shouldEncryptAPIKey {
@@ -517,25 +620,30 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		); err != nil {
 			return err
 		}
-		if !imageBindingChanged || beforeImageCapability != codexImageCapabilitySupported {
+		if len(changedImageCapabilityProfiles) == 0 {
 			return nil
 		}
 		var resources []ProviderResource
 		if err := tx.Where("provider_id = ?", before.ProviderID).Find(&resources).Error; err != nil {
 			return err
 		}
-		var routes []ModelRoute
-		if err := tx.
-			Where("provider_id = ? AND model_name = ? AND provider_model = ? AND status = ?", before.ProviderID, codexImageModelName, codexImageUpstreamModel, StatusActive).
-			Find(&routes).Error; err != nil {
-			return err
-		}
-		for _, route := range routes {
-			if codexImageRouteHasSupportedResource(route, resources) {
+		for _, profile := range changedImageCapabilityProfiles {
+			if !profile.capabilityIsSupported(beforeImageCapabilities[profile.key()]) {
 				continue
 			}
-			if err := tx.Model(&ModelRoute{}).Where("id = ?", route.ID).Update("status", StatusDisabled).Error; err != nil {
+			var routes []ModelRoute
+			if err := tx.
+				Where("provider_id = ? AND model_name = ? AND provider_model = ? AND status = ?", before.ProviderID, profile.PublicModel, profile.UpstreamModel, StatusActive).
+				Find(&routes).Error; err != nil {
 				return err
+			}
+			for _, route := range routes {
+				if providerImageCapabilityRouteHasSupportedResource(route, resources, profile) {
+					continue
+				}
+				if err := tx.Model(&ModelRoute{}).Where("id = ?", route.ID).Update("status", StatusDisabled).Error; err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -609,6 +717,11 @@ func (s *GormStore) DeleteProviderResource(id string) error {
 		if err := tx.First(&resource, "id = ?", id).Error; err != nil {
 			return notFound(err, "provider_resource_not_found", "Provider resource not found")
 		}
+		var provider Provider
+		if err := tx.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
+			return notFound(err, "provider_not_found", "Provider not found")
+		}
+		imageCapabilityProfiles := s.providerImageCapabilityRouteProfilesForResource(provider, resource)
 		if err := tx.Model(&ModelRoute{}).
 			Where("provider_resource_id = ?", id).
 			Update("provider_resource_id", "").Error; err != nil {
@@ -632,21 +745,30 @@ func (s *GormStore) DeleteProviderResource(id string) error {
 		if err := tx.Delete(&resource).Error; err != nil {
 			return err
 		}
-		if resource.ResourceType != ProviderResourceOpenAISubscription {
+		if len(imageCapabilityProfiles) == 0 {
 			return nil
 		}
-		var remainingAccounts int64
-		if err := tx.Model(&ProviderResource{}).
-			Where("provider_id = ? AND resource_type = ?", resource.ProviderID, ProviderResourceOpenAISubscription).
-			Count(&remainingAccounts).Error; err != nil {
+		var resources []ProviderResource
+		if err := tx.Where("provider_id = ?", resource.ProviderID).Find(&resources).Error; err != nil {
 			return err
 		}
-		if remainingAccounts > 0 {
-			return nil
+		for _, profile := range imageCapabilityProfiles {
+			var routes []ModelRoute
+			if err := tx.
+				Where("provider_id = ? AND model_name = ? AND provider_model = ? AND status = ?", resource.ProviderID, profile.PublicModel, profile.UpstreamModel, StatusActive).
+				Find(&routes).Error; err != nil {
+				return err
+			}
+			for _, route := range routes {
+				if providerImageCapabilityRouteHasSupportedResource(route, resources, profile) {
+					continue
+				}
+				if err := tx.Model(&ModelRoute{}).Where("id = ?", route.ID).Update("status", StatusDisabled).Error; err != nil {
+					return err
+				}
+			}
 		}
-		return tx.Model(&ModelRoute{}).
-			Where("provider_id = ? AND model_name = ? AND provider_model = ?", resource.ProviderID, codexImageModelName, codexImageUpstreamModel).
-			Update("status", StatusDisabled).Error
+		return nil
 	})
 }
 
@@ -788,6 +910,7 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
 			continue
 		}
+		s.applyProviderResourceTypeDefaults(provider.Type, &resource)
 		// Same SSRF persistence guard as AddProviderResource: a rejected row
 		// fails the row, not the whole import, matching the per-row contract.
 		if err := ValidateProviderUpstreamBaseURL(resource.BaseURL); err != nil {
@@ -837,7 +960,7 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			result.Errors = append(result.Errors, "row "+row+": "+err.Error())
 			continue
 		}
-		s.prepareProviderResourceForCreate(&resource)
+		s.prepareProviderResourceForCreate(provider.Type, &resource)
 		resource.APIKey = s.encryptSecret(resource.APIKey)
 		if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&resource).Error; err != nil {
 			result.Failed++
@@ -845,7 +968,7 @@ func (s *GormStore) ImportProviderResources(resources []ProviderResource) (Provi
 			continue
 		}
 		resource.Headers = maskedProviderHeaders(s.revealProviderHeaders(resource.Headers, resource.SensitiveHeaders), resource.SensitiveHeaders)
-		redactProviderResourceSecrets(&resource)
+		s.redactProviderResourceSecrets(provider.Type, &resource)
 		result.Success++
 		result.Resources = append(result.Resources, resource)
 	}

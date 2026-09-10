@@ -1,6 +1,6 @@
 {
   "name": "tokenhub-admin",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "license": "Apache-2.0",
   "packageManager": "npm@10.9.8",
@@ -14,7 +14,9 @@
     "test:domain": "node --test features/admin/domain/*.test.mjs",
     "test:components": "vitest run",
     "test:e2e": "node e2e/run-playwright.mjs",
-    "typecheck": "npm run check:lines && tsc --noEmit"
+    "typecheck": "npm run check:lines && tsc --noEmit",
+    "test:ui": "node tests/ui/run.mjs",
+    "capture:ui": "node tests/ui/run.mjs --capture"
   },
   "dependencies": {
     "lucide-react": "1.17.0",

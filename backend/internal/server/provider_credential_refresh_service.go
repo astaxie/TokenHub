@@ -14,24 +14,45 @@ const providerCredentialRefreshConcurrency = 4
 // they expire. RefreshProviderResourceCredentials owns the cluster lease, so
 // every replica may run this scheduler without rotating a token concurrently.
 type ProviderCredentialRefreshService struct {
-	store Store
+	store         Store
+	pluginRefresh providerCredentialRefreshFunc
+	pluginJob     providerCredentialRefreshBackgroundJobFunc
 
 	schedulerOnce sync.Once
 	schedulerStop context.CancelFunc
 	schedulerDone chan struct{}
 }
 
-func newProviderCredentialRefreshService(store Store) *ProviderCredentialRefreshService {
-	return &ProviderCredentialRefreshService{store: store}
+type providerCredentialRefreshFunc func(context.Context, ProviderResource) (bool, error)
+type providerCredentialRefreshBackgroundJobFunc func(providerType string) bool
+
+type providerNativeCredentialRefreshSupportChecker interface {
+	SupportsNativeProviderResourceCredentialRefresh(resource ProviderResource) bool
+}
+
+func newProviderCredentialRefreshService(store Store, pluginRefresh ...providerCredentialRefreshFunc) *ProviderCredentialRefreshService {
+	service := &ProviderCredentialRefreshService{store: store}
+	if len(pluginRefresh) > 0 {
+		service.pluginRefresh = pluginRefresh[0]
+	}
+	return service
 }
 
 func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
 	resources := make([]ProviderResource, 0)
+	providersByID := map[string]Provider{}
+	for _, provider := range s.store.ListProviders() {
+		providersByID[provider.ID] = provider
+	}
 	for _, resource := range s.store.ListProviderResources() {
 		if ctx.Err() != nil {
 			return
 		}
-		if !isOpenAIAccountResource(resource.ResourceType) || resource.Status != StatusActive || resource.CredentialSummary["has_refresh_token"] != "true" || resource.CredentialSummary[openAIAccountReauthorizationRequiredOption] == "true" {
+		providerType, due := providerResourceCredentialRefreshProviderType(s.store, providersByID, resource)
+		if !due {
+			continue
+		}
+		if s.pluginJob != nil && s.pluginJob(providerType) {
 			continue
 		}
 		resources = append(resources, resource)
@@ -64,7 +85,38 @@ func (s *ProviderCredentialRefreshService) RunDue(ctx context.Context) {
 	workers.Wait()
 }
 
+func providerResourceCredentialRefreshProviderType(store Store, providersByID map[string]Provider, resource ProviderResource) (string, bool) {
+	provider, ok := providersByID[resource.ProviderID]
+	if !ok {
+		return "", false
+	}
+	if !store.IsProviderAccountResourceType(provider.Type, resource.ResourceType) ||
+		resource.Status != StatusActive ||
+		resource.CredentialSummary["has_refresh_token"] != "true" ||
+		resource.CredentialSummary[providerResourceReauthorizationRequiredOption] == "true" {
+		return provider.Type, false
+	}
+	return provider.Type, true
+}
+
 func (s *ProviderCredentialRefreshService) renewResource(ctx context.Context, resource ProviderResource) {
+	if s.pluginRefresh != nil {
+		handled, err := s.pluginRefresh(ctx, resource)
+		if err != nil {
+			code := "credential_refresh_failed"
+			if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code != "" {
+				code = httpErr.Code
+			}
+			log.Printf("[tokenhub] OAuth token renewal failed for provider resource %s: code=%s", resource.ID, code)
+			return
+		}
+		if handled {
+			return
+		}
+	}
+	if supportChecker, ok := s.store.(providerNativeCredentialRefreshSupportChecker); ok && !supportChecker.SupportsNativeProviderResourceCredentialRefresh(resource) {
+		return
+	}
 	if _, err := s.store.RefreshProviderResourceCredentials(ctx, resource.ID, false); err != nil {
 		code := "credential_refresh_failed"
 		if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code != "" {

@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.lucidquery"
+name: "LucidQuery AI"
+version: 1.0.0
+summary: "Connect TokenHub to LucidQuery AI."
+description: "Connect TokenHub to LucidQuery AI. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://lucidquery.com/api/v1"
+    catalog:
+      id: "lucidquery"
+      name: "LucidQuery AI"
+      display_name: "LucidQuery AI"
+      type: "openai_compatible"
+      base_url: "https://lucidquery.com/api/v1"
+      doc_url: "https://lucidquery.com/api/docs"
+      categories: []
+      models_count: 2
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

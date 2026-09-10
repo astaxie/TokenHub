@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.clarifai"
+name: "Clarifai"
+version: 1.0.0
+summary: "Connect TokenHub to Clarifai."
+description: "Connect TokenHub to Clarifai. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.clarifai.com/v2/ext/openai/v1"
+    catalog:
+      id: "clarifai"
+      name: "Clarifai"
+      display_name: "Clarifai"
+      type: "openai_compatible"
+      base_url: "https://api.clarifai.com/v2/ext/openai/v1"
+      doc_url: "https://docs.clarifai.com/compute/inference/"
+      categories: []
+      models_count: 12
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

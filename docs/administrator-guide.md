@@ -13,6 +13,7 @@ This guide is for platform administrators, security operators, and infrastructur
 | Routing Policies | Fine-tune Provider mappings, priority, weight, project scope, and failover strategy |
 | Projects and Teams | Define ownership boundaries for keys, quota, and cost attribution |
 | Identity Sources | Configure OAuth or OIDC login providers for enterprise sign-in |
+| Plugin Management | Install and inspect external packages, manage lifecycle state, and operate supported built-in or declarative capabilities |
 | Security and Audit | Review request logs, admin events, key rotation, and policy changes |
 
 ## Production Setup Order
@@ -27,6 +28,18 @@ This guide is for platform administrators, security operators, and infrastructur
 8. Review usage attribution before issuing keys broadly.
 
 Anthropic Providers use `x-api-key` authentication by default. If an Anthropic-compatible upstream requires `Authorization: Bearer`, open the Provider's **Advanced** tab, keep **Provider Type** set to **Claude / Anthropic**, and select **Authorization Bearer** under **Anthropic Authentication**. TokenHub derives either header from the encrypted Provider API Key and sends only the selected authentication header; do not duplicate the credential in custom headers.
+
+## Plugin Management
+
+Open **Plugin Management** to browse the unified list of built-in and installed plugins by Provider Integration, Request Pipeline, UI Template, or Automation. Each detail page explains the plugin's purpose and exposes package files; settings appear only for implemented declarative settings surfaces. Marketplace and local package installs are validated by checksum, written to `TOKENHUB_PLUGIN_DIR`, and evaluated by a runtime reload. Declarative presentation packages can become active. An enabled external package with a backend command is instead shown as **Startup Failed**, remains installed and inspectable, and does not register its Provider, hook, job, or action because external execution is unavailable in this release. Built-ins can be enabled or disabled but not uninstalled; external packages can also be updated or uninstalled.
+
+Provider plugins can declare routing and credential policy in their manifest. Set `capabilities.provider.credentials_scope: resource` for subscription/account-style Providers whose upstream secrets must live on Provider Resources rather than the Provider itself. Set `capabilities.provider.route_requires_resource: true` when every route attempt must select an eligible Provider Resource; Core persists these policies on created Providers and applies the same missing, disabled, unhealthy, cooldown, and resource-group checks that built-in subscription Providers use. Set `capabilities.provider.reasoning_configurable` to show or hide the Admin reasoning-parameter controls explicitly; older plugins without that field still fall back to route-protocol inference.
+
+Provider plugins that accept Responses-shaped requests behind a compatibility bridge can list `codex/responses` in `capabilities.provider.route_protocols`. Chat Completions and Anthropic Messages routes then use the shared Chat/Anthropic-to-Responses bridge for that Provider instead of relying on a built-in Provider type.
+
+Plugins that support request session affinity can also declare `session_affinity` in `capabilities.gateway` and set `capabilities.provider.session_affinity_kind` to `provider_session` or `codex_session`. Core uses that policy when Responses, Chat, Anthropic, Gemini, or Responses Compact routes derive sticky Provider Resource bindings from session headers or request metadata.
+
+Registered in-process background jobs can be run manually from the background job manifest table. Manual runs use the same Core runner as scheduled jobs, including input schema validation, retry settings, timeout handling, concurrency limits, last-run tracking, result sanitization, and admin audit events. TokenHub redacts secret-looking fields such as access tokens, refresh tokens, API keys, passwords, cookies, and private keys before returning run results to the console. External command jobs are not registered while external execution is unavailable.
 
 ## Model Playground Diagnostics
 
@@ -88,6 +101,12 @@ User limits are enforced alongside the applicable API Key, Project, Team, and gl
 
 Admission reserves user requests and estimated tokens before any Provider call. The shared settlement transaction reconciles the reservation to actual metered usage and uses the request ID as its durable idempotency marker for buffered, streaming, image, and background Responses calls. Background jobs persist their reservation state so cancellation, restart recovery, and stale workers cannot settle it twice. PostgreSQL uses transaction-scoped advisory locks and row locks across replicas; SQLite uses its single-backend transaction serialization. A blocked request returns HTTP 429 before Provider invocation with `details.scope` set to `user`. Audit payloads, alerts, and metrics retain that bounded scope without exposing the user ID or any API Key secret.
 
+## Self-hosted compatible APIs
+
+For a self-hosted service using the OpenAI-compatible adapter, leave the credential empty if the service does not require authentication. Connection testing, model discovery, and inference support this mode; no placeholder API Key is needed. If the service requires authentication, provide its real credential. When editing an existing Provider, leaving the field blank retains the saved credential; use the explicit remove-credential option to switch to unauthenticated access. Other adapters retain their declared authentication requirements.
+
+Literal RFC1918/ULA HTTP endpoints such as `http://192.168.1.10:8000/v1` work by default. Loopback is allowed automatically only in auto mode with an empty private allowlist; otherwise it requires `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`. Internal DNS names such as `host.docker.internal` require `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto`. Existing nonempty private allowlists remain restrictive; see the deployment guide for strict mode and proxy policy.
+
 ## Provider Catalog Availability
 
 TokenHub stores the last known-good provider catalog in the database. On every backend startup, it validates and loads the configured local `provider-catalog.json`, then atomically replaces the database snapshot. Ordinary **Provider Channels** requests only read the database snapshot. An explicit administrator refresh downloads the latest `PublicProviderConf` catalog, applies the same completeness checks, and atomically replaces the snapshot only when validation succeeds. If the upstream request or validation fails, TokenHub falls back to the configured local catalog. If that fallback also fails, the refresh returns an error and TokenHub keeps using the last known-good snapshot. Refresh responses identify the selected source as `upstream-provider-catalog` or `local-provider-catalog`.
@@ -98,7 +117,7 @@ For active OpenAI Codex Subscription accounts that have a saved refresh token, T
 
 ### Kronk local inference
 
-Choose **Kronk** in **Provider Channels** to connect an independently running Kronk Model Server. The default Base URL is `http://127.0.0.1:11435/v1`. Leave the application token empty when Kronk authentication is disabled; otherwise TokenHub sends the saved secret only as `Authorization: Bearer <token>`. Connection testing checks `/v1/liveness`, `/v1/readiness`, and `/v1/models` separately so a reachable process, a ready service, and usable local models remain distinct states.
+Choose **Kronk** in **Provider Channels** to connect an independently running Kronk Model Server. The default Base URL is `http://127.0.0.1:11435/v1`, which is allowed automatically only in auto mode with an empty private allowlist; otherwise it requires `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`. When Kronk runs on another host, use a reachable private IP; that works in the default strict mode. Leave the application token empty when Kronk authentication is disabled; otherwise TokenHub sends the saved secret only as `Authorization: Bearer <token>`. Connection testing checks `/v1/liveness`, `/v1/readiness`, and `/v1/models` separately so a reachable process, a ready service, and usable local models remain distinct states.
 
 The model picker discovers the live inventory from `GET /v1/models` and preserves each complete Kronk model ID, including `/`, `:`, and quantization suffixes. Import the selected inventory, then create the external standard name in **Model Directory** and map it to the Kronk ID under **Routing Policies**. Repeated imports are idempotent. A successful later discovery marks missing Kronk models unavailable without deleting their inventory or routes; a failed discovery leaves existing configuration unchanged.
 
@@ -122,13 +141,13 @@ Streaming maps Dify SSE events (`message` and `message_end` for chat apps, `text
 
 To let a Dify app call models through TokenHub in the opposite direction, add an `OpenAI-API-compatible` model provider inside Dify pointing at the TokenHub `/v1` endpoint with a TokenHub API key. No TokenHub-side configuration is required.
 
-## Claude Code Attribution Handling
+## System Prompt Transform Handling
 
 Claude Code can place an attribution text block at the start of an Anthropic Messages `system` array. The block contains client metadata that can vary between requests and prevent a third-party upstream from reusing an otherwise stable prompt prefix.
 
-Each Provider has a `claude_code_attribution_policy` setting. New official Anthropic Providers default to `preserve`, while Providers that are known to be non-official default to `strip` for better third-party prefix-cache reuse. Custom Anthropic endpoints whose origin is unknown default to `preserve`. Existing Providers without this setting also continue to preserve the block. `strip` removes a block only when the first top-level `system` item has `type: "text"` and its text begins exactly with `x-anthropic-billing-header:`. String-valued `system` prompts, later blocks, leading whitespace, and other block types are never removed.
+Each Provider has a `system_prompt_transform_policy` setting. Provider plugins declare their default with the `system_prompt_transform_default` provider policy capability. New third-party Providers default to `strip` for better upstream prefix-cache reuse unless their plugin declares another default. Existing Providers without this setting continue to preserve the block. The legacy `claude_code_attribution_policy` option and `claude_code_attribution_default` capability are still accepted as upgrade aliases. `strip` removes a block only when the first top-level `system` item has `type: "text"` and its text begins exactly with `x-anthropic-billing-header:`. String-valued `system` prompts, later blocks, leading whitespace, and other block types are never removed.
 
-Provider Resources inherit the Provider policy by default and can override it with `options.claude_code_attribution_policy` set to `preserve` or `strip`. Omitting that Resource option restores inheritance. TokenHub applies the effective policy separately for every route attempt, so a failover Resource receives the original request and applies its own setting. Audit payloads also retain the original request. `POST /v1/messages/count_tokens` continues to count the original request because it does not select a concrete Provider Resource.
+Provider Resources inherit the Provider policy by default and can override it with `options.system_prompt_transform_policy` set to `preserve` or `strip`. Omitting that Resource option restores inheritance. TokenHub applies the effective policy separately for every route attempt, so a failover Resource receives the original request and applies its own setting. Audit payloads also retain the original request. `POST /v1/messages/count_tokens` continues to count the original request because it does not select a concrete Provider Resource.
 
 ## Codex Fingerprint Convergence
 
@@ -161,6 +180,13 @@ Provider-model prices represent actual upstream cost and are used for internal a
 When Provider Channels, Model Directory, or Routing Policies has no configured data, the console shows the same three-step setup guide: import Provider inventory, create an external model from the built-in model catalog, then configure routing. The primary action always points to the earliest incomplete prerequisite, so administrators are not sent into a form that cannot yet be completed.
 
 Publication and runtime health are different states. Membership in `GET /v1/models` requires an active external `Model`, at least one active `ModelRoute`, and API-key access when a model allowlist is configured. It does not change when a Provider or Provider Resource is temporarily unhealthy. Health affects whether a request can be served and is shown separately in the directory and routing diagnostics. Disabling the external model removes it from `GET /v1/models` while retaining its mappings for later re-publication.
+
+### GPT-6 Astra
+
+The standard model directory and built-in OpenAI Provider inventory include `gpt-6-astra`. Select it when creating a model and configure an authorized upstream route; catalog inclusion does not grant upstream access. Codex subscription inventory remains account-discovered. Supported reasoning efforts are `low`, `medium`, `high`, `xhigh`, and `max`; Codex probes and Anthropic-to-Codex conversion preserve `max`.
+
+The template uses OpenAI Standard prices per million tokens: $10 input, $1 cached input, $12.50 cache writes, and $50 output. Above 272,000 input tokens, OpenAI doubles input/cache rates and multiplies output rates by 1.5 for the full request. Provider tier metadata records this distinction; the standard template's fixed prices do not automatically apply context tiers or Batch/Flex/Fast discounts and surcharges. Configure applicable pricing separately. See [OpenAI model specifications](https://developers.openai.com/api/docs/models/gpt-6-astra).
+
 
 ## Custom Upstream Request Headers
 

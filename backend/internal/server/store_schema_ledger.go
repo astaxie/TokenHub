@@ -119,6 +119,12 @@ func schemaReferenceSnapshot(ctx context.Context, driver, dsn string) (dbschema.
 }
 
 func buildSchemaReference(ctx context.Context, driver, dsn string) (dbschema.ObjectSet, error) {
+	return buildSchemaReferenceWithExpansions(ctx, driver, dsn, false)
+}
+
+// Adoption compares the frozen baseline before applying expansions. Maintenance
+// verification instead requires the current structure, including those expansions.
+func buildSchemaReferenceWithExpansions(ctx context.Context, driver, dsn string, expand bool) (dbschema.ObjectSet, error) {
 	switch driver {
 	case "sqlite":
 		scratchDSN := fmt.Sprintf("file:%s?mode=memory&cache=shared", NewID("schemaref"))
@@ -133,6 +139,11 @@ func buildSchemaReference(ctx context.Context, driver, dsn string) (dbschema.Obj
 		defer sqlDB.Close()
 		if err := migrateSchemaObjects(db, driver); err != nil {
 			return dbschema.ObjectSet{}, fmt.Errorf("build sqlite schema reference: %w", err)
+		}
+		if expand {
+			if err := expandSchemaReference(ctx, sqlDB, driver); err != nil {
+				return dbschema.ObjectSet{}, err
+			}
 		}
 		return dbschema.Introspect(ctx, sqlDB, dbschema.DialectSQLite, "")
 	case "postgres":
@@ -170,10 +181,25 @@ func buildSchemaReference(ctx context.Context, driver, dsn string) (dbschema.Obj
 		if err := migrateSchemaObjects(db, driver); err != nil {
 			return dbschema.ObjectSet{}, fmt.Errorf("build postgres schema reference: %w", err)
 		}
+		if expand {
+			if err := expandSchemaReference(ctx, sqlDB, driver); err != nil {
+				return dbschema.ObjectSet{}, err
+			}
+		}
 		return dbschema.Introspect(ctx, sqlDB, dbschema.DialectPostgres, schemaName)
 	default:
 		return dbschema.ObjectSet{}, fmt.Errorf("unsupported schema reference driver %q", driver)
 	}
+}
+
+func expandSchemaReference(ctx context.Context, db *sql.DB, driver string) error {
+	// This is an isolated reference database whose baseline was just constructed.
+	runner, err := dbschema.NewRunner(db, dbschema.Dialect(driver), SchemaMigrationRegistry(), dbschema.WithExternalCoordination())
+	if err != nil {
+		return err
+	}
+	_, err = runner.Adopt(ctx, nil)
+	return err
 }
 
 // postgresSearchPathDSN points a PostgreSQL DSN at the given schema. URL-style

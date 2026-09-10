@@ -403,6 +403,7 @@ function ModelStep({
               {visibleModels.map((model) => (
                 <ModelOption
                   key={model.id}
+                  data={data}
                   model={model}
                   selected={previewModel?.name === model.name}
                   onSelect={() => onPreview(model.name)}
@@ -437,9 +438,9 @@ function ModelStep({
   );
 }
 
-function ModelOption({ model, selected, onSelect }: { model: Model; selected: boolean; onSelect: () => void }) {
-  const category = modelCategory(model);
-  const icon = modelBrandIconSource(category);
+function ModelOption({ data, model, selected, onSelect }: { data: AppData; model: Model; selected: boolean; onSelect: () => void }) {
+  const category = modelCategory(model, data);
+  const icon = modelBrandIconSource(category, data);
   const capabilities = (model.capabilities ?? []).slice(0, 2);
   return (
     <button
@@ -457,21 +458,22 @@ function ModelOption({ model, selected, onSelect }: { model: Model; selected: bo
         <small>{model.name}</small>
       </span>
       <span className="quick-access-model-tags">
-        {capabilities.map((capability) => <em key={capability}>{tx(capability)}</em>)}
+        {capabilities.map((capability, index) => <em key={`${capability}:${index}`}>{tx(capability)}</em>)}
       </span>
     </button>
   );
 }
 
 function ModelDetail({ model, data }: { model: Model; data: AppData }) {
-  const category = modelCategory(model);
+  const category = modelCategory(model, data);
+  const icon = modelBrandIconSource(category, data);
   const availability = modelAvailabilitySummary(model, data, true);
   const capabilities = modelCapabilitySummary(model);
   return (
     <div>
       <div className="quick-access-model-detail-head">
         <span className="quick-access-model-icon large" aria-hidden="true">
-          {modelBrandIconSource(category) ? <img alt="" src={modelBrandIconSource(category)} /> : modelCategoryInitial(category, model.name)}
+          {icon ? <img alt="" src={icon} /> : modelCategoryInitial(category, model.name)}
         </span>
         <div>
           <h3>{modelDisplayTitle(model)}</h3>
@@ -482,7 +484,7 @@ function ModelDetail({ model, data }: { model: Model; data: AppData }) {
       <p className="quick-access-model-description">{model.metadata?.description || tx(availability.detail)}</p>
 
       <dl className="quick-access-model-facts">
-        <div><dt>{tx("模型系列")}</dt><dd>{model.family || modelCategoryLabel(category)}</dd></div>
+        <div><dt>{tx("模型系列")}</dt><dd>{model.family || modelCategoryLabel(category, data)}</dd></div>
         <div><dt>{tx("上下文窗口")}</dt><dd>{model.context_window ? `${formatNumber(model.context_window)} tokens` : "-"}</dd></div>
         <div><dt>{tx("参考价格")}</dt><dd>{modelPriceSummary(model)}</dd></div>
         <div><dt>{tx("模型能力")}</dt><dd>{capabilities || "-"}</dd></div>

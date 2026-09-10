@@ -5,15 +5,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, notificationChannelTypes, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
+import { notificationChannelDefaultType, notificationChannelTypes, type AdapterDescriptor, type AdminResource, type AdminUIContribution, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, type GatewayChainPlan, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginBackgroundJobRunRecord, type PluginDescriptor, type PluginMarketplacePlugin, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
 import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
 import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
 import { apiKeyUsageIDFromPath, uniqueUIID, viewFromPath } from "../domain/formatting";
+import { pluginDetailPath, pluginDetailRouteFromPath, type PluginDetailSection } from "../domain/plugin-detail-route";
+import { type PluginManagerTabKey } from "../domain/plugin-management";
 import { reportDatasetLabel } from "../domain/labels";
 import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
+import { pluginShellPresentation } from "../domain/plugin-theme";
+import { normalizePluginThemeOverrides, type PluginThemeOverrides, readPluginThemeOverrides, savePluginThemeOverrides } from "../domain/plugin-theme-overrides";
+import { resolveSIMSelection, type SIMSelectionResult } from "../domain/sim-selection";
 import { resourceCreateTarget } from "../domain/resource-create-target";
+import { simRegistryFromPlugins } from "../domain/sim-registry";
 import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
 import { createKeyWithCapture } from "../resources/generic-config";
 import { downloadReport } from "../resources/governance-config";
@@ -22,7 +28,7 @@ import { projectMemberConfig, projectMemberInitialValues } from "../resources/pr
 import { resourceConfigFor } from "../resources/settings-config";
 import { usePagination } from "../shared/pagination";
 import { currentOAuthReturnURL, LoginView, ResetPasswordView } from "../shared/auth";
-import { ConfirmDialog, IssuedKeyModal } from "../shared/ui";
+import { ConfirmDialog, IssuedKeyModal, providerTypeOptionsFromData } from "../shared/ui";
 import { PageHeader, Sidebar, StatusStack, TopNav } from "./navigation-ui";
 import { ResponsiveVersionStatus } from "./version-status";
 import { AuditView } from "../views/audit";
@@ -34,6 +40,9 @@ import { RouteStrategyView } from "../views/model-catalog";
 import { modelRoutePolicyPayload } from "../views/model-routing-policy";
 import { OverviewView } from "../views/overview";
 import { PlaygroundPage } from "../views/playground";
+import { PluginPageView } from "../views/admin-ui-plugin-pages";
+import { PluginDetailView } from "../views/plugin-detail";
+import { PluginsView } from "../views/plugins";
 import { ProviderUpsertModal } from "../views/provider-editor";
 import { ProjectWorkspace, type ProjectWorkspaceDraft, type ProjectWorkspaceMode, ProjectWorkspaceSaveError, saveProjectWorkspaceDraft } from "../views/project-workspace";
 import { RoutingPolicySimulator } from "../views/routing-policy-simulator";
@@ -48,6 +57,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const router = useRouter();
   const routeView = viewFromPath(pathname);
   const apiKeyUsageID = apiKeyUsageIDFromPath(pathname);
+  const pluginDetailRoute = pluginDetailRouteFromPath(pathname);
   const [language, setLanguage] = useState<AppLanguage>(() => readSavedLanguage());
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [baseURL, setBaseURL] = useState(defaultBaseURL);
@@ -61,6 +71,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     Object.fromEntries(allNavGroupTitles.map((title) => [title, true])),
   );
   const [activeView, setActiveView] = useState<ViewKey>(routeView);
+  const [activePluginPageKey, setActivePluginPageKey] = useState(() => pluginPageKeyFromLocation());
+  const [pluginManagerTab, setPluginManagerTab] = useState<PluginManagerTabKey>("installed");
   const [data, setData] = useState<AppData>(emptyData());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -83,11 +95,46 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const loadRef = useRef<(view?: ViewKey) => Promise<void>>(async () => undefined);
   const [reportHistory, setReportHistory] = useState<ReportExportHistoryItem[]>([]);
   const [resetToken, setResetToken] = useState("");
+  const [simSelectionPreference, setSIMSelectionPreference] = useState<unknown>(null);
+  const [simSelectionLoaded, setSIMSelectionLoaded] = useState(false);
+  const [themeOverrides, setThemeOverrides] = useState<PluginThemeOverrides>({});
+  const [themeOverridesLoaded, setThemeOverridesLoaded] = useState(false);
 
   const api = useMemo(() => ({ baseURL, adminToken }), [baseURL, adminToken]);
+  const providerTypeOptions = useMemo(() => providerTypeOptionsFromData(data), [data]);
   const activeConfig = resourceConfigFor(activeView);
   const activeMeta = activeConfig ?? standaloneViewMeta[activeView] ?? standaloneViewMeta.overview!;
+  const simRegistry = useMemo(() => simRegistryFromPlugins(data.plugins), [data.plugins]);
+  const shellState = useMemo(
+    () => adminConsoleShellState(data, theme, simSelectionPreference, themeOverrides),
+    [data, simSelectionPreference, theme, themeOverrides],
+  );
   setActiveLanguage(language);
+
+  useEffect(() => {
+    setSIMSelectionPreference(readAdminConsoleSIMSelectionPreference());
+    setSIMSelectionLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!simSelectionLoaded) return;
+    saveAdminConsoleSIMSelectionPreference(shellState.simSelection);
+  }, [shellState.simSelection, simSelectionLoaded]);
+
+  useEffect(() => {
+    if (simRegistry.themeTokens.length === 0) return;
+    setThemeOverrides(readPluginThemeOverrides(simRegistry.themeTokens));
+    setThemeOverridesLoaded(true);
+  }, [simRegistry.themeTokens]);
+
+  useEffect(() => {
+    if (!themeOverridesLoaded) return;
+    savePluginThemeOverrides(themeOverrides);
+  }, [themeOverrides, themeOverridesLoaded]);
+
+  function changeThemeTokenOverrides(themeKey: string, values: Record<string, string>) {
+    setThemeOverrides((current) => normalizePluginThemeOverrides({ ...current, [themeKey]: values }, simRegistry.themeTokens));
+  }
 
   function changeLanguage(nextLanguage: AppLanguage) {
     setLanguage(nextLanguage);
@@ -97,26 +144,35 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setTheme((value) => (value === "light" ? "dark" : "light"));
   }
 
-  const selectView = useCallback((view: ViewKey, options: { replace?: boolean; routeModelQuery?: string } = {}) => {
+  const selectView = useCallback((view: ViewKey, options: { replace?: boolean; routeModelQuery?: string; pluginPageKey?: string } = {}) => {
     if (view !== activeView) {
       setNotice("");
       setError("");
       setIssuedKey("");
-      setModelCategoryFilter(view === "notification-channels" ? "webhook" : "all");
+      setModelCategoryFilter(view === "notification-channels" ? notificationChannelDefaultType : "all");
     }
     if (view === "routes") setRouteModelQuery(options.routeModelQuery ?? "");
+    setActivePluginPageKey(view === "plugin-pages" ? options.pluginPageKey ?? activePluginPageKey : "");
     if (view !== "projects") setProjectWorkspace(null);
     setActiveView(view);
     const nextPath = viewRoutes[view];
-    if (pathname === nextPath) return;
-    const suffix = typeof window === "undefined" ? "" : `${window.location.search}${window.location.hash}`;
+    const suffix = pluginPageURLSuffix(view, options.pluginPageKey);
+    if (pathname === nextPath && suffix === currentLocationSuffix()) return;
     const nextURL = `${nextPath}${suffix}`;
     if (options.replace) {
       router.replace(nextURL);
     } else {
       router.push(nextURL);
     }
-  }, [activeView, pathname, router]);
+  }, [activePluginPageKey, activeView, pathname, router]);
+
+  const selectPluginPage = useCallback((key: string) => {
+    selectView("plugin-pages", { pluginPageKey: key });
+  }, [selectView]);
+
+  const selectPluginDetail = useCallback((pluginID: string, section: PluginDetailSection = "overview") => {
+    router.push(pluginDetailPath(pluginID, section));
+  }, [router]);
 
   function openRoutes(model?: Model) {
     selectView("routes", { routeModelQuery: model?.name ?? "" });
@@ -277,7 +333,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 
   useEffect(() => {
     if (activeView === "notification-channels" && !notificationChannelTypes.includes(modelCategoryFilter)) {
-      setModelCategoryFilter("webhook");
+      setModelCategoryFilter(notificationChannelDefaultType);
     }
   }, [activeView, modelCategoryFilter]);
 
@@ -298,8 +354,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (readOAuthLoginResult()) return;
     setNotice("");
     setError("");
-    setModelCategoryFilter(routeView === "notification-channels" ? "webhook" : "all");
+    setModelCategoryFilter(routeView === "notification-channels" ? notificationChannelDefaultType : "all");
     setActiveView(routeView);
+    setActivePluginPageKey(routeView === "plugin-pages" ? pluginPageKeyFromLocation() : "");
   }, [routeView]);
 
   useEffect(() => {
@@ -372,7 +429,14 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.timeseries, "timeseries", "/api/admin/usage/timeseries");
       queue(plan.users, "users", "/api/admin/users");
       queue(plan.providerCatalog, "provider-catalog", "/api/admin/provider-catalog");
+      queue(plan.providerAdapters, "provider-adapters", "/api/admin/provider-adapters");
       queue(plan.providerMonitoring, "provider-monitoring", "/api/admin/providers/monitoring");
+      queue(plan.plugins, "plugins", "/api/admin/plugins");
+      queue(plan.pluginMarketplace, "plugin-marketplace", "/api/admin/plugin-marketplace");
+      queue(plan.pluginChain, "plugin-chain", "/api/admin/plugin-chain");
+      queue(plan.pluginUI, "plugin-ui", "/api/admin/plugin-ui-manifest");
+      queue(plan.pluginActions, "plugin-actions", "/api/admin/plugin-actions");
+      queue(plan.pluginBackgroundJobs, "plugin-background-jobs", "/api/admin/plugin-background-jobs");
 			queue(plan.billingConnectors, "billing-connectors", "/api/admin/billing/connectors");
 			queue(plan.billingRecords, "billing-records", "/api/admin/billing/records");
 			queue(plan.billingSyncRuns, "billing-sync-runs", "/api/admin/billing/sync-runs");
@@ -454,9 +518,41 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         } else if (name === "provider-catalog") {
           const payload = (await resp.json()) as { data: ProviderCatalogEntry[] };
           loaded.providerCatalog = payload.data ?? [];
+        } else if (name === "provider-adapters") {
+          const payload = (await resp.json()) as { data: AdapterDescriptor[] };
+          loaded.providerAdapters = payload.data ?? [];
         } else if (name === "provider-monitoring") {
           const payload = (await resp.json()) as { data: ProviderMonitoringSnapshot[] };
           loaded.providerMonitoring = payload.data ?? [];
+        } else if (name === "plugins") {
+          const payload = (await resp.json()) as { data: PluginDescriptor[] };
+          loaded.plugins = payload.data ?? [];
+        } else if (name === "plugin-marketplace") {
+          const payload = (await resp.json()) as {
+            data?: {
+              source_url?: string;
+              available?: boolean;
+              error?: string;
+              plugins?: PluginMarketplacePlugin[];
+            };
+          };
+          loaded.pluginMarketplace = payload.data?.plugins ?? [];
+          loaded.pluginMarketplaceSourceURL = payload.data?.source_url;
+          loaded.pluginMarketplaceAvailable = payload.data?.available;
+          loaded.pluginMarketplaceError = payload.data?.error;
+        } else if (name === "plugin-chain") {
+          const payload = (await resp.json()) as { data: GatewayChainPlan };
+          loaded.pluginChain = payload.data ? { ...payload.data, hooks: payload.data.hooks ?? [] } : { hooks: [] };
+        } else if (name === "plugin-ui") {
+          const payload = (await resp.json()) as { data: AdminUIContribution[] };
+          loaded.pluginUI = payload.data ?? [];
+        } else if (name === "plugin-actions") {
+          const payload = (await resp.json()) as { data: PluginActionDescriptor[] };
+          loaded.pluginActions = payload.data ?? [];
+        } else if (name === "plugin-background-jobs") {
+          const payload = (await resp.json()) as { data: PluginBackgroundJobDescriptor[]; runs?: PluginBackgroundJobRunRecord[] };
+          loaded.pluginBackgroundJobs = payload.data ?? [];
+          loaded.pluginBackgroundRuns = payload.runs ?? [];
 				} else if (name === "billing-connectors") {
 					const payload = (await resp.json()) as { data: BillingConnector[] };
 					loaded.billingConnectors = payload.data ?? [];
@@ -556,7 +652,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setError("");
     try {
       if (modal.item) {
-        await modal.config.update?.(api, modal.item, values);
+        await modal.config.update?.(api, modal.item, values, data);
       } else {
         await modal.config.create?.(api, values, data);
       }
@@ -820,12 +916,23 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   }
 
   return (
-    <main className={sidebarCollapsed ? "app-shell sidebar-collapsed" : "app-shell"} data-theme={theme}>
+    <main
+      className={sidebarCollapsed ? "app-shell sidebar-collapsed" : "app-shell"}
+      data-layout-density={shellState.shellPresentation.density}
+      data-sim-layout-key={shellState.simSelection.layout.capability?.key}
+      data-sim-plugin-id={shellState.simSelection.activeSIMPluginID}
+      data-sim-theme-key={shellState.simSelection.theme.capability?.key}
+      data-theme={theme}
+      style={shellState.shellPresentation.style}
+    >
       <Sidebar
         activeView={activeView}
         onSelect={selectView}
         user={currentUser}
+        data={data}
+        activePluginPageKey={activePluginPageKey}
         onLogout={() => void logout()}
+        onSelectPluginPage={selectPluginPage}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
         openGroups={openNavGroups}
@@ -879,15 +986,49 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
               onManageKeys={() => selectView("api-keys")}
             />
           ) : activeView === "usage" ? (
-            <UsageView data={data} user={currentUser} />
+            <UsageView api={api} data={data} user={currentUser} />
           ) : activeView === "billing" ? (
             <BillingView api={api} data={data} user={currentUser} loading={loading} onReload={() => load("billing")} />
           ) : activeView === "audit" ? (
             <AuditView api={api} data={data} user={currentUser} />
           ) : activeView === "database-status" ? (
             <DatabaseStatusView api={api} isDark={theme === "dark"} />
+          ) : activeView === "plugins" ? (
+            pluginDetailRoute ? (
+              <PluginDetailView
+                api={api}
+                key={pluginDetailRoute.pluginID}
+                activeThemeKey={shellState.simSelection.theme.capability?.key}
+                data={data}
+                pluginID={pluginDetailRoute.pluginID}
+                section={pluginDetailRoute.section}
+                managerTab={pluginManagerTab}
+                themeMode={theme}
+                themeOverrides={themeOverrides}
+                onBack={() => router.push("/plugins")}
+                onNavigate={selectPluginDetail}
+                onOpenProviders={() => selectView("providers")}
+                onSelectManagerTab={(tab) => {
+                  setPluginManagerTab(tab);
+                  router.push("/plugins");
+                }}
+                onThemeTokenOverridesChange={changeThemeTokenOverrides}
+              />
+            ) : (
+              <PluginsView
+                api={api}
+                activeTab={pluginManagerTab}
+                data={data}
+                onReload={() => load("plugins")}
+                onActiveTabChange={setPluginManagerTab}
+                onSelectPlugin={selectPluginDetail}
+              />
+            )
+          ) : activeView === "plugin-pages" ? (
+            <PluginPageView activePageKey={activePluginPageKey} api={api} data={data} onSelectPage={selectPluginPage} />
           ) : activeView === "settings" ? (
             <SettingsView
+              api={api}
               data={data}
               activeTab={settingsTab}
               language={language}
@@ -1063,6 +1204,11 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           standardModels={data.models}
           providerModels={data.providerModels}
           resources={data.providerResources}
+          providerAdapters={data.providerAdapters}
+          pluginUI={data.pluginUI}
+          pluginActions={data.pluginActions}
+          plugins={data.plugins}
+          providerTypeOptions={providerTypeOptions}
           loading={loading}
           onClose={() => setProviderCreateOpen(false)}
           onSaved={async () => {
@@ -1085,6 +1231,11 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           providerModels={data.providerModels}
           routes={data.routes}
           resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}
+          providerAdapters={data.providerAdapters}
+          pluginUI={data.pluginUI}
+          pluginActions={data.pluginActions}
+          plugins={data.plugins}
+          providerTypeOptions={providerTypeOptions}
           loading={loading}
           onClose={() => setProviderEditItem(null)}
           onSaved={async () => {
@@ -1189,7 +1340,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     setError("");
     setNotice("");
     try {
-      await action.run(api, item);
+      await action.run(api, item, appData);
       setNotice(tx(action.doneMessage?.(item) ?? "操作已完成"));
       await load();
     } catch (err) {
@@ -1249,4 +1400,73 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setLoading(false);
     }
   }
+}
+
+export function adminConsoleShellState(
+  data: AppData,
+  theme: "light" | "dark",
+  preference: unknown,
+  themeOverrides: PluginThemeOverrides = {},
+) {
+  const simSelection = resolveSIMSelection({ plugins: data.plugins, preference, themeMode: theme });
+  return {
+    simSelection,
+    shellPresentation: pluginShellPresentation(data.pluginUI, theme, {
+      activeLayoutID: simSelection.layout.capability?.id,
+      activeLayoutKey: simSelection.layout.capability?.key,
+      activeSIMPluginID: simSelection.activeSIMPluginID || undefined,
+      activeThemeID: simSelection.theme.capability?.id,
+      activeThemeKey: simSelection.theme.capability?.key,
+      simRegistry: simRegistryFromPlugins(data.plugins),
+      themeTokenOverrides: simSelection.theme.capability ? themeOverrides[simSelection.theme.capability.key] : undefined,
+    }),
+  };
+}
+
+export function adminConsoleSIMSelectionPreference(selection: SIMSelectionResult) {
+  return {
+    simPluginID: selection.activeSIMPluginID,
+    themeKey: selection.theme.capability?.key ?? "",
+    themeID: selection.theme.capability?.id ?? "",
+    layoutKey: selection.layout.capability?.key ?? "",
+    layoutID: selection.layout.capability?.id ?? "",
+  };
+}
+
+export function readAdminConsoleSIMSelectionPreference(storage?: Pick<Storage, "getItem">) {
+  if (typeof window === "undefined") return null;
+  const raw = (storage ?? window.localStorage).getItem(adminConsoleSIMSelectionStorageKey);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+export function saveAdminConsoleSIMSelectionPreference(selection: SIMSelectionResult, storage?: Pick<Storage, "setItem">) {
+  if (typeof window === "undefined") return;
+  (storage ?? window.localStorage).setItem(adminConsoleSIMSelectionStorageKey, JSON.stringify(adminConsoleSIMSelectionPreference(selection)));
+}
+
+export const adminConsoleSIMSelectionStorageKey = "tokenhub.admin.sim.selection.v1";
+
+function pluginPageKeyFromLocation() {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("plugin_page") ?? "";
+}
+
+function pluginPageURLSuffix(view: ViewKey, pluginPageKey?: string) {
+  if (typeof window === "undefined") return "";
+  const hash = window.location.hash;
+  if (view !== "plugin-pages") return hash;
+  const params = new URLSearchParams();
+  if (pluginPageKey) params.set("plugin_page", pluginPageKey);
+  const query = params.toString();
+  return `${query ? `?${query}` : ""}${hash}`;
+}
+
+function currentLocationSuffix() {
+  if (typeof window === "undefined") return "";
+  return `${window.location.search}${window.location.hash}`;
 }

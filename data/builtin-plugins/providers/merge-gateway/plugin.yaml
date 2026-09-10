@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.merge-gateway"
+name: "Merge Gateway"
+version: 1.0.0
+summary: "Connect TokenHub to Merge Gateway."
+description: "Connect TokenHub to Merge Gateway. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "merge-gateway"
+      name: "Merge Gateway"
+      display_name: "Merge Gateway"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://docs.merge.dev/merge-gateway"
+      categories: []
+      models_count: 83
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

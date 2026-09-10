@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
@@ -372,6 +374,98 @@ func TestAdminValidatesAnthropicProviderAuthentication(t *testing.T) {
 	}
 }
 
+func TestAdminPersistsPluginProviderAuthenticationMode(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	providerType := "auth_mode_plugin_provider"
+	pluginID := "tokenhub.provider.auth-mode-plugin"
+	descriptor := pluginmeta.BuiltInProvider(pluginID, "Auth Mode Plugin", []string{providerType}, []string{string(AdapterCapabilityChat)})
+	descriptor.Capabilities = append(descriptor.Capabilities,
+		pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: providerAuthModeOption, Subject: providerType, Value: "oauth"},
+		pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: providerAuthModeOption, Subject: providerType, Value: "x-api-key"},
+	)
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register auth mode plugin: %v", err)
+	}
+	app := server.Handler()
+
+	valid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                 "prv_auth_mode_plugin",
+		"name":               "Auth Mode Plugin Provider",
+		"type":               providerType,
+		"base_url":           "https://example.invalid/v1",
+		"api_key":            "plugin-secret",
+		"options":            map[string]string{"region": "legacy"},
+		"provider_auth_mode": "oauth",
+	}, "")
+	if valid.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", valid.Code, valid.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(valid.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Provider.Options[providerAuthModeOption]; got != "oauth" {
+		t.Fatalf("stored plugin auth mode = %q, want oauth", got)
+	}
+	if got := result.Provider.Options[anthropicAuthTypeOption]; got != "" {
+		t.Fatalf("plugin provider stored legacy Anthropic auth option = %q", got)
+	}
+	if got := result.Provider.Options["region"]; got != "legacy" {
+		t.Fatalf("stored plugin provider lost existing options = %q", got)
+	}
+
+	patched := doJSON(t, app, http.MethodPatch, "/api/admin/providers/prv_auth_mode_plugin", map[string]any{
+		"anthropic_auth_type": anthropicAuthTypeAPIKey,
+	}, "")
+	if patched.Code != http.StatusOK {
+		t.Fatalf("expected provider patch 200, got %d: %s", patched.Code, patched.Body)
+	}
+	var patchedResult ProviderCreateResult
+	if err := json.Unmarshal([]byte(patched.Body), &patchedResult); err != nil {
+		t.Fatal(err)
+	}
+	if got := patchedResult.Provider.Options[providerAuthModeOption]; got != anthropicAuthTypeAPIKey {
+		t.Fatalf("patched plugin auth mode = %q, want x-api-key", got)
+	}
+	if got := patchedResult.Provider.Options["region"]; got != "legacy" {
+		t.Fatalf("patched plugin provider lost existing options = %q", got)
+	}
+
+	invalid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"name":               "Invalid Plugin Auth Mode",
+		"type":               providerType,
+		"base_url":           "https://example.invalid/v1",
+		"provider_auth_mode": "basic",
+	}, "")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, `"code":"provider_auth_mode_invalid"`) {
+		t.Fatalf("expected invalid plugin auth mode, got %d: %s", invalid.Code, invalid.Body)
+	}
+
+	preferred := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                  "prv_auth_mode_preferred",
+		"name":                "Preferred Auth Mode Provider",
+		"type":                providerType,
+		"base_url":            "https://example.invalid/v1",
+		"provider_auth_mode":  "oauth",
+		"anthropic_auth_type": "x-api-key",
+	}, "")
+	if preferred.Code != http.StatusCreated {
+		t.Fatalf("expected preferred auth mode creation 201, got %d: %s", preferred.Code, preferred.Body)
+	}
+	var preferredResult ProviderCreateResult
+	if err := json.Unmarshal([]byte(preferred.Body), &preferredResult); err != nil {
+		t.Fatal(err)
+	}
+	if got := preferredResult.Provider.Options[providerAuthModeOption]; got != "oauth" {
+		t.Fatalf("preferred plugin auth mode = %q, want oauth", got)
+	}
+}
+
 func TestAdminProviderConnectionTestRequiresCredentials(t *testing.T) {
 	app := newTestServer()
 	for _, testCase := range []struct {
@@ -380,7 +474,7 @@ func TestAdminProviderConnectionTestRequiresCredentials(t *testing.T) {
 		code string
 	}{
 		{name: "base URL", body: map[string]any{"api_key": "test-secret"}, code: "provider_base_url_required"},
-		{name: "API key", body: map[string]any{"base_url": "https://example.invalid/v1"}, code: "provider_api_key_required"},
+		{name: "API key", body: map[string]any{"type": ProviderOpenAI, "base_url": "https://example.invalid/v1"}, code: "provider_api_key_required"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			resp := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", testCase.body, "")
@@ -647,6 +741,58 @@ func TestAdminCustomProviderCatalogLoadsUpstreamModels(t *testing.T) {
 	}
 }
 
+func TestAdminProviderCreateImportsSubmittedModelsForPluginCatalog(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-create-admin"})
+	providerType := "submitted_models_provider"
+	pluginID := "tokenhub.provider.submitted-models"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Submitted Models Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+			pluginmeta.PlacementManagementAction,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityResponses), Subject: providerType},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses},
+	}); err != nil {
+		t.Fatalf("register submitted models provider: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":      providerType,
+		"selected_models": []string{"plugin/model-a"},
+		"custom_models": []map[string]any{{
+			"id":             "plugin/model-a",
+			"display_name":   "Plugin Model A",
+			"category":       "custom",
+			"type":           "chat",
+			"context_window": 128000,
+		}},
+	}, "plugin-create-admin")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create provider from plugin catalog: expected 201, got %d: %s", response.Code, response.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(response.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Provider.Type != providerType || result.CatalogSource != "plugin:local_file" || result.ImportedModels != 1 {
+		t.Fatalf("create result = %+v", result)
+	}
+	models := server.store.ListProviderModels()
+	if len(models) != 1 || models[0].ProviderID != result.Provider.ID || models[0].UpstreamModel != "plugin/model-a" || models[0].Source != "custom-upstream" {
+		t.Fatalf("imported provider models = %+v", models)
+	}
+}
+
 func TestAdminAnthropicProviderCatalogLoadsVersionedUpstreamModels(t *testing.T) {
 	app := newTestServer()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -707,12 +853,6 @@ func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	}
 	if normalizeModelLookupName("DeepSeekV4") != "deepseek-v4" || normalizeModelLookupName("openai/gpt5") != "gpt-5" {
 		t.Fatalf("expected compact provider model names to normalize")
-	}
-	if got := normalizeProviderBaseURL("302ai", "https://api.highwayapi.ai/openai"); got != "https://api.highwayapi.ai/openai/v1" {
-		t.Fatalf("expected JieKou OpenAI-compatible base URL to include /v1, got %s", got)
-	}
-	if got := normalizeProviderBaseURL("dmxapi", "https://www.dmxapi.cn"); got != "https://www.dmxapi.cn/v1" {
-		t.Fatalf("expected dmxapi OpenAI-compatible base URL to include /v1, got %s", got)
 	}
 }
 

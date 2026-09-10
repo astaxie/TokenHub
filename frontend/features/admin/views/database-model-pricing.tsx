@@ -1,6 +1,7 @@
 import { Activity, AlertCircle, Check, Database, Server, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type ApiContext, type DatabaseStatus, type Model, type SchemaEvolutionStatus } from "../core/types";
+import { modelCategoryDefinitionsFromData, modelCategoryIconSourceFromDefinitions } from "../domain/model-categories";
 import { evolutionReasonText } from "../i18n/db-evolution-reasons";
 import { formatLocaleNumber, formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError } from "../resources/payloads";
@@ -244,28 +245,9 @@ export function DatabaseStatusView({ api }: { api: ApiContext; isDark: boolean }
   );
 }
 
-export function modelBrandIconSource(category: string) {
-  const sources: Record<string, string> = {
-    openai: "/model-icons/openai.svg",
-    claude: "/model-icons/claude.svg",
-    deepseek: "/model-icons/deepseek.svg",
-    gemini: "/model-icons/gemini.svg",
-    qwen: "/model-icons/qwen.svg",
-    glm: "/model-icons/glm.svg",
-    kimi: "/model-icons/kimi.svg",
-    doubao: "/model-icons/doubao.svg",
-    ernie: "/model-icons/ernie.svg",
-    baichuan: "/model-icons/baichuan.svg",
-    minimax: "/model-icons/minimax.svg",
-    stepfun: "/model-icons/stepfun.svg",
-    wanx: "/model-icons/wanx.svg",
-    paddlepaddle: "/model-icons/paddlepaddle.svg",
-    microsoft: "/model-icons/microsoft.svg",
-    llama: "/model-icons/llama.svg",
-    mistral: "/model-icons/mistral.svg",
-    grok: "/model-icons/grok.svg",
-  };
-  return sources[category] ?? "";
+export function modelBrandIconSource(category: string, dataOrDefinitions?: Parameters<typeof modelCategoryDefinitionsFromData>[0] | ReturnType<typeof modelCategoryDefinitionsFromData>) {
+  const definitions = Array.isArray(dataOrDefinitions) ? dataOrDefinitions : modelCategoryDefinitionsFromData(dataOrDefinitions);
+  return modelCategoryIconSourceFromDefinitions(category, definitions);
 }
 
 export function modelDisplayTitle(model: Model) {

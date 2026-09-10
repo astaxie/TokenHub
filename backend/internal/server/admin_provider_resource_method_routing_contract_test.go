@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type adminProviderResourceMethodRoute struct {
@@ -169,8 +172,8 @@ func TestAdminProviderResourceQuotaRoutePreservesRefreshAndUpstreamHeaders(t *te
 	}))
 	t.Cleanup(upstream.Close)
 	server := New(store)
-	server.codexSubscription.QuotaURL = upstream.URL + "/backend-api/wham/usage"
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).QuotaURL = upstream.URL + "/backend-api/wham/usage"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	app := server.Handler()
 
 	readQuota := func(path string) OpenAIAccountQuota {
@@ -209,6 +212,224 @@ func TestAdminProviderResourceQuotaRoutePreservesRefreshAndUpstreamHeaders(t *te
 	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota", "provider_resource", resource.ID)
 }
 
+func TestAdminProviderResourceQuotaRouteUsesPluginActionBroker(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_quota_plugin", Name: "Quota Plugin Provider", Type: "quota_plugin",
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_quota_plugin", ProviderID: provider.ID, Name: "Quota Plugin Resource",
+		ResourceType: "quota_plugin", Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.quota-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:         pluginID,
+		Name:       "Quota Plugin",
+		Version:    "test",
+		Source:     pluginmeta.SourceLocalFile,
+		Kinds:      []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{pluginmeta.PlacementGatewayChain, pluginmeta.PlacementManagementAction},
+	}, AdapterRegistration{Type: "quota_plugin", Adapter: MockAdapter{}, Capabilities: []AdapterCapability{AdapterCapabilityQuota}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.adminUI.Register(pluginmeta.AdminUIContribution{
+		PluginID:      pluginID,
+		ID:            "quota",
+		Slot:          pluginmeta.SlotProviderResourcePanel,
+		ProviderTypes: []string{"quota_plugin"},
+		Action:        "quota.read",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID: pluginID,
+		ActionID: "quota.read",
+		Kind:     pluginmeta.ActionKindRead,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+			Refresh    bool   `json:"refresh"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"plan_type":   "plugin-action-plan",
+			"resource_id": payload.ResourceID,
+			"refresh":     payload.Refresh,
+		}}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	response := methodRoutingRequest(server.Handler(), http.MethodGet, "/api/admin/provider-resources/"+resource.ID+"/quota?refresh=true", "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET plugin quota: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"plan_type":"plugin-action-plan"`) ||
+		!strings.Contains(response.Body.String(), `"resource_id":"`+resource.ID+`"`) ||
+		!strings.Contains(response.Body.String(), `"refresh":true`) {
+		t.Fatalf("plugin quota response did not come from action broker: %s", response.Body.String())
+	}
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota", "provider_resource", resource.ID)
+}
+
+func TestAdminProviderResourceQuotaRouteSkipsPluginPanelForMismatchedResourceType(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "quota_panel_mismatch_plugin"
+	provider := store.AddProvider(Provider{
+		ID: "prv_quota_panel_mismatch", Name: "Quota Panel Mismatch Provider", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_quota_panel_mismatch", ProviderID: provider.ID, Name: "Quota Panel Mismatch Resource",
+		ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.quota-panel-mismatch"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Quota Panel Mismatch", []string{providerType}, []string{string(AdapterCapabilityQuota)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityQuota},
+	}); err != nil {
+		t.Fatalf("register quota panel mismatch plugin: %v", err)
+	}
+	if err := server.adminUI.Register(pluginmeta.AdminUIContribution{
+		PluginID:      pluginID,
+		ID:            "quota",
+		Slot:          pluginmeta.SlotProviderResourcePanel,
+		ProviderTypes: []string{providerType},
+		ResourceTypes: []string{"quota_account"},
+		Action:        "quota.read",
+	}); err != nil {
+		t.Fatalf("register quota panel mismatch contribution: %v", err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID: pluginID,
+		ActionID: "quota.read",
+		Kind:     pluginmeta.ActionKindRead,
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		return pluginmeta.ActionResult{Data: map[string]any{"plan_type": "should-not-run"}}, nil
+	})); err != nil {
+		t.Fatalf("register quota panel mismatch action: %v", err)
+	}
+
+	response := methodRoutingRequest(server.Handler(), http.MethodGet, "/api/admin/provider-resources/"+resource.ID+"/quota", "dev_admin_token")
+	assertJSONError(t, response, http.StatusBadRequest, "provider_resource_quota_unsupported")
+	if actionCalls != 0 {
+		t.Fatalf("mismatched resource type reached quota plugin action: %d", actionCalls)
+	}
+}
+
+func TestProviderPluginCapabilityActionSkipsMismatchedResourceTypeMetadata(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "metadata_scoped_provider"
+	pluginID := "tokenhub.provider.metadata-scoped"
+	capabilities := []AdapterCapability{
+		AdapterCapabilityImageGenerate,
+		AdapterCapabilityProbe,
+		AdapterCapabilityModels,
+		AdapterCapabilityOAuth,
+	}
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Metadata Scoped Provider", []string{providerType}, []string{
+		string(AdapterCapabilityImageGenerate),
+		string(AdapterCapabilityProbe),
+		string(AdapterCapabilityModels),
+		string(AdapterCapabilityOAuth),
+	}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: capabilities,
+	}); err != nil {
+		t.Fatalf("register metadata scoped provider: %v", err)
+	}
+	for _, action := range []struct {
+		id         string
+		capability AdapterCapability
+		actionCap  string
+	}{
+		{id: "image.configure", capability: AdapterCapabilityImageGenerate, actionCap: "image.capability.configure"},
+		{id: "probe.run", capability: AdapterCapabilityProbe, actionCap: "probe.run"},
+		{id: "models.read", capability: AdapterCapabilityModels, actionCap: "models.read"},
+		{id: "credentials.refresh", capability: AdapterCapabilityOAuth, actionCap: "credentials.refresh"},
+	} {
+		if err := server.pluginActions.RegisterDescriptor(pluginmeta.ActionDescriptor{
+			PluginID:   pluginID,
+			ActionID:   action.id,
+			Kind:       pluginmeta.ActionKindRead,
+			Capability: action.actionCap,
+			Subject:    providerType,
+			Metadata: map[string]string{
+				"provider_resource_type": ProviderResourceOpenAISubscription,
+			},
+		}); err != nil {
+			t.Fatalf("register %s action descriptor: %v", action.id, err)
+		}
+		if _, _, ok := server.providerPluginCapabilityAction(providerType, action.capability, action.actionCap, ProviderResourceAPIKey); ok {
+			t.Fatalf("%s action matched mismatched resource type", action.id)
+		}
+		if _, _, ok := server.providerPluginCapabilityAction(providerType, action.capability, action.actionCap, ProviderResourceOpenAISubscription); !ok {
+			t.Fatalf("%s action did not match declared resource type", action.id)
+		}
+		if _, _, ok := server.providerPluginCapabilityAction(providerType, action.capability, action.actionCap, ""); ok {
+			t.Fatalf("%s action matched an empty resource type", action.id)
+		}
+	}
+}
+
+func TestProviderPluginCapabilityActionPrefersExactResourceTypeOverGeneric(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "exact_resource_action_provider"
+	pluginID := "tokenhub.provider.exact-resource-action"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Exact Resource Action Provider", []string{providerType}, []string{
+		string(AdapterCapabilityModels),
+	}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityModels},
+	}); err != nil {
+		t.Fatalf("register exact resource provider: %v", err)
+	}
+	for _, action := range []pluginmeta.ActionDescriptor{
+		{
+			PluginID: pluginID, ActionID: "models.generic", Kind: pluginmeta.ActionKindRead,
+			Capability: "models.read", Subject: providerType,
+		},
+		{
+			PluginID: pluginID, ActionID: "models.kimi", Kind: pluginmeta.ActionKindRead,
+			Capability: "models.read", Subject: providerType,
+			Metadata: map[string]string{"provider_resource_type": "kimi_account"},
+		},
+	} {
+		if err := server.pluginActions.RegisterDescriptor(action); err != nil {
+			t.Fatalf("register %s action descriptor: %v", action.ActionID, err)
+		}
+	}
+
+	action, ok := server.providerPluginCapabilityActionDescriptor(providerType, AdapterCapabilityModels, "models.read", "kimi_account")
+	if !ok || action.ActionID != "models.kimi" {
+		t.Fatalf("resource action = %+v, %v; want exact resource action", action, ok)
+	}
+	action, ok = server.providerPluginCapabilityActionDescriptor(providerType, AdapterCapabilityModels, "models.read", "other_account")
+	if !ok || action.ActionID != "models.generic" {
+		t.Fatalf("fallback action = %+v, %v; want generic action", action, ok)
+	}
+	action, ok = server.providerPluginCapabilityActionDescriptor(providerType, AdapterCapabilityModels, "models.read", "")
+	if !ok || action.ActionID != "models.generic" {
+		t.Fatalf("empty resource action = %+v, %v; want generic action only", action, ok)
+	}
+}
+
 func TestAdminProviderResourceQuotaResetCreditsRoutePreservesHeadersAndAudit(t *testing.T) {
 	upstream := &quotaResetUpstream{availableCount: 2, creditID: "credit_route"}
 	server, store, _ := newQuotaResetTestServer(t, upstream, quotaResetTestCredentials())
@@ -231,6 +452,133 @@ func TestAdminProviderResourceQuotaResetCreditsRoutePreservesHeadersAndAudit(t *
 		t.Fatalf("reset credits response leaked access token: %s", response.Body.String())
 	}
 	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota_reset_credits", "provider_resource", quotaResetTestResourceID)
+}
+
+func TestAdminProviderResourceQuotaResetRoutesUsePluginActions(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "quota_reset_plugin"
+	provider := store.AddProvider(Provider{
+		ID: "prv_quota_reset_plugin", Name: "Quota Reset Plugin Provider", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_quota_reset_plugin", ProviderID: provider.ID, Name: "Quota Reset Plugin Resource",
+		ResourceType: providerType, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.quota-reset-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Quota Reset Plugin", []string{providerType}, []string{string(AdapterCapabilityQuota)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityQuota},
+	}); err != nil {
+		t.Fatalf("register quota reset plugin: %v", err)
+	}
+	resetCreditCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "quota_reset.credits",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "quota.reset_credits.read",
+		Subject:    providerType,
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		resetCreditCalls++
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode quota reset credits payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || invocation.Actor.ID != "dev_admin" {
+			t.Fatalf("unexpected quota reset credits invocation: payload=%+v actor=%+v", payload, invocation.Actor)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"available_count": 3,
+			"credits": []map[string]any{
+				{"id": "plugin-credit", "status": "available"},
+			},
+			"fetched_at": int64(12345),
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register quota reset credits action: %v", err)
+	}
+	resetCalls := 0
+	pluginDangerConfirmation := "quota-reset-plugin-danger"
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "quota_reset.consume",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "quota.reset",
+		Subject:    providerType,
+		Metadata:   map[string]string{"danger_confirmation": pluginDangerConfirmation},
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		resetCalls++
+		var payload struct {
+			ResourceID             string `json:"resource_id"`
+			Confirm                bool   `json:"confirm"`
+			IdempotencyKey         string `json:"idempotency_key"`
+			ExpectedAvailableCount int    `json:"expected_available_count"`
+			CreditID               string `json:"credit_id"`
+			DangerConfirmation     string `json:"danger_confirmation"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode quota reset payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || !payload.Confirm || payload.IdempotencyKey != "plugin-reset-1" ||
+			payload.ExpectedAvailableCount != 3 || payload.CreditID != "plugin-credit" ||
+			payload.DangerConfirmation != pluginDangerConfirmation {
+			t.Fatalf("unexpected quota reset payload: %+v", payload)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"status":       "queued",
+			"operation_id": "plugin-reset-operation",
+			"message":      "reset accepted",
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register quota reset action: %v", err)
+	}
+	app := server.Handler()
+
+	credits := methodRoutingRequest(app, http.MethodGet, "/api/admin/provider-resources/"+resource.ID+"/quota/reset-credits", "dev_admin_token")
+	if credits.Code != http.StatusOK {
+		t.Fatalf("GET plugin reset credits: expected 200, got %d: %s", credits.Code, credits.Body.String())
+	}
+	if resetCreditCalls != 1 || !strings.Contains(credits.Body.String(), `"available_count":3`) || !strings.Contains(credits.Body.String(), `"id":"plugin-credit"`) {
+		t.Fatalf("reset credits route did not use action: calls=%d body=%s", resetCreditCalls, credits.Body.String())
+	}
+
+	missingDanger := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/quota/reset", map[string]any{
+		"confirm": true, "idempotency_key": "plugin-reset-1", "expected_available_count": 3, "credit_id": "plugin-credit",
+	}, "dev_admin_token")
+	assertJSONError(t, missingDanger, http.StatusBadRequest, "quota_reset_danger_confirmation_required")
+	if resetCalls != 0 {
+		t.Fatalf("unsafe plugin quota reset reached action: %d", resetCalls)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"confirm": true, "idempotency_key": "plugin-reset-1", "expected_available_count": 3, "credit_id": "plugin-credit",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetRequest := httptest.NewRequest(http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/quota/reset", strings.NewReader(string(body)))
+	resetRequest.Header.Set("authorization", "Bearer dev_admin_token")
+	resetRequest.Header.Set("content-type", "application/json")
+	resetRequest.Header.Set("idempotency-key", "plugin-reset-1")
+	resetRequest.Header.Set(openAIAccountQuotaResetDangerHeader, pluginDangerConfirmation)
+	reset := httptest.NewRecorder()
+	app.ServeHTTP(reset, resetRequest)
+	if reset.Code != http.StatusOK {
+		t.Fatalf("POST plugin quota reset: expected 200, got %d: %s", reset.Code, reset.Body.String())
+	}
+	if resetCalls != 1 || !strings.Contains(reset.Body.String(), `"status":"queued"`) || !strings.Contains(reset.Body.String(), `"operation_id":"plugin-reset-operation"`) {
+		t.Fatalf("quota reset route did not use action: calls=%d body=%s", resetCalls, reset.Body.String())
+	}
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "query_quota_reset_credits", "provider_resource", resource.ID)
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "reset_quota", "provider_resource", resource.ID)
 }
 
 func TestAdminProviderResourceRefreshTokenRoutePreservesRefreshMaskingAndAudit(t *testing.T) {
@@ -304,6 +652,83 @@ func TestAdminProviderResourceRefreshTokenRoutePreservesRefreshMaskingAndAudit(t
 			}
 		}
 	}
+}
+
+func TestAdminProviderResourceImageCapabilityRouteUsesPluginAction(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "image_capability_plugin"
+	provider := store.AddProvider(Provider{
+		ID: "prv_image_capability_plugin", Name: "Image Capability Plugin Provider", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_image_capability_plugin", ProviderID: provider.ID, Name: "Image Capability Plugin Resource",
+		ResourceType: providerType, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.image-capability-plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Image Capability Plugin", []string{providerType}, []string{string(AdapterCapabilityImageGenerate)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityImageGenerate},
+	}); err != nil {
+		t.Fatalf("register image capability plugin: %v", err)
+	}
+	actionCalls := 0
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "image_capability.configure",
+		Kind:       pluginmeta.ActionKindMutate,
+		Capability: "image.capability.configure",
+		Subject:    providerType,
+		Metadata: map[string]string{
+			"audit_action":                "configure_plugin_image",
+			"enabled_required_error_code": "plugin_image_enabled_required",
+		},
+	}, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		actionCalls++
+		var payload struct {
+			ResourceID string `json:"resource_id"`
+			Enabled    bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+			t.Fatalf("decode image capability payload: %v", err)
+		}
+		if payload.ResourceID != resource.ID || !payload.Enabled || invocation.Actor.ID != "dev_admin" {
+			t.Fatalf("unexpected image capability invocation: payload=%+v actor=%+v", payload, invocation.Actor)
+		}
+		return pluginmeta.ActionResult{Data: map[string]any{
+			"enabled":     payload.Enabled,
+			"tested":      false,
+			"capability":  "plugin-supported",
+			"resource_id": payload.ResourceID,
+			"route_id":    "route_plugin_image",
+		}}, nil
+	})); err != nil {
+		t.Fatalf("register image capability action: %v", err)
+	}
+	app := server.Handler()
+
+	missingEnabled := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]any{}, "dev_admin_token")
+	assertJSONError(t, missingEnabled, http.StatusBadRequest, "plugin_image_enabled_required")
+	if actionCalls != 0 {
+		t.Fatalf("missing enabled request reached image capability action: %d", actionCalls)
+	}
+
+	response := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]any{
+		"enabled": true,
+	}, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("POST plugin image capability: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if actionCalls != 1 || !strings.Contains(response.Body.String(), `"capability":"plugin-supported"`) ||
+		!strings.Contains(response.Body.String(), `"route_id":"route_plugin_image"`) {
+		t.Fatalf("image capability route did not use action: calls=%d body=%s", actionCalls, response.Body.String())
+	}
+	assertProviderRoutingAuditEvent(t, store.ListAuditEvents(), "configure_plugin_image", "provider_resource", resource.ID)
 }
 
 func TestAdminProviderResourceRoutesKeepStaticPathsAheadOfResourceIDs(t *testing.T) {

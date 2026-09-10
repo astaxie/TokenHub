@@ -1,8 +1,9 @@
 import { AlertCircle, Check, Copy, KeyRound, Send } from "lucide-react";
 import { useState } from "react";
-import type { ProviderResource } from "../core/types";
+import type { ProviderAccountQuota, ProviderQuotaMetric, ProviderQuotaWindow, ProviderResource } from "../core/types";
 import { copyText } from "../domain/clipboard";
-import { tx } from "../i18n/runtime";
+import type { ImageCapabilityProfile } from "../domain/provider-image-capability";
+import { languageLocale, tx } from "../i18n/runtime";
 
 export { ProviderAccountTokenRenewal } from "./provider-account-token-renewal";
 
@@ -16,25 +17,20 @@ export async function launchProviderAccountAuthorization(action: ProviderAccount
   if (!await copyText(authURL)) throw new Error(tx("复制授权链接失败，请允许浏览器访问剪贴板后重试。"));
 }
 
-export type OpenAIQuotaWindow = {
-  used_percent: number;
-  limit_window_seconds: number;
-  reset_after_seconds: number;
-  reset_at: number;
-};
-
 export function QuotaMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="provider-quota-metric">
       <span>{tx(label)}</span>
-      <strong>{tx(value)}</strong>
+      <strong>{value}</strong>
     </div>
   );
 }
 
-export function ProviderAccountDetails({ resource }: { resource: ProviderResource }) {
+export function ProviderAccountDetails({ imageCapabilityProfile, resource }: { imageCapabilityProfile?: ImageCapabilityProfile | null; resource: ProviderResource }) {
   const summary = resource.credential_summary ?? {};
   const options = resource.options ?? {};
+  const imageCapability = imageCapabilityProfile ? options[imageCapabilityProfile.capabilityOption] : undefined;
+  const imageCapabilityCheckedAt = imageCapabilityProfile ? options[imageCapabilityProfile.capabilityCheckedAtOption] : undefined;
   const rawItems: Array<[string, string | undefined]> = [
     ["资源 ID", resource.id],
     ["账号邮箱", summary.account_email],
@@ -42,15 +38,15 @@ export function ProviderAccountDetails({ resource }: { resource: ProviderResourc
     ["用户 ID", summary.user_id],
     ["组织 ID", summary.organization_id],
     ["套餐", summary.plan_type],
-    ["生图能力", formatImageGenerationCapability(options.image_generation_capability)],
-    ["生图能力检查时间", formatProviderAccountDate(options.image_generation_capability_checked_at)],
+    ["生图能力", imageCapabilityProfile ? formatImageGenerationCapability(imageCapability, imageCapabilityProfile.capabilitySupportedValue, imageCapabilityProfile.capabilityUnsupportedValue) : undefined],
+    ["生图能力检查时间", formatProviderAccountDate(imageCapabilityCheckedAt)],
     ["认证方式", summary.auth_type],
     ["Token 类型", summary.token_type || options.token_type],
     ["Token 过期时间", formatProviderAccountDate(summary.token_expires_at || options.token_expires_at)],
     ["授权范围", summary.scopes || options.scopes],
-    ["Refresh Token", summary.has_refresh_token === "true" ? "已配置" : "未配置"],
-    ["资源状态", resource.status],
-    ["健康状态", resource.healthy ? "健康" : "异常"],
+    ["Refresh Token", summary.has_refresh_token === "true" ? tx("已配置") : tx("未配置")],
+    ["资源状态", tx(resource.status)],
+    ["健康状态", resource.healthy ? tx("健康") : tx("异常")],
     ["资源组", resource.group],
     ["Base URL", resource.base_url],
     ["区域", resource.region],
@@ -75,15 +71,15 @@ export function ProviderAccountDetails({ resource }: { resource: ProviderResourc
   );
 }
 
-export function formatImageGenerationCapability(value?: string) {
-  if (value === "supported") return "支持";
-  if (value === "unsupported") return "不支持";
-  return "未检测";
+export function formatImageGenerationCapability(value?: string, supportedValue = "supported", unsupportedValue = "unsupported") {
+  if (value === supportedValue) return tx("支持");
+  if (value === unsupportedValue) return tx("不支持");
+  return tx("未检测");
 }
 
-export function formatImageGenerationCapabilityTag(value?: string) {
-  if (value === "supported") return "支持生图";
-  if (value === "unsupported") return "不支持生图";
+export function formatImageGenerationCapabilityTag(value?: string, supportedValue = "supported", unsupportedValue = "unsupported") {
+  if (value === supportedValue) return "支持生图";
+  if (value === unsupportedValue) return "不支持生图";
   return "生图未检测";
 }
 
@@ -94,32 +90,85 @@ export function providerResourceAccountLabel(resource: ProviderResource) {
 export function formatProviderAccountDate(value?: string) {
   if (!value) return "-";
   const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? value : new Date(timestamp).toLocaleString();
+  return Number.isNaN(timestamp) ? value : new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "medium" }).format(new Date(timestamp));
 }
 
 export function formatQuotaPercent(value: number) {
   return Number.isFinite(value) ? String(Math.round(value * 10) / 10) : "0";
 }
 
-export function quotaUsagePercent(window?: OpenAIQuotaWindow) {
+export function quotaUsagePercent(window?: ProviderQuotaWindow) {
   if (!window || !Number.isFinite(window.used_percent)) return 0;
-  return Math.min(100, Math.max(0, window.used_percent));
+  return clampQuotaPercent(window.used_percent);
 }
 
-export function quotaWindowResetLabel(window?: OpenAIQuotaWindow) {
+export function quotaWindowResetLabel(window?: ProviderQuotaWindow) {
   if (!window) return "-";
-  if (window.reset_at > 0) return new Date(window.reset_at * 1000).toLocaleString();
-  if (window.reset_after_seconds > 0) {
-    const minutes = Math.ceil(window.reset_after_seconds / 60);
+  if ((window.reset_at ?? 0) > 0) return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "medium" }).format(new Date((window.reset_at ?? 0) * 1000));
+  if ((window.reset_after_seconds ?? 0) > 0) {
+    const minutes = Math.ceil((window.reset_after_seconds ?? 0) / 60);
     return minutes >= 60 ? `${Math.ceil(minutes / 60)} ${tx("小时后")}` : `${minutes} ${tx("分钟后")}`;
   }
   return "-";
+}
+
+export function providerAccountQuotaPrimaryWindow(quota?: ProviderAccountQuota) {
+  return quota?.primary_window ?? quota?.rate_limit?.primary_window ?? quota?.windows?.[0];
+}
+
+export function providerAccountQuotaSecondaryWindow(quota?: ProviderAccountQuota) {
+  return quota?.secondary_window ?? quota?.rate_limit?.secondary_window ?? quota?.windows?.[1];
+}
+
+export function providerAccountQuotaStatusLabel(quota?: ProviderAccountQuota) {
+  if (!quota) return "不可用";
+  const explicit = quota.status_label?.trim();
+  if (explicit) return explicit;
+  if (providerAccountQuotaIsLimited(quota)) return "已达上限";
+  if (quota.allowed ?? quota.rate_limit?.allowed) return "可用";
+  return "不可用";
+}
+
+export function providerAccountQuotaIsLimited(quota?: ProviderAccountQuota) {
+  if (!quota) return false;
+  return Boolean(quota.limit_reached || quota.rate_limit?.limit_reached || quota.allowed === false || quota.rate_limit?.allowed === false);
+}
+
+export function providerAccountQuotaRemainingPercent(quota?: ProviderAccountQuota) {
+  if (!quota) return 100;
+  if (Number.isFinite(quota.remaining_percent)) return clampQuotaPercent(quota.remaining_percent);
+  const used = quota.used_percent ?? providerAccountQuotaPrimaryWindow(quota)?.used_percent;
+  if (Number.isFinite(used)) return clampQuotaPercent(100 - Number(used));
+  return providerAccountQuotaIsLimited(quota) ? 0 : 100;
+}
+
+export function providerAccountQuotaUsedPercent(quota?: ProviderAccountQuota) {
+  if (!quota) return 0;
+  if (Number.isFinite(quota.used_percent)) return clampQuotaPercent(quota.used_percent);
+  if (Number.isFinite(quota.remaining_percent)) return clampQuotaPercent(100 - Number(quota.remaining_percent));
+  return quotaUsagePercent(providerAccountQuotaPrimaryWindow(quota));
+}
+
+export function providerAccountQuotaMetrics(quota?: ProviderAccountQuota): ProviderQuotaMetric[] {
+  return (quota?.metrics ?? [])
+    .map((metric) => ({
+      label: metric.label?.trim() ?? "",
+      value: metric.value?.trim() ?? "",
+      tone: metric.tone,
+    }))
+    .filter((metric) => metric.label && metric.value);
+}
+
+function clampQuotaPercent(value: number | undefined) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Number(value)));
 }
 
 export function ProviderOAuthNoticeModal({
   open,
   busy,
   error,
+  oauthMetadata,
   onClose,
   onConfirm,
   onCopy,
@@ -127,6 +176,7 @@ export function ProviderOAuthNoticeModal({
   open: boolean;
   busy: boolean;
   error: string;
+  oauthMetadata?: Record<string, string>;
   onClose: () => void;
   onConfirm: () => Promise<void>;
   onCopy: () => Promise<void>;
@@ -157,7 +207,7 @@ export function ProviderOAuthNoticeModal({
           <span>{tx("登录和授权完成后，请复制浏览器地址栏中的完整 localhost callback URL，再返回此处粘贴回填。")}</span>
         </div>
         <ol className="provider-oauth-notice-steps">
-          <li>{tx("在即将打开的页面中登录 OpenAI/Codex 并完成授权。")}</li>
+          <li>{pluginOAuthCopy(oauthMetadata, "notice_login_step", "在即将打开的页面中登录账号并完成授权。")}</li>
           <li>{tx("授权后 localhost 页面可能显示无法访问，这是正常现象。")}</li>
           <li>{tx("复制地址栏中的完整地址，返回 TokenHub 粘贴并确认回填。")}</li>
         </ol>
@@ -183,6 +233,7 @@ export function ProviderOAuthCallbackModal({
   busy,
   value,
   error,
+  oauthMetadata,
   onValueChange,
   onClose,
   onConfirm,
@@ -191,6 +242,7 @@ export function ProviderOAuthCallbackModal({
   busy: boolean;
   value: string;
   error: string;
+  oauthMetadata?: Record<string, string>;
   onValueChange: (value: string) => void;
   onClose: () => void;
   onConfirm: () => void;
@@ -202,7 +254,7 @@ export function ProviderOAuthCallbackModal({
         <div className="provider-oauth-callback-heading">
           <div className="provider-oauth-callback-icon" aria-hidden="true"><KeyRound size={18} /></div>
           <div>
-            <p className="eyebrow">{tx("OpenAI/Codex 授权")}</p>
+            <p className="eyebrow">{pluginOAuthCopy(oauthMetadata, "callback_eyebrow", "账号 OAuth 授权")}</p>
             <h2 id="provider-oauth-callback-title">{tx("粘贴授权回调地址")}</h2>
           </div>
         </div>
@@ -228,4 +280,8 @@ export function ProviderOAuthCallbackModal({
       </div>
     </div>
   );
+}
+
+function pluginOAuthCopy(metadata: Record<string, string> | undefined, key: string, fallback: string) {
+  return metadata?.[key]?.trim() || tx(fallback);
 }

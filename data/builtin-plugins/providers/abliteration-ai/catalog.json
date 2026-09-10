@@ -1,0 +1,43 @@
+{
+  "id": "abliteration-ai",
+  "api": "https://api.abliteration.ai/v1",
+  "name": "abliteration.ai",
+  "doc": "https://docs.abliteration.ai/models",
+  "display_name": "abliteration.ai",
+  "models": [
+    {
+      "id": "abliterated-model",
+      "name": "Abliterated Model",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": false,
+      "temperature": true,
+      "release_date": "2026-01-06",
+      "last_updated": "2026-01-06",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 150000,
+        "input": 150000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 3,
+        "output": 3
+      },
+      "display_name": "Abliterated Model",
+      "type": "chat"
+    }
+  ]
+}

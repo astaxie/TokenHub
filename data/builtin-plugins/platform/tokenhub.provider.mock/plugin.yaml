@@ -1,0 +1,21 @@
+schema_version: 2
+id: "tokenhub.provider.mock"
+name: "Mock Provider"
+version: 1.0.0
+summary: "Test gateway behavior without a remote model service."
+description: "Test gateway behavior without a remote model service."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "mock"
+distribution:
+  license: Apache-2.0
+kinds: ["provider"]
+placement: []
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

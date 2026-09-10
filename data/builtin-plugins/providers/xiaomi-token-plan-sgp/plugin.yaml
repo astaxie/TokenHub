@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.xiaomi-token-plan-sgp"
+name: "Xiaomi Token Plan (Singapore)"
+version: 1.0.0
+summary: "Connect TokenHub to Xiaomi Token Plan (Singapore)."
+description: "Connect TokenHub to Xiaomi Token Plan (Singapore). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://token-plan-sgp.xiaomimimo.com/v1"
+    catalog:
+      id: "xiaomi-token-plan-sgp"
+      name: "Xiaomi Token Plan (Singapore)"
+      display_name: "Xiaomi Token Plan (Singapore)"
+      type: "openai_compatible"
+      base_url: "https://token-plan-sgp.xiaomimimo.com/v1"
+      doc_url: "https://platform.xiaomimimo.com/#/docs"
+      categories: []
+      models_count: 8
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

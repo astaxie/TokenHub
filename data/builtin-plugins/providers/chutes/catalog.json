@@ -1,0 +1,1622 @@
+{
+  "id": "chutes",
+  "api": "https://llm.chutes.ai/v1",
+  "name": "Chutes",
+  "doc": "https://llm.chutes.ai/v1/models",
+  "display_name": "Chutes",
+  "models": [
+    {
+      "id": "moonshotai/Kimi-K2.6-TEE",
+      "name": "Kimi K2.6 TEE",
+      "family": "kimi-k2",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2025-12",
+      "release_date": "2026-04-21",
+      "last_updated": "2026-04-21",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65535
+      },
+      "cost": {
+        "input": 0.95,
+        "output": 4,
+        "cache_read": 0.475
+      },
+      "display_name": "Kimi K2.6 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "moonshotai/Kimi-K2.5-TEE",
+      "name": "Kimi K2.5 TEE",
+      "family": "kimi-k2",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2024-10",
+      "release_date": "2026-01",
+      "last_updated": "2026-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65535
+      },
+      "cost": {
+        "input": 0.44,
+        "output": 2,
+        "cache_read": 0.22
+      },
+      "display_name": "Kimi K2.5 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemma-4-31B-turbo-TEE",
+      "name": "gemma 4 31B turbo TEE",
+      "family": "gemma",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-04-02",
+      "last_updated": "2026-04-02",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.13,
+        "output": 0.38,
+        "cache_read": 0.065
+      },
+      "display_name": "gemma 4 31B turbo TEE",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen3-32B-TEE",
+      "name": "Qwen3 32B TEE",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-04",
+      "last_updated": "2025-04",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 40960,
+        "output": 40960
+      },
+      "cost": {
+        "input": 0.08,
+        "output": 0.24,
+        "cache_read": 0.04
+      },
+      "display_name": "Qwen3 32B TEE",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen2.5-VL-32B-Instruct",
+      "name": "Qwen2.5 VL 32B Instruct",
+      "family": "qwen",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16384,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0.0543,
+        "output": 0.2174,
+        "cache_read": 0.02715
+      },
+      "display_name": "Qwen2.5 VL 32B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+      "name": "Qwen3 Next 80B A3B Instruct",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "cost": {
+        "input": 0.1,
+        "output": 0.8,
+        "cache_read": 0.05
+      },
+      "display_name": "Qwen3 Next 80B A3B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen3-235B-A22B-Instruct-2507-TEE",
+      "name": "Qwen3 235B A22B Instruct 2507 TEE",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-04",
+      "last_updated": "2025-04",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.1,
+        "output": 0.6,
+        "cache_read": 0.05
+      },
+      "display_name": "Qwen3 235B A22B Instruct 2507 TEE",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+      "name": "Qwen3 235B A22B Thinking 2507",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "cost": {
+        "input": 0.11,
+        "output": 0.6,
+        "cache_read": 0.055
+      },
+      "display_name": "Qwen3 235B A22B Thinking 2507",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "Qwen/Qwen3.6-27B-TEE",
+      "name": "Qwen3.6 27B TEE",
+      "family": "qwen",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-04-22",
+      "last_updated": "2026-04-22",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.195,
+        "output": 1.56,
+        "cache_read": 0.0975
+      },
+      "display_name": "Qwen3.6 27B TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "Qwen/Qwen3Guard-Gen-0.6B",
+      "name": "Qwen3Guard Gen 0.6B",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32768,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.01,
+        "output": 0.0109,
+        "cache_read": 0.005
+      },
+      "display_name": "Qwen3Guard Gen 0.6B",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen3-Coder-Next-TEE",
+      "name": "Qwen3 Coder Next TEE",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-04-25",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.12,
+        "output": 0.75,
+        "cache_read": 0.06
+      },
+      "display_name": "Qwen3 Coder Next TEE",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "name": "Qwen2.5 Coder 32B Instruct",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32768,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.0272,
+        "output": 0.1087,
+        "cache_read": 0.0136
+      },
+      "display_name": "Qwen2.5 Coder 32B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen2.5-72B-Instruct",
+      "name": "Qwen2.5 72B Instruct",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32768,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.2989,
+        "output": 1.1957,
+        "cache_read": 0.14945
+      },
+      "display_name": "Qwen2.5 72B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen3.5-397B-A17B-TEE",
+      "name": "Qwen3.5 397B A17B TEE",
+      "family": "qwen",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-02-15",
+      "last_updated": "2026-02-15",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.39,
+        "output": 2.34,
+        "cache_read": 0.195
+      },
+      "display_name": "Qwen3.5 397B A17B TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "Qwen/Qwen3-30B-A3B",
+      "name": "Qwen3 30B A3B",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 40960,
+        "output": 40960
+      },
+      "cost": {
+        "input": 0.06,
+        "output": 0.22,
+        "cache_read": 0.03
+      },
+      "display_name": "Qwen3 30B A3B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-oss-120b-TEE",
+      "name": "gpt oss 120b TEE",
+      "family": "gpt-oss",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.09,
+        "output": 0.36,
+        "cache_read": 0.045
+      },
+      "display_name": "gpt oss 120b TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "XiaomiMiMo/MiMo-V2-Flash-TEE",
+      "name": "MiMo V2 Flash TEE",
+      "family": "mimo",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2024-12-01",
+      "release_date": "2025-12-16",
+      "last_updated": "2026-02-04",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.09,
+        "output": 0.29,
+        "cache_read": 0.045
+      },
+      "display_name": "MiMo V2 Flash TEE",
+      "type": "chat"
+    },
+    {
+      "id": "NousResearch/Hermes-4-14B",
+      "name": "Hermes 4 14B",
+      "family": "nousresearch",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 40960,
+        "output": 40960
+      },
+      "cost": {
+        "input": 0.0136,
+        "output": 0.0543,
+        "cache_read": 0.0068
+      },
+      "display_name": "Hermes 4 14B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "NousResearch/DeepHermes-3-Mistral-24B-Preview",
+      "name": "DeepHermes 3 Mistral 24B Preview",
+      "family": "nousresearch",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32768,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.0245,
+        "output": 0.0978,
+        "cache_read": 0.01225
+      },
+      "display_name": "DeepHermes 3 Mistral 24B Preview",
+      "type": "chat"
+    },
+    {
+      "id": "unsloth/Llama-3.2-1B-Instruct",
+      "name": "Llama 3.2 1B Instruct",
+      "family": "unsloth",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": true,
+      "release_date": "2026-01-27",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16384,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.01,
+        "output": 0.0109,
+        "cache_read": 0.005
+      },
+      "display_name": "Llama 3.2 1B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "unsloth/gemma-3-12b-it",
+      "name": "gemma 3 12b it",
+      "family": "unsloth",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 131072
+      },
+      "cost": {
+        "input": 0.03,
+        "output": 0.1,
+        "cache_read": 0.015
+      },
+      "display_name": "gemma 3 12b it",
+      "type": "chat"
+    },
+    {
+      "id": "unsloth/gemma-3-4b-it",
+      "name": "gemma 3 4b it",
+      "family": "unsloth",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 96000,
+        "output": 96000
+      },
+      "cost": {
+        "input": 0.01,
+        "output": 0.0272,
+        "cache_read": 0.005
+      },
+      "display_name": "gemma 3 4b it",
+      "type": "chat"
+    },
+    {
+      "id": "unsloth/gemma-3-27b-it",
+      "name": "gemma 3 27b it",
+      "family": "unsloth",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.0272,
+        "output": 0.1087,
+        "cache_read": 0.0136
+      },
+      "display_name": "gemma 3 27b it",
+      "type": "chat"
+    },
+    {
+      "id": "unsloth/Mistral-Nemo-Instruct-2407",
+      "name": "Mistral Nemo Instruct 2407",
+      "family": "unsloth",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 131072
+      },
+      "cost": {
+        "input": 0.02,
+        "output": 0.04,
+        "cache_read": 0.01
+      },
+      "display_name": "Mistral Nemo Instruct 2407",
+      "type": "chat"
+    },
+    {
+      "id": "unsloth/Llama-3.2-3B-Instruct",
+      "name": "Llama 3.2 3B Instruct",
+      "family": "unsloth",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": true,
+      "release_date": "2025-02-12",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16384,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0.01,
+        "output": 0.0136,
+        "cache_read": 0.005
+      },
+      "display_name": "Llama 3.2 3B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "tngtech/DeepSeek-TNG-R1T2-Chimera-TEE",
+      "name": "DeepSeek TNG R1T2 Chimera TEE",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-04-25",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 163840,
+        "output": 163840
+      },
+      "cost": {
+        "input": 0.3,
+        "output": 1.1,
+        "cache_read": 0.15
+      },
+      "display_name": "DeepSeek TNG R1T2 Chimera TEE",
+      "type": "chat"
+    },
+    {
+      "id": "zai-org/GLM-4.7-TEE",
+      "name": "GLM 4.7 TEE",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-12-22",
+      "last_updated": "2025-12-22",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 202752,
+        "output": 65535
+      },
+      "cost": {
+        "input": 0.39,
+        "output": 1.75,
+        "cache_read": 0.195
+      },
+      "display_name": "GLM 4.7 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zai-org/GLM-5-TEE",
+      "name": "GLM 5 TEE",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-02-11",
+      "last_updated": "2026-02-11",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 202752,
+        "output": 65535
+      },
+      "cost": {
+        "input": 0.95,
+        "output": 2.55,
+        "cache_read": 0.475
+      },
+      "display_name": "GLM 5 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zai-org/GLM-5.1-TEE",
+      "name": "GLM 5.1 TEE",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-03-27",
+      "last_updated": "2026-03-27",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 202752,
+        "output": 65535
+      },
+      "cost": {
+        "input": 1.05,
+        "output": 3.5,
+        "cache_read": 0.525
+      },
+      "display_name": "GLM 5.1 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zai-org/GLM-4.6V",
+      "name": "GLM 4.6V",
+      "family": "glm",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.3,
+        "output": 0.9,
+        "cache_read": 0.15
+      },
+      "display_name": "GLM 4.6V",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zai-org/GLM-5-Turbo",
+      "name": "GLM 5 Turbo",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-03-11",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 202752,
+        "output": 65535
+      },
+      "cost": {
+        "input": 0.4891,
+        "output": 1.9565,
+        "cache_read": 0.24455
+      },
+      "display_name": "GLM 5 Turbo",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary"
+        }
+      }
+    },
+    {
+      "id": "zai-org/GLM-4.7-FP8",
+      "name": "GLM 4.7 FP8",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-01-27",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 202752,
+        "output": 65535
+      },
+      "cost": {
+        "input": 0.2989,
+        "output": 1.1957,
+        "cache_read": 0.14945
+      },
+      "display_name": "GLM 4.7 FP8",
+      "type": "chat"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V3.2-TEE",
+      "name": "DeepSeek V3.2 TEE",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.28,
+        "output": 0.42,
+        "cache_read": 0.14
+      },
+      "display_name": "DeepSeek V3.2 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V3-0324-TEE",
+      "name": "DeepSeek V3 0324 TEE",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 163840,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.25,
+        "output": 1,
+        "cache_read": 0.125
+      },
+      "display_name": "DeepSeek V3 0324 TEE",
+      "type": "chat"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V3.1-TEE",
+      "name": "DeepSeek V3.1 TEE",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 163840,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.27,
+        "output": 1,
+        "cache_read": 0.135
+      },
+      "display_name": "DeepSeek V3.1 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+      "name": "DeepSeek R1 Distill Llama 70B",
+      "family": "deepseek-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 131072
+      },
+      "cost": {
+        "input": 0.0272,
+        "output": 0.1087,
+        "cache_read": 0.0136
+      },
+      "display_name": "DeepSeek R1 Distill Llama 70B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary"
+        }
+      }
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-R1-0528-TEE",
+      "name": "DeepSeek R1 0528 TEE",
+      "family": "deepseek-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2024-07",
+      "release_date": "2025-01-20",
+      "last_updated": "2025-05-29",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 163840,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.45,
+        "output": 2.15,
+        "cache_read": 0.225
+      },
+      "display_name": "DeepSeek R1 0528 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "MiniMaxAI/MiniMax-M2.5-TEE",
+      "name": "MiniMax M2.5 TEE",
+      "family": "minimax",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-02-12",
+      "last_updated": "2026-02-12",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 196608,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.15,
+        "output": 1.2,
+        "cache_read": 0.075
+      },
+      "display_name": "MiniMax M2.5 TEE",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "rednote-hilab/dots.ocr",
+      "name": "dots.ocr",
+      "family": "rednote",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-29",
+      "last_updated": "2026-04-25",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 131072
+      },
+      "cost": {
+        "input": 0.01,
+        "output": 0.0109,
+        "cache_read": 0.005
+      },
+      "display_name": "dots.ocr",
+      "type": "chat"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.frogbot"
+name: "FrogBot"
+version: 1.0.0
+summary: "Connect TokenHub to FrogBot."
+description: "Connect TokenHub to FrogBot. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://app.frogbot.ai/api/v1"
+    catalog:
+      id: "frogbot"
+      name: "FrogBot"
+      display_name: "FrogBot"
+      type: "openai_compatible"
+      base_url: "https://app.frogbot.ai/api/v1"
+      doc_url: "https://docs.frogbot.ai"
+      categories: []
+      models_count: 26
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

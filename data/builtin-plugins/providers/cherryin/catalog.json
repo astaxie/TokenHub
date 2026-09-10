@@ -1,0 +1,4087 @@
+{
+  "id": "cherryin",
+  "models": [
+    {
+      "id": "anthropic/claude-opus-4.5",
+      "name": "Claude Opus 4.5",
+      "display_name": "Claude Opus 4.5",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "tool_call": true,
+      "cost": {
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5
+      },
+      "limit": {
+        "context": 200000,
+        "output": 64000
+      },
+      "metadata": {
+        "pricing": {
+          "cache_read": 0.5,
+          "input": 5,
+          "output": 25
+        },
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "mixed",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "effort": "high",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude Opus 4.5 uses manual thinking.type = \"enabled\" with budget_tokens; effort can be used alongside the thinking budget.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header."
+          ]
+        }
+      }
+    },
+    {
+      "id": "agent/deepseek-v3.1-terminus(free)",
+      "name": "Agent: DeepSeek-V3.1-Terminus",
+      "display_name": "Agent: DeepSeek-V3.1-Terminus",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 160000,
+        "output": 32000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "agent/deepseek-v3.2-exp(free)",
+      "name": "Agent: DeepSeek-V3.2-Exp",
+      "display_name": "Agent: DeepSeek-V3.2-Exp",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 163000,
+        "output": 163000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "agent/glm-4.6(free)",
+      "name": "Agent: glm-4.6",
+      "display_name": "Agent: glm-4.6",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "agent/kimi-k2-0905(free)",
+      "name": "Agent: Kimi-K2-0905",
+      "display_name": "Agent: Kimi-K2-0905",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "agent/kimi-k2-thinking(free)",
+      "name": "Agent: kimi-k2-thinking",
+      "display_name": "Agent: kimi-k2-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "agent/minimax-m2(free)",
+      "name": "Agent: minimax-m2",
+      "display_name": "Agent: minimax-m2",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 204800,
+        "output": 192000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "agent/qwen3-coder-30b-a3b-instruct(free)",
+      "name": "Agent: qwen3-coder-30b-a3b-instruct",
+      "display_name": "Agent: qwen3-coder-30b-a3b-instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 2000000,
+        "output": 262000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "agent/qwen3-coder-480b-a35b-instruct(free)",
+      "name": "Agent: qwen3-coder-480b-a35b-instruct",
+      "display_name": "Agent: qwen3-coder-480b-a35b-instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262000,
+        "output": 262000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "agent/qwen3-next-80b-a3b-instruct(free)",
+      "name": "Agent: qwen3-next-80b-a3b-instruct",
+      "display_name": "Agent: qwen3-next-80b-a3b-instruct",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 256000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "agent/qwen3-next-80b-a3b-thinking(free)",
+      "name": "Agent: qwen3-next-80b-a3b-thinking",
+      "display_name": "Agent: qwen3-next-80b-a3b-thinking",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 256000
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "anthropic/claude-3.7-sonnet",
+      "name": "Anthropic: Claude 3.7 Sonnet",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-01",
+      "release_date": "2025-02-19",
+      "last_updated": "2025-02-19",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 200000,
+        "output": 64000
+      },
+      "display_name": "Anthropic: Claude 3.7 Sonnet",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": false,
+          "summaries": false,
+          "visibility": "full",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Anthropic uses thinking budget tokens"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "anthropic/claude-haiku-4.5",
+      "name": "Anthropic: claude-haiku-4-5",
+      "display_name": "Anthropic: claude-haiku-4-5",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4",
+      "name": "Anthropic: Claude Opus 4",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-03-31",
+      "release_date": "2025-05-22",
+      "last_updated": "2025-05-22",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 200000,
+        "output": 32000
+      },
+      "display_name": "Anthropic: Claude Opus 4",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "anthropic/claude-opus-4.1",
+      "name": "Anthropic: Claude Opus 4.1",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-03-31",
+      "release_date": "2025-08-05",
+      "last_updated": "2025-08-05",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 200000,
+        "output": 32000
+      },
+      "display_name": "Anthropic: Claude Opus 4.1",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "anthropic/claude-sonnet-4",
+      "name": "Anthropic: Claude Sonnet 4",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-03-31",
+      "release_date": "2025-05-22",
+      "last_updated": "2025-05-22",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1000000,
+        "output": 64000
+      },
+      "display_name": "Anthropic: Claude Sonnet 4",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.5",
+      "name": "Anthropic: Claude Sonnet 4.5",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "knowledge": "2025-07-31",
+      "release_date": "2025-09-29",
+      "last_updated": "2025-09-29",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1000000,
+        "output": 64000
+      },
+      "display_name": "Anthropic: Claude Sonnet 4.5",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "BAAI/bge-reranker-v2-m3(free)",
+      "name": "BAAI/bge-reranker-v2-m3",
+      "display_name": "BAAI/bge-reranker-v2-m3",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "rerank"
+    },
+    {
+      "id": "bytedance/seed-oss-36b-instruct",
+      "name": "ByteDance: Seed OSS 36B Instruct",
+      "display_name": "ByteDance: Seed OSS 36B Instruct",
+      "type": "completion",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "deepseek/deepseek-ocr(free)",
+      "name": "DeepSeek-OCR",
+      "display_name": "DeepSeek-OCR",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 8000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-r1-0528",
+      "name": "DeepSeek: R1 0528",
+      "display_name": "DeepSeek: R1 0528",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 163840,
+        "output": 163840
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v3.1",
+      "name": "DeepSeek V3.1",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "knowledge": "2024-07",
+      "release_date": "2025-08-20",
+      "last_updated": "2025-08-26",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "display_name": "DeepSeek V3.1",
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v3.1-fast",
+      "name": "DeepSeek: DeepSeek V3.1 (free)",
+      "display_name": "DeepSeek: DeepSeek V3.1 (free)",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 163800
+      },
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v3.1-terminus",
+      "name": "DeepSeek: DeepSeek V3.1 Terminus",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-07",
+      "release_date": "2025-09-22",
+      "last_updated": "2025-09-22",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 163840,
+        "output": 163840
+      },
+      "display_name": "DeepSeek: DeepSeek V3.1 Terminus",
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v3.1-terminus(free)",
+      "name": "DeepSeek-V3.1-Terminus",
+      "display_name": "DeepSeek-V3.1-Terminus",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 160000,
+        "output": 32000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v3.2-exp",
+      "name": "DeepSeek: DeepSeek V3.2 Exp",
+      "display_name": "DeepSeek: DeepSeek V3.2 Exp",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 163840
+      },
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-v3.2-exp(free)",
+      "name": "DeepSeek-V3.2-Exp",
+      "display_name": "DeepSeek-V3.2-Exp",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 163000,
+        "output": 163000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "google/gemini-2.5-flash",
+      "name": "Google: Gemini 2.5 Flash",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-01",
+      "release_date": "2025-07-17",
+      "last_updated": "2025-07-17",
+      "modalities": {
+        "input": [
+          "image",
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1048576,
+        "output": 65535
+      },
+      "display_name": "Google: Gemini 2.5 Flash",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "budget",
+          "budget": {
+            "min": 0,
+            "max": 24576,
+            "default": -1,
+            "auto": -1,
+            "off": 0,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "google/gemini-2.5-flash-image",
+      "name": "Google: Gemini 2.5 Flash Image (Nano Banana)",
+      "display_name": "Google: Gemini 2.5 Flash Image (Nano Banana)",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "image",
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 32768,
+        "output": 8192
+      },
+      "type": "image-generation"
+    },
+    {
+      "id": "google/gemini-2.5-flash-image-preview",
+      "name": "Google: Gemini 2.5 Flash Image Preview (Nano Banana)",
+      "display_name": "Google: Gemini 2.5 Flash Image Preview (Nano Banana)",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "image",
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 32768,
+        "output": 8192
+      },
+      "type": "image-generation"
+    },
+    {
+      "id": "google/gemini-2.5-flash-lite",
+      "name": "Google: Gemini 2.5 Flash Lite",
+      "display_name": "Google: Gemini 2.5 Flash Lite",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65535
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 512,
+            "max": 24576,
+            "default": -1,
+            "auto": -1,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "google/gemini-2.5-pro",
+      "name": "Google: Gemini 2.5 Pro",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-01",
+      "release_date": "2025-03-20",
+      "last_updated": "2025-06-05",
+      "modalities": {
+        "input": [
+          "image",
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "display_name": "Google: Gemini 2.5 Pro",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "budget",
+          "budget": {
+            "min": 128,
+            "max": 32768,
+            "default": -1,
+            "auto": -1,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "google/gemini-3-pro-preview",
+      "name": "Google: Gemini 3 Pro Preview",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-10",
+      "release_date": "2025-11-19",
+      "last_updated": "2025-11-19",
+      "modalities": {
+        "input": [
+          "image",
+          "text",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "display_name": "Google: Gemini 3 Pro Preview",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "level",
+          "level": "high",
+          "level_options": [
+            "low",
+            "high"
+          ],
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "inclusionai/ling-1t",
+      "name": "inclusionAI: Ling-1T",
+      "display_name": "inclusionAI: Ling-1T",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 131072,
+        "output": 131072
+      },
+      "type": "chat"
+    },
+    {
+      "id": "meituan/longcat-flash-chat",
+      "name": "Meituan: LongCat-Flash-Chat",
+      "display_name": "Meituan: LongCat-Flash-Chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "minimax/minimax-m2",
+      "name": "MiniMax: minimax-m2",
+      "display_name": "MiniMax: minimax-m2",
+      "attachment": false,
+      "reasoning": {
+        "supported": true
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 204800,
+        "output": 192000
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "minimax/MiniMax-M2(free)",
+      "name": "MiniMax: minimax-m2",
+      "display_name": "MiniMax: minimax-m2",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 204800,
+        "output": 192000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "minimaxai/minimax-m1-80k",
+      "name": "MiniMax: MiniMax M1",
+      "display_name": "MiniMax: MiniMax M1",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 40000
+      },
+      "type": "chat"
+    },
+    {
+      "id": "moonshotai/kimi-k2-0905",
+      "name": "MoonshotAI: Kimi K2 0905",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-10",
+      "release_date": "2025-09-05",
+      "last_updated": "2025-09-05",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "display_name": "MoonshotAI: Kimi K2 0905",
+      "type": "chat"
+    },
+    {
+      "id": "moonshotai/kimi-k2-0905(free)",
+      "name": "MoonshotAI: Kimi-K2-0905",
+      "display_name": "MoonshotAI: Kimi-K2-0905",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "moonshotai/kimi-k2-thinking",
+      "name": "MoonshotAI: kimi-k2-thinking",
+      "display_name": "MoonshotAI: kimi-k2-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "moonshotai/kimi-k2-thinking-turbo",
+      "name": "MoonshotAI: kimi-k2-thinking",
+      "display_name": "MoonshotAI: kimi-k2-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "moonshotai/kimi-k2-thinking(free)",
+      "name": "MoonshotAI: kimi-k2-thinking",
+      "display_name": "MoonshotAI: kimi-k2-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1",
+      "name": "OpenAI: GPT-4.1",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-04",
+      "release_date": "2025-04-14",
+      "last_updated": "2025-04-14",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1047576,
+        "output": 32768
+      },
+      "display_name": "OpenAI: GPT-4.1",
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1-mini",
+      "name": "OpenAI: GPT-4.1 Mini",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-04",
+      "release_date": "2025-04-14",
+      "last_updated": "2025-04-14",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1047576,
+        "output": 32768
+      },
+      "display_name": "OpenAI: GPT-4.1 Mini",
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1-nano",
+      "name": "OpenAI: GPT-4.1 Nano",
+      "display_name": "OpenAI: GPT-4.1 Nano",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1047576,
+        "output": 32768
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-4o",
+      "name": "OpenAI: gpt-4o",
+      "display_name": "OpenAI: gpt-4o",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "OpenAI: gpt-4o-mini",
+      "display_name": "OpenAI: gpt-4o-mini",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-5",
+      "name": "OpenAI: GPT-5",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-10-01",
+      "release_date": "2025-08-07",
+      "last_updated": "2025-08-07",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "display_name": "OpenAI: GPT-5",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-5-chat",
+      "name": "OpenAI: GPT-5 Chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": false,
+      "knowledge": "2024-09-30",
+      "release_date": "2025-08-07",
+      "last_updated": "2025-08-07",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "display_name": "OpenAI: GPT-5 Chat",
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-5-mini",
+      "name": "OpenAI: GPT-5 Mini",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-10-01",
+      "release_date": "2025-08-07",
+      "last_updated": "2025-08-07",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "display_name": "OpenAI: GPT-5 Mini",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-5-nano",
+      "name": "OpenAI: GPT-5 Nano",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-10-01",
+      "release_date": "2025-08-07",
+      "last_updated": "2025-08-07",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "display_name": "OpenAI: GPT-5 Nano",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-5.1",
+      "name": "OpenAI: gpt-5.1",
+      "display_name": "OpenAI: gpt-5.1",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-5.2",
+      "name": "OpenAI: gpt-5.2",
+      "display_name": "OpenAI: gpt-5.2",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-5.1-chat",
+      "name": "OpenAI: gpt-5.1",
+      "display_name": "OpenAI: gpt-5.1",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-image-1",
+      "name": "OpenAI: gpt-image-1",
+      "display_name": "OpenAI: gpt-image-1",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "image-generation"
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "name": "OpenAI: gpt-oss-120b",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "release_date": "2025-08-05",
+      "last_updated": "2025-08-05",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 131072
+      },
+      "display_name": "OpenAI: gpt-oss-120b",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-oss-20b",
+      "name": "OpenAI: gpt-oss-20b",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "release_date": "2025-08-05",
+      "last_updated": "2025-08-05",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 32768
+      },
+      "display_name": "OpenAI: gpt-oss-20b",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/o1",
+      "name": "OpenAI: o1",
+      "display_name": "OpenAI: o1",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 200000,
+        "output": 100000
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/o1-mini",
+      "name": "OpenAI: o1-mini",
+      "display_name": "OpenAI: o1-mini",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 65536
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/o3",
+      "name": "OpenAI: o3",
+      "display_name": "OpenAI: o3",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 200000,
+        "output": 100000
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "openai/o4-mini",
+      "name": "OpenAI: o4 Mini",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-06",
+      "release_date": "2025-04-16",
+      "last_updated": "2025-04-16",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 200000,
+        "output": 100000
+      },
+      "display_name": "OpenAI: o4 Mini",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen-image-edit-2509(free)",
+      "name": "Qwen: qwen-image-edit",
+      "display_name": "Qwen: qwen-image-edit",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen-image-edit(free)",
+      "name": "Qwen: qwen-image-edit",
+      "display_name": "Qwen: qwen-image-edit",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen-image(free)",
+      "name": "Qwen: qwen-image",
+      "display_name": "Qwen: qwen-image",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b-instruct-2507",
+      "name": "Qwen: Qwen3 235B A22B Instruct 2507",
+      "display_name": "Qwen: Qwen3 235B A22B Instruct 2507",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b-instruct-2507(free)",
+      "name": "Qwen: qwen3-235b-a22b-instruct-2507",
+      "display_name": "Qwen: qwen3-235b-a22b-instruct-2507",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b-thinking-2507",
+      "name": "Qwen: Qwen3 235B A22B Thinking 2507",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-07-25",
+      "last_updated": "2025-07-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "display_name": "Qwen: Qwen3 235B A22B Thinking 2507",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b-thinking-2507(free)",
+      "name": "Qwen: qwen3-235b-a22b-thinking-2507",
+      "display_name": "Qwen: qwen3-235b-a22b-thinking-2507",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-instruct-2507",
+      "name": "Qwen: Qwen3 30B A3B Instruct 2507",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-07-29",
+      "last_updated": "2025-07-29",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "display_name": "Qwen: Qwen3 30B A3B Instruct 2507",
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-instruct-2507(free)",
+      "name": "Qwen: qwen3-30b-a3b-instruct-2507",
+      "display_name": "Qwen: qwen3-30b-a3b-instruct-2507",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-thinking-2507",
+      "name": "Qwen: Qwen3 30B A3B Thinking 2507",
+      "display_name": "Qwen: Qwen3 30B A3B Thinking 2507",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-thinking-2507(free)",
+      "name": "Qwen: qwen3-30b-a3b-thinking-2507",
+      "display_name": "Qwen: qwen3-30b-a3b-thinking-2507",
+      "attachment": false,
+      "reasoning": {
+        "supported": true
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-8b",
+      "name": "Qwen: Qwen3 8B",
+      "display_name": "Qwen: Qwen3 8B",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 20000
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-8b(free)",
+      "name": "Qwen: qwen3-8b",
+      "display_name": "Qwen: qwen3-8b",
+      "attachment": false,
+      "reasoning": {
+        "supported": true
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-coder",
+      "name": "Qwen: Qwen3 Coder 480B A35B",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-07-23",
+      "last_updated": "2025-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "display_name": "Qwen: Qwen3 Coder 480B A35B",
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-coder-30b-a3b-instruct",
+      "name": "Qwen: Qwen3 Coder 30B A3B Instruct",
+      "display_name": "Qwen: Qwen3 Coder 30B A3B Instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-coder-30b-a3b-instruct(free)",
+      "name": "Qwen: qwen3-coder-30b-a3b-instruct",
+      "display_name": "Qwen: qwen3-coder-30b-a3b-instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 2000000,
+        "output": 262000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-coder-480b-a35b-instruct",
+      "name": "Qwen: Qwen3 Coder 480B A35B Instruct",
+      "display_name": "Qwen: Qwen3 Coder 480B A35B Instruct",
+      "type": "completion",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      }
+    },
+    {
+      "id": "qwen/qwen3-coder-480b-a35b-instruct(free)",
+      "name": "Qwen: qwen3-coder-480b-a35b-instruct",
+      "display_name": "Qwen: qwen3-coder-480b-a35b-instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262000,
+        "output": 262000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-embedding-0.6b",
+      "name": "qwen/qwen3-embedding-0.6b",
+      "display_name": "qwen/qwen3-embedding-0.6b",
+      "type": "embedding",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "developer": "Qwen",
+        "developerId": 13,
+        "providerId": 15,
+        "modelRatio": 0.034,
+        "cacheRatio": 1,
+        "completionRatio": 1,
+        "order": 600,
+        "flag": 0,
+        "modalities": [
+          "text"
+        ],
+        "typeHints": [
+          "embedding"
+        ],
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      }
+    },
+    {
+      "id": "qwen/qwen3-embedding-0.6b(free)",
+      "name": "Qwen: qwen3-embedding-0.6b",
+      "display_name": "Qwen: qwen3-embedding-0.6b",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "embedding"
+    },
+    {
+      "id": "qwen/qwen3-embedding-4b",
+      "name": "qwen/qwen3-embedding-4b",
+      "display_name": "qwen/qwen3-embedding-4b",
+      "type": "embedding",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "developer": "Qwen",
+        "developerId": 13,
+        "providerId": 15,
+        "modelRatio": 0.034,
+        "cacheRatio": 1,
+        "completionRatio": 1,
+        "order": 600,
+        "flag": 0,
+        "modalities": [
+          "text"
+        ],
+        "typeHints": [
+          "embedding"
+        ],
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      }
+    },
+    {
+      "id": "qwen/qwen3-embedding-4b(free)",
+      "name": "Qwen: qwen3-embedding-4b",
+      "display_name": "Qwen: qwen3-embedding-4b",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "embedding"
+    },
+    {
+      "id": "qwen/qwen3-embedding-8b",
+      "name": "qwen/qwen3-embedding-8b",
+      "display_name": "qwen/qwen3-embedding-8b",
+      "type": "embedding",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "developer": "Qwen",
+        "developerId": 13,
+        "providerId": 15,
+        "modelRatio": 0.034,
+        "cacheRatio": 1,
+        "completionRatio": 1,
+        "order": 600,
+        "flag": 0,
+        "modalities": [
+          "text"
+        ],
+        "typeHints": [
+          "embedding"
+        ],
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      }
+    },
+    {
+      "id": "qwen/qwen3-embedding-8b(free)",
+      "name": "Qwen: qwen3-embedding-8b",
+      "display_name": "Qwen: qwen3-embedding-8b",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "embedding"
+    },
+    {
+      "id": "qwen/qwen3-next-80b-a3b-instruct",
+      "name": "Qwen: Qwen3 Next 80B A3B Instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-09-11",
+      "last_updated": "2025-09-11",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "display_name": "Qwen: Qwen3 Next 80B A3B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-next-80b-a3b-thinking",
+      "name": "Qwen: Qwen3 Next 80B A3B Thinking",
+      "display_name": "Qwen: Qwen3 Next 80B A3B Thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-omni-30b-a3b-instruct",
+      "name": "Qwen: Qwen3 VL 30B A3B Instruct",
+      "display_name": "Qwen: Qwen3 VL 30B A3B Instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-omni-30b-a3b-thinking",
+      "name": "Qwen: Qwen3 VL 30B A3B Thinking",
+      "display_name": "Qwen: Qwen3 VL 30B A3B Thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-reranker-0.6b",
+      "name": "qwen/qwen3-reranker-0.6b",
+      "display_name": "qwen/qwen3-reranker-0.6b",
+      "type": "rerank",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "metadata": {
+        "developer": "Qwen",
+        "developerId": 13,
+        "providerId": 15,
+        "modelRatio": 0.5,
+        "cacheRatio": 1,
+        "completionRatio": 1,
+        "order": 100,
+        "flag": 0,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      }
+    },
+    {
+      "id": "qwen/qwen3-reranker-0.6b(free)",
+      "name": "Qwen: qwen3-reranker-0.6b",
+      "display_name": "Qwen: qwen3-reranker-0.6b",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 16000,
+        "output": 8000
+      },
+      "open_weights": false,
+      "type": "rerank"
+    },
+    {
+      "id": "qwen/qwen3-reranker-4b",
+      "name": "qwen/qwen3-reranker-4b",
+      "display_name": "qwen/qwen3-reranker-4b",
+      "type": "rerank",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "metadata": {
+        "developer": "Qwen",
+        "developerId": 13,
+        "providerId": 15,
+        "modelRatio": 0.5,
+        "cacheRatio": 1,
+        "completionRatio": 1,
+        "order": 100,
+        "flag": 0,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      }
+    },
+    {
+      "id": "qwen/qwen3-reranker-4b(free)",
+      "name": "Qwen: qwen3-reranker-4b",
+      "display_name": "Qwen: qwen3-reranker-4b",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "rerank"
+    },
+    {
+      "id": "qwen/qwen3-reranker-8b",
+      "name": "qwen/qwen3-reranker-8b",
+      "display_name": "qwen/qwen3-reranker-8b",
+      "type": "rerank",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "metadata": {
+        "developer": "Qwen",
+        "developerId": 13,
+        "providerId": 15,
+        "modelRatio": 0.5,
+        "cacheRatio": 1,
+        "completionRatio": 1,
+        "order": 100,
+        "flag": 0,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      }
+    },
+    {
+      "id": "qwen/qwen3-reranker-8b(free)",
+      "name": "Qwen: qwen3-reranker-8b",
+      "display_name": "Qwen: qwen3-reranker-8b",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "rerank"
+    },
+    {
+      "id": "qwen/qwen3-vl-235b-a22b-instruct",
+      "name": "Qwen: Qwen3 VL 235B A22B Instruct",
+      "display_name": "Qwen: Qwen3 VL 235B A22B Instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 131072
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-vl-235b-a22b-instruct(free)",
+      "name": "Qwen: qwen3-vl-235b-a22b-instruct",
+      "display_name": "Qwen: qwen3-vl-235b-a22b-instruct",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 131000,
+        "output": 33000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-vl-235b-a22b-thinking",
+      "name": "Qwen: Qwen3 VL 235B A22B Thinking",
+      "display_name": "Qwen: Qwen3 VL 235B A22B Thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 65536,
+        "output": 65536
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-vl-235b-a22b-thinking(free)",
+      "name": "Qwen: qwen3-vl-235b-a22b-thinking",
+      "display_name": "Qwen: qwen3-vl-235b-a22b-thinking",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 131000,
+        "output": 33000
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-vl-30b-a3b-instruct",
+      "name": "Qwen: Qwen3 VL 30B A3B Instruct",
+      "display_name": "Qwen: Qwen3 VL 30B A3B Instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-vl-30b-a3b-instruct(free)",
+      "name": "Qwen: qwen3-vl-30b-a3b-instruct",
+      "display_name": "Qwen: qwen3-vl-30b-a3b-instruct",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 32000
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-vl-30b-a3b-thinking",
+      "name": "Qwen: Qwen3 VL 30B A3B Thinking",
+      "display_name": "Qwen: Qwen3 VL 30B A3B Thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-vl-30b-a3b-thinking(free)",
+      "name": "Qwen: qwen3-vl-30b-a3b-thinking",
+      "display_name": "Qwen: qwen3-vl-30b-a3b-thinking",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 32000
+      },
+      "open_weights": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "tencent/hunyuan-mt-7b",
+      "name": "Tencent: Hunyuan A13B Instruct",
+      "display_name": "Tencent: Hunyuan A13B Instruct",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 32768
+      },
+      "type": "chat"
+    },
+    {
+      "id": "tencent/hunyuan-mt-7b(free)",
+      "name": "Tencent: tencent/Hunyuan-MT-7B",
+      "display_name": "Tencent: tencent/Hunyuan-MT-7B",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {},
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "x-ai/grok-2-image",
+      "name": "grok-2",
+      "display_name": "grok-2",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text",
+          "image"
+        ]
+      },
+      "metadata": {
+        "developer": "Grok",
+        "developerId": 9,
+        "providerId": 46,
+        "modelRatio": 0.9,
+        "cacheRatio": 1,
+        "completionRatio": 5,
+        "order": 0,
+        "flag": 0,
+        "tags": [
+          "multi_modal"
+        ],
+        "modalities": [
+          "text",
+          "image"
+        ],
+        "typeHints": [
+          "t2t"
+        ],
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      }
+    },
+    {
+      "id": "x-ai/grok-3",
+      "name": "xAI: Grok 3",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-11",
+      "release_date": "2025-02-17",
+      "last_updated": "2025-02-17",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 131072,
+        "output": 8192
+      },
+      "display_name": "xAI: Grok 3",
+      "type": "chat"
+    },
+    {
+      "id": "x-ai/grok-3-mini",
+      "name": "xAI: Grok 3 Mini",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2024-11",
+      "release_date": "2025-02-17",
+      "last_updated": "2025-02-17",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 131072,
+        "output": 8192
+      },
+      "display_name": "xAI: Grok 3 Mini",
+      "type": "chat"
+    },
+    {
+      "id": "x-ai/grok-4",
+      "name": "xAI: Grok 4",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-07",
+      "release_date": "2025-07-09",
+      "last_updated": "2025-07-09",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 64000
+      },
+      "display_name": "xAI: Grok 4",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "x-ai/grok-4-fast-non-reasoning",
+      "name": "x-ai/grok-4-fast-non-reasoning",
+      "display_name": "x-ai/grok-4-fast-non-reasoning",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "metadata": {
+        "developer": "Grok",
+        "developerId": 9,
+        "providerId": 29,
+        "modelRatio": 0.1,
+        "cacheRatio": 0.25,
+        "completionRatio": 2.5,
+        "order": 800,
+        "flag": 1,
+        "billingConfig": "{\n  \"model_name\": \"grok-4-fast-non-reasoning\",\n  \"default_tier\": \"tier1\",\n  \"token_based_tier_configs\": {\n    \"tier1\": {\n      \"tier_condition\": {\n        \"min_tokens\": 0,\n        \"max_tokens\": 128000\n      },\n      \"model_ratio\": 0.1,\n      \"prompt_tokens_ratio\": 1.0,\n      \"completion_tokens_ratio\": 2.5,\n      \"cached_tokens_ratio\": 0.25\n    },\n    \"tier2\": {\n      \"tier_condition\": {\n        \"min_tokens\": 128001,\n        \"max_tokens\": -1\n      },\n      \"model_ratio\": 0.2,\n      \"prompt_tokens_ratio\": 1.0,\n      \"completion_tokens_ratio\": 2.5,\n      \"cached_tokens_ratio\": 0.125\n    }\n  },\n  \"enabled_billing_items\": [\n    \"prompt_tokens\",\n    \"completion_tokens\",\n    \"cached_tokens\"\n  ]\n}",
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 2000000,
+        "output": 2000000
+      }
+    },
+    {
+      "id": "x-ai/grok-4-fast-reasoning",
+      "name": "x-ai/grok-4-fast-reasoning",
+      "display_name": "x-ai/grok-4-fast-reasoning",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "metadata": {
+        "developer": "Grok",
+        "developerId": 9,
+        "providerId": 29,
+        "modelRatio": 0.1,
+        "cacheRatio": 0.25,
+        "completionRatio": 2.5,
+        "order": 800,
+        "flag": 1,
+        "billingConfig": "{\n  \"model_name\": \"grok-4-fast-reasoning\",\n  \"default_tier\": \"tier1\",\n  \"token_based_tier_configs\": {\n    \"tier1\": {\n      \"tier_condition\": {\n        \"min_tokens\": 0,\n        \"max_tokens\": 128000\n      },\n      \"model_ratio\": 0.1,\n      \"prompt_tokens_ratio\": 1.0,\n      \"completion_tokens_ratio\": 2.5,\n      \"cached_tokens_ratio\": 0.25\n    },\n    \"tier2\": {\n      \"tier_condition\": {\n        \"min_tokens\": 128001,\n        \"max_tokens\": -1\n      },\n      \"model_ratio\": 0.2,\n      \"prompt_tokens_ratio\": 1.0,\n      \"completion_tokens_ratio\": 2.5,\n      \"cached_tokens_ratio\": 0.125\n    }\n  },\n  \"enabled_billing_items\": [\n    \"prompt_tokens\",\n    \"completion_tokens\",\n    \"cached_tokens\"\n  ]\n}",
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 2000000,
+        "output": 2000000
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "x-ai/grok-code-fast-1",
+      "name": "xAI: Grok Code Fast 1",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "knowledge": "2025-08",
+      "release_date": "2025-08-26",
+      "last_updated": "2025-08-26",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 10000
+      },
+      "display_name": "xAI: Grok Code Fast 1",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "z-ai/glm-4.5",
+      "name": "Z.AI: GLM 4.5",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-07-28",
+      "last_updated": "2025-07-28",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 131072
+      },
+      "display_name": "Z.AI: GLM 4.5",
+      "type": "chat"
+    },
+    {
+      "id": "z-ai/glm-4.5-flash",
+      "name": "z-ai/glm-4.5-flash",
+      "display_name": "z-ai/glm-4.5-flash",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "developer": "ChatGLM",
+        "developerId": 5,
+        "providerId": 8,
+        "modelRatio": 0.01,
+        "cacheRatio": 1,
+        "completionRatio": 1,
+        "order": 1,
+        "flag": 0,
+        "modalities": [
+          "text"
+        ],
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      }
+    },
+    {
+      "id": "z-ai/glm-4.5(free)",
+      "name": "Z.AI: glm-4.5",
+      "display_name": "Z.AI: glm-4.5",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 131072,
+        "output": 98304
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "z-ai/glm-4.5v",
+      "name": "Z.AI: GLM 4.5V",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-08-11",
+      "last_updated": "2025-08-11",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 65536,
+        "output": 16384
+      },
+      "display_name": "Z.AI: GLM 4.5V",
+      "type": "chat"
+    },
+    {
+      "id": "z-ai/glm-4.5v(free)",
+      "name": "Z.AI: glm-4.5v",
+      "display_name": "Z.AI: glm-4.5v",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 64000,
+        "output": 16384
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "z-ai/glm-4.6",
+      "name": "Z.AI: GLM 4.6",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "knowledge": "2025-09",
+      "release_date": "2025-09-30",
+      "last_updated": "2025-09-30",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 202752,
+        "output": 202752
+      },
+      "display_name": "Z.AI: GLM 4.6",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "z-ai/glm-4.6(free)",
+      "name": "Z.AI: glm-4.6",
+      "display_name": "Z.AI: glm-4.6",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "open_weights": false,
+      "type": "chat"
+    },
+    {
+      "id": "z-ai/glm-4.7",
+      "name": "Z.AI: GLM 4.7",
+      "display_name": "Z.AI: GLM 4.7",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "cost": {
+        "input": 0.273974,
+        "output": 1.095896,
+        "cache_read": 0.054795
+      },
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 200000,
+        "output": 200000
+      },
+      "open_weights": true,
+      "metadata": {
+        "typeHints": [
+          "llm"
+        ],
+        "features": [
+          "thinking",
+          "tools",
+          "function_calling",
+          "structured_outputs"
+        ],
+        "inputModalities": [
+          "text"
+        ],
+        "pricing": {
+          "cache_read": 0.054795,
+          "input": 0.273974,
+          "output": 1.095896
+        },
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "xiaomi/mimo-v2-flash",
+      "name": "Xiaomi: Mimo V2 Flash",
+      "display_name": "Xiaomi: Mimo V2 Flash",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "cost": {
+        "input": 0.1918,
+        "output": 0.5754,
+        "cache_read": 0.03836
+      },
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      },
+      "open_weights": false,
+      "metadata": {
+        "typeHints": [
+          "llm"
+        ],
+        "inputModalities": [
+          "text"
+        ],
+        "pricing": {
+          "cache_read": 0.03836,
+          "input": 0.1918,
+          "output": 0.5754
+        },
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "xiaomimimo/mimo-v2-flash",
+      "name": "Xiaomi: Mimo V2 Flash",
+      "display_name": "Xiaomi: Mimo V2 Flash",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "cost": {
+        "input": 0.1918,
+        "output": 0.5754,
+        "cache_read": 0.03836
+      },
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 8192,
+        "output": 8192
+      },
+      "open_weights": false,
+      "metadata": {
+        "typeHints": [
+          "llm"
+        ],
+        "inputModalities": [
+          "text"
+        ],
+        "pricing": {
+          "cache_read": 0.03836,
+          "input": 0.1918,
+          "output": 0.5754
+        },
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "minimax/minimax-m2.1",
+      "name": "MiniMax: minimax-m2.1",
+      "display_name": "MiniMax: minimax-m2.1",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true
+      },
+      "temperature": true,
+      "tool_call": false,
+      "cost": {
+        "input": 0.288,
+        "output": 1.152
+      },
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 204800,
+        "output": 204800
+      },
+      "open_weights": false,
+      "metadata": {
+        "typeHints": [
+          "llm"
+        ],
+        "inputModalities": [
+          "text"
+        ],
+        "pricing": {
+          "input": 0.288,
+          "output": 1.152
+        },
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "minimax/minimax-m2.1-lightning",
+      "name": "MiniMax: minimax-m2.1-lightning",
+      "display_name": "MiniMax: minimax-m2.1-lightning",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": false,
+      "cost": {
+        "input": 0.144,
+        "output": 0.576
+      },
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 204800,
+        "output": 204800
+      },
+      "open_weights": false,
+      "metadata": {
+        "typeHints": [
+          "llm"
+        ],
+        "inputModalities": [
+          "text"
+        ],
+        "pricing": {
+          "input": 0.144,
+          "output": 0.576
+        },
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    }
+  ],
+  "name": "cherryin",
+  "display_name": "cherryin"
+}

@@ -43,34 +43,23 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	if err != nil {
 		return nil, err
 	}
-	if provider.Type == ProviderKronk {
-		kronk, ok := adapter.(KronkAdapter)
-		if !ok {
-			return nil, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Kronk adapter is unavailable")
-		}
-		effective := effectiveProviderResourceConfig(provider, &resource)
-		startedAt := time.Now()
-		result, healthErr := kronk.Health(ctx, effective)
-		s.finishProbe(ctx, provider, resource, startedAt, healthErr, Usage{})
-		if healthErr != nil {
-			return nil, healthErr
-		}
-		if _, recoverErr := s.store.RecoverProviderResource(resource.ID); recoverErr != nil {
-			return nil, recoverErr
-		}
-		return result, nil
-	}
+	descriptor, described := s.registry.Describe(provider.Type)
 	prober, supported := adapter.(ProviderResourceProber)
+	supported = supported && described && adapterSupports(descriptor, AdapterCapabilityProbe)
 	if !supported {
-		if provider.Type == ProviderMock {
+		if described && descriptor.ProviderPolicy.StoreProbeFallback {
 			return s.store.TestProviderResource(resourceID)
 		}
 		effective := effectiveProviderResourceConfig(provider, &resource)
+		descriptor, _ := s.registry.Describe(effective.Type)
+		if err := validateProviderHeaderSupportWithRegistry(s.registry, effective.Type, effective.Headers); err != nil {
+			return nil, err
+		}
 		startedAt := time.Now()
-		_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
+		_, probeErr := CustomProviderCatalogFromUpstreamWithDescriptor(ctx, s.client, ProviderCreateRequest{
 			Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
 			Headers: effective.Headers, SensitiveHeaders: effective.SensitiveHeaders, Options: effective.Options,
-		})
+		}, descriptor)
 		s.finishProbe(ctx, provider, resource, startedAt, probeErr, Usage{})
 		if probeErr != nil {
 			return nil, probeErr
@@ -105,20 +94,17 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	if err != nil {
 		return nil, err
 	}
-	if provider.Type == ProviderKronk {
-		kronk, ok := adapter.(KronkAdapter)
-		if !ok {
-			return nil, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Kronk adapter is unavailable")
-		}
-		result, healthErr := kronk.Health(ctx, effectiveProviderResourceConfig(provider, nil))
-		_, _ = s.store.SetProviderHealth(providerID, healthErr == nil)
-		if healthErr != nil {
-			return nil, healthErr
+	descriptor, described := s.registry.Describe(provider.Type)
+	if healthProber, supported := resolveProviderHealthProber(s.registry, provider.Type, adapter); supported {
+		result, probeErr := healthProber.ProbeProvider(ctx, effectiveProviderResourceConfig(provider, nil))
+		_, _ = s.store.SetProviderHealth(providerID, probeErr == nil)
+		if probeErr != nil {
+			return nil, probeErr
 		}
 		return result, nil
 	}
-	if _, supported := adapter.(ProviderResourceProber); !supported {
-		if provider.Type == ProviderMock {
+	if _, supported := adapter.(ProviderResourceProber); !supported || !described || !adapterSupports(descriptor, AdapterCapabilityProbe) {
+		if described && descriptor.ProviderPolicy.StoreProbeFallback {
 			return s.store.TestProvider(providerID)
 		}
 		effectiveProvider := effectiveProviderResourceConfig(provider, nil)
@@ -140,10 +126,15 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, firstResourceErr
 		}
-		_, probeErr := CustomProviderCatalogFromUpstream(ctx, s.client, ProviderCreateRequest{
+		if err := validateProviderHeaderSupportWithRegistry(s.registry, effectiveProvider.Type, effectiveProvider.Headers); err != nil {
+			_, _ = s.store.SetProviderHealth(providerID, false)
+			return nil, err
+		}
+		descriptor, _ := s.registry.Describe(effectiveProvider.Type)
+		_, probeErr := CustomProviderCatalogFromUpstreamWithDescriptor(ctx, s.client, ProviderCreateRequest{
 			Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,
 			Headers: effectiveProvider.Headers, SensitiveHeaders: effectiveProvider.SensitiveHeaders, Options: effectiveProvider.Options,
-		})
+		}, descriptor)
 		if probeErr != nil {
 			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, probeErr
@@ -179,6 +170,25 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	}
 	_, _ = s.store.SetProviderHealth(providerID, true)
 	return result, nil
+}
+
+func resolveProviderHealthProber(registry *AdapterRegistry, providerType string, adapters ...any) (ProviderHealthProber, bool) {
+	var adapter any
+	if len(adapters) > 0 {
+		adapter = adapters[0]
+	} else {
+		resolved, err := registry.Resolve(providerType)
+		if err != nil {
+			return nil, false
+		}
+		adapter = resolved
+	}
+	healthProber, supported := adapter.(ProviderHealthProber)
+	if !supported {
+		return nil, false
+	}
+	descriptor, described := registry.Describe(providerType)
+	return healthProber, described && adapterSupports(descriptor, AdapterCapabilityProbe)
 }
 
 func (s *IntegrationService) finishProbe(ctx context.Context, provider Provider, resource ProviderResource, startedAt time.Time, err error, usage Usage) {

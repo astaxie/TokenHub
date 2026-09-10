@@ -1,0 +1,173 @@
+.plugin-settings-page,
+.plugin-settings-form {
+  min-width: 0;
+  display: grid;
+  gap: 28px;
+}
+
+.plugin-settings-tabs {
+  min-width: 0;
+  padding-bottom: 4px;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-settings-tabs button {
+  min-height: 38px;
+  flex: 0 0 auto;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.plugin-theme-token-hint {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 8px 0 0;
+  gap: 4px;
+  color: var(--ink-3, var(--muted));
+  font-size: 11px;
+}
+
+.plugin-theme-token-notice {
+  margin: 9px 0 0;
+  color: var(--pos);
+  font-size: 11px;
+}
+
+.plugin-settings-tabs button:hover,
+.plugin-settings-tabs button.active {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.plugin-settings-tabs button.active {
+  border-bottom-color: var(--accent);
+}
+
+.plugin-settings-group {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.plugin-settings-group h2 {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--ink);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.plugin-settings-list {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.plugin-setting-row {
+  min-width: 0;
+  min-height: 74px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 280px);
+  align-items: center;
+  gap: 24px;
+  background: var(--surface-2);
+}
+
+.plugin-setting-copy,
+.plugin-setting-copy strong,
+.plugin-setting-copy small {
+  min-width: 0;
+  display: block;
+}
+
+.plugin-setting-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.plugin-setting-copy small {
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.plugin-setting-control,
+.plugin-settings-actions {
+  display: flex;
+  align-items: center;
+}
+
+.plugin-setting-control {
+  min-width: 0;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.plugin-setting-control input[type="text"] {
+  min-width: 0;
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 5px;
+  padding: 0 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.plugin-setting-control input[type="text"]:focus,
+.plugin-settings-tabs button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.plugin-theme-color-input {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 5px;
+  padding: 3px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.plugin-settings-notice {
+  margin: -10px 0 0;
+  color: var(--pos);
+  font-size: 12px;
+}
+
+.plugin-settings-actions {
+  padding-top: 14px;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 700px) {
+  .plugin-setting-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .plugin-setting-control {
+    justify-content: stretch;
+  }
+}

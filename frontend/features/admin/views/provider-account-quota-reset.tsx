@@ -1,19 +1,20 @@
 import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ApiContext, ProviderResource } from "../core/types";
+import type { ApiContext, PluginActionDescriptor, ProviderResource } from "../core/types";
 import { activeLanguage, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
+import { providerPluginActionForResourceCapability, providerPluginActionPath, runProviderResourcePluginAction, unwrapPluginActionData } from "../resources/provider-model-config";
 import { providerResourceAccountLabel, QuotaMetric } from "./provider-account-ui";
 
-type CodexResetCredit = {
+type ProviderResetCredit = {
   id?: string;
   status?: string;
   expires_at?: string | null;
 };
 
-type CodexResetCredits = {
+type ProviderResetCredits = {
   available_count: number;
-  credits?: CodexResetCredit[];
+  credits?: ProviderResetCredit[];
   fetched_at?: number;
   pending_operation?: {
     idempotency_key: string;
@@ -41,35 +42,39 @@ class ResetRequestError extends Error {
 
 export function ProviderAccountQuotaReset({
   api,
+  pluginActions,
+  providerType,
   quotaBusy,
   resource,
   onRefreshQuota,
 }: {
   api: ApiContext;
+  pluginActions: PluginActionDescriptor[];
+  providerType: string;
   quotaBusy: boolean;
   resource: ProviderResource;
   onRefreshQuota: () => Promise<boolean>;
 }) {
-  const [details, setDetails] = useState<CodexResetCredits | null>(null);
+  const resetCreditsAction = useMemo(() => providerPluginActionForResourceCapability(pluginActions, providerType, resource.resource_type, "quota.reset_credits.read"), [pluginActions, providerType, resource.resource_type]);
+  const resetAction = useMemo(() => providerPluginActionForResourceCapability(pluginActions, providerType, resource.resource_type, "quota.reset"), [pluginActions, providerType, resource.resource_type]);
+  const [details, setDetails] = useState<ProviderResetCredits | null>(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
   const [detailsError, setDetailsError] = useState("");
   const [selectedCreditID, setSelectedCreditID] = useState("");
-  const [confirmation, setConfirmation] = useState<ResetConfirmation | null>(() => readStoredResetConfirmation(resource.id));
+  const [confirmation, setConfirmation] = useState<ResetConfirmation | null>(() => readStoredResetConfirmation(resource.id, resetAction));
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState("");
   const [resetNotice, setResetNotice] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const quotaWasBusy = useRef(quotaBusy);
-  const resourcePath = `/api/admin/provider-resources/${encodeURIComponent(resource.id)}/quota`;
 
   const loadResetCredits = useCallback(async () => {
+    if (!resetCreditsAction) return false;
     setDetailsBusy(true);
     setDetailsError("");
     setDetails(null);
     try {
-      const resp = await adminFetch(api, `${resourcePath}/reset-credits`);
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("查询 Codex 重置次数")));
-      const next = (await resp.json()) as CodexResetCredits;
+      const next = await runProviderResourcePluginAction<ProviderResetCredits>(api, resource, resetCreditsAction, {}, tx("查询重置次数"));
       setDetails(next);
       setSelectedCreditID((current) => resetCreditIsUsable(next.credits, current, Date.now()) ? current : "");
       if (validPendingOperation(next.pending_operation)) {
@@ -87,12 +92,12 @@ export function ProviderAccountQuotaReset({
       return true;
     } catch (error) {
       if (isAuthExpiredError(error)) return false;
-      setDetailsError(error instanceof Error ? error.message : tx("查询 Codex 重置次数失败"));
+      setDetailsError(error instanceof Error ? error.message : tx("查询重置次数失败"));
       return false;
     } finally {
       setDetailsBusy(false);
     }
-  }, [api, resource.id, resourcePath]);
+  }, [api, resetCreditsAction, resource]);
 
   useEffect(() => {
     void loadResetCredits();
@@ -139,13 +144,13 @@ export function ProviderAccountQuotaReset({
 
   function closeConfirmation() {
     if (resetBusy || confirmation?.attempted) return;
-    clearStoredResetConfirmation(resource.id);
+    clearStoredResetConfirmation(resource.id, resetAction);
     setConfirmation(null);
     setResetError("");
   }
 
   async function confirmReset() {
-    if (!confirmation || resetBusy) return;
+    if (!confirmation || resetBusy || !resetAction) return;
     const operation = { ...confirmation, attempted: true };
     if (!storeResetConfirmation(resource.id, operation)) {
       setResetError(tx("无法保存本次重置的安全状态，请检查浏览器存储权限后重试。"));
@@ -155,25 +160,24 @@ export function ProviderAccountQuotaReset({
     setResetBusy(true);
     setResetError("");
     try {
-      const resp = await adminFetch(api, `${resourcePath}/reset`, {
+      const resp = await adminFetch(api, providerPluginActionPath(resetAction), {
         method: "POST",
-        headers: {
-          "idempotency-key": operation.idempotencyKey,
-          "x-tokenhub-dangerous-operation": "codex-quota-reset",
-        },
         body: JSON.stringify({
+          provider_id: resource.provider_id,
+          resource_id: resource.id,
           confirm: true,
           idempotency_key: operation.idempotencyKey,
           expected_available_count: operation.availableCount,
           credit_id: operation.creditID,
+          danger_confirmation: quotaResetDangerConfirmation(resetAction),
         }),
       });
-      if (!resp.ok) throw await readResetError(resp);
-      const result = await resp.json().catch(() => ({})) as { code?: string; windows_reset?: number };
+      if (!resp.ok) throw await readResetError(resp, resetAction);
+      const result = unwrapPluginActionData<{ code?: string; windows_reset?: number }>(await resp.json().catch(() => ({})));
       if (result.code !== "reset" && result.code !== "already_redeemed") {
         throw new Error(tx("重置请求返回未知结果。请保留当前弹窗并直接重试。"));
       }
-      clearStoredResetConfirmation(resource.id);
+      clearStoredResetConfirmation(resource.id, resetAction);
       const completed = result.code === "already_redeemed" ? tx("该重置请求此前已完成，正在刷新额度。") : tx("重置请求已完成，正在刷新额度。");
       const windowsReset = typeof result.windows_reset === "number" && Number.isFinite(result.windows_reset) ? result.windows_reset : null;
       setSelectedCreditID("");
@@ -188,23 +192,25 @@ export function ProviderAccountQuotaReset({
       setResetError("");
     } catch (error) {
       if (isAuthExpiredError(error)) {
-        clearStoredResetConfirmation(resource.id);
+        clearStoredResetConfirmation(resource.id, resetAction);
         return;
       }
-      if (error instanceof ResetRequestError && resetErrorIsFinal(error.code)) {
-        clearStoredResetConfirmation(resource.id);
+      if (error instanceof ResetRequestError && resetErrorIsFinal(error.code, resetAction)) {
+        clearStoredResetConfirmation(resource.id, resetAction);
         setConfirmation((current) => current ? { ...current, attempted: false } : current);
       }
-      setResetError(error instanceof Error ? error.message : tx("重置 Codex 用量窗口失败"));
+      setResetError(error instanceof Error ? error.message : tx("重置用量窗口失败"));
     } finally {
       setResetBusy(false);
     }
   }
 
+  if (!resetCreditsAction || !resetAction) return null;
+
   return (
     <div className="provider-quota-details">
       <div className="provider-quota-grid">
-        <QuotaMetric label="剩余重置次数" value={detailsBusy ? "查询中" : availableCount === null ? "-" : String(availableCount)} />
+        <QuotaMetric label="剩余重置次数" value={detailsBusy ? tx("查询中") : availableCount === null ? "-" : String(availableCount)} />
         <QuotaMetric label="最近可用次数过期" value={expiresRelative} />
         <QuotaMetric label="最近可用次数过期时间" value={expiresAbsolute} />
       </div>
@@ -246,16 +252,16 @@ export function ProviderAccountQuotaReset({
             <div aria-labelledby="provider-quota-reset-progress-title" aria-modal="true" className="confirm-modal provider-account-reset-progress-modal" role="dialog">
               <RotateCcw aria-hidden="true" className="provider-account-reset-spinner" size={64} />
               <div>
-                <p className="eyebrow">{tx("Codex 额度安全操作")}</p>
-                <h2 id="provider-quota-reset-progress-title">{tx("正在重置 Codex 套餐")}</h2>
+                <p className="eyebrow">{tx("账号额度安全操作")}</p>
+                <h2 id="provider-quota-reset-progress-title">{tx("正在重置账号套餐")}</h2>
                 <p>{tx("正在提交重置并刷新用量与重置次数，请勿关闭页面或重复操作。")}</p>
               </div>
             </div>
           ) : (
             <div aria-labelledby="provider-quota-reset-confirmation-title" aria-modal="true" className="confirm-modal provider-account-confirmation-modal" role="dialog">
               <div>
-                <p className="eyebrow">{tx("Codex 额度安全操作")}</p>
-                <h2 id="provider-quota-reset-confirmation-title">{tx("确认重置 Codex 用量窗口")}</h2>
+                <p className="eyebrow">{tx("账号额度安全操作")}</p>
+                <h2 id="provider-quota-reset-confirmation-title">{tx("确认重置用量窗口")}</h2>
               </div>
               <div className="provider-account-confirmation-target">
                 <span>{resource.name} · {resource.id}</span>
@@ -266,7 +272,7 @@ export function ProviderAccountQuotaReset({
                 <QuotaMetric label="选中次数过期" value={formatResetCreditExpiry(confirmation.expiresAt, now)} />
                 <QuotaMetric label="选中次数过期时间" value={formatResetCreditDate(confirmation.expiresAt)} />
               </div>
-              <p>{tx("确认后将消耗 1 次重置次数，并立即重置当前 Codex 用量窗口；不会更改账号套餐类型。")}</p>
+              <p>{tx("确认后将消耗 1 次重置次数，并立即重置当前用量窗口；不会更改账号套餐类型。")}</p>
               <p className="provider-quota-error">{tx("已使用的重置次数无法恢复。")}</p>
               {confirmation.attempted ? <p className="provider-quota-error">{tx("该操作已经提交。为避免重复消耗，请保留本弹窗并使用同一次操作重试，直到获得确定结果。")}</p> : null}
               {!confirmation.attempted && confirmationExpired ? <p className="provider-quota-error">{tx("选中的重置次数已经过期，请取消并刷新额度。")}</p> : null}
@@ -285,14 +291,14 @@ export function ProviderAccountQuotaReset({
   );
 }
 
-function selectAvailableCredits(credits: CodexResetCredit[] | undefined, now: number) {
+function selectAvailableCredits(credits: ProviderResetCredit[] | undefined, now: number) {
   const available = (credits ?? []).filter((credit) => credit.status?.trim().toLowerCase() === "available");
   const usable = available.filter((credit) => !hasExpiryValue(credit.expires_at) || (validExpiry(credit.expires_at) && Date.parse(credit.expires_at!) > now));
   usable.sort((left, right) => expirySortValue(left.expires_at) - expirySortValue(right.expires_at));
-  return usable.filter((credit): credit is CodexResetCredit & { id: string } => Boolean(credit.id));
+  return usable.filter((credit): credit is ProviderResetCredit & { id: string } => Boolean(credit.id));
 }
 
-function resetCreditIsUsable(credits: CodexResetCredit[] | undefined, creditID: string, now: number) {
+function resetCreditIsUsable(credits: ProviderResetCredit[] | undefined, creditID: string, now: number) {
   return Boolean(creditID && selectAvailableCredits(credits, now).some((credit) => credit.id === creditID));
 }
 
@@ -336,18 +342,22 @@ function formatResetCreditDate(value?: string | null) {
   return new Date(value!).toLocaleString(languageLocale());
 }
 
-async function readResetError(resp: Response) {
+function quotaResetDangerConfirmation(action: PluginActionDescriptor) {
+  return action.metadata?.danger_confirmation?.trim() || `provider-quota-reset:${action.plugin_id}:${action.action_id}`;
+}
+
+async function readResetError(resp: Response, action: PluginActionDescriptor) {
   const payload = await resp.clone().json().catch(() => null) as { code?: string; error?: { code?: string } } | null;
-  const message = await readAdminError(resp, tx("重置 Codex 用量窗口"));
+  const message = await readAdminError(resp, tx("重置用量窗口"));
   const code = payload?.error?.code || payload?.code;
-  const rendered = code === "openai_quota_reset_outcome_unknown"
+  const rendered = metadataList(action.metadata?.["quota_reset.unknown_outcome_codes"]).includes(code || "")
     ? `${message} ${tx("上游结果未知。请保留当前弹窗并直接重试，系统会复用同一个幂等键和重置次数。")}`
     : message;
   return new ResetRequestError(rendered, code || "unknown");
 }
 
-function resetErrorIsFinal(code: string) {
-  return new Set([
+function resetErrorIsFinal(code: string, action: PluginActionDescriptor) {
+  const genericFinalCodes = new Set([
     "quota_reset_available_count_changed",
     "quota_reset_credit_unavailable",
     "quota_reset_ineligible",
@@ -357,12 +367,18 @@ function resetErrorIsFinal(code: string) {
     "quota_reset_operation_mismatch",
     "provider_resource_inactive",
     "provider_resource_quota_reset_unsupported",
-    "openai_quota_reset_forbidden",
-  ]).has(code);
+  ]);
+  return genericFinalCodes.has(code) || metadataList(action.metadata?.["quota_reset.final_error_codes"]).includes(code);
 }
 
 function resetConfirmationStorageKey(resourceID: string) {
-  return `tokenhub.codex-quota-reset.${resourceID}`;
+  return `tokenhub.provider-quota-reset.${resourceID}`;
+}
+
+function legacyResetConfirmationStorageKeys(resourceID: string, action: PluginActionDescriptor | undefined) {
+  return metadataList(action?.metadata?.["quota_reset.legacy_storage_key_prefixes"])
+    .filter((prefix) => storageKeyPrefixIsSafe(prefix))
+    .map((prefix) => `${prefix}${resourceID}`);
 }
 
 function storeResetConfirmation(resourceID: string, confirmation: ResetConfirmation) {
@@ -375,26 +391,46 @@ function storeResetConfirmation(resourceID: string, confirmation: ResetConfirmat
   }
 }
 
-function clearStoredResetConfirmation(resourceID: string) {
+function clearStoredResetConfirmation(resourceID: string, action: PluginActionDescriptor | undefined) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(resetConfirmationStorageKey(resourceID));
+    for (const key of resetConfirmationStorageKeys(resourceID, action)) {
+      window.localStorage.removeItem(key);
+    }
   } catch {
     // The server-side operation record remains the source of truth.
   }
 }
 
-function readStoredResetConfirmation(resourceID: string): ResetConfirmation | null {
+function readStoredResetConfirmation(resourceID: string, action: PluginActionDescriptor | undefined): ResetConfirmation | null {
   if (typeof window === "undefined") return null;
   try {
-    const value = JSON.parse(window.localStorage.getItem(resetConfirmationStorageKey(resourceID)) || "null") as Partial<ResetConfirmation> | null;
-    if (!value || typeof value.availableCount !== "number" || !Number.isFinite(value.availableCount) || typeof value.creditID !== "string" || !value.creditID || typeof value.idempotencyKey !== "string" || !value.idempotencyKey) return null;
-    return { availableCount: value.availableCount, creditID: value.creditID, expiresAt: value.expiresAt, idempotencyKey: value.idempotencyKey, attempted: Boolean(value.attempted) };
+    for (const key of resetConfirmationStorageKeys(resourceID, action)) {
+      const value = JSON.parse(window.localStorage.getItem(key) || "null") as Partial<ResetConfirmation> | null;
+      if (!value || typeof value.availableCount !== "number" || !Number.isFinite(value.availableCount) || typeof value.creditID !== "string" || !value.creditID || typeof value.idempotencyKey !== "string" || !value.idempotencyKey) continue;
+      return { availableCount: value.availableCount, creditID: value.creditID, expiresAt: value.expiresAt, idempotencyKey: value.idempotencyKey, attempted: Boolean(value.attempted) };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-function validPendingOperation(value: CodexResetCredits["pending_operation"]): value is NonNullable<CodexResetCredits["pending_operation"]> {
+function resetConfirmationStorageKeys(resourceID: string, action: PluginActionDescriptor | undefined) {
+  return [resetConfirmationStorageKey(resourceID), ...legacyResetConfirmationStorageKeys(resourceID, action)];
+}
+
+function metadataList(value: string | undefined) {
+  return (value || "")
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function storageKeyPrefixIsSafe(prefix: string) {
+  return prefix.startsWith("tokenhub.") && prefix.endsWith(".") && prefix.length <= 128;
+}
+
+function validPendingOperation(value: ProviderResetCredits["pending_operation"]): value is NonNullable<ProviderResetCredits["pending_operation"]> {
   return Boolean(value && (value.state === "pending" || value.state === "unknown") && typeof value.idempotency_key === "string" && value.idempotency_key && typeof value.credit_id === "string" && value.credit_id && typeof value.expected_available_count === "number" && Number.isFinite(value.expected_available_count));
 }

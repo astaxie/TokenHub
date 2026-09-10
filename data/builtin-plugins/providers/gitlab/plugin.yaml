@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.gitlab"
+name: "GitLab Duo"
+version: 1.0.0
+summary: "Connect TokenHub to GitLab Duo."
+description: "Connect TokenHub to GitLab Duo. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "gitlab"
+      name: "GitLab Duo"
+      display_name: "GitLab Duo"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://docs.gitlab.com/user/duo_agent_platform/"
+      categories: []
+      models_count: 18
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

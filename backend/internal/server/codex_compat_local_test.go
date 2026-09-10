@@ -433,27 +433,33 @@ func TestLocalCodexCompatProtocolNamespacesProduceDistinctAffinityKeys(t *testin
 		apiKeyID  = "key_01JZ9J2S4E5A3W6KJ9T4CBH7ZX"
 		sessionID = "session_01JZ9J36WB8XCPQ2PB5VG3PXZK"
 	)
-	anthropic, err := resolveCodexBridgeAffinity(
+	anthropic, err := resolveProviderBridgeAffinity(
 		secret,
 		apiKeyID,
+		ProviderOpenAICodex,
+		AffinityKindCodexSession,
 		codexBridgeProtocolAnthropic,
 		sessionID,
 	)
 	if err != nil {
 		t.Fatalf("resolve Anthropic affinity: %v", err)
 	}
-	anthropicAgain, err := resolveCodexBridgeAffinity(
+	anthropicAgain, err := resolveProviderBridgeAffinity(
 		secret,
 		apiKeyID,
+		ProviderOpenAICodex,
+		AffinityKindCodexSession,
 		codexBridgeProtocolAnthropic,
 		sessionID,
 	)
 	if err != nil {
 		t.Fatalf("resolve repeated Anthropic affinity: %v", err)
 	}
-	chat, err := resolveCodexBridgeAffinity(
+	chat, err := resolveProviderBridgeAffinity(
 		secret,
 		apiKeyID,
+		ProviderOpenAICodex,
+		AffinityKindCodexSession,
 		codexBridgeProtocolChat,
 		sessionID,
 	)
@@ -462,9 +468,11 @@ func TestLocalCodexCompatProtocolNamespacesProduceDistinctAffinityKeys(t *testin
 	}
 	nativeHeaders := http.Header{}
 	nativeHeaders.Set("session-id", sessionID)
-	native, err := resolveCodexSessionAffinity(
+	native, err := resolveProviderSessionAffinity(
 		secret,
 		apiKeyID,
+		ProviderOpenAICodex,
+		AffinityKindCodexSession,
 		nativeHeaders,
 		ResponsesRequest{},
 	)
@@ -559,9 +567,11 @@ func TestLocalCodexCompatNormalizesLongUpstreamSessionIdentifiers(t *testing.T) 
 		t.Fatalf("upstream session-id = %q", upstreamSession)
 	}
 
-	affinity, err := resolveCodexBridgeAffinity(
+	affinity, err := resolveProviderBridgeAffinity(
 		"local-regression-secret-kept-out-of-version-control",
 		"key_long_session_regression",
+		ProviderOpenAICodex,
+		AffinityKindCodexSession,
 		codexBridgeProtocolAnthropic,
 		longSession,
 	)
@@ -576,9 +586,11 @@ func TestLocalCodexCompatNormalizesLongUpstreamSessionIdentifiers(t *testing.T) 
 	if affinity == nil || affinity.KeyHash != expected {
 		t.Fatal("affinity must be derived from the original session identifier")
 	}
-	if _, err := resolveCodexBridgeAffinity(
+	if _, err := resolveProviderBridgeAffinity(
 		"local-regression-secret-kept-out-of-version-control",
 		"key_long_session_regression",
+		ProviderOpenAICodex,
+		AffinityKindCodexSession,
 		codexBridgeProtocolAnthropic,
 		strings.Repeat("x", sessionIdentifierMaxLength+1),
 	); err == nil {
@@ -688,6 +700,7 @@ func TestLocalCodexCompatSerializesClaudeCodeToolsOnly(t *testing.T) {
 }
 
 func TestLocalCodexCompatAnthropicRouteCompatibility(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "admin"})
 	validRequest := localCodexCompatAnthropicRequest(t, map[string]any{
 		"model":      localCodexCompatModel,
 		"max_tokens": 1024,
@@ -707,11 +720,11 @@ func TestLocalCodexCompatAnthropicRouteCompatibility(t *testing.T) {
 		},
 		ProviderModel: localCodexCompatModel,
 	}
-	if err := validateAnthropicRouteCompatibility(codexRoute, validRequest); err != nil {
+	if err := server.validateAnthropicRouteCompatibility(CallContext{}, codexRoute, validRequest); err != nil {
 		t.Fatalf("valid Codex route was rejected: %v", err)
 	}
 
-	filtered, err := compatibleAnthropicRoutes(
+	filtered, err := server.compatibleAnthropicRoutes(
 		RoutedCall{Routes: []RouteSelection{
 			{
 				Provider: Provider{
@@ -749,7 +762,7 @@ func TestLocalCodexCompatAnthropicRouteCompatibility(t *testing.T) {
 			},
 		},
 	})
-	err = validateAnthropicRouteCompatibility(codexRoute, unsupportedRequest)
+	err = server.validateAnthropicRouteCompatibility(CallContext{}, codexRoute, unsupportedRequest)
 	if err == nil || AsHTTPError(err).Code != "unsupported_content_block" {
 		t.Fatalf("assistant image compatibility error = %#v", err)
 	}

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type playgroundSSEEvent struct {
@@ -151,6 +153,80 @@ func TestAdminPlaygroundStreamEmitsDeltasAndDiagnostics(t *testing.T) {
 	attemptUsage, _ := attempt["usage"].(map[string]any)
 	if attemptUsage["prompt_tokens"] == nil || attemptUsage["completion_tokens"] == nil || attemptUsage["estimated_cost_usd"] == nil {
 		t.Fatalf("attempt should include priced usage: %#v", attemptUsage)
+	}
+}
+
+func TestAdminPlaygroundResponsesStreamAppliesStreamTransformHook(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Playground Responses Stream", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID: "prv_playground_responses_stream_transform", Name: "Playground Responses Stream",
+		Type: "playground_responses_stream_transform", Status: StatusActive, Healthy: true,
+	})
+	store.AddModel(Model{Name: "gpt-playground-responses-stream-transform", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID: "route_playground_responses_stream_transform", ModelName: "gpt-playground-responses-stream-transform",
+		ProviderID: provider.ID, ProviderModel: "upstream-responses", Status: StatusActive, Priority: 1, Weight: 100,
+	})
+	server := New(store)
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.playground-responses-stream-transform",
+		Name:    "Playground Responses Stream Transform",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: pluginmeta.CapabilityKindProviderType, Name: "playground_responses_stream_transform"},
+			{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "route_protocol", Subject: "playground_responses_stream_transform", Value: providerRouteProtocolCodexResponses},
+		},
+	}, AdapterRegistration{
+		Type:         "playground_responses_stream_transform",
+		Adapter:      responsesStreamTransformAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses, AdapterCapabilityResponseStream},
+	}); err != nil {
+		t.Fatalf("register playground Responses plugin: %v", err)
+	}
+	hook := streamTransformHook(pluginmeta.FailurePolicyFailClosed)
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var event gatewayStreamEventView
+		if err := json.Unmarshal(input.Data[pluginmeta.DataStreamEvents], &event); err != nil {
+			t.Fatalf("decode stream event: %v", err)
+		}
+		if input.Envelope.Operation != "stream_transform" {
+			t.Fatalf("stream transform operation = %q, want stream_transform", input.Envelope.Operation)
+		}
+		if !strings.Contains(event.Data, "Echo responses") {
+			return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+		}
+		return streamEventPatchResult(t, map[string]any{
+			"data": strings.Replace(event.Data, "Echo responses", "Playground responses plugin", 1),
+		}), nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat/stream", map[string]any{
+		"project_id": project.ID,
+		"model":      "gpt-playground-responses-stream-transform",
+		"messages": []map[string]any{
+			{"role": "user", "content": "hello"},
+		},
+	}, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var output strings.Builder
+	for _, event := range parsePlaygroundSSE(t, response.Body) {
+		if event.Name == "playground.delta" {
+			delta, _ := event.Data["delta"].(string)
+			output.WriteString(delta)
+		}
+	}
+	if !strings.Contains(output.String(), "Playground responses plugin") || strings.Contains(output.String(), "Echo responses") {
+		t.Fatalf("playground responses stream output was not transformed: %q\nbody=%s", output.String(), response.Body)
 	}
 }
 

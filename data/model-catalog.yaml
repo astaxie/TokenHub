@@ -3,6 +3,32 @@
 # Source updated_at: 2026-07-08T06:38:13.852Z.
 version: 1
 models:
+  - name: "gpt-6-astra"
+    title: "GPT-6 Astra"
+    category: "openai"
+    family: "gpt"
+    modality: "chat"
+    context_window: 1050000
+    input_price_usd_per_1m: 10
+    output_price_usd_per_1m: 50
+    cache_read_price_usd_per_1m: 1
+    cache_write_price_usd_per_1m: 12.5
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["tools", "response_format", "reasoning", "reasoning_effort", "image_input"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "https://developers.openai.com/api/docs/models/gpt-6-astra"
+      provider_catalog_id: "openai"
+      provider_model_id: "gpt-6-astra"
+      endpoints: "responses,chat/completions"
+      max_output_tokens: "128000"
+      knowledge_cutoff: "2026-04-30"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_options: "low,medium,high,xhigh,max"
+      pricing_note: "Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%; configure applicable pricing separately."
   - name: "step-3.7-flash"
     title: "Step 3.7 Flash"
     description: "StepFun's flagship multimodal reasoning model for agents, coding, image understanding, and video understanding. It supports a 256K-token context window, tool calling, and low, medium, or high reasoning effort."

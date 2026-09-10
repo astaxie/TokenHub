@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,6 +26,8 @@ type Config struct {
 	SQLiteBackupDir          string
 	ModelCatalogFile         string
 	ProviderCatalogFile      string
+	PluginDir                string
+	PluginMarketplaceURL     string
 	SecretKey                string
 	TrustedProxyCIDRs        []string
 	CORSAllowedOrigins       []string
@@ -113,6 +116,7 @@ type Config struct {
 	ImageJobTimeoutSeconds       int
 	ImageCapabilityRetrySecs     int
 	ResponseWorkerConcurrency    int
+	ResponseWorkerStartupEnabled bool
 	ResponsePollIntervalMillis   int
 	ResponseJobTimeoutSeconds    int
 	ResponseLeaseTTLSeconds      int
@@ -138,6 +142,8 @@ func ConfigFromEnv() Config {
 		SQLiteBackupDir:                  getenv("TOKENHUB_SQLITE_BACKUP_DIR", defaultSQLiteBackupDir()),
 		ModelCatalogFile:                 getenv("TOKENHUB_MODEL_CATALOG_FILE", defaultModelCatalogFile()),
 		ProviderCatalogFile:              getenv("TOKENHUB_PROVIDER_CATALOG_FILE", defaultProviderCatalogFile()),
+		PluginDir:                        getenv("TOKENHUB_PLUGIN_DIR", defaultPluginDir()),
+		PluginMarketplaceURL:             getenv("TOKENHUB_PLUGIN_MARKETPLACE_URL", ""),
 		SecretKey:                        getenv("TOKENHUB_SECRET_KEY", "dev_tokenhub_secret_key"),
 		TrustedProxyCIDRs:                getenvList("TOKENHUB_TRUSTED_PROXY_CIDRS"),
 		CORSAllowedOrigins:               getenvList("TOKENHUB_CORS_ALLOWED_ORIGINS"),
@@ -178,6 +184,7 @@ func ConfigFromEnv() Config {
 		ImageJobTimeoutSeconds:       getenvInt("TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS", 300),
 		ImageCapabilityRetrySecs:     getenvInt("TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS", 86400),
 		ResponseWorkerConcurrency:    getenvInt("TOKENHUB_RESPONSE_WORKER_CONCURRENCY", 2),
+		ResponseWorkerStartupEnabled: true,
 		ResponsePollIntervalMillis:   getenvInt("TOKENHUB_RESPONSE_POLL_INTERVAL_MILLIS", 250),
 		ResponseJobTimeoutSeconds:    getenvInt("TOKENHUB_RESPONSE_JOB_TIMEOUT_SECONDS", 300),
 		ResponseLeaseTTLSeconds:      getenvInt("TOKENHUB_RESPONSE_LEASE_TTL_SECONDS", 30),
@@ -191,6 +198,11 @@ func ConfigFromEnv() Config {
 func (c Config) ValidateForStartup() error {
 	if repository := strings.TrimSpace(c.ReleaseRepository); repository != "" && !validReleaseRepository(repository) {
 		return fmt.Errorf("invalid TOKENHUB_RELEASE_REPOSITORY: expected owner/repository")
+	}
+	if marketplace := strings.TrimSpace(c.PluginMarketplaceURL); marketplace != "" {
+		if err := validateHTTPSURL("TOKENHUB_PLUGIN_MARKETPLACE_URL", marketplace); err != nil {
+			return err
+		}
 	}
 	// Checked in every environment, not only production: a tracing setting that is
 	// wrong fails as silence, which is the one failure mode an operator cannot see.
@@ -243,6 +255,17 @@ func weakProductionSecretReason(value string, minimumLength int, blocked ...stri
 		return fmt.Sprintf("must be at least %d bytes after trimming whitespace", minimumLength)
 	}
 	return ""
+}
+
+func validateHTTPSURL(name string, value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("invalid %s: expected an absolute URL", name)
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return fmt.Errorf("invalid %s: expected HTTPS", name)
+	}
+	return nil
 }
 
 func getenvList(key string) []string {
@@ -357,6 +380,28 @@ func defaultProviderCatalogFile() string {
 		}
 	}
 	return "data/provider-catalog.json"
+}
+
+func DefaultPluginDir(deploymentType string, installRoot string) string {
+	switch strings.ToLower(strings.TrimSpace(deploymentType)) {
+	case containerDeploymentType:
+		return "/app/plugins"
+	case nativeDeploymentType:
+		root := strings.TrimSpace(installRoot)
+		if root == "" {
+			root = defaultNativeInstallRoot
+		}
+		return filepath.Join(root, "plugins")
+	default:
+		if pathExists("backend/data") {
+			return "backend/data/plugins"
+		}
+		return "data/plugins"
+	}
+}
+
+func defaultPluginDir() string {
+	return DefaultPluginDir(os.Getenv("TOKENHUB_DEPLOYMENT_TYPE"), os.Getenv("TOKENHUB_INSTALL_ROOT"))
 }
 
 func pathExists(path string) bool {

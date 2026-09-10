@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.google-vertex-anthropic"
+name: "Vertex (Anthropic)"
+version: 1.0.0
+summary: "Connect TokenHub to Vertex (Anthropic)."
+description: "Connect TokenHub to Vertex (Anthropic). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "google-vertex-anthropic"
+      name: "Vertex (Anthropic)"
+      display_name: "Vertex (Anthropic)"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude"
+      categories: []
+      models_count: 11
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

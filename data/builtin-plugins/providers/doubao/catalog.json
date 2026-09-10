@@ -1,0 +1,1629 @@
+{
+  "id": "doubao",
+  "name": "Doubao",
+  "display_name": "Doubao",
+  "doc": "https://www.volcengine.com/docs/82379/1330310?lang=zh",
+  "updated_at": "2026-06-12T03:41:23Z",
+  "metadata": {
+    "source": "volcengine-docs",
+    "doc_detail_url": "https://www.volcengine.com/api/doc/getDocDetail?LibraryID=82379&DocumentID=1330310&lang=zh"
+  },
+  "models": [
+    {
+      "id": "deepseek-v3-2-251201",
+      "name": "deepseek-v3-2-251201",
+      "display_name": "deepseek-v3-2-251201",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 32000,
+        "requests_per_minute": 15000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 32000,
+        "max_input_tokens": 128000,
+        "canonical_id": "deepseek-v3-2",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=deepseek-v3-2",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成",
+          "深度思考"
+        ],
+        "raw_limits": [
+          "上下文窗口: 128k 最大输入: 128k 最大回答(默认 4k): 32k 最大思维链: 32k",
+          "最大 RPM: 15000 最大 TPM: 1500000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "deepseek-v4-flash-260425",
+      "name": "deepseek-v4-flash-260425",
+      "display_name": "deepseek-v4-flash-260425",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1024000,
+        "output": 384000,
+        "requests_per_minute": 15000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 384000,
+        "max_input_tokens": 1024000,
+        "canonical_id": "deepseek-v4-flash",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=deepseek-v4-flash",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成",
+          "深度思考"
+        ],
+        "raw_limits": [
+          "上下文窗口: 1024k 最大输入: 1024k 最大回答(默认 4k): 384k 最大思维链: 384k",
+          "最大 RPM: 15000 最大 TPM: 1500000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "deepseek-v4-pro-260425",
+      "name": "deepseek-v4-pro-260425",
+      "display_name": "deepseek-v4-pro-260425",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1024000,
+        "output": 384000,
+        "requests_per_minute": 15000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 384000,
+        "max_input_tokens": 1024000,
+        "canonical_id": "deepseek-v4-pro",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=deepseek-v4-pro",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成",
+          "深度思考"
+        ],
+        "raw_limits": [
+          "上下文窗口: 1024k 最大输入: 1024k 最大回答(默认 4k): 384k 最大思维链: 384k",
+          "最大 RPM: 15000 最大 TPM: 1500000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-1-5-lite-32k-250115",
+      "name": "doubao-1-5-lite-32k-250115",
+      "display_name": "doubao-1-5-lite-32k-250115",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 32000,
+        "output": 12000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-1-5-lite-32k",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-1-5-lite-32k",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成"
+        ],
+        "raw_limits": [
+          "上下文窗口: 32k 最大输入: - 最大回答(默认 4k): 12k 最大思维链: -",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-1-5-pro-32k-250115",
+      "name": "doubao-1-5-pro-32k-250115",
+      "display_name": "doubao-1-5-pro-32k-250115",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 16000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-1-5-pro-32k",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-1-5-pro-32k",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成"
+        ],
+        "raw_limits": [
+          "上下文窗口: 128k 最大输入: - 最大回答(默认 4k): 16k 最大思维链: -",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-1-5-pro-32k-character-250715",
+      "name": "doubao-1-5-pro-32k-character-250715",
+      "display_name": "doubao-1-5-pro-32k-character-250715",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 32000,
+        "output": 12000,
+        "requests_per_minute": 15000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-1-5-pro-32k",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-1-5-pro-32k",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力"
+        ],
+        "capabilities": [
+          "文本生成"
+        ],
+        "raw_limits": [
+          "上下文窗口: 32k 最大输入: - 最大回答(默认 4k): 12k 最大思维链: -",
+          "最大 RPM: 15000 最大 TPM: 10000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-1-5-vision-pro-32k-250115",
+      "name": "doubao-1-5-vision-pro-32k-250115",
+      "display_name": "doubao-1-5-vision-pro-32k-250115",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 32000,
+        "output": 12000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-1-5-vision-pro-32k",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-1-5-vision-pro-32k",
+        "section_titles": [
+          "工具调用能力",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "工具调用"
+        ],
+        "raw_limits": [
+          "上下文窗口: 32k 最大输入: - 最大回答(默认 4k): 12k 最大思维链: -",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ]
+      }
+    },
+    {
+      "id": "doubao-embedding-vision-250615",
+      "name": "doubao-embedding-vision-250615",
+      "display_name": "doubao-embedding-vision-250615",
+      "type": "embedding",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text",
+          "video"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "requests_per_minute": 15000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-embedding-vision",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-embedding-vision",
+        "section_titles": [
+          "向量化能力"
+        ],
+        "capabilities": [
+          "多模态向量化"
+        ],
+        "raw_limits": [
+          "最大 RPM: 15000 最大 TPM: 1200000"
+        ]
+      }
+    },
+    {
+      "id": "doubao-embedding-vision-251215",
+      "name": "doubao-embedding-vision-251215",
+      "display_name": "doubao-embedding-vision-251215",
+      "type": "embedding",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text",
+          "video"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "requests_per_minute": 15000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-embedding-vision",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-embedding-vision",
+        "section_titles": [
+          "向量化能力"
+        ],
+        "capabilities": [
+          "多模态向量化"
+        ],
+        "raw_limits": [
+          "最大 RPM: 15000 最大 TPM: 1200000"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-1-6-250615",
+      "name": "doubao-seed-1-6-250615",
+      "display_name": "doubao-seed-1-6-250615",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 32000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 32000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-1-6",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-1-6",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "结构化输出能力(beta)",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "结构化输出",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 32k 最大思维链: 32k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-1-6-251015",
+      "name": "doubao-seed-1-6-251015",
+      "display_name": "doubao-seed-1-6-251015",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 32000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 32000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-1-6",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-1-6",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "结构化输出能力(beta)",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "结构化输出",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 32k 最大思维链: 32k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-1-6-flash-250615",
+      "name": "doubao-seed-1-6-flash-250615",
+      "display_name": "doubao-seed-1-6-flash-250615",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 32000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 32000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-1-6-flash",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-1-6-flash",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "结构化输出能力(beta)",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "结构化输出",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 32k 最大思维链: 32k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-1-6-flash-250828",
+      "name": "doubao-seed-1-6-flash-250828",
+      "display_name": "doubao-seed-1-6-flash-250828",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 32000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 32000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-1-6-flash",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-1-6-flash",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "结构化输出能力(beta)",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "结构化输出",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 32k 最大思维链: 32k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-1-6-vision-250815",
+      "name": "doubao-seed-1-6-vision-250815",
+      "display_name": "doubao-seed-1-6-vision-250815",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 32000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 32000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-1-6-vision",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-1-6-vision",
+        "section_titles": [
+          "GUI 任务处理能力",
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "结构化输出能力(beta)",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "结构化输出",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 32k 最大思维链: 32k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-1-8-251228",
+      "name": "doubao-seed-1-8-251228",
+      "display_name": "doubao-seed-1-8-251228",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 64000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 32000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-1-8",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-1-8",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "结构化输出能力(beta)",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "结构化输出",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 32k 最大思维链: 32k",
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 64k 最大思维链: 32k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-2-0-code-preview-260215",
+      "name": "doubao-seed-2-0-code-preview-260215",
+      "display_name": "doubao-seed-2-0-code-preview-260215",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 128000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 128000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-2-0-code",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-code",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-2-0-lite-260215",
+      "name": "doubao-seed-2-0-lite-260215",
+      "display_name": "doubao-seed-2-0-lite-260215",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 128000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 128000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-2-0-lite",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-lite",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "结构化输出能力(beta)",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "结构化输出",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-2-0-lite-260428",
+      "name": "doubao-seed-2-0-lite-260428",
+      "display_name": "doubao-seed-2-0-lite-260428",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 128000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 128000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-2-0-lite",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-lite",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-2-0-mini-260215",
+      "name": "doubao-seed-2-0-mini-260215",
+      "display_name": "doubao-seed-2-0-mini-260215",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 128000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 128000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-2-0-mini",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-mini",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "结构化输出能力(beta)",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "结构化输出",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-2-0-mini-260428",
+      "name": "doubao-seed-2-0-mini-260428",
+      "display_name": "doubao-seed-2-0-mini-260428",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 128000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 128000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-2-0-mini",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-mini",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-2-0-pro-260215",
+      "name": "doubao-seed-2-0-pro-260215",
+      "display_name": "doubao-seed-2-0-pro-260215",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 128000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 128000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-2-0-pro",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-pro",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-character-251128",
+      "name": "doubao-seed-character-251128",
+      "display_name": "doubao-seed-character-251128",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 128000,
+        "output": 32000,
+        "requests_per_minute": 30000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_input_tokens": 96000,
+        "canonical_id": "doubao-seed-character",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-character",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成"
+        ],
+        "raw_limits": [
+          "上下文窗口: 128k 最大输入: 96k 最大回答(默认 4k): 32k",
+          "最大 RPM: 30000 最大 TPM: 5000000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-code-preview-251028",
+      "name": "doubao-seed-code-preview-251028",
+      "display_name": "doubao-seed-code-preview-251028",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "output": 32000,
+        "requests_per_minute": 5000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 32000,
+        "max_input_tokens": 224000,
+        "canonical_id": "doubao-seed-code",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-code",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力",
+          "视觉理解能力"
+        ],
+        "capabilities": [
+          "多模态理解",
+          "工具调用",
+          "文本生成",
+          "深度思考",
+          "视觉定位"
+        ],
+        "raw_limits": [
+          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 32k 最大思维链: 32k",
+          "最大 RPM: 5000 最大 TPM: 1200000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seed-translation-250915",
+      "name": "doubao-seed-translation-250915",
+      "display_name": "doubao-seed-translation-250915",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 4000,
+        "output": 3000,
+        "requests_per_minute": 5000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_input_tokens": 1000,
+        "canonical_id": "doubao-seed-translation",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-translation",
+        "section_titles": [
+          "文本生成能力"
+        ],
+        "capabilities": [
+          "文本生成"
+        ],
+        "raw_limits": [
+          "上下文窗口: 4k 最大输入: 1k 最大回答(默认 3k): 3k 最大思维链: -",
+          "最大 RPM: 5000 500000 TPM"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seedance-1-0-pro-250528",
+      "name": "doubao-seedance-1-0-pro-250528",
+      "display_name": "doubao-seedance-1-0-pro-250528",
+      "type": "video",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "limit": {
+        "requests_per_minute": 600,
+        "requests_per_day": 500000000000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-seedance-1-0-pro",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedance-1-0-pro&projectName=default",
+        "section_titles": [
+          "视频生成能力"
+        ],
+        "capabilities": [
+          "图生视频",
+          "文生视频"
+        ],
+        "raw_limits": [
+          "default: 最大 RPM: 600 最大并发: 10 flex: 最大 TPD: 5000亿"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seedance-1-0-pro-fast-251015",
+      "name": "doubao-seedance-1-0-pro-fast-251015",
+      "display_name": "doubao-seedance-1-0-pro-fast-251015",
+      "type": "video",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "limit": {
+        "requests_per_minute": 600,
+        "requests_per_day": 500000000000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-seedance-1-0-pro-fast",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedance-1-0-pro-fast&projectName=default",
+        "section_titles": [
+          "视频生成能力"
+        ],
+        "capabilities": [
+          "图生视频",
+          "文生视频"
+        ],
+        "raw_limits": [
+          "default: 最大 RPM: 600 最大并发: 10 flex: 最大 TPD: 5000亿"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seedance-1-5-pro-251215",
+      "name": "doubao-seedance-1-5-pro-251215",
+      "display_name": "doubao-seedance-1-5-pro-251215",
+      "type": "video",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "audio",
+          "image",
+          "text"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "limit": {
+        "requests_per_minute": 600,
+        "requests_per_day": 500000000000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-seedance-1-5-pro",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedance-1-5-pro",
+        "section_titles": [
+          "视频生成能力"
+        ],
+        "capabilities": [
+          "图生视频",
+          "文生视频",
+          "音画同生"
+        ],
+        "raw_limits": [
+          "default: 最大 RPM: 600 最大并发: 10 flex: 最大 TPD: 5000亿"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seedance-2-0-260128",
+      "name": "doubao-seedance-2-0-260128",
+      "display_name": "doubao-seedance-2-0-260128",
+      "type": "video",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "audio",
+          "image",
+          "text",
+          "video"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-seedance-2-0",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedance-2-0&projectName=default",
+        "section_titles": [
+          "视频生成能力"
+        ],
+        "capabilities": [
+          "图生视频",
+          "文生视频",
+          "编辑视频",
+          "音画同生"
+        ],
+        "raw_limits": [
+          "default: 最大 RPM: 企业用户: 600 个人用户: 180 最大并发: 企业用户: 10 个人用户: 3 flex: 暂不支持"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seedance-2-0-fast-260128",
+      "name": "doubao-seedance-2-0-fast-260128",
+      "display_name": "doubao-seedance-2-0-fast-260128",
+      "type": "video",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "audio",
+          "image",
+          "text",
+          "video"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-seedance-2-0-fast",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedance-2-0-fast",
+        "section_titles": [
+          "视频生成能力"
+        ],
+        "capabilities": [
+          "图生视频",
+          "文生视频",
+          "编辑视频",
+          "音画同生"
+        ],
+        "raw_limits": [
+          "default: 最大 RPM: 企业用户: 600 个人用户: 180 最大并发: 企业用户: 10 个人用户: 3 flex: 暂不支持"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seedream-4-0-250828",
+      "name": "doubao-seedream-4-0-250828",
+      "display_name": "doubao-seedream-4-0-250828",
+      "type": "image-generation",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "output": [
+          "image"
+        ]
+      },
+      "limit": {
+        "requests_per_minute": 500
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-seedream-4-0",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedream-4-0",
+        "section_titles": [
+          "图片生成能力"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seedream-4-5-251128",
+      "name": "doubao-seedream-4-5-251128",
+      "display_name": "doubao-seedream-4-5-251128",
+      "type": "image-generation",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "output": [
+          "image"
+        ]
+      },
+      "limit": {
+        "requests_per_minute": 500
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-seedream-4-5",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedream-4-5",
+        "section_titles": [
+          "图片生成能力"
+        ]
+      }
+    },
+    {
+      "id": "doubao-seedream-5-0-260128",
+      "name": "doubao-seedream-5-0-260128",
+      "display_name": "doubao-seedream-5-0-260128",
+      "type": "image-generation",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": true,
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "limit": {
+        "requests_per_minute": 500
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "canonical_id": "doubao-seedream-5-0",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedream-5-0",
+        "section_titles": [
+          "图片生成能力"
+        ],
+        "capabilities": [
+          "图生图",
+          "文生图",
+          "生成组图"
+        ]
+      }
+    },
+    {
+      "id": "glm-4-7-251222",
+      "name": "glm-4-7-251222",
+      "display_name": "glm-4-7-251222",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "last_updated": "2026-06-12T03:41:23Z",
+      "vision": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 200000,
+        "output": 128000,
+        "requests_per_minute": 15000
+      },
+      "metadata": {
+        "source": "volcengine-docs",
+        "max_thinking_tokens": 128000,
+        "max_input_tokens": 200000,
+        "canonical_id": "glm-4-7",
+        "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=glm-4-7",
+        "section_titles": [
+          "上下文缓存能力",
+          "工具调用能力",
+          "文本生成能力",
+          "深度思考能力"
+        ],
+        "capabilities": [
+          "工具调用",
+          "文本生成",
+          "深度思考"
+        ],
+        "raw_limits": [
+          "上下文窗口: 200k 最大输入: 200k 最大回答(默认 4k): 128k 最大思维链: 128k",
+          "最大 RPM: 15000 最大 TPM: 1500000"
+        ],
+        "features": [
+          "context-cache"
+        ]
+      }
+    }
+  ]
+}

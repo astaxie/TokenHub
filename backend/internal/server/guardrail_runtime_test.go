@@ -498,9 +498,9 @@ func TestGuardrailsMaskResponsesCompactBeforeRouting(t *testing.T) {
 	})
 
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "compact-mask-secret"})
-	server.codexSubscription.MaxRequestRetries = 0
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 0
 	var upstreamPayload map[string]any
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if err := json.NewDecoder(req.Body).Decode(&upstreamPayload); err != nil {
 			t.Fatal(err)
 		}
@@ -578,9 +578,9 @@ func TestGuardrailsMaskResponsesCompactPreservesOpaqueNumbers(t *testing.T) {
 	})
 
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "compact-number-secret"})
-	server.codexSubscription.MaxRequestRetries = 0
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 0
 	var upstreamRawBody string
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		raw, err := io.ReadAll(req.Body)
 		if err != nil {
 			t.Fatal(err)

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -152,6 +151,7 @@ type Store interface {
 	GetProviderResource(id string) (ProviderResource, bool)
 	UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error)
 	UpdateProviderResourceOptions(id string, options map[string]string) (ProviderResource, error)
+	IsProviderAccountResourceType(providerType string, resourceType string) bool
 	DeleteProviderResource(id string) error
 	SetProviderResourceHealth(resourceID string, healthy bool) (ProviderResource, error)
 	BulkOperateProviderResources(action string, ids []string) (ProviderResourceBulkResult, error)
@@ -178,6 +178,7 @@ type Store interface {
 	RecordRejectedRequest(project Project, key APIKey, modelName string, stream bool, statusCode int, errorCode string, clientIP string, userAgent string) string
 	RecordRequestPayload(requestID string, requestBody string, requestTruncated bool, responseBody string, responseTruncated bool)
 	CreateImageJob(job ImageJob, prompt string) (ImageJob, error)
+	UpdateImageJobRequest(job ImageJob, prompt string) error
 	ClaimImageJob(id string) (ImageJob, bool, error)
 	GetImageJob(id string) (ImageJob, bool)
 	ListImageJobs(limit int) []ImageJob
@@ -286,33 +287,41 @@ type Store interface {
 var _ Store = (*GormStore)(nil)
 
 type GormStore struct {
-	db                     *gorm.DB
-	analyticsDB            *gorm.DB
-	mu                     *sync.Mutex
-	leaseHeartbeats        *sync.Map
-	lastUsed               *lastUsedThrottle
-	modelLabels            *modelLabelCache
-	secretKey              string
-	metrics                *GatewayMetrics
-	providerUpstreamClient *http.Client
-	providerProxyPolicy    *providerProxyPolicy
-	failureThreshold       int
-	cooldownDuration       time.Duration
-	cooldownMax            time.Duration
-	sqliteDSN              string
-	backupDir              string
-	dbDriver               string        // "sqlite" or "postgres"
-	heartbeatState         *atomic.Int32 // shared across value copies of the store
+	db                  *gorm.DB
+	analyticsDB         *gorm.DB
+	mu                  *sync.Mutex
+	leaseHeartbeats     *sync.Map
+	lastUsed            *lastUsedThrottle
+	modelLabels         *modelLabelCache
+	secretKey           string
+	metrics             *GatewayMetrics
+	providerProxyPolicy *providerProxyPolicy
+	failureThreshold    int
+	cooldownDuration    time.Duration
+	cooldownMax         time.Duration
+	sqliteDSN           string
+	backupDir           string
+	dbDriver            string        // "sqlite" or "postgres"
+	heartbeatState      *atomic.Int32 // shared across value copies of the store
+	heartbeatStop       *instanceHeartbeatStopper
 	// instanceHeartbeatID identifies the row this instance published while it
 	// still held the schema migration lock; StartInstanceHeartbeat refreshes
 	// that row instead of creating a second one.
-	instanceHeartbeatID  string
-	inFlightLeaseTTL     time.Duration
-	clusterLockTTL       time.Duration
-	imageCapabilityRetry time.Duration
-	billingRedis         *redisBillingCoordinator
-	billingRepository    billing.Repository
-	billingPersistence   *billingpersistence.Store
+	instanceHeartbeatID          string
+	inFlightLeaseTTL             time.Duration
+	clusterLockTTL               time.Duration
+	imageCapabilityRetry         time.Duration
+	imageCapabilityProfiles      []providerImageCapabilityRouteProfile
+	providerDefaultBaseURLs      map[string]string
+	providerResourceDefaults     map[string]map[string]string
+	providerResourceTypes        map[string]map[string]struct{}
+	providerResourceIdentity     map[string]string
+	providerCredentialIdentities map[string]providerResourceCredentialIdentityRegistration
+	providerResourceOptional     map[string]bool
+	providerCredentialRefreshers map[string]providerResourceCredentialRefreshRegistration
+	billingRedis                 *redisBillingCoordinator
+	billingRepository            billing.Repository
+	billingPersistence           *billingpersistence.Store
 }
 
 // BillingRepositoryForComposition is deliberately outside Store. Only the

@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider.gemini"
+name: "google"
+version: 1.0.0
+summary: "Connect TokenHub to google."
+description: "Connect TokenHub to google. Connection behavior is provided by the host-managed gemini adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "gemini"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "gemini"
+  provider:
+    catalog:
+      id: "google"
+      name: "google"
+      display_name: "google"
+      type: "gemini"
+      base_url: ""
+      doc_url: "https://ai.google.dev/gemini-api/docs/models"
+      categories: []
+      models_count: 26
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

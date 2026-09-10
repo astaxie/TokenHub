@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { type ApiContext, type ProviderResource } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
-import { providerReasoningFieldConfigs, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
+import { providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
+import { providerReasoningFieldConfigs, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
-import { adminFetch, providerResourceAttributionPolicyPayload, readAdminError } from "../resources/payloads";
-import { providerTypeOptions } from "../shared/ui";
+import { adminFetch, providerResourceSystemPromptTransformPolicyPayload, readAdminError } from "../resources/payloads";
+import { providerTypeAuthModes, providerTypeManagedHeaders, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
 
@@ -15,7 +16,14 @@ type ProviderEditSectionProps = {
   onUpdate: (key: string, value: string) => void;
 };
 
-export function ProviderConnectionFields({ values, onUpdate, validationErrors = [] }: ProviderEditSectionProps & { validationErrors?: string[] }) {
+export function ProviderConnectionFields({
+  values,
+  onUpdate,
+  providerTypeOptions = [],
+  validationErrors = [],
+}: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[]; validationErrors?: string[] }) {
+  const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
+  const apiKeyRequired = providerTypeRequiresAPIKey(effectiveProviderTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid provider-connect-form-grid">
@@ -24,7 +32,7 @@ export function ProviderConnectionFields({ values, onUpdate, validationErrors = 
           <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
         </label>
         <label className="field">
-          <span>{values.type === "kronk" ? tx("Application Token（可选）") : "API Key"}</span>
+          <span>{apiKeyRequired ? "API Key" : tx("认证密钥（可选）")}</span>
           <input
             autoComplete="new-password"
             value={values.api_key ?? ""}
@@ -34,23 +42,24 @@ export function ProviderConnectionFields({ values, onUpdate, validationErrors = 
               if (event.target.value.trim()) onUpdate("clear_api_key", "false");
             }}
           />
-          <small>{tx(values.type === "kronk" ? "留空表示不修改现有 token；填写新值才会覆盖。" : "留空表示不修改现有 Key；填写新值才会覆盖。")}</small>
+          <small>{tx(apiKeyRequired ? "留空表示不修改现有 Key；填写新值才会覆盖。" : "留空表示不修改现有 token；填写新值才会覆盖。")}</small>
         </label>
-        {values.type === "kronk" ? (
+        {!apiKeyRequired ? (
           <div className="field">
-            <span>{tx("Kronk 认证")}</span>
+            <span>{tx("Provider 认证")}</span>
             <label className="checkbox-line">
               <input checked={values.clear_api_key === "true"} type="checkbox" onChange={(event) => {
                 onUpdate("clear_api_key", String(event.target.checked));
                 if (event.target.checked) onUpdate("api_key", "");
               }} />
-              <span>{tx("移除已保存的 application token，改为无认证访问")}</span>
+              <span>{tx("移除已保存的认证密钥，改为无认证访问")}</span>
             </label>
           </div>
         ) : null}
       </div>
       <ProviderCustomHeaders
-        disabled={values.type === "azure_openai" || values.type === "openai_codex"}
+        disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
+        managedHeaders={providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type)}
         onChange={(value) => onUpdate("custom_headers", value)}
         validationErrors={validationErrors}
         value={values.custom_headers ?? "[]"}
@@ -59,18 +68,35 @@ export function ProviderConnectionFields({ values, onUpdate, validationErrors = 
   );
 }
 
-export function AnthropicAuthTypeField({ values, onUpdate }: ProviderEditSectionProps) {
-  if (values.type !== "anthropic") return null;
+function providerTypeOptionsForCurrentValue(providerType: string): ProviderTypeOption[] {
+  const value = providerType.trim();
+  if (!value) return [];
+  return [{
+    value,
+    label: providerTypeLabel(value),
+    supportsCustomHeaders: providerTypeSupportsCustomHeaders([], value),
+  }];
+}
+
+export function ProviderAuthModeField({ values, onUpdate, providerTypeOptions = [] }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[] }) {
+  const authModes = providerTypeAuthModes(providerTypeOptions, values.type);
+  if (authModes.length === 0) return null;
+  const authModeValue = providerAuthMode(values, providerTypeOptions) || providerTypePreferredAuthMode(providerTypeOptions, values.type);
   return (
     <label className="field">
-      <span>{tx("Anthropic 认证方式")}</span>
-      <select value={values.anthropic_auth_type || "x-api-key"} onChange={(event) => onUpdate("anthropic_auth_type", event.target.value)}>
-        <option value="x-api-key">{tx("x-api-key（Anthropic 官方）")}</option>
-        <option value="bearer">{tx("Authorization Bearer（兼容服务）")}</option>
+      <span>{tx("认证方式")}</span>
+      <select value={authModeValue} onChange={(event) => onUpdate(providerAuthModeField, event.target.value)}>
+        {authModes.map((mode) => <option key={mode} value={mode}>{providerAuthModeLabel(mode)}</option>)}
       </select>
       <small>{tx("认证密钥始终使用上面的加密 API Key，不需要写入自定义 Headers。")}</small>
     </label>
   );
+}
+
+function providerAuthModeLabel(mode: string) {
+  if (mode === "x-api-key") return "x-api-key";
+  if (mode === "bearer") return "Authorization Bearer";
+  return mode;
 }
 
 export function ProviderAdvancedFields({
@@ -79,8 +105,10 @@ export function ProviderAdvancedFields({
   accountIntegration,
   creating = false,
   idPlaceholder,
-}: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string }) {
-  const showReasoningCompatibility = providerSupportsAnthropicReasoning(values.type);
+  providerTypeOptions = [],
+}: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
+  const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
+  const showReasoningCompatibility = providerTypeSupportsReasoningConfig(effectiveProviderTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid">
@@ -100,7 +128,7 @@ export function ProviderAdvancedFields({
         <label className="field">
           <span>{tx(accountIntegration ? "兼容协议" : "渠道商类型")}</span>
           <select value={values.type ?? ""} onChange={(event) => onUpdate("type", event.target.value)} required>
-            {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
+            {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         {creating ? (
@@ -109,24 +137,16 @@ export function ProviderAdvancedFields({
             <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
           </label>
         ) : null}
-        <AnthropicAuthTypeField values={values} onUpdate={onUpdate} />
+        <ProviderAuthModeField values={values} onUpdate={onUpdate} providerTypeOptions={effectiveProviderTypeOptions} />
         <label className="field">
           <span>{tx("优先级")}</span>
           <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
         </label>
-        <label className="field">
-          <span>{tx("Claude Code 归因块")}</span>
-          <select value={values.claude_code_attribution_policy ?? "preserve"} onChange={(event) => onUpdate("claude_code_attribution_policy", event.target.value)}>
-            <option value="preserve">{tx("保留归因块")}</option>
-            <option value="strip">{tx("移除归因块")}</option>
-          </select>
-          <small>{tx("Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。")}</small>
-        </label>
       </div>
       {showReasoningCompatibility ? <details className="provider-account-runtime">
         <summary>
-          <strong>{tx("Anthropic 推理参数兼容")}</strong>
-          <span>{tx("Provider 默认规则，适用于 Claude Code 等 Anthropic Messages 客户端。")}</span>
+          <strong>{tx("Provider 推理参数兼容")}</strong>
+          <span>{tx("Provider 默认规则，适用于支持推理参数的客户端和上游。")}</span>
         </summary>
         <div className="provider-account-fields">
           {providerReasoningFieldConfigs().map((field) => (
@@ -144,7 +164,7 @@ export function ProviderAdvancedFields({
   );
 }
 
-export function ProviderResourceAttributionFields({
+export function ProviderResourceSystemPromptTransformFields({
   api,
   providerID,
   resources,
@@ -166,12 +186,12 @@ export function ProviderResourceAttributionFields({
     try {
       const resp = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(resource.id)}`, {
         method: "PATCH",
-        body: JSON.stringify(providerResourceAttributionPolicyPayload(resource, policy)),
+        body: JSON.stringify(providerResourceSystemPromptTransformPolicyPayload(resource, policy)),
       });
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("更新 Claude Code 归因策略")));
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx("更新系统提示词转换策略")));
       await onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : tx("更新 Claude Code 归因策略失败"));
+      setError(err instanceof Error ? err.message : tx("更新系统提示词转换策略失败"));
     } finally {
       setBusyID("");
     }
@@ -180,7 +200,7 @@ export function ProviderResourceAttributionFields({
   return (
     <section className="provider-edit-section">
       <div className="wizard-panel-head">
-        <h3>{tx("Provider Resource 归因策略")}</h3>
+        <h3>{tx("Provider Resource 系统提示词转换")}</h3>
         <p>{tx("每个 Resource 默认继承 Provider 策略，也可以独立覆盖。故障切换时会按实际尝试的 Resource 处理请求。")}</p>
       </div>
       <div className="provider-form-grid">
@@ -189,12 +209,12 @@ export function ProviderResourceAttributionFields({
             <span>{resource.name}</span>
             <select
               disabled={busyID === resource.id}
-              value={resource.options?.claude_code_attribution_policy ?? "inherit"}
+              value={resource.options?.system_prompt_transform_policy ?? resource.options?.claude_code_attribution_policy ?? "inherit"}
               onChange={(event) => void updatePolicy(resource, event.target.value)}
             >
               <option value="inherit">{tx("继承 Provider 策略")}</option>
-              <option value="preserve">{tx("保留归因块")}</option>
-              <option value="strip">{tx("移除归因块")}</option>
+              <option value="preserve">{tx("保留系统提示词块")}</option>
+              <option value="strip">{tx("移除客户端归因块")}</option>
             </select>
           </label>
         ))}

@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 const (
@@ -79,8 +81,13 @@ type openAIAccountQuotaResetOperation struct {
 	UpstreamStatus         int
 }
 
-func (s *Server) serveAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	details, err := s.queryOpenAIAccountQuotaResetCredits(r.Context(), resourceID)
+func (s *Server) serveAdminProviderResourceQuotaResetCredits(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
+	details, supported, err := s.executeProviderResourceQuotaResetCreditsAction(r.Context(), user, resourceID)
+	if !supported {
+		var openAIDetails openAIAccountQuotaResetCredits
+		openAIDetails, err = s.queryOpenAIAccountQuotaResetCredits(r.Context(), resourceID)
+		details = providerQuotaResetCreditsFromOpenAI(openAIDetails)
+	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.recordAdminAuditWithStatus(r, user, "query_quota_reset_credits", "provider_resource", resourceID, "failed", httpErr.Code, "", map[string]any{"error_code": httpErr.Code})
@@ -91,8 +98,8 @@ func (s *Server) serveAdminOpenAIAccountQuotaResetCredits(w http.ResponseWriter,
 	writeJSON(w, http.StatusOK, details)
 }
 
-func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
-	if strings.TrimSpace(r.Header.Get(openAIAccountQuotaResetDangerHeader)) != openAIAccountQuotaResetDangerValue {
+func (s *Server) serveAdminProviderResourceQuotaReset(w http.ResponseWriter, r *http.Request, user AdminUser, resourceID string) {
+	if strings.TrimSpace(r.Header.Get(openAIAccountQuotaResetDangerHeader)) != s.providerResourceQuotaResetDangerConfirmation(resourceID) {
 		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, "quota_reset_danger_confirmation_required")
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "quota_reset_danger_confirmation_required", "The dangerous operation confirmation header is required"))
 		return
@@ -108,18 +115,46 @@ func (s *Server) serveAdminOpenAIAccountQuotaReset(w http.ResponseWriter, r *htt
 		writeError(w, r, err)
 		return
 	}
-	result, err := s.resetOpenAIAccountQuota(r.Context(), resourceID, req)
+	result, supported, err := s.executeProviderResourceQuotaResetAction(r.Context(), user, resourceID, req)
+	if !supported {
+		var openAIResult openAIAccountQuotaResetResult
+		openAIResult, err = s.resetOpenAIAccountQuota(r.Context(), resourceID, req)
+		result = providerQuotaResetResultFromOpenAI(openAIResult)
+	}
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.recordOpenAIAccountQuotaResetFailure(r, user, resourceID, httpErr.Code)
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "reset_quota", "provider_resource", resourceID, "", map[string]any{
-		"code":          result.Code,
-		"windows_reset": result.WindowsReset,
-	})
+	s.recordAdminAudit(r, user, "reset_quota", "provider_resource", resourceID, "", providerQuotaResetResultAudit(result))
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) providerResourceQuotaResetDangerConfirmation(resourceID string) string {
+	resource, ok := s.providerResourceByID(resourceID)
+	if !ok {
+		return openAIAccountQuotaResetDangerValue
+	}
+	provider, ok := s.providerByID(resource.ProviderID)
+	if !ok {
+		return openAIAccountQuotaResetDangerValue
+	}
+	action, ok := s.providerPluginCapabilityActionDescriptor(provider.Type, AdapterCapabilityQuota, "quota.reset", resource.ResourceType)
+	if !ok {
+		return openAIAccountQuotaResetDangerValue
+	}
+	return providerQuotaResetDangerConfirmation(action)
+}
+
+func providerQuotaResetDangerConfirmation(action pluginmeta.ActionDescriptor) string {
+	if value := strings.TrimSpace(action.Metadata["danger_confirmation"]); value != "" {
+		return value
+	}
+	if action.PluginID != "" && action.ActionID != "" {
+		return "provider-quota-reset:" + action.PluginID + ":" + action.ActionID
+	}
+	return openAIAccountQuotaResetDangerValue
 }
 
 func (s *Server) recordOpenAIAccountQuotaResetFailure(r *http.Request, user AdminUser, resourceID string, errorCode string) {
@@ -158,7 +193,7 @@ func validateOpenAIAccountQuotaResetRequest(req openAIAccountQuotaResetRequest, 
 }
 
 func (s *Server) queryOpenAIAccountQuotaResetCredits(ctx context.Context, resourceID string) (openAIAccountQuotaResetCredits, error) {
-	if _, _, err := s.openAIAccountQuotaResetResource(resourceID); err != nil {
+	if _, _, err := s.providerResourceForQuotaResetCapability(resourceID, "quota.reset_credits.read"); err != nil {
 		return openAIAccountQuotaResetCredits{}, err
 	}
 	details, _, err := s.fetchOpenAIAccountQuotaResetCredits(ctx, resourceID)
@@ -171,7 +206,7 @@ func (s *Server) queryOpenAIAccountQuotaResetCredits(ctx context.Context, resour
 func (s *Server) resetOpenAIAccountQuota(ctx context.Context, resourceID string, req openAIAccountQuotaResetRequest) (openAIAccountQuotaResetResult, error) {
 	var result openAIAccountQuotaResetResult
 	err := s.store.RunClusterOperation(ctx, "provider-quota-reset:"+resourceID, func(leaseCtx context.Context) error {
-		if _, _, validateErr := s.openAIAccountQuotaResetResource(resourceID); validateErr != nil {
+		if _, _, validateErr := s.providerResourceForQuotaResetCapability(resourceID, "quota.reset"); validateErr != nil {
 			return validateErr
 		}
 
@@ -207,7 +242,11 @@ func (s *Server) resetOpenAIAccountQuota(ctx context.Context, resourceID string,
 				return NewHTTPError(http.StatusConflict, "quota_reset_operation_in_progress", "Another quota reset operation must be resolved before starting a new one")
 			}
 			var endpointErr error
-			endpoint, endpointErr = openAIAccountQuotaResetEndpoint(firstNonEmpty(s.codexSubscription.QuotaURL, openAIAccountQuotaURL), true)
+			codexSubscription, adapterErr := s.codexSubscriptionAdapter()
+			if adapterErr != nil {
+				return adapterErr
+			}
+			endpoint, endpointErr = openAIAccountQuotaResetEndpoint(firstNonEmpty(codexSubscription.QuotaURL, openAIAccountQuotaURL), true)
 			if endpointErr != nil {
 				return endpointErr
 			}
@@ -237,7 +276,11 @@ func (s *Server) resetOpenAIAccountQuota(ctx context.Context, resourceID string,
 		}
 		if endpoint == "" {
 			var endpointErr error
-			endpoint, endpointErr = openAIAccountQuotaResetEndpoint(firstNonEmpty(s.codexSubscription.QuotaURL, openAIAccountQuotaURL), true)
+			codexSubscription, adapterErr := s.codexSubscriptionAdapter()
+			if adapterErr != nil {
+				return adapterErr
+			}
+			endpoint, endpointErr = openAIAccountQuotaResetEndpoint(firstNonEmpty(codexSubscription.QuotaURL, openAIAccountQuotaURL), true)
 			if endpointErr != nil {
 				return endpointErr
 			}
@@ -403,13 +446,17 @@ func (s *Server) executeOpenAIAccountQuotaResetOperation(ctx context.Context, re
 		RedeemRequestID: operation.IdempotencyKey,
 		CreditID:        operation.CreditID,
 	}
-	result, status, consumeErr := consumeOpenAIAccountQuotaResetWithClient(ctx, s.codexSubscription.Client, endpoint, creds, payload)
+	codexSubscription, err := s.codexSubscriptionAdapter()
+	if err != nil {
+		return openAIAccountQuotaResetResult{}, err
+	}
+	result, status, consumeErr := consumeOpenAIAccountQuotaResetWithClient(ctx, codexSubscription.Client, endpoint, creds, payload)
 	if status == http.StatusUnauthorized {
 		refreshed, refreshErr := s.store.RefreshProviderResourceCredentials(ctx, resourceID, true)
 		if refreshErr != nil {
 			return openAIAccountQuotaResetResult{}, refreshErr
 		}
-		result, status, consumeErr = consumeOpenAIAccountQuotaResetWithClient(ctx, s.codexSubscription.Client, endpoint, refreshed, payload)
+		result, status, consumeErr = consumeOpenAIAccountQuotaResetWithClient(ctx, codexSubscription.Client, endpoint, refreshed, payload)
 	}
 	if consumeErr != nil {
 		return openAIAccountQuotaResetResult{}, s.finishOpenAIAccountQuotaResetOperationError(operation, openAIAccountQuotaResetResult{}, consumeErr)
@@ -515,7 +562,7 @@ func (s *Server) openAIAccountQuotaResetPendingOperation(resourceID string) *ope
 	}
 }
 
-func (s *Server) openAIAccountQuotaResetResource(resourceID string) (ProviderResource, Provider, error) {
+func (s *Server) providerResourceForQuotaResetCapability(resourceID string, actionCapability string) (ProviderResource, Provider, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
@@ -524,13 +571,13 @@ func (s *Server) openAIAccountQuotaResetResource(resourceID string) (ProviderRes
 	if !ok {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
-	if provider.Type != ProviderOpenAICodex || resource.ResourceType != ProviderResourceOpenAISubscription {
-		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_reset_unsupported", "Quota reset is only available for Codex OpenAI subscription resources")
-	}
 	if provider.Status != StatusActive || resource.Status != StatusActive {
 		return ProviderResource{}, Provider{}, NewHTTPError(http.StatusConflict, "provider_resource_inactive", "Provider and subscription resource must be active")
 	}
-	return resource, provider, nil
+	if _, ok := s.providerPluginCapabilityActionDescriptor(provider.Type, AdapterCapabilityQuota, actionCapability, resource.ResourceType); ok {
+		return resource, provider, nil
+	}
+	return ProviderResource{}, Provider{}, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_reset_unsupported", "Quota reset is not available for this provider resource")
 }
 
 func (s *Server) fetchOpenAIAccountQuotaResetCredits(ctx context.Context, resourceID string) (openAIAccountQuotaResetCredits, ProviderResourceCredentials, error) {
@@ -538,11 +585,15 @@ func (s *Server) fetchOpenAIAccountQuotaResetCredits(ctx context.Context, resour
 	if err != nil {
 		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, err
 	}
-	endpoint, err := openAIAccountQuotaResetEndpoint(firstNonEmpty(s.codexSubscription.QuotaURL, openAIAccountQuotaURL), false)
+	codexSubscription, err := s.codexSubscriptionAdapter()
 	if err != nil {
 		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, err
 	}
-	details, status, err := fetchOpenAIAccountQuotaResetCreditsWithClient(ctx, s.codexSubscription.Client, endpoint, creds)
+	endpoint, err := openAIAccountQuotaResetEndpoint(firstNonEmpty(codexSubscription.QuotaURL, openAIAccountQuotaURL), false)
+	if err != nil {
+		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, err
+	}
+	details, status, err := fetchOpenAIAccountQuotaResetCreditsWithClient(ctx, codexSubscription.Client, endpoint, creds)
 	if status != http.StatusUnauthorized {
 		return details, creds, err
 	}
@@ -550,7 +601,7 @@ func (s *Server) fetchOpenAIAccountQuotaResetCredits(ctx context.Context, resour
 	if refreshErr != nil {
 		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, refreshErr
 	}
-	details, _, err = fetchOpenAIAccountQuotaResetCreditsWithClient(ctx, s.codexSubscription.Client, endpoint, refreshed)
+	details, _, err = fetchOpenAIAccountQuotaResetCreditsWithClient(ctx, codexSubscription.Client, endpoint, refreshed)
 	return details, refreshed, err
 }
 

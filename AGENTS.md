@@ -25,7 +25,10 @@ Run backend checks from `backend/`:
 gofmt -w <changed-go-files>
 go test ./...
 go vet ./...
+golangci-lint run ./...
 ```
+
+Use the `golangci-lint` version pinned in `.github/workflows/ci.yml`; `go test` and `go vet` do not replace its unused-code and other lint checks.
 
 Run frontend checks from `frontend/`:
 
@@ -65,6 +68,10 @@ npm run test:security-policy
 ```
 
 Start the full local development stack from the repository root with `./start.sh`. Start the containerized stack with the commands documented in `docs/deployment.md`.
+
+## UI acceptance fixtures
+
+For page interactions, layouts, or UI fixture changes, read [docs/development/ui-testing.md](docs/development/ui-testing.md). Maintain the relevant named scenarios and run them with `npm run test:ui`; use `npm run capture:ui` to inspect changed screens before handoff. Keep fixtures synthetic and fail on undeclared API requests. UI fixture results establish frontend behavior only; backend contracts, authorization, billing, and persistence remain covered by their existing tests.
 
 ## Optional development workflows
 
@@ -116,7 +123,9 @@ Use a workflow only when the user explicitly names it; otherwise follow the norm
 
 ## Validation expectations
 
-- Run the narrowest relevant test while iterating, then run the full applicable check set before handing off.
+- Run the narrowest relevant test while iterating, then run the full applicable check set before handing off. Use `.github/workflows/ci.yml` as the check list and `.nvmrc` for the frontend Node version.
+- For PR delivery or CI repair, verify the latest pushed head and wait for all of its CI checks to pass before reporting completion. A failure reproduced on the base branch still blocks delivery unless the user explicitly accepts that exception.
+- When the target branch changes during development, integrate it and validate the resulting code before pushing; earlier results do not validate a different merge result.
 - Run `git diff --check` before committing.
 - Report any check that could not run and distinguish new failures from failures already present on the base branch.
 - For Docker or deployment changes, validate the rendered Compose configuration with `docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config` when Docker is available.

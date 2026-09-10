@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.zai"
+name: "Z.AI"
+version: 1.0.0
+summary: "Connect TokenHub to Z.AI."
+description: "Connect TokenHub to Z.AI. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.z.ai/api/paas/v4"
+    catalog:
+      id: "zai"
+      name: "Z.AI"
+      display_name: "Z.AI"
+      type: "openai_compatible"
+      base_url: "https://api.z.ai/api/paas/v4"
+      doc_url: "https://docs.z.ai/guides/overview/pricing"
+      categories: []
+      models_count: 13
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

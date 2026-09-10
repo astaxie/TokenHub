@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"tokenhub/backend/internal/billing"
 )
@@ -110,9 +111,22 @@ func (s *Store) UpdateBillingConnector(id string, patch billing.Connector) (bill
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	var result billing.Connector
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		result, err = s.updateBillingConnector(tx, id, patch)
+		return err
+	})
+	return result, err
+}
+
+func (s *Store) updateBillingConnector(tx *gorm.DB, id string, patch billing.Connector) (billing.Connector, error) {
 	var row ConnectorRow
-	if err := s.db.First(&row, "id = ?", strings.TrimSpace(id)).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, "id = ?", strings.TrimSpace(id)).Error; err != nil {
 		return billing.Connector{}, notFound(err, "billing_connector_not_found", "Billing connector not found")
+	}
+	if err := BackfillRecordAttribution(tx, row.ID); err != nil {
+		return billing.Connector{}, err
 	}
 	connector := domainConnector(row)
 	if patch.Name != "" {
@@ -140,7 +154,7 @@ func (s *Store) UpdateBillingConnector(id string, patch billing.Connector) (bill
 	connector.UpdatedAt = time.Now().UTC()
 	connector.NextSyncAt = nextSyncAt(connector, connector.UpdatedAt)
 	updatedRow := connectorRow(connector)
-	if err := s.db.Save(&updatedRow).Error; err != nil {
+	if err := tx.Save(&updatedRow).Error; err != nil {
 		return billing.Connector{}, err
 	}
 	return connectorSummary(domainConnector(updatedRow)), nil
@@ -150,12 +164,17 @@ func (s *Store) DeleteBillingConnector(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	id = strings.TrimSpace(id)
-	var row ConnectorRow
-	if err := s.db.First(&row, "id = ?", id).Error; err != nil {
-		return notFound(err, "billing_connector_not_found", "Billing connector not found")
-	}
-	return s.db.Delete(&row).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		id = strings.TrimSpace(id)
+		var row ConnectorRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, "id = ?", id).Error; err != nil {
+			return notFound(err, "billing_connector_not_found", "Billing connector not found")
+		}
+		if err := BackfillRecordAttribution(tx, row.ID); err != nil {
+			return err
+		}
+		return tx.Delete(&row).Error
+	})
 }
 
 func (s *Store) StartBillingSyncRun(run billing.SyncRun) (billing.SyncRun, error) {
@@ -179,8 +198,16 @@ func (s *Store) SaveBillingPage(connectorID, checkpoint string, records []billin
 	inserted := 0
 	updated := 0
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var connector ConnectorRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&connector, "id = ?", connectorID).Error; err != nil {
+			return err
+		}
+		if err := BackfillRecordAttribution(tx, connectorID); err != nil {
+			return err
+		}
 		now := time.Now().UTC()
 		for _, candidate := range records {
+			candidate.Metadata = snapshotAttribution(candidate.Metadata, connector.Config, candidate.AccountID)
 			candidate.ConnectorID = connectorID
 			if strings.TrimSpace(candidate.ExternalID) == "" {
 				return billing.NewError(billing.ErrorUpstream, "billing_record_invalid", "Billing source returned a record without an external identifier")
@@ -207,6 +234,9 @@ func (s *Store) SaveBillingPage(connectorID, checkpoint string, records []billin
 				return err
 			default:
 				candidate.ID = existing.ID
+				for _, key := range []string{attributionVersion, attributionProvider, attributionResource} {
+					candidate.Metadata[key] = existing.Metadata[key]
+				}
 				candidate.CreatedAt = existing.CreatedAt
 				candidate.UpdatedAt = now
 				row := recordRow(candidate)

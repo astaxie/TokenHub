@@ -44,6 +44,9 @@ func main() {
 	if runtimeDeploymentType := os.Getenv("TOKENHUB_DEPLOYMENT_TYPE"); runtimeDeploymentType != "" {
 		config.DeploymentType = runtimeDeploymentType
 	}
+	if os.Getenv("TOKENHUB_PLUGIN_DIR") == "" {
+		config.PluginDir = server.DefaultPluginDir(config.DeploymentType, config.InstallRoot)
+	}
 	prepared, err := config.PrepareForStartup()
 	if err == nil {
 		config = prepared

@@ -31,12 +31,18 @@ export function referenceModelTemplates<T extends ReferenceModelTemplate>(models
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function filterReferenceModelTemplates<T extends ReferenceModelTemplate>(models: T[], query: string, category: string) {
+export function filterReferenceModelTemplates<T extends ReferenceModelTemplate>(
+  models: T[],
+  query: string,
+  category: string,
+  categoryForModel: (model: T) => string = (model) => model.category ?? "",
+) {
   const normalizedQuery = query.trim().toLowerCase();
   return referenceModelTemplates(models).filter((model) => {
-    if (category && category !== "all" && model.category !== category) return false;
+    const modelCategoryKey = categoryForModel(model);
+    if (category && category !== "all" && modelCategoryKey !== category) return false;
     if (!normalizedQuery) return true;
-    return [model.name, model.family, model.category, ...(model.capabilities ?? [])]
+    return [model.name, model.family, model.category, modelCategoryKey, ...(model.capabilities ?? [])]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()

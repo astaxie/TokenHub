@@ -1,28 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ApiContext, Provider, ProviderResource } from "../core/types";
-import { providerReasoningFieldConfigs, providerReasoningOverrideFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
+import type { AdapterDescriptor, ApiContext, PluginDescriptor, Provider, ProviderResource } from "../core/types";
+import { providerReasoningFieldConfigs, providerReasoningOverrideFormValues, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { effectiveProviderHeaderEntries, parseProviderHeaderEntries, providerHeaderEntryErrors, providerHeadersFormValue } from "../domain/provider-headers";
+import { isProviderAccountResourceForData } from "../domain/provider-resource-types";
 import { tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerResourceToForm, providerResourceUpdatePayload, readAdminError } from "../resources/payloads";
+import { providerTypeManagedHeaders, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ProviderInlineField } from "./provider-editor-fields";
 import { ProviderCustomHeaders } from "./provider-custom-headers";
+
+const emptyProviderAdapters: AdapterDescriptor[] = [];
+const emptyPlugins: PluginDescriptor[] = [];
 
 export function ProviderResourceReasoningSettings({
   api,
   provider,
   providerType,
+  providerTypeOptions = [],
+  providerAdapters = emptyProviderAdapters,
+  plugins = emptyPlugins,
   resources,
   onSaved,
 }: {
   api: ApiContext;
   provider: Provider;
   providerType: string;
+  providerTypeOptions?: ProviderTypeOption[];
+  providerAdapters?: AdapterDescriptor[];
+  plugins?: PluginDescriptor[];
   resources: ProviderResource[];
   onSaved: () => Promise<void> | void;
 }) {
+  const resourceTypeData = useMemo(() => ({ plugins, providerAdapters, providers: [provider] }), [plugins, providerAdapters, provider]);
   const scopedResources = useMemo(
-    () => resources.filter((resource) => resource.provider_id === provider.id && resource.resource_type !== "openai_subscription"),
-    [provider.id, resources],
+    () => resources.filter((resource) => resource.provider_id === provider.id && !isProviderAccountResourceForData(resourceTypeData, resource)),
+    [provider.id, resourceTypeData, resources],
   );
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [busyID, setBusyID] = useState("");
@@ -50,11 +62,12 @@ export function ProviderResourceReasoningSettings({
 
   async function save(resource: ProviderResource) {
     const draft = drafts[resource.id] ?? providerReasoningOverrideFormValues(resource.options, provider.options);
+    const managedHeaders = providerTypeManagedHeaders(providerTypeOptions, providerType);
     setBusyID(resource.id);
     setSavedID("");
     setErrors((current) => ({ ...current, [resource.id]: "" }));
     try {
-      const headerErrors = providerHeaderEntryErrors(effectiveProviderHeaderEntries(parseProviderHeaderEntries(providerHeadersFormValue(provider.headers, provider.sensitive_headers)), parseProviderHeaderEntries(draft.custom_headers)));
+      const headerErrors = providerHeaderEntryErrors(effectiveProviderHeaderEntries(parseProviderHeaderEntries(providerHeadersFormValue(provider.headers, provider.sensitive_headers)), parseProviderHeaderEntries(draft.custom_headers)), managedHeaders);
       if (headerErrors.length > 0) throw new Error(tx(headerErrors[0]));
       const payload = providerResourceUpdatePayload({ ...providerResourceToForm(resource, provider.options), ...draft });
       const response = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(resource.id)}`, {
@@ -81,7 +94,8 @@ export function ProviderResourceReasoningSettings({
   }
 
   if (scopedResources.length === 0) return null;
-  const showReasoning = providerSupportsAnthropicReasoning(providerType);
+  const showReasoning = providerTypeSupportsReasoningConfig(providerTypeOptions, providerType);
+  const managedHeaders = providerTypeManagedHeaders(providerTypeOptions, providerType);
   return (
     <section className="provider-quota-panel">
       <div className="wizard-panel-head">
@@ -127,8 +141,9 @@ export function ProviderResourceReasoningSettings({
                 </div>
               ) : null}
               <ProviderCustomHeaders
-                disabled={providerType === "azure_openai" || providerType === "openai_codex"}
+                disabled={!providerTypeSupportsCustomHeaders(providerTypeOptions, providerType)}
                 inheritedValue={providerHeadersFormValue(provider.headers, provider.sensitive_headers)}
+                managedHeaders={managedHeaders}
                 onChange={(value) => update(resource.id, "custom_headers", value)}
                 validationErrors={resource.header_validation_errors}
                 value={values.custom_headers ?? "[]"}

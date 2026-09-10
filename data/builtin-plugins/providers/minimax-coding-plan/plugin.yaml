@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.minimax-coding-plan"
+name: "MiniMax Token Plan (minimax.io)"
+version: 1.0.0
+summary: "Connect TokenHub to MiniMax Token Plan (minimax.io)."
+description: "Connect TokenHub to MiniMax Token Plan (minimax.io). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.minimax.io/anthropic/v1"
+    catalog:
+      id: "minimax-coding-plan"
+      name: "MiniMax Token Plan (minimax.io)"
+      display_name: "MiniMax Token Plan (minimax.io)"
+      type: "openai_compatible"
+      base_url: "https://api.minimax.io/anthropic/v1"
+      doc_url: "https://platform.minimax.io/docs/token-plan/intro"
+      categories: []
+      models_count: 7
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

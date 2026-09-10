@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.vercel"
+name: "Vercel AI Gateway"
+version: 1.0.0
+summary: "Connect TokenHub to Vercel AI Gateway."
+description: "Connect TokenHub to Vercel AI Gateway. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "vercel"
+      name: "Vercel AI Gateway"
+      display_name: "Vercel AI Gateway"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://github.com/vercel/ai/tree/5eb85cc45a259553501f535b8ac79a77d0e79223/packages/gateway"
+      categories: []
+      models_count: 280
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestAdminCodexImageCapabilityTestsOnceAndManagesRoute(t *testing.T) {
@@ -40,7 +42,7 @@ func TestAdminCodexImageCapabilityTestsOnceAndManagesRoute(t *testing.T) {
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	responses := make(chan responseBody, 2)
 	requestCapability := func(enabled bool) {
@@ -94,6 +96,61 @@ func TestAdminCodexImageCapabilityTestsOnceAndManagesRoute(t *testing.T) {
 	}
 }
 
+func TestAdminCodexImageCapabilityUsesPluginActionMetadataProfile(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	profile := codexImageCapabilityRouteProfile()
+	profile.PublicModel = "plugin-codex-public-image"
+	profile.UpstreamModel = codexImageUpstreamModel
+	profile.CapabilityOption = "plugin_codex_image_capability"
+	profile.CapabilityCheckedAtOption = "plugin_codex_image_capability_checked_at"
+	profile.RouteBackfillOption = "plugin_codex_image_route_backfill_v1"
+	profile.ProbePrompt = "Render a small red triangle on a plain white canvas."
+	profile.ProbeBackground = "transparent"
+	profile.ProbeQuality = "medium"
+	profile.ProbeSize = "512x512"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request codexSubscriptionImageRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode capability request: %v", err)
+			return
+		}
+		if request.Model != profile.UpstreamModel {
+			t.Errorf("capability request model = %q, want %q", request.Model, profile.UpstreamModel)
+		}
+		if request.Prompt != profile.ProbePrompt || request.Background != profile.ProbeBackground ||
+			request.Quality != profile.ProbeQuality || request.Size != profile.ProbeSize {
+			t.Errorf("capability probe request = %+v, want profile prompt/background/quality/size", request)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{{"b64_json": encodeBase64(imageBytes)}},
+		})
+	}))
+	defer upstream.Close()
+
+	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
+	result, err := server.configureCodexImageCapability(context.Background(), resource.ID, true, profile)
+	if err != nil {
+		t.Fatalf("enable metadata-driven image capability: %v", err)
+	}
+	if result.Capability != profile.CapabilitySupportedValue {
+		t.Fatalf("metadata-driven capability result = %+v", result)
+	}
+	updated, ok := store.GetProviderResource(resource.ID)
+	if !ok || updated.Options[profile.CapabilityOption] != profile.CapabilitySupportedValue ||
+		updated.Options[profile.CapabilityCheckedAtOption] == "" ||
+		updated.Options[profile.RouteBackfillOption] != profile.RouteBackfillValue {
+		t.Fatalf("metadata-driven capability was not recorded: %+v", updated.Options)
+	}
+	if updated.Options[codexImageCapabilityOption] != "" || updated.Options[codexImageCapabilityCheckedAtOption] != "" {
+		t.Fatalf("metadata-driven capability wrote Codex fallback keys: %+v", updated.Options)
+	}
+	routes := store.ListRoutes()
+	if len(routes) != 1 || !providerImageCapabilityRouteMatches(routes[0], resource.ProviderID, profile) {
+		t.Fatalf("metadata-driven capability route = %+v", routes)
+	}
+}
+
 func TestAdminCodexImageCapabilityDisablesRouteAfterLastAccountDeleted(t *testing.T) {
 	imageBytes := realPNGFixture(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -104,7 +161,7 @@ func TestAdminCodexImageCapabilityDisablesRouteAfterLastAccountDeleted(t *testin
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	enabled := doJSON(t, handler, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if enabled.Code != http.StatusOK {
@@ -135,7 +192,7 @@ func TestAdminCodexImageCapabilitySerializesFinalAccountDeletionWithProbe(t *tes
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	enableDone := make(chan responseBody, 1)
 	go func() {
@@ -186,7 +243,7 @@ func TestAdminCodexImageCapabilityInvalidatesReplacementCredentials(t *testing.T
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	if response := doJSON(t, handler, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, ""); response.Code != http.StatusOK {
 		t.Fatalf("enable image capability: status=%d body=%s", response.Code, response.Body)
@@ -226,6 +283,7 @@ func TestAdminCodexImageCapabilityInvalidatesReplacementCredentials(t *testing.T
 
 func TestAdminCodexImageCapabilityReplacementScopesRouteInvalidation(t *testing.T) {
 	store := NewMemoryStore()
+	syncBuiltInImageCapabilityProfilesForTest(store)
 	provider := store.AddProvider(Provider{ID: "prv_codex_route_scope", Name: "Codex Route Scope", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true})
 	newAccount := func(id, group string) ProviderResource {
 		resource, err := store.AddProviderResource(ProviderResource{
@@ -288,7 +346,7 @@ func TestAdminCodexImageCapabilitySerializesCredentialReplacementWithProbe(t *te
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	enableDone := make(chan responseBody, 1)
 	go func() {
@@ -347,7 +405,7 @@ func TestAdminCodexImageCapabilitySerializesProviderDeletionWithProbe(t *testing
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	enableDone := make(chan responseBody, 1)
 	go func() {
@@ -390,7 +448,7 @@ func TestAdminCodexImageCapabilityClassifiesUnsupportedWithoutRoute(t *testing.T
 	}))
 	defer upstream.Close()
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if response.Code != http.StatusForbidden || !bytes.Contains([]byte(response.Body), []byte(`"code":"codex_image_forbidden"`)) {
@@ -414,7 +472,7 @@ func TestAdminCodexImageCapabilityLeavesTransientFailureRetryable(t *testing.T) 
 	}))
 	defer upstream.Close()
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if response.Code != http.StatusTooManyRequests {
@@ -440,7 +498,7 @@ func TestAdminCodexImageCapabilityRejectsNonImageResult(t *testing.T) {
 	}))
 	defer upstream.Close()
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body, `"code":"image_result_invalid"`) {
@@ -467,7 +525,7 @@ func TestAdminCodexImageCapabilityRejectsTruncatedImageResult(t *testing.T) {
 	}))
 	defer upstream.Close()
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
 	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body, `"code":"image_result_invalid"`) {
@@ -492,7 +550,7 @@ func TestAdminCodexImageCapabilityStateSurvivesOrdinaryAccountEdit(t *testing.T)
 	defer upstream.Close()
 
 	store, server, resource := newCodexImageCapabilityTestServer(t, upstream.URL)
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	handler := server.Handler()
 	if response := doJSON(t, handler, http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, ""); response.Code != http.StatusOK {
 		t.Fatalf("enable image capability: status=%d body=%s", response.Code, response.Body)
@@ -544,7 +602,7 @@ func TestAdminCodexImageCapabilityStateSurvivesOrdinaryAccountEdit(t *testing.T)
 
 func TestAdminCodexImageCapabilityRequiresReauthorizationWithoutRoute(t *testing.T) {
 	store, server, resource := newCodexImageCapabilityTestServer(t, "http://127.0.0.1:1")
-	server.codexSubscription.RefreshCredentials = func(context.Context, string, bool) (ProviderResourceCredentials, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).RefreshCredentials = func(context.Context, string, bool) (ProviderResourceCredentials, error) {
 		return ProviderResourceCredentials{}, NewHTTPError(http.StatusUnauthorized, "provider_resource_reauthorization_required", "OpenAI account session ended; reauthorization is required")
 	}
 
@@ -607,6 +665,123 @@ func TestCodexImageRouteBackfillPreservesDisabledRoute(t *testing.T) {
 	if routes := matchingCodexImageRoutes(store.ListRoutes(), provider.ID); len(routes) != 0 {
 		t.Fatalf("one-time backfill recreated an explicitly deleted route: %+v", routes)
 	}
+}
+
+func TestProviderImageRouteBackfillUsesPluginProfiles(t *testing.T) {
+	store := NewMemoryStore()
+	profile := providerImageCapabilityRouteProfile{
+		ProviderType:        "kimi_subscription",
+		ResourceType:        "kimi_subscription_account",
+		PublicModel:         "kimi-image",
+		UpstreamModel:       "moonshot-image",
+		CapabilityOption:    "kimi_image_capability",
+		RouteBackfillOption: "kimi_image_route_backfill_v1",
+	}
+	profile.withDefaults()
+	store.setProviderImageCapabilityRouteProfiles([]providerImageCapabilityRouteProfile{profile})
+	provider := store.AddProvider(Provider{
+		ID: "prv_kimi_image_backfill", Name: "Kimi Image Backfill", Type: profile.ProviderType, Status: StatusActive, Healthy: true,
+	})
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_kimi_image_backfill", ProviderID: provider.ID, Name: "Kimi Image Account",
+		ResourceType: profile.ResourceType, Status: StatusActive, Healthy: true,
+		Options: map[string]string{profile.CapabilityOption: profile.CapabilitySupportedValue},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	backfillProviderImageCapabilityRoutes(store)
+
+	var matches []ModelRoute
+	for _, route := range store.ListRoutes() {
+		if providerImageCapabilityRouteMatches(route, provider.ID, profile) {
+			matches = append(matches, route)
+		}
+	}
+	if len(matches) != 1 || matches[0].Status != StatusActive {
+		t.Fatalf("plugin image route was not backfilled: %+v", matches)
+	}
+	resource, _ := store.GetProviderResource("rsrc_kimi_image_backfill")
+	if resource.Options[profile.RouteBackfillOption] != profile.RouteBackfillValue {
+		t.Fatalf("plugin backfill completion was not recorded: %+v", resource.Options)
+	}
+}
+
+func TestProviderImageRouteProfilesComeFromPluginSync(t *testing.T) {
+	store := NewMemoryStore()
+	if profiles := store.providerImageCapabilityRouteProfiles(); len(profiles) != 0 {
+		t.Fatalf("store image profiles = %+v, want none before plugin sync", profiles)
+	}
+
+	syncBuiltInImageCapabilityProfilesForTest(store)
+	profiles := store.providerImageCapabilityRouteProfiles()
+	if len(profiles) != 1 || profiles[0].ProviderType != ProviderOpenAICodex || profiles[0].PublicModel != codexImageModelName {
+		t.Fatalf("store image profiles = %+v, want Codex profile from plugin action metadata", profiles)
+	}
+	if profiles[0].ProbePrompt == "" || profiles[0].ProbeQuality != "low" || profiles[0].ProbeTimeoutErrorCode != "codex_upstream_timeout" {
+		t.Fatalf("store image profile missing Codex probe metadata: %+v", profiles[0])
+	}
+}
+
+func TestOpenAICodexImageCapabilityActionExposesErrorMetadata(t *testing.T) {
+	descriptor := openAICodexImageCapabilityActionDescriptor()
+	for _, code := range []string{
+		"codex_image_forbidden",
+		"codex_rate_limited",
+		"codex_upstream_unavailable",
+		"codex_upstream_timeout",
+		"codex_image_request_failed",
+		"codex_image_response_failed",
+		"codex_quota_exhausted",
+		"provider_resource_reauthorization_required",
+		"image_result_missing",
+		"image_result_invalid",
+	} {
+		if descriptor.Metadata["error_message."+code] == "" {
+			t.Fatalf("descriptor missing error message metadata for %s", code)
+		}
+	}
+	for _, code := range []string{
+		"codex_image_forbidden",
+		"codex_rate_limited",
+		"codex_upstream_unavailable",
+		"codex_upstream_timeout",
+		"codex_quota_exhausted",
+		"provider_resource_reauthorization_required",
+	} {
+		if descriptor.Metadata["probe_error_message."+code] == "" {
+			t.Fatalf("descriptor missing probe error message metadata for %s", code)
+		}
+	}
+	for _, key := range []string{
+		"probe_request.prompt",
+		"probe_request.background",
+		"probe_request.quality",
+		"probe_request.size",
+		"probe_error.timeout.code",
+		"probe_error.timeout.message",
+		"runtime_error.unsupported.code",
+		"request_alias.model",
+		"request_alias.header",
+		"request_alias.originator_prefix",
+		"request_alias.response_format",
+		"request.default_model",
+		"request.supports_mask",
+		"request.size_policy",
+		"request.allowed_qualities",
+		"request.allowed_response_formats",
+		"request.max_output_images",
+	} {
+		if descriptor.Metadata[key] == "" {
+			t.Fatalf("descriptor missing probe request metadata for %s", key)
+		}
+	}
+}
+
+func syncBuiltInImageCapabilityProfilesForTest(store *GormStore) {
+	store.setProviderImageCapabilityRouteProfiles(providerImageCapabilityRouteProfilesFromActions([]pluginmeta.ActionDescriptor{
+		openAICodexImageCapabilityActionDescriptor(),
+	}))
 }
 
 func newCodexImageCapabilityTestServer(t *testing.T, baseURL string) (*GormStore, *Server, ProviderResource) {

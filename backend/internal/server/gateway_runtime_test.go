@@ -217,7 +217,7 @@ func TestProviderResourceCooldownAfterFailures(t *testing.T) {
 	}
 	store.failureThreshold = 2
 	server := New(store)
-	registerTestAdapter(server, "failing_resource", failingAdapter{})
+	server.adapterRegistry.Register("failing_resource", failingAdapter{}, AdapterCapabilityChat)
 	app := server.Handler()
 
 	for i := 0; i < 2; i++ {
@@ -384,7 +384,7 @@ func TestGatewayFailoverUsesBackupRoute(t *testing.T) {
 	store.AddRoute(ModelRoute{ID: "route_backup", ModelName: "gpt-4.1-mini", ProviderID: backup.ID, ProviderModel: "backup-chat", Priority: 2, Weight: 100, Status: StatusActive, Strategy: "priority_only"})
 
 	server := New(store)
-	registerTestAdapter(server, "failing_mock", failingAdapter{})
+	server.adapterRegistry.Register("failing_mock", failingAdapter{}, AdapterCapabilityChat)
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{

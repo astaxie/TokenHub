@@ -104,7 +104,7 @@ func (s *Server) routes() {
 	// operation. Only their method patterns are explicit: the subtree handler
 	// remains the ID-aware fallback for other methods and legacy path shapes.
 	catalogMultiMethodNotAllowed := s.adminMethodNotAllowed("provider", http.MethodGet+", "+http.MethodPost)
-	for _, catalogID := range []string{codexProviderCatalogID, "custom", ProviderKronk} {
+	for _, catalogID := range s.providerCatalogMultiMethodRouteIDs() {
 		pattern := "/api/admin/provider-catalog/" + catalogID
 		s.mux.HandleFunc(http.MethodGet+" "+pattern, s.handleAdminProviderCatalogItem)
 		s.mux.HandleFunc(http.MethodPost+" "+pattern, s.handleAdminProviderCatalogItem)
@@ -113,6 +113,24 @@ func (s *Server) routes() {
 	s.registerDynamicGETRoute("/api/admin/provider-catalog/{catalog_id}", s.handleAdminProviderCatalogItem, s.adminMethodNotAllowed("provider", http.MethodGet))
 	s.mux.HandleFunc("/api/admin/provider-catalog/", s.handleAdminProviderCatalogItem)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/provider-adapters", s.handleAdminProviderAdapters, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugins", s.handleAdminPlugins, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugins/{plugin_id}/detail", s.handleAdminPluginDetailGet, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugins/{plugin_id}/file", s.handleAdminPluginFileGet, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-marketplace", s.handleAdminPluginMarketplaceGet, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/install", s.handleAdminPluginInstallPost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/permission-diff", s.handleAdminPluginPermissionDiffInstallPost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/{plugin_id}/update", s.handleAdminPluginUpdatePost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/{plugin_id}/permission-diff", s.handleAdminPluginPermissionDiffUpdatePost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/{plugin_id}/rollback", s.handleAdminPluginRollbackPost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodDelete, "/api/admin/plugin-packages/{plugin_id}", s.handleAdminPluginDelete, s.adminMethodNotAllowed("providers", http.MethodDelete))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-chain", s.handleAdminPluginChain, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-ui-manifest", s.handleAdminPluginUIManifest, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-actions", s.handleAdminPluginActions, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/plugin-background-jobs", s.handleAdminPluginBackgroundJobs, s.adminMethodNotAllowed("providers", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodPatch, "/api/admin/plugins/{plugin_id}/state", s.handleAdminPluginStatePatch, s.adminMethodNotAllowed("providers", http.MethodPatch))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/{plugin_id}/actions/{action_id}", s.handleAdminPluginActionPost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-actions/{provider_type}/{capability}", s.handleAdminProviderActionPost, s.adminMethodNotAllowed("providers", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/plugins/{plugin_id}/background-jobs/{job_id}/run", s.handleAdminPluginBackgroundJobRunPost, s.adminMethodNotAllowed("providers", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-account-oauth/openai/generate-auth-url", s.handleAdminOpenAIAccountOAuthGenerateAuthURL, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-account-oauth/openai/exchange-code", s.handleAdminOpenAIAccountOAuthExchangeCode, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/provider-account-oauth/openai/oauth/callback", s.handleOpenAIAccountOAuthCallbackGet, jsonMethodNotAllowed(http.MethodGet))

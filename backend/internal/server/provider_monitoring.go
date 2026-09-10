@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"math"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -21,10 +23,10 @@ type ProviderMonitoringSignal struct {
 }
 
 type ProviderQuotaAccountSummary struct {
-	ResourceID   string              `json:"resource_id"`
-	ResourceName string              `json:"resource_name"`
-	Quota        *OpenAIAccountQuota `json:"quota,omitempty"`
-	ErrorCode    string              `json:"error_code,omitempty"`
+	ResourceID   string                       `json:"resource_id"`
+	ResourceName string                       `json:"resource_name"`
+	Quota        ProviderAccountQuotaSnapshot `json:"quota,omitempty"`
+	ErrorCode    string                       `json:"error_code,omitempty"`
 }
 
 type ProviderQuotaSummary struct {
@@ -349,12 +351,12 @@ func (s *Server) populateProviderQuotaSummaries(ctx context.Context, snapshots [
 			wait.Add(1)
 			go func(index int, item ProviderResource) {
 				defer wait.Done()
-				quota, err := s.queryOpenAIAccountQuota(ctx, item.ID)
 				account := ProviderQuotaAccountSummary{ResourceID: item.ID, ResourceName: item.Name}
+				quota, err := s.queryProviderMonitoringQuota(ctx, snapshots[index].Provider, item)
 				if err != nil {
 					account.ErrorCode = AsHTTPError(err).Code
 				} else {
-					account.Quota = &quota
+					account.Quota = quota
 				}
 				select {
 				case results <- result{providerIndex: index, account: account}:
@@ -370,12 +372,12 @@ func (s *Server) populateProviderQuotaSummaries(ctx context.Context, snapshots [
 	for item := range results {
 		summary := &snapshots[item.providerIndex].Quota
 		summary.Accounts = append(summary.Accounts, item.account)
-		if item.account.Quota == nil {
+		if len(item.account.Quota) == 0 {
 			summary.FailedAccounts++
 			continue
 		}
 		summary.SuccessfulAccounts++
-		mergeProviderQuotaSummary(summary, *item.account.Quota)
+		mergeProviderQuotaSummary(summary, item.account.Quota)
 	}
 	for index := range snapshots {
 		sort.Slice(snapshots[index].Quota.Accounts, func(i, j int) bool {
@@ -384,40 +386,202 @@ func (s *Server) populateProviderQuotaSummaries(ctx context.Context, snapshots [
 	}
 }
 
-func mergeProviderQuotaSummary(summary *ProviderQuotaSummary, quota OpenAIAccountQuota) {
-	remaining := openAIQuotaRemainingPercent(quota)
+type ProviderAccountQuotaSnapshot map[string]any
+
+func (s *Server) queryProviderMonitoringQuota(ctx context.Context, provider Provider, resource ProviderResource) (ProviderAccountQuotaSnapshot, error) {
+	if quota, ok := s.cachedProviderMonitoringQuota(resource.ID, providerMonitoringQuotaTTL); ok {
+		return quota, nil
+	}
+	result, handled, err := s.executeProviderCapabilityAction(ctx, AdminUser{ID: "system", Name: "System", Role: "system"}, provider.Type, AdapterCapabilityQuota, "quota.read", map[string]any{
+		"resource_id": resource.ID,
+		"refresh":     false,
+	}, providerPluginActionOptions{
+		ApplySideEffects: true,
+		ResourceType:     resource.ResourceType,
+	})
+	if err != nil {
+		if AsHTTPError(err).Status >= http.StatusInternalServerError {
+			if stale, staleOK := s.cachedProviderMonitoringQuota(resource.ID, 0); staleOK {
+				return stale, nil
+			}
+		}
+		return nil, err
+	}
+	if !handled {
+		return nil, NewHTTPError(http.StatusBadRequest, "provider_resource_quota_unsupported", "Quota is not available for this provider resource")
+	}
+	quota, ok := providerMonitoringQuotaSnapshot(result.Data, time.Now().UTC())
+	if !ok {
+		return nil, NewHTTPError(http.StatusBadGateway, "provider_quota_invalid_result", "Provider quota returned an invalid result")
+	}
+	return quota, nil
+}
+
+const providerMonitoringQuotaTTL = 60 * time.Second
+
+func (s *Server) cachedProviderMonitoringQuota(resourceID string, ttl time.Duration) (ProviderAccountQuotaSnapshot, bool) {
+	observation, ok := s.store.GetProviderResourceObservation(resourceID)
+	if !ok || observation.QuotaFetchedAt == nil || strings.TrimSpace(observation.QuotaSnapshot) == "" {
+		return nil, false
+	}
+	if ttl > 0 && time.Since(observation.QuotaFetchedAt.UTC()) > ttl {
+		return nil, false
+	}
+	return providerMonitoringQuotaSnapshotFromJSON(observation.QuotaSnapshot)
+}
+
+func providerMonitoringQuotaSnapshot(data any, now time.Time) (ProviderAccountQuotaSnapshot, bool) {
+	snapshot, _, _, ok := pluginActionResultQuotaSnapshot(data, now)
+	if !ok {
+		return nil, false
+	}
+	return ProviderAccountQuotaSnapshot(snapshot), true
+}
+
+func providerMonitoringQuotaSnapshotFromJSON(data string) (ProviderAccountQuotaSnapshot, bool) {
+	var snapshot map[string]any
+	decoder := json.NewDecoder(strings.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&snapshot); err != nil || len(snapshot) == 0 {
+		return nil, false
+	}
+	return ProviderAccountQuotaSnapshot(snapshot), true
+}
+
+func mergeProviderQuotaSummary(summary *ProviderQuotaSummary, quota ProviderAccountQuotaSnapshot) {
+	remaining := providerQuotaRemainingPercent(quota)
 	if summary.SuccessfulAccounts == 1 || remaining < summary.RemainingPercent {
 		summary.RemainingPercent = remaining
-		summary.PlanType = quota.PlanType
+		summary.PlanType = quotaString(quota["plan_type"])
 	}
-	if quota.FetchedAt > summary.FetchedAt {
-		summary.FetchedAt = quota.FetchedAt
+	if fetchedAt := quotaInt64(quota["fetched_at"]); fetchedAt > summary.FetchedAt {
+		summary.FetchedAt = fetchedAt
 	}
-	if quota.RateLimit == nil {
-		return
-	}
-	summary.LimitReached = summary.LimitReached || quota.RateLimit.LimitReached || !quota.RateLimit.Allowed
-	for _, window := range []*OpenAIAccountQuotaWindow{quota.RateLimit.PrimaryWindow, quota.RateLimit.SecondaryWindow} {
-		if window == nil || window.ResetAt <= 0 {
+	summary.LimitReached = summary.LimitReached || providerQuotaLimitReached(quota)
+	for _, window := range providerQuotaWindows(quota) {
+		resetAt := quotaInt64(window["reset_at"])
+		if resetAt <= 0 {
 			continue
 		}
-		if summary.EarliestResetAt == 0 || window.ResetAt < summary.EarliestResetAt {
-			summary.EarliestResetAt = window.ResetAt
+		if summary.EarliestResetAt == 0 || resetAt < summary.EarliestResetAt {
+			summary.EarliestResetAt = resetAt
 		}
 	}
 }
 
-func openAIQuotaRemainingPercent(quota OpenAIAccountQuota) float64 {
-	if quota.RateLimit == nil {
-		return 100
+func providerQuotaRemainingPercent(quota ProviderAccountQuotaSnapshot) float64 {
+	if remaining, ok := quotaFloat64(quota["remaining_percent"]); ok {
+		return math.Max(0, math.Min(100, remaining))
 	}
-	used := 0.0
-	for _, window := range []*OpenAIAccountQuotaWindow{quota.RateLimit.PrimaryWindow, quota.RateLimit.SecondaryWindow} {
-		if window != nil && window.UsedPercent > used {
-			used = window.UsedPercent
-		}
+	if used, ok := quotaFloat64(quota["used_percent"]); ok {
+		return math.Max(0, math.Min(100, 100-used))
+	}
+	used := maxProviderQuotaUsedPercent(providerQuotaWindows(quota))
+	if used == 0 && providerQuotaLimitReached(quota) {
+		return 0
 	}
 	return math.Max(0, math.Min(100, 100-used))
+}
+
+func providerQuotaLimitReached(quota ProviderAccountQuotaSnapshot) bool {
+	if limited, ok := quotaBool(quota["limit_reached"]); ok && limited {
+		return true
+	}
+	if allowed, ok := quotaBool(quota["allowed"]); ok && !allowed {
+		return true
+	}
+	if rateLimit, ok := quotaObject(quota["rate_limit"]); ok {
+		if limited, ok := quotaBool(rateLimit["limit_reached"]); ok && limited {
+			return true
+		}
+		if allowed, ok := quotaBool(rateLimit["allowed"]); ok && !allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func providerQuotaWindows(quota ProviderAccountQuotaSnapshot) []map[string]any {
+	var windows []map[string]any
+	for _, key := range []string{"primary_window", "secondary_window"} {
+		if window, ok := quotaObject(quota[key]); ok {
+			windows = append(windows, window)
+		}
+	}
+	if rateLimit, ok := quotaObject(quota["rate_limit"]); ok {
+		for _, key := range []string{"primary_window", "secondary_window"} {
+			if window, ok := quotaObject(rateLimit[key]); ok {
+				windows = append(windows, window)
+			}
+		}
+	}
+	if rawWindows, ok := quota["windows"].([]any); ok {
+		for _, rawWindow := range rawWindows {
+			if window, ok := quotaObject(rawWindow); ok {
+				windows = append(windows, window)
+			}
+		}
+	}
+	return windows
+}
+
+func maxProviderQuotaUsedPercent(windows []map[string]any) float64 {
+	used := 0.0
+	for _, window := range windows {
+		if value, ok := quotaFloat64(window["used_percent"]); ok && value > used {
+			used = value
+		}
+	}
+	return used
+}
+
+func quotaObject(value any) (map[string]any, bool) {
+	object, ok := value.(map[string]any)
+	return object, ok
+}
+
+func quotaString(value any) string {
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
+}
+
+func quotaBool(value any) (bool, bool) {
+	boolean, ok := value.(bool)
+	return boolean, ok
+}
+
+func quotaInt64(value any) int64 {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed)
+	case int64:
+		return typed
+	case float64:
+		if typed > 0 && typed == math.Trunc(typed) {
+			return int64(typed)
+		}
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil {
+			return parsed
+		}
+	}
+	return 0
+}
+
+func quotaFloat64(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case float64:
+		return typed, !math.IsNaN(typed) && !math.IsInf(typed, 0)
+	case json.Number:
+		if parsed, err := typed.Float64(); err == nil && !math.IsNaN(parsed) && !math.IsInf(parsed, 0) {
+			return parsed, true
+		}
+	}
+	return 0, false
 }
 
 func providerObservationSuccess(statusCode int, errorCode string) bool {

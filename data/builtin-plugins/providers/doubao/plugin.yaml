@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.doubao"
+name: "Doubao"
+version: 1.0.0
+summary: "Connect TokenHub to Doubao."
+description: "Connect TokenHub to Doubao. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "doubao"
+      name: "Doubao"
+      display_name: "Doubao"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://www.volcengine.com/docs/82379/1330310?lang=zh"
+      categories: []
+      models_count: 33
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

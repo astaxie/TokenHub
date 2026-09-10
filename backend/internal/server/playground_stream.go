@@ -52,16 +52,17 @@ type playgroundTiming struct {
 }
 
 type playgroundStreamPayload struct {
-	Type      string                   `json:"type"`
-	Status    string                   `json:"status"`
-	Response  any                      `json:"response,omitempty"`
-	Route     PlaygroundRouteSummary   `json:"route,omitzero"`
-	Usage     Usage                    `json:"usage,omitzero"`
-	Attempts  []PlaygroundRouteAttempt `json:"attempts,omitempty"`
-	Timing    playgroundTiming         `json:"timing"`
-	RequestID string                   `json:"request_id"`
-	Code      string                   `json:"code,omitempty"`
-	Error     string                   `json:"error,omitempty"`
+	Type         string                   `json:"type"`
+	Status       string                   `json:"status"`
+	Response     any                      `json:"response,omitempty"`
+	Route        PlaygroundRouteSummary   `json:"route,omitzero"`
+	Usage        Usage                    `json:"usage,omitzero"`
+	Attempts     []PlaygroundRouteAttempt `json:"attempts,omitempty"`
+	Timing       playgroundTiming         `json:"timing"`
+	RequestID    string                   `json:"request_id"`
+	Code         string                   `json:"code,omitempty"`
+	Error        string                   `json:"error,omitempty"`
+	ErrorDetails any                      `json:"error_details,omitempty"`
 }
 
 type playgroundStreamResult struct {
@@ -263,6 +264,102 @@ func (s *Server) handleAdminPlaygroundChatStream(w http.ResponseWriter, r *http.
 	}
 	call := s.newPlaygroundCallContext(user, req.Model, admittedAt)
 	w.Header().Set("x-request-id", call.RequestID)
+	if err := s.runGatewayAuthContextHooks(r.Context(), &call, r.Header); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, call.RequestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayChatDecodeNormalizeHooks(r.Context(), call, r.Header, &req); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, call.RequestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, req, requestTokenReservation(req)); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, call.RequestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayPrivacyPreHooks(r.Context(), call, r.Header, req, func(data json.RawMessage) error {
+		originalModel := req.Model
+		originalStream := req.Stream
+		var patched ChatCompletionRequest
+		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+			return err
+		}
+		if err := validateGatewayHookRequestInvariant(originalModel, originalStream, patched.Model, patched.Stream); err != nil {
+			return err
+		}
+		req = patched
+		return nil
+	}); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, call.RequestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayChatContextOptimizeHooks(r.Context(), call, &req); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, call.RequestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayChatGuardrailPreHooks(r.Context(), call, &req); err != nil {
+		httpErr := AsHTTPError(err)
+		requestAuditPayload := guardrailAuditSummary{Model: req.Model}
+		s.finishRoutedCall(r, GatewayCallCompletion{
+			Kind: CompletionKindPlayground, Call: call, StatusCode: httpErr.Status,
+			ErrorCode: httpErr.Code, ErrorMessage: httpErr.Message, RequestPayload: requestAuditPayload,
+			ResponsePayload: auditErrorPayload(err, call.RequestID),
+		})
+		s.recordAdminAudit(r, user, "chat_failed", "playground", req.Model, "", map[string]any{
+			"model": req.Model, "attempts": []PlaygroundRouteAttempt{}, "error": httpErr.Code,
+		})
+		writeError(w, r, err)
+		return
+	}
 	decision, guardrailErr := s.evaluateOutboundGuardrails(r.Context(), guardrailProjectID, chatGuardrailTargets(&req))
 	requestAuditPayload := guardrailRequestAuditPayload(req.Model, decision, playgroundAuditRequest(req))
 	if guardrailErr != nil {
@@ -400,7 +497,7 @@ func (s *Server) preparePlaygroundRoutedCall(ctx context.Context, req ChatComple
 		err = s.annotateRoutingPolicyForCandidateError(&routed.Call, err)
 		return routed, err
 	}
-	routes, err = s.filterCodexRoutesByModel(ctx, req.Model, routes)
+	routes, err = s.filterProviderAccountRoutesByModel(req.Model, routes)
 	if err != nil {
 		err = s.annotateRoutingPolicyForCandidateError(&routed.Call, err)
 		return routed, err
@@ -411,7 +508,11 @@ func (s *Server) preparePlaygroundRoutedCall(ctx context.Context, req ChatComple
 	if err != nil {
 		return routed, err
 	}
-	routed.Routes = s.planRouteOrder(routed.Call, routes)
+	routes, err = s.runGatewayRouteCandidatesHooks(ctx, routed.Call, routes)
+	if err != nil {
+		return routed, err
+	}
+	routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routes)
 	return routed, nil
 }
 
@@ -426,7 +527,7 @@ func (s *Server) executeRoutedPlaygroundStream(
 	result, route, usage, attempts, err := executeRoutedWithStore(
 		r.Context(), s.store, routed, allowEffortFallback,
 		func(ctx context.Context, candidate RouteSelection, omitReasoningEffort bool, _ int) (playgroundStreamResult, Usage, error) {
-			responsesReq, useResponses, conversionErr := playgroundResponsesRequestForRoute(candidate, req)
+			responsesReq, useResponses, conversionErr := playgroundResponsesRequestForRoute(s.adapterRegistry, candidate, req)
 			if conversionErr != nil {
 				return playgroundStreamResult{}, Usage{}, conversionErr
 			}
@@ -442,16 +543,16 @@ func (s *Server) executeRoutedPlaygroundStream(
 				if omitReasoningEffort {
 					upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
 				}
-				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundResponses(ctx, r, prepared, upstreamReq, events, routed.Call.RequestID)
-				if isCodexModelUnsupportedError(attemptErr) {
-					s.removeCodexResourceModel(routeResourceID(prepared), prepared.ProviderModel)
+				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundResponses(ctx, r, prepared, upstreamReq, routed.Call, events, routed.Call.RequestID)
+				if providerResourceModelUnsupportedError(attemptErr) {
+					s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
 				}
 			} else {
 				upstreamReq := req
 				if omitReasoningEffort {
 					upstreamReq.ReasoningEffort = nil
 				}
-				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundChat(ctx, prepared, upstreamReq, events, routed.Call.RequestID)
+				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundChat(ctx, prepared, upstreamReq, r.Header, routed.Call, events, routed.Call.RequestID)
 			}
 			lastResult = attemptResult
 			return attemptResult, attemptUsage, attemptErr
@@ -467,6 +568,8 @@ func (s *Server) streamPlaygroundChat(
 	ctx context.Context,
 	route RouteSelection,
 	req ChatCompletionRequest,
+	headers http.Header,
+	call CallContext,
 	events *playgroundEventStream,
 	requestID string,
 ) (playgroundStreamResult, Usage, error) {
@@ -488,7 +591,7 @@ func (s *Server) streamPlaygroundChat(
 		return result, usage, classifyStreamError(ctx, invokeErr, result.Text != "")
 	}
 	sink := newPlaygroundDeltaSink(events, requestID)
-	usage, streamErr := adapter.ChatStream(ctx, route.Provider, route.ProviderModel, req, sink)
+	usage, streamErr := s.streamChatRouteWithGatewayTransforms(ctx, call, route, req, headers, sink)
 	if finishErr := sink.finish(); streamErr == nil {
 		streamErr = finishErr
 	}
@@ -502,6 +605,7 @@ func (s *Server) streamPlaygroundResponses(
 	r *http.Request,
 	route RouteSelection,
 	req ResponsesRequest,
+	call CallContext,
 	events *playgroundEventStream,
 	requestID string,
 ) (playgroundStreamResult, Usage, error) {
@@ -526,7 +630,18 @@ func (s *Server) streamPlaygroundResponses(
 	}
 	defer opened.Body.Close()
 	sink := newPlaygroundDeltaSink(events, requestID)
-	response, outputText, usage, streamErr := consumeCodexResponsesStream(opened.Body, sink)
+	streamWriter := io.Writer(sink)
+	var transformer *gatewayStreamTransformWriter
+	if s.hasGatewayStreamTransformHooksForRoute(route, providerRouteProtocolResponses) {
+		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, providerRouteProtocolResponses, sink)
+		streamWriter = transformer
+	}
+	response, outputText, usage, streamErr := consumeCodexResponsesStream(opened.Body, streamWriter)
+	if transformer != nil {
+		if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {
+			streamErr = closeErr
+		}
+	}
 	applyCodexResponseMetadata(&usage, opened.Header)
 	if finishErr := sink.finish(); streamErr == nil {
 		streamErr = finishErr
@@ -578,6 +693,7 @@ func (s *Server) finishFailedPlaygroundStream(
 		Attempts:  playgroundAttemptsForUser(user, attempts),
 		Timing:    newPlaygroundTiming(routed.Call.StartedAt, result, completedAt, usage),
 		RequestID: routed.Call.RequestID, Code: code, Error: AsHTTPError(err).Message,
+		ErrorDetails: providerBlockedAddressDetails(err),
 	}
 	_ = events.emit("playground."+state, payload)
 }

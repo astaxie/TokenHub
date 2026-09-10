@@ -33,9 +33,51 @@ type ResponsesStreamOpener interface {
 	OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, incoming http.Header) (*http.Response, error)
 }
 
+type ProviderImageGenerator interface {
+	GenerateImage(ctx context.Context, provider Provider, providerModel string, req ProviderImageGenerationRequest) ([]byte, string, Usage, error)
+}
+
+type ProviderImageGenerationRequest struct {
+	Action         string               `json:"action"`
+	Model          string               `json:"model"`
+	Prompt         string               `json:"prompt"`
+	Count          int                  `json:"count,omitempty"`
+	Quality        string               `json:"quality,omitempty"`
+	Size           string               `json:"size,omitempty"`
+	ResponseFormat string               `json:"response_format,omitempty"`
+	Images         []ProviderImageInput `json:"images,omitempty"`
+}
+
+type ProviderImageInput struct {
+	Role        string `json:"role"`
+	ContentType string `json:"content_type"`
+	DataBase64  string `json:"data_base64"`
+}
+
 type ProviderResourceProber interface {
 	DefaultProbeRequest() ProviderProbeRequest
 	Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error)
+}
+
+type ProviderHealthProber interface {
+	ProbeProvider(ctx context.Context, provider Provider) (any, error)
+}
+
+type ProviderResourceModelCataloger interface {
+	ResourceModels(ctx context.Context, provider Provider, resource ProviderResource, etag string) (ProviderCatalogEntry, int, error)
+}
+
+type ProviderAdminOperation string
+
+const (
+	ProviderAdminOperationDeleteProvider ProviderAdminOperation = "provider.delete"
+	ProviderAdminOperationUpdateResource ProviderAdminOperation = "provider_resource.update"
+	ProviderAdminOperationDeleteResource ProviderAdminOperation = "provider_resource.delete"
+)
+
+type ProviderAdminLifecycle interface {
+	ProviderOperationKey(provider Provider, operation ProviderAdminOperation) (string, bool)
+	ProviderResourceOperationKey(provider Provider, resource ProviderResource, operation ProviderAdminOperation) (string, bool)
 }
 
 type ResponsesCompactAdapter interface {
@@ -161,8 +203,8 @@ func (a MockAdapter) Embeddings(ctx context.Context, provider Provider, provider
 
 // preservesReasoningContent reports whether an OpenAI-compatible upstream
 // understands the reasoning_content it produced being handed back on the next
-// turn. DeepSeek does and needs it for multi-turn reasoning; for everyone else
-// the field is a TokenHub-local extension and is stripped.
+// turn. The default comes from provider plugin policy; otherwise the field is a
+// TokenHub-local extension and is stripped.
 func preservesReasoningContent(provider Provider) bool {
 	return providerPreservesReasoningContent(provider)
 }
@@ -428,40 +470,85 @@ type AnthropicAdapter struct {
 
 const (
 	anthropicAuthTypeOption = "anthropic_auth_type"
-	anthropicAuthTypeAPIKey = "x-api-key"
-	anthropicAuthTypeBearer = "bearer"
+	anthropicAuthTypeAPIKey = providerAuthModeAPIKeyHeader
+	anthropicAuthTypeBearer = providerAuthModeBearer
 )
 
-func configureAnthropicProviderAuth(provider *Provider, requested string) error {
-	if provider == nil || provider.Type != ProviderAnthropic {
+func configureProviderAuthMode(provider *Provider, requested string, policy AdapterProviderPolicy) error {
+	if provider == nil {
 		return nil
+	}
+	supportedModes := policy.AuthModes
+	if len(supportedModes) == 0 {
+		return nil
+	}
+	authType := strings.ToLower(strings.TrimSpace(requested))
+	if authType == "" {
+		authType = providerConfiguredAuthMode(*provider, policy)
+	}
+	if authType == "" {
+		return nil
+	}
+	if !providerAuthModeAllowed(authType, supportedModes) {
+		return providerAuthModeInvalidError(policy)
 	}
 	if provider.Options == nil {
 		provider.Options = map[string]string{}
 	}
-	authType := strings.ToLower(strings.TrimSpace(requested))
-	if authType == "" {
-		authType = strings.ToLower(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]))
+	provider.Options[providerAuthModeOption] = authType
+	if legacyOption := strings.TrimSpace(policy.AuthModeLegacyOption); legacyOption != "" {
+		provider.Options[legacyOption] = authType
 	}
-	if authType == "" {
-		return nil
-	}
-	if authType != anthropicAuthTypeAPIKey && authType != anthropicAuthTypeBearer {
-		return NewHTTPError(
-			http.StatusBadRequest,
-			"provider_anthropic_auth_type_invalid",
-			"Anthropic authentication type must be x-api-key or bearer",
-		)
-	}
-	provider.Options[anthropicAuthTypeOption] = authType
 	return nil
+}
+
+func requestedProviderAuthMode(req ProviderCreateRequest) string {
+	if mode := strings.TrimSpace(req.ProviderAuthMode); mode != "" {
+		return mode
+	}
+	return req.AnthropicAuthType
+}
+
+func providerAuthModeAllowed(authType string, supportedModes []string) bool {
+	for _, supported := range supportedModes {
+		if authType == strings.ToLower(strings.TrimSpace(supported)) {
+			return true
+		}
+	}
+	return false
+}
+
+func providerAuthModeInvalidError(policy AdapterProviderPolicy) error {
+	code := strings.TrimSpace(policy.AuthModeInvalidErrorCode)
+	if code == "" {
+		code = "provider_auth_mode_invalid"
+	}
+	message := strings.TrimSpace(policy.AuthModeInvalidErrorMessage)
+	if message == "" {
+		message = "Provider authentication mode is not supported"
+	}
+	return NewHTTPError(http.StatusBadRequest, code, message)
+}
+
+func providerConfiguredAuthMode(provider Provider, policy AdapterProviderPolicy) string {
+	if provider.Options == nil {
+		return ""
+	}
+	if authType := strings.ToLower(strings.TrimSpace(provider.Options[providerAuthModeOption])); authType != "" {
+		return authType
+	}
+	legacyOption := strings.TrimSpace(policy.AuthModeLegacyOption)
+	if legacyOption == "" {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(provider.Options[legacyOption]))
 }
 
 func applyAnthropicProviderAuth(req *http.Request, provider Provider) {
 	if req == nil {
 		return
 	}
-	if strings.EqualFold(strings.TrimSpace(provider.Options[anthropicAuthTypeOption]), anthropicAuthTypeBearer) {
+	if providerConfiguredAuthMode(provider, AdapterProviderPolicy{AuthModeLegacyOption: anthropicAuthTypeOption}) == anthropicAuthTypeBearer {
 		req.Header.Del("x-api-key")
 		req.Header.Set("authorization", "Bearer "+provider.APIKey)
 		return

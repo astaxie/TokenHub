@@ -1,0 +1,553 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"reflect"
+	"sort"
+	"strings"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
+)
+
+func (s *Server) providerCatalogEntriesWithPlugins(entries []ProviderCatalogEntry) ([]ProviderCatalogEntry, bool) {
+	availability := s.providerCatalogPluginAvailability()
+	merged := make([]ProviderCatalogEntry, 0, len(entries))
+	changed := false
+	for _, entry := range entries {
+		if enabled, managed := availability[entry.ID]; managed && !enabled {
+			changed = true
+			continue
+		}
+		merged = append(merged, entry)
+	}
+	pluginEntries := s.pluginProviderCatalogEntries()
+	if len(pluginEntries) == 0 {
+		return merged, changed
+	}
+	indexByID := map[string]int{}
+	for index, entry := range merged {
+		if entry.ID != "" {
+			indexByID[entry.ID] = index
+		}
+	}
+	for _, entry := range pluginEntries {
+		if index, ok := indexByID[entry.ID]; ok {
+			if entry.Source == providerCatalogGeneratedPluginSource {
+				continue
+			}
+			enriched, updated := mergeProviderCatalogEntryWithPluginMetadata(merged[index], entry)
+			if updated {
+				merged[index] = enriched
+				changed = true
+			}
+			continue
+		}
+		indexByID[entry.ID] = len(merged)
+		merged = append(merged, entry)
+		changed = true
+	}
+	sortCatalogEntries(merged)
+	return merged, changed
+}
+
+func (s *Server) pluginProviderCatalogEntry(id string) (ProviderCatalogEntry, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ProviderCatalogEntry{}, false
+	}
+	for _, entry := range s.pluginProviderCatalogEntries() {
+		if entry.ID == id {
+			return entry, true
+		}
+	}
+	return ProviderCatalogEntry{}, false
+}
+
+func (s *Server) providerCatalogEntryWithPlugins(ctx context.Context, id string, refresh bool) (ProviderCatalogEntry, string, bool, error) {
+	if enabled, managed := s.providerCatalogPluginAvailability()[strings.TrimSpace(id)]; managed && !enabled {
+		return ProviderCatalogEntry{}, "plugins", false, nil
+	}
+	entry, source, ok, err := s.providerCatalog.Get(ctx, id, refresh)
+	if err != nil {
+		return ProviderCatalogEntry{}, source, false, err
+	}
+	pluginEntry, pluginOK := s.pluginProviderCatalogEntry(id)
+	if !pluginOK {
+		return entry, source, ok, nil
+	}
+	if ok && pluginEntry.Source == providerCatalogGeneratedPluginSource {
+		return entry, source, true, nil
+	}
+	if !ok {
+		return pluginEntry, pluginEntry.Source, true, nil
+	}
+	merged, changed := mergeProviderCatalogEntryWithPluginMetadata(entry, pluginEntry)
+	if changed {
+		source = firstNonEmpty(source, "catalog") + "+plugins"
+	}
+	return merged, source, true, nil
+}
+
+func (s *Server) pluginProviderCatalogCapabilityEntryForType(providerType string) (ProviderCatalogEntry, bool) {
+	providerType = strings.TrimSpace(providerType)
+	if s == nil || s.pluginRegistry == nil || s.adapterRegistry == nil || providerType == "" {
+		return ProviderCatalogEntry{}, false
+	}
+	adapter, ok := s.adapterRegistry.Describe(providerType)
+	if !ok || adapter.PluginID == "" {
+		return ProviderCatalogEntry{}, false
+	}
+	plugin, ok := s.pluginRegistry.Describe(adapter.PluginID)
+	if !ok {
+		return ProviderCatalogEntry{}, false
+	}
+	return providerCatalogEntryFromPluginCapability(plugin, adapter)
+}
+
+func (s *Server) pluginProviderCatalogEntries() []ProviderCatalogEntry {
+	if s == nil || s.pluginRegistry == nil {
+		return nil
+	}
+	entriesByID := map[string]ProviderCatalogEntry{}
+	explicitTypes := map[string]struct{}{}
+	for _, descriptor := range s.pluginRegistry.List() {
+		if !providerCatalogPluginLoadable(descriptor) {
+			continue
+		}
+		for _, entry := range providerCatalogEntriesFromPluginCapabilities(descriptor) {
+			if entry.ID == "" || entry.Type == "" {
+				continue
+			}
+			explicitTypes[entry.Type] = struct{}{}
+			mergeProviderCatalogEntry(entriesByID, entry)
+		}
+	}
+	if s.adapterRegistry != nil {
+		for _, adapter := range s.adapterRegistry.List() {
+			if adapter.PluginID == "" {
+				continue
+			}
+			if _, ok := explicitTypes[adapter.Type]; ok {
+				continue
+			}
+			plugin, ok := s.pluginRegistry.Describe(adapter.PluginID)
+			if !ok {
+				continue
+			}
+			mergeProviderCatalogEntry(entriesByID, providerCatalogEntryFromPlugin(plugin, adapter))
+		}
+	}
+	entries := make([]ProviderCatalogEntry, 0, len(entriesByID))
+	for _, entry := range entriesByID {
+		entries = append(entries, entry)
+	}
+	sortCatalogEntries(entries)
+	return entries
+}
+
+func (s *Server) providerCatalogMultiMethodRouteIDs() []string {
+	ids := map[string]bool{"custom": true}
+	for _, entry := range s.pluginProviderCatalogEntries() {
+		if !validStaticProviderCatalogRouteID(entry.ID) {
+			continue
+		}
+		if _, ok := s.providerPluginCapabilityActionDescriptor(entry.Type, AdapterCapabilityModels, "models.preview", ""); ok {
+			ids[entry.ID] = true
+		}
+	}
+	values := make([]string, 0, len(ids))
+	for id := range ids {
+		values = append(values, id)
+	}
+	sort.Strings(values)
+	return values
+}
+
+func validStaticProviderCatalogRouteID(id string) bool {
+	id = strings.TrimSpace(id)
+	return id != "" && !strings.Contains(id, "/") && !strings.Contains(id, "{") && !strings.Contains(id, "}")
+}
+
+func providerCatalogTypesFromRegistry(registry *AdapterRegistry) map[string]string {
+	if registry == nil {
+		return nil
+	}
+	types := map[string]string{}
+	for _, plugin := range registry.ListPlugins() {
+		if !providerCatalogPluginLoadable(plugin) {
+			continue
+		}
+		for _, entry := range providerCatalogEntriesFromPluginCapabilities(plugin) {
+			if entry.ID != "" && entry.Type != "" {
+				types[entry.ID] = entry.Type
+			}
+		}
+	}
+	if len(types) == 0 {
+		return nil
+	}
+	return types
+}
+
+func providerCatalogDefaultTypeFromRegistry(registry *AdapterRegistry) string {
+	if registry == nil {
+		return ""
+	}
+	for _, plugin := range registry.ListPlugins() {
+		if !providerCatalogPluginLoadable(plugin) {
+			continue
+		}
+		for _, capability := range plugin.Capabilities {
+			if capability.Kind != "provider_policy" || capability.Name != "default_catalog_provider_type" {
+				continue
+			}
+			if !strings.EqualFold(strings.TrimSpace(capability.Value), "true") {
+				continue
+			}
+			if providerType := strings.TrimSpace(capability.Subject); providerType != "" {
+				return providerType
+			}
+		}
+	}
+	return ""
+}
+
+func providerCatalogSeedEntriesFromRegistry(registry *AdapterRegistry) []ProviderCatalogEntry {
+	if registry == nil {
+		return nil
+	}
+	entriesByID := map[string]ProviderCatalogEntry{}
+	for _, plugin := range registry.ListPlugins() {
+		if plugin.Source != pluginmeta.SourceBuiltIn || !providerCatalogPluginLoadable(plugin) {
+			continue
+		}
+		for _, entry := range providerCatalogEntriesFromPluginCapabilities(plugin) {
+			mergeProviderCatalogEntry(entriesByID, entry)
+		}
+	}
+	entries := make([]ProviderCatalogEntry, 0, len(entriesByID))
+	for _, entry := range entriesByID {
+		entries = append(entries, entry)
+	}
+	sortCatalogEntries(entries)
+	if len(entries) == 0 {
+		return nil
+	}
+	return entries
+}
+
+func (s *Server) providerCatalogPluginAvailability() map[string]bool {
+	availability := map[string]bool{}
+	if s == nil || s.pluginRegistry == nil {
+		return availability
+	}
+	for _, descriptor := range s.pluginRegistry.List() {
+		loadable := providerCatalogPluginLoadable(descriptor)
+		for _, entry := range providerCatalogEntriesFromPluginCapabilities(descriptor) {
+			if entry.ID == "" {
+				continue
+			}
+			availability[entry.ID] = availability[entry.ID] || loadable
+		}
+	}
+	return availability
+}
+
+func providerCatalogPluginLoadable(descriptor pluginmeta.Descriptor) bool {
+	state, err := pluginmeta.NormalizePackageState(pluginmeta.PackageState{Status: descriptor.Status})
+	return err == nil && state.Loadable()
+}
+
+func mergeProviderCatalogEntry(entries map[string]ProviderCatalogEntry, entry ProviderCatalogEntry) {
+	if entries == nil || entry.ID == "" {
+		return
+	}
+	if existing, ok := entries[entry.ID]; ok {
+		merged, _ := mergeProviderCatalogEntryWithPluginMetadata(existing, entry)
+		entries[entry.ID] = merged
+		return
+	}
+	entries[entry.ID] = entry
+}
+
+func providerCatalogEntryFromPlugin(plugin pluginmeta.Descriptor, adapter AdapterDescriptor) ProviderCatalogEntry {
+	if entry, ok := providerCatalogEntryFromPluginCapability(plugin, adapter); ok {
+		return entry
+	}
+	name := firstNonEmpty(strings.TrimSpace(plugin.Name), adapter.Type)
+	return ProviderCatalogEntry{
+		ID:          adapter.Type,
+		Name:        name,
+		DisplayName: name,
+		Type:        adapter.Type,
+		Source:      "plugin:" + string(plugin.Source),
+	}
+}
+
+func mergeProviderCatalogEntryWithPluginMetadata(base ProviderCatalogEntry, pluginEntry ProviderCatalogEntry) (ProviderCatalogEntry, bool) {
+	merged := base
+	if pluginEntry.ID != "" {
+		merged.ID = pluginEntry.ID
+	}
+	if pluginEntry.Name != "" {
+		merged.Name = pluginEntry.Name
+	}
+	if pluginEntry.DisplayName != "" {
+		merged.DisplayName = pluginEntry.DisplayName
+	}
+	if pluginEntry.Type != "" {
+		merged.Type = pluginEntry.Type
+	}
+	if pluginEntry.BaseURL != "" {
+		merged.BaseURL = pluginEntry.BaseURL
+	}
+	if pluginEntry.DocURL != "" {
+		merged.DocURL = pluginEntry.DocURL
+	}
+	if pluginEntry.Source != "" {
+		merged.Source = pluginEntry.Source
+	}
+	if pluginEntry.ETag != "" {
+		merged.ETag = pluginEntry.ETag
+	}
+	if len(pluginEntry.Models) > 0 && len(merged.Models) == 0 {
+		merged.Models = append([]ProviderCatalogModel(nil), pluginEntry.Models...)
+		merged.ModelsCount = len(pluginEntry.Models)
+		merged.Categories, merged.CategoryCounts = catalogCategorySummary(merged.Models)
+	} else {
+		if pluginEntry.ModelsCount > 0 && len(merged.Models) == 0 {
+			merged.ModelsCount = pluginEntry.ModelsCount
+		}
+		if len(pluginEntry.Categories) > 0 && len(merged.Categories) == 0 {
+			merged.Categories = append([]string(nil), pluginEntry.Categories...)
+			merged.CategoryCounts = map[string]int{}
+			for _, category := range merged.Categories {
+				merged.CategoryCounts[category] = 0
+			}
+		}
+	}
+	return merged, !reflect.DeepEqual(base, merged)
+}
+
+type pluginProviderCatalogEntry struct {
+	ID                                string                       `json:"id"`
+	Name                              string                       `json:"name"`
+	DisplayName                       string                       `json:"display_name"`
+	Type                              string                       `json:"type"`
+	BaseURL                           string                       `json:"base_url"`
+	DocURL                            string                       `json:"doc_url"`
+	Categories                        []string                     `json:"categories"`
+	ModelsCount                       int                          `json:"models_count"`
+	Source                            string                       `json:"source"`
+	ETag                              string                       `json:"etag"`
+	Models                            []pluginProviderCatalogModel `json:"models"`
+	ModelsAccountRequiredErrorCode    string                       `json:"models_account_required_error_code"`
+	ModelsAccountRequiredErrorMessage string                       `json:"models_account_required_error_message"`
+}
+
+type pluginProviderCatalogModel struct {
+	ID                        string            `json:"id"`
+	Name                      string            `json:"name"`
+	DisplayName               string            `json:"display_name"`
+	CanonicalName             string            `json:"canonical_name"`
+	Category                  string            `json:"category"`
+	Family                    string            `json:"family"`
+	Type                      string            `json:"type"`
+	ContextWindow             int64             `json:"context_window"`
+	MaxOutputTokens           int64             `json:"max_output_tokens"`
+	InputPriceUSDPer1M        float64           `json:"input_price_usd_per_1m"`
+	CacheReadPriceUSDPer1M    float64           `json:"cache_read_price_usd_per_1m"`
+	CacheWritePriceUSDPer1M   float64           `json:"cache_write_price_usd_per_1m"`
+	CacheWrite5mPriceUSDPer1M float64           `json:"cache_write_5m_price_usd_per_1m"`
+	CacheWrite1hPriceUSDPer1M float64           `json:"cache_write_1h_price_usd_per_1m"`
+	OutputPriceUSDPer1M       float64           `json:"output_price_usd_per_1m"`
+	InputModalities           []string          `json:"input_modalities"`
+	OutputModalities          []string          `json:"output_modalities"`
+	Capabilities              []string          `json:"capabilities"`
+	SupportedParameters       []string          `json:"supported_parameters"`
+	LastUpdated               string            `json:"last_updated"`
+	Metadata                  map[string]string `json:"metadata"`
+}
+
+func providerCatalogEntryFromPluginCapability(plugin pluginmeta.Descriptor, adapter AdapterDescriptor) (ProviderCatalogEntry, bool) {
+	for _, capability := range plugin.Capabilities {
+		if capability.Kind != "provider_catalog" || capability.Name != "entry" || strings.TrimSpace(capability.Value) == "" {
+			continue
+		}
+		if capability.Subject != "" && capability.Subject != adapter.Type {
+			continue
+		}
+		entry, _ := providerCatalogEntryFromPluginCatalogCapability(plugin, capability, adapter)
+		if entry.ID != "" && entry.Type != "" {
+			return entry, true
+		}
+	}
+	return ProviderCatalogEntry{}, false
+}
+
+func (s *Server) providerCatalogModelsAccountRequiredError(catalogID string, providerType string) *HTTPError {
+	manifestEntry, ok := s.pluginProviderCatalogManifestEntry(catalogID, providerType)
+	if !ok {
+		return nil
+	}
+	code := strings.TrimSpace(manifestEntry.ModelsAccountRequiredErrorCode)
+	if code == "" {
+		return nil
+	}
+	message := firstNonEmpty(
+		strings.TrimSpace(manifestEntry.ModelsAccountRequiredErrorMessage),
+		"Connect a provider account before loading its models",
+	)
+	return NewHTTPError(http.StatusConflict, code, message)
+}
+
+func (s *Server) pluginProviderCatalogManifestEntry(catalogID string, providerType string) (pluginProviderCatalogEntry, bool) {
+	catalogID = strings.TrimSpace(catalogID)
+	providerType = strings.TrimSpace(providerType)
+	if s == nil || s.pluginRegistry == nil || (catalogID == "" && providerType == "") {
+		return pluginProviderCatalogEntry{}, false
+	}
+	for _, plugin := range s.pluginRegistry.List() {
+		if !providerCatalogPluginLoadable(plugin) {
+			continue
+		}
+		for _, capability := range plugin.Capabilities {
+			if capability.Kind != "provider_catalog" || capability.Name != "entry" || strings.TrimSpace(capability.Value) == "" {
+				continue
+			}
+			var manifestEntry pluginProviderCatalogEntry
+			if err := json.Unmarshal([]byte(capability.Value), &manifestEntry); err != nil {
+				continue
+			}
+			adapter := AdapterDescriptor{Type: firstNonEmpty(providerType, strings.TrimSpace(capability.Subject))}
+			entry := manifestEntry.providerCatalogEntry(plugin, adapter)
+			if catalogID != "" && entry.ID != catalogID {
+				continue
+			}
+			if providerType != "" && entry.Type != providerType {
+				continue
+			}
+			return manifestEntry, true
+		}
+	}
+	return pluginProviderCatalogEntry{}, false
+}
+
+func providerCatalogEntriesFromPluginCapabilities(plugin pluginmeta.Descriptor) []ProviderCatalogEntry {
+	entries := []ProviderCatalogEntry{}
+	for _, capability := range plugin.Capabilities {
+		if capability.Kind != "provider_catalog" || capability.Name != "entry" || strings.TrimSpace(capability.Value) == "" {
+			continue
+		}
+		adapter := AdapterDescriptor{Type: strings.TrimSpace(capability.Subject)}
+		entry, ok := providerCatalogEntryFromPluginCatalogCapability(plugin, capability, adapter)
+		if ok && entry.ID != "" && entry.Type != "" {
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+func providerCatalogEntryFromPluginCatalogCapability(plugin pluginmeta.Descriptor, capability pluginmeta.CapabilityDescriptor, adapter AdapterDescriptor) (ProviderCatalogEntry, bool) {
+	var manifestEntry pluginProviderCatalogEntry
+	if err := json.Unmarshal([]byte(capability.Value), &manifestEntry); err != nil {
+		return ProviderCatalogEntry{}, false
+	}
+	entry := manifestEntry.providerCatalogEntry(plugin, adapter)
+	return entry, true
+}
+
+func (entry pluginProviderCatalogEntry) providerCatalogEntry(plugin pluginmeta.Descriptor, adapter AdapterDescriptor) ProviderCatalogEntry {
+	modelCategories := providerModelCategoryDefinitionsFromPlugin(plugin)
+	models := make([]ProviderCatalogModel, 0, len(entry.Models))
+	for _, model := range entry.Models {
+		if converted, ok := model.providerCatalogModelWithCategories(modelCategories); ok {
+			models = append(models, converted)
+		}
+	}
+	categories := catalogUniqueStrings(entry.Categories)
+	categoryCounts := map[string]int(nil)
+	if len(models) > 0 {
+		modelCategories, counts := catalogCategorySummary(models)
+		if len(categories) == 0 {
+			categories = modelCategories
+		}
+		categoryCounts = counts
+	} else if len(categories) > 0 {
+		categoryCounts = map[string]int{}
+		for _, category := range categories {
+			categoryCounts[category] = 0
+		}
+	}
+	modelsCount := entry.ModelsCount
+	if len(models) > 0 {
+		modelsCount = len(models)
+	}
+	name := firstNonEmpty(strings.TrimSpace(entry.Name), strings.TrimSpace(entry.DisplayName), strings.TrimSpace(plugin.Name), adapter.Type)
+	return ProviderCatalogEntry{
+		ID:             firstNonEmpty(strings.TrimSpace(entry.ID), adapter.Type),
+		Name:           name,
+		DisplayName:    firstNonEmpty(strings.TrimSpace(entry.DisplayName), name),
+		Type:           firstNonEmpty(strings.TrimSpace(entry.Type), adapter.Type),
+		BaseURL:        strings.TrimSpace(entry.BaseURL),
+		DocURL:         strings.TrimSpace(entry.DocURL),
+		Categories:     categories,
+		CategoryCounts: categoryCounts,
+		ModelsCount:    modelsCount,
+		Source:         firstNonEmpty(strings.TrimSpace(entry.Source), "plugin:"+string(plugin.Source)),
+		ETag:           strings.TrimSpace(entry.ETag),
+		Models:         models,
+	}
+}
+
+func (model pluginProviderCatalogModel) providerCatalogModelWithCategories(modelCategories []providerModelCategoryDefinition) (ProviderCatalogModel, bool) {
+	id := strings.TrimSpace(model.ID)
+	if id == "" {
+		return ProviderCatalogModel{}, false
+	}
+	name := firstNonEmpty(strings.TrimSpace(model.Name), id)
+	displayName := firstNonEmpty(strings.TrimSpace(model.DisplayName), name)
+	category := standardModelCategoryWithDefinitions(firstNonEmpty(model.Category, inferModelCategoryWithDefinitions(id, displayName, modelCategories)), modelCategories)
+	family := firstNonEmpty(strings.TrimSpace(model.Family), inferModelFamilyWithDefinitions(id, modelCategories))
+	metadata := model.Metadata
+	if metadata == nil {
+		metadata = map[string]string{"source": "plugin"}
+	}
+	return ProviderCatalogModel{
+		ID:                        id,
+		Name:                      name,
+		DisplayName:               displayName,
+		CanonicalName:             firstNonEmpty(strings.TrimSpace(model.CanonicalName), canonicalModelNameWithDefinitions(id, displayName, modelCategories)),
+		Category:                  category,
+		Family:                    family,
+		Type:                      firstNonEmpty(strings.TrimSpace(model.Type), "chat"),
+		ContextWindow:             model.ContextWindow,
+		MaxOutputTokens:           model.MaxOutputTokens,
+		InputPriceUSDPer1M:        model.InputPriceUSDPer1M,
+		CacheReadPriceUSDPer1M:    model.CacheReadPriceUSDPer1M,
+		CacheWritePriceUSDPer1M:   model.CacheWritePriceUSDPer1M,
+		CacheWrite5mPriceUSDPer1M: model.CacheWrite5mPriceUSDPer1M,
+		CacheWrite1hPriceUSDPer1M: model.CacheWrite1hPriceUSDPer1M,
+		OutputPriceUSDPer1M:       model.OutputPriceUSDPer1M,
+		InputModalities:           catalogUniqueStrings(model.InputModalities),
+		OutputModalities:          catalogUniqueStrings(model.OutputModalities),
+		Capabilities:              catalogUniqueStrings(model.Capabilities),
+		SupportedParameters:       catalogUniqueStrings(model.SupportedParameters),
+		LastUpdated:               strings.TrimSpace(model.LastUpdated),
+		Metadata:                  metadata,
+	}, true
+}
+
+func providerCatalogEntryWithSubmittedModels(entry ProviderCatalogEntry, models []ProviderCatalogModel, category string, providerType string) ProviderCatalogEntry {
+	catalog := customProviderCatalogFromModelsWithType(models, category, providerType)
+	catalog.ID = firstNonEmpty(entry.ID, catalog.ID)
+	catalog.Name = firstNonEmpty(entry.Name, entry.DisplayName, catalog.Name)
+	catalog.DisplayName = firstNonEmpty(entry.DisplayName, catalog.DisplayName, catalog.Name)
+	catalog.Type = firstNonEmpty(entry.Type, catalog.Type)
+	catalog.BaseURL = entry.BaseURL
+	catalog.DocURL = entry.DocURL
+	catalog.Source = firstNonEmpty(entry.Source, catalog.Source)
+	return catalog
+}

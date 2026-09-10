@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.novita-ai"
+name: "NovitaAI"
+version: 1.0.0
+summary: "Connect TokenHub to NovitaAI."
+description: "Connect TokenHub to NovitaAI. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.novita.ai/openai"
+    catalog:
+      id: "novita-ai"
+      name: "NovitaAI"
+      display_name: "NovitaAI"
+      type: "openai_compatible"
+      base_url: "https://api.novita.ai/openai"
+      doc_url: "https://novita.ai/docs/guides/introduction"
+      categories: []
+      models_count: 104
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

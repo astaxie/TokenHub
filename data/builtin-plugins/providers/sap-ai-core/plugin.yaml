@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.sap-ai-core"
+name: "SAP AI Core"
+version: 1.0.0
+summary: "Connect TokenHub to SAP AI Core."
+description: "Connect TokenHub to SAP AI Core. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "sap-ai-core"
+      name: "SAP AI Core"
+      display_name: "SAP AI Core"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://help.sap.com/docs/sap-ai-core"
+      categories: []
+      models_count: 26
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

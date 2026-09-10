@@ -15,9 +15,13 @@ import (
 )
 
 const (
-	AffinityKindCodexSession = "codex_session"
-	noBindingGeneration      = int64(-1)
-	codexSessionAffinityTTL  = time.Hour
+	AffinityKindCodexSession    = "codex_session"
+	AffinityKindProviderSession = "provider_session"
+	noBindingGeneration         = int64(-1)
+	codexSessionAffinityTTL     = time.Hour
+
+	sessionAffinityIdentifierProfileProvider      = "provider"
+	sessionAffinityIdentifierProfileCompatibility = "compatibility"
 )
 
 type RequestAffinity struct {
@@ -37,30 +41,95 @@ type RequestAffinity struct {
 // Cache locality is purely stateless and must return false, otherwise every chat
 // request would pay for the binding table's DELETE+SELECT+UPDATE.
 func (a *RequestAffinity) persistsBinding() bool {
-	return a != nil && a.Kind == AffinityKindCodexSession
+	return a != nil && (a.Kind == AffinityKindCodexSession || a.Kind == AffinityKindProviderSession)
 }
 
-func resolveCodexSessionAffinity(secret string, apiKeyID string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
-	canonical, ok := codexSessionIdentifier(headers, request)
+func validProviderSessionAffinityKind(kind string) bool {
+	kind = strings.TrimSpace(kind)
+	return kind == AffinityKindCodexSession || kind == AffinityKindProviderSession
+}
+
+type providerSessionAffinityPolicy struct {
+	Kind              string
+	IdentifierProfile string
+}
+
+func normalizeSessionAffinityIdentifierProfile(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case sessionAffinityIdentifierProfileProvider:
+		return sessionAffinityIdentifierProfileProvider
+	case sessionAffinityIdentifierProfileCompatibility, "codex", "codex_compatible":
+		return sessionAffinityIdentifierProfileCompatibility
+	default:
+		return ""
+	}
+}
+
+func resolveProviderSessionAffinity(secret string, apiKeyID string, adapterType string, affinityKind string, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
+	return resolveProviderSessionAffinityWithPolicy(secret, apiKeyID, adapterType, providerSessionAffinityPolicy{Kind: affinityKind}, headers, request)
+}
+
+func resolveProviderSessionAffinityWithPolicy(secret string, apiKeyID string, adapterType string, policy providerSessionAffinityPolicy, headers http.Header, request ResponsesRequest) (*RequestAffinity, error) {
+	policy = normalizedProviderSessionAffinityPolicy(policy)
+	canonical, ok := responsesAffinityIdentifier(headers, request, policy.IdentifierProfile)
 	if !ok {
 		return nil, nil
 	}
-	if err := validateSessionIdentifier(canonical, "codex_session_id_invalid", "Codex session identifier"); err != nil {
+	code := "provider_session_id_invalid"
+	label := "Provider session identifier"
+	if policy.Kind == AffinityKindCodexSession {
+		code = "codex_session_id_invalid"
+		label = "Codex session identifier"
+	}
+	if err := validateSessionIdentifier(canonical, code, label); err != nil {
 		return nil, err
 	}
+	adapterType = strings.TrimSpace(adapterType)
+	if adapterType == "" {
+		return nil, nil
+	}
 	return &RequestAffinity{
-		AdapterType: ProviderOpenAICodex,
-		Kind:        AffinityKindCodexSession,
+		AdapterType: adapterType,
+		Kind:        policy.Kind,
 		KeyHash:     deriveSessionAffinityKey(secret, apiKeyID, canonical),
 	}, nil
 }
 
-func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (string, bool) {
+func normalizedProviderSessionAffinityPolicy(policy providerSessionAffinityPolicy) providerSessionAffinityPolicy {
+	policy.Kind = strings.TrimSpace(policy.Kind)
+	if !validProviderSessionAffinityKind(policy.Kind) {
+		policy.Kind = AffinityKindProviderSession
+	}
+	policy.IdentifierProfile = normalizeSessionAffinityIdentifierProfile(policy.IdentifierProfile)
+	if policy.IdentifierProfile == "" {
+		if policy.Kind == AffinityKindCodexSession {
+			policy.IdentifierProfile = sessionAffinityIdentifierProfileCompatibility
+		} else {
+			policy.IdentifierProfile = sessionAffinityIdentifierProfileProvider
+		}
+	}
+	return policy
+}
+
+func responsesAffinityIdentifier(headers http.Header, request ResponsesRequest, identifierProfile string) (string, bool) {
+	if normalizeSessionAffinityIdentifierProfile(identifierProfile) == sessionAffinityIdentifierProfileCompatibility {
+		return compatibilitySessionIdentifier(headers, request)
+	}
+	identifier, scope := providerResponsesSessionIdentifier(headers, request)
+	if scope != sessionScopeSession {
+		return "", false
+	}
+	return identifier, true
+}
+
+func compatibilitySessionIdentifier(headers http.Header, request ResponsesRequest) (string, bool) {
 	for _, value := range []string{
 		headers.Get("session-id"),
 		headers.Get("session_id"),
-		codexClientMetadataSessionID(request),
-		codexRawStringField(request, "prompt_cache_key"),
+		compatibilityClientMetadataSessionID(request),
+		responsesRawStringField(request, "prompt_cache_key"),
 		headers.Get("thread-id"),
 		headers.Get("x-client-request-id"),
 	} {
@@ -72,7 +141,11 @@ func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (stri
 	return "", false
 }
 
-func codexClientMetadataSessionID(request ResponsesRequest) string {
+func codexSessionIdentifier(headers http.Header, request ResponsesRequest) (string, bool) {
+	return compatibilitySessionIdentifier(headers, request)
+}
+
+func compatibilityClientMetadataSessionID(request ResponsesRequest) string {
 	if request.raw == nil {
 		return ""
 	}
@@ -89,21 +162,6 @@ func codexClientMetadataSessionID(request ResponsesRequest) string {
 		_ = json.Unmarshal(value, &sessionID)
 	}
 	return strings.TrimSpace(sessionID)
-}
-
-func codexRawStringField(request ResponsesRequest, key string) string {
-	if request.raw == nil {
-		return ""
-	}
-	raw, ok := request.raw[key]
-	if !ok {
-		return ""
-	}
-	var value string
-	if json.Unmarshal(raw, &value) != nil {
-		return ""
-	}
-	return strings.TrimSpace(value)
 }
 
 func (s *GormStore) GetAdapterSessionBinding(ctx context.Context, adapterType string, providerID string, affinityKeyHash string) (AdapterSessionBinding, bool, error) {

@@ -20,7 +20,7 @@ func writeTestCatalog(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "model-catalog.yaml")
-	content := []byte("version: 1\nmodels:\n  - name: seeded-test-model\n    category: test\n")
+	content := []byte("version: 1\nmodels:\n  - name: seeded-test-model\n    category: test\n    family: test\n    modality: chat\n    context_window: 1000\n    input_modalities: [text]\n    output_modalities: [text]\n    capabilities: [chat]\n    supported_parameters: []\n")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("write catalog: %v", err)
 	}

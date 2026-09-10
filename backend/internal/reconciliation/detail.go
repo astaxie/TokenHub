@@ -60,10 +60,10 @@ func calculateDetail(
 		if record.CreatedAt.Before(usageFrom) || !record.CreatedAt.Before(usageTo) {
 			continue
 		}
-		localCost := record.ProviderCostUSD
-		if localCost == 0 {
-			localCost = record.CostUSD
+		if !record.ProviderCostKnown && record.ProviderCostUSD == 0 {
+			return run, nil, NewError(ErrorInvalidInput, "reconciliation_provider_cost_unknown", "Provider cost evidence is missing for usage record "+record.ID+"; reconciliation is incomplete")
 		}
+		localCost := record.ProviderCostUSD
 		amount, err := moneyFromFloat(localCost)
 		if err != nil {
 			return run, nil, fmt.Errorf("usage record %s: %w", record.ID, err)

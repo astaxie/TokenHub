@@ -12,6 +12,7 @@ export function Sidebar({
   activeView,
   onSelect,
   user,
+  data,
   onLogout,
   collapsed,
   onToggleCollapse,
@@ -21,7 +22,10 @@ export function Sidebar({
   activeView: ViewKey;
   onSelect: (view: ViewKey) => void;
   user: AdminUser;
+  data: AppData;
+  activePluginPageKey: string;
   onLogout: () => void;
+  onSelectPluginPage: (key: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   openGroups: Record<string, boolean>;
@@ -30,6 +34,7 @@ export function Sidebar({
   const visibleGroups = navGroupsForUser(user)
     .map((group) => ({ ...group, items: group.items.map((item) => filterNavItemByAccess(item, user)).filter((item): item is NavItem => Boolean(item)) }))
     .filter((group) => group.items.length > 0);
+  void data;
   return (
     <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
       <div className="brand">
@@ -318,6 +323,7 @@ export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
 export function pageRecordCount(view: ViewKey, data: AppData) {
   const config = resourceConfigFor(view);
   if (config) return config.list(data).length;
+  if (view === "plugins") return data.plugins.length;
   if (view === "alert-events") return data.alerts.length;
   if (view === "alert-deliveries") return data.alertDeliveries.length;
   if (view === "approvals") return data.approvals.length;

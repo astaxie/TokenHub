@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"tokenhub/backend/internal/metering"
 )
 
 const (
@@ -174,6 +175,7 @@ type QuotaPolicyUsage struct {
 }
 
 type Model struct {
+	pricingPatch              *modelPricePatch
 	ID                        string  `json:"id" gorm:"primaryKey"`
 	Name                      string  `json:"name" gorm:"uniqueIndex"`
 	Category                  string  `json:"category,omitempty" gorm:"index"`
@@ -299,12 +301,15 @@ type ProviderCreateRequest struct {
 	Options                     map[string]string `json:"options"`
 	CatalogID                   string            `json:"catalog_id"`
 	ModelCategory               string            `json:"model_category"`
-	ClaudeCodeAttributionPolicy *string           `json:"claude_code_attribution_policy,omitempty"`
+	SystemPromptTransformPolicy *string           `json:"system_prompt_transform_policy,omitempty"`
+	// ClaudeCodeAttributionPolicy is a legacy write-only alias for system prompt transform policy.
+	ClaudeCodeAttributionPolicy *string `json:"claude_code_attribution_policy,omitempty"`
 	// CreateRoutes is accepted only to reject the retired automatic-route workflow.
-	CreateRoutes   *bool                  `json:"create_routes"`
-	SelectedModels []string               `json:"selected_models"`
-	CustomModels   []ProviderCatalogModel `json:"custom_models"`
-	// AnthropicAuthType is a write-only convenience field persisted in Options.
+	CreateRoutes     *bool                  `json:"create_routes"`
+	SelectedModels   []string               `json:"selected_models"`
+	CustomModels     []ProviderCatalogModel `json:"custom_models"`
+	ProviderAuthMode string                 `json:"provider_auth_mode"`
+	// AnthropicAuthType is a legacy write-only alias for provider auth mode.
 	AnthropicAuthType string `json:"anthropic_auth_type"`
 }
 
@@ -429,29 +434,31 @@ type ModelRoutePolicy struct {
 }
 
 type Usage struct {
-	PromptTokens             int64       `json:"prompt_tokens"`
-	CachedInputTokens        int64       `json:"cached_input_tokens,omitempty"`
-	CacheWriteInputTokens    int64       `json:"cache_write_input_tokens,omitempty"`
-	CacheWrite5mInputTokens  int64       `json:"cache_write_5m_input_tokens,omitempty"`
-	CacheWrite1hInputTokens  int64       `json:"cache_write_1h_input_tokens,omitempty"`
-	InputAudioTokens         int64       `json:"input_audio_tokens,omitempty"`
-	CompletionTokens         int64       `json:"completion_tokens"`
-	ReasoningOutputTokens    int64       `json:"reasoning_output_tokens,omitempty"`
-	OutputAudioTokens        int64       `json:"output_audio_tokens,omitempty"`
-	AcceptedPredictionTokens int64       `json:"accepted_prediction_tokens,omitempty"`
-	RejectedPredictionTokens int64       `json:"rejected_prediction_tokens,omitempty"`
-	TotalTokens              int64       `json:"total_tokens"`
-	InputCostUSD             float64     `json:"input_cost_usd,omitempty"`
-	CacheReadCostUSD         float64     `json:"cache_read_cost_usd,omitempty"`
-	CacheWriteCostUSD        float64     `json:"cache_write_cost_usd,omitempty"`
-	OutputCostUSD            float64     `json:"output_cost_usd,omitempty"`
-	CostUSD                  float64     `json:"estimated_cost_usd,omitempty"`
-	ProviderCostUSD          float64     `json:"-"`
-	UpstreamRequestID        string      `json:"upstream_request_id,omitempty"`
-	ServedModel              string      `json:"served_model,omitempty"`
-	ModelETag                string      `json:"model_etag,omitempty"`
-	Transport                string      `json:"transport,omitempty"`
-	ResponseHeaders          http.Header `json:"-"`
+	MeteringRaw              *metering.Units `json:"-"`
+	MeteringInvalid          bool            `json:"-"`
+	PromptTokens             int64           `json:"prompt_tokens"`
+	CachedInputTokens        int64           `json:"cached_input_tokens,omitempty"`
+	CacheWriteInputTokens    int64           `json:"cache_write_input_tokens,omitempty"`
+	CacheWrite5mInputTokens  int64           `json:"cache_write_5m_input_tokens,omitempty"`
+	CacheWrite1hInputTokens  int64           `json:"cache_write_1h_input_tokens,omitempty"`
+	InputAudioTokens         int64           `json:"input_audio_tokens,omitempty"`
+	CompletionTokens         int64           `json:"completion_tokens"`
+	ReasoningOutputTokens    int64           `json:"reasoning_output_tokens,omitempty"`
+	OutputAudioTokens        int64           `json:"output_audio_tokens,omitempty"`
+	AcceptedPredictionTokens int64           `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int64           `json:"rejected_prediction_tokens,omitempty"`
+	TotalTokens              int64           `json:"total_tokens"`
+	InputCostUSD             float64         `json:"input_cost_usd,omitempty"`
+	CacheReadCostUSD         float64         `json:"cache_read_cost_usd,omitempty"`
+	CacheWriteCostUSD        float64         `json:"cache_write_cost_usd,omitempty"`
+	OutputCostUSD            float64         `json:"output_cost_usd,omitempty"`
+	CostUSD                  float64         `json:"estimated_cost_usd,omitempty"`
+	ProviderCostUSD          float64         `json:"-"`
+	UpstreamRequestID        string          `json:"upstream_request_id,omitempty"`
+	ServedModel              string          `json:"served_model,omitempty"`
+	ModelETag                string          `json:"model_etag,omitempty"`
+	Transport                string          `json:"transport,omitempty"`
+	ResponseHeaders          http.Header     `json:"-"`
 	// RateLimitTokens is the total metered across every invoked failover attempt.
 	// It is internal quota state: billing, request logs and provider attribution
 	// continue to use the usage reported by the final route only.
@@ -560,6 +567,7 @@ type ImageJob struct {
 	Status                                                      string     `json:"status" gorm:"index"`
 	Model                                                       string     `json:"model"`
 	Action                                                      string     `json:"action"`
+	Count                                                       int        `json:"n,omitempty" gorm:"-"`
 	PromptCiphertext                                            string     `json:"-" gorm:"type:text"`
 	Prompt                                                      string     `json:"prompt,omitempty" gorm:"-"`
 	RevisedPromptCiphertext                                     string     `json:"-" gorm:"type:text"`
@@ -738,6 +746,7 @@ type AuditEvent struct {
 	ActorUserID    string    `json:"actor_user_id" gorm:"index"`
 	ActorName      string    `json:"actor_name,omitempty"`
 	ActorRole      string    `json:"actor_role,omitempty"`
+	CorrelationID  string    `json:"correlation_id,omitempty" gorm:"index"`
 	Action         string    `json:"action" gorm:"index"`
 	ResourceType   string    `json:"resource_type" gorm:"index"`
 	ResourceID     string    `json:"resource_id" gorm:"index"`
@@ -1201,11 +1210,12 @@ type EmbeddingsRequest struct {
 }
 
 type RouteSelection struct {
-	Provider      Provider
-	Resource      *ProviderResource
-	ProviderModel string
-	Route         ModelRoute
-	Runtime       RouteRuntimeStats
+	MeteringSnapshot *meteringAttemptSnapshot `json:"-"`
+	Provider         Provider
+	Resource         *ProviderResource
+	ProviderModel    string
+	Route            ModelRoute
+	Runtime          RouteRuntimeStats
 }
 
 type RouteRuntimeStats struct {
@@ -1271,6 +1281,7 @@ type RoutedCall struct {
 }
 
 type CallContext struct {
+	RouteProtocol         string
 	RequestID             string
 	Project               Project
 	Key                   APIKey
@@ -1313,9 +1324,14 @@ type CallContext struct {
 	// StreamOutputCommitted keeps the reservation when a stream delivered data but
 	// ended before an authoritative usage event was received.
 	StreamOutputCommitted bool
-	// Stream records whether the client asked for a streamed response. It only
-	// labels observability output and never influences routing.
+	// Stream records the requested response mode for observability and
+	// provider hook output capability matching during route admission.
 	Stream bool
+	// GatewayAuthMetadata carries plugin-provided authentication context
+	// annotations. Plugins may enrich downstream gateway hooks with these values,
+	// but they cannot change core authentication facts such as project, key,
+	// model, or stream mode.
+	GatewayAuthMetadata map[string]json.RawMessage
 	// RouteAttempts carries the per-candidate outcomes for observability output.
 	// It is filled from the completion's Attempts just before FinishCall and never
 	// influences routing.

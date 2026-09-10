@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { notificationChannelDefaultType, notificationChannelTemplates } from "../core/types";
+import { emptyData, notificationChannelTabs } from "../domain/catalog";
 import { notificationChannelDefaults, notificationChannelPayload } from "./payloads";
 import { notificationChannelConfig } from "./settings-config";
 
@@ -38,6 +40,18 @@ describe("notification channel SMTP encryption round trip", () => {
   it("leaves smtp_encryption unset for legacy auto mode", () => {
     const fields = payloadFields({ smtp_encryption: "auto" });
     expect(fields).not.toHaveProperty("smtp_encryption");
+  });
+});
+
+describe("notification channel template ownership", () => {
+  it("marks built-in notification templates as core-owned extension templates", () => {
+    expect(notificationChannelTemplates.every((template) => template.owner === "core_extension")).toBe(true);
+    expect(notificationChannelDefaultType).toBe("webhook");
+  });
+
+  it("renders notification tabs from the explicit template list", () => {
+    const tabs = notificationChannelTabs(emptyData());
+    expect(tabs.map((tab) => tab.key)).toEqual(notificationChannelTemplates.map((template) => template.type));
   });
 });
 

@@ -2,9 +2,10 @@ import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, typ
 import { modelCategory } from "./catalog";
 import { configuredPriceFormValue } from "./configured-pricing";
 import { modelDisplayName } from "./model-display-name";
-import { codexImageCapableResources, findProvider, findProviderResource, isCodexSubscriptionImageModel, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
+import { imageCapabilityCapableResources, modelHasImageCapability, routeImageCapabilityProfile, findProvider, findProviderResource, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
 import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime";
-import { preferredModelCategories } from "./model-categories";
+import { preferredModelCategories, preferredModelCategoriesFromData } from "./model-categories";
+import { pluginDetailRouteFromPath } from "./plugin-detail-route";
 
 export function initialView(): ViewKey {
   if (typeof window === "undefined") return "overview";
@@ -15,6 +16,7 @@ export function viewFromPath(pathname: string): ViewKey {
   const normalized = pathname.replace(/^\/+|\/+$/g, "");
   if (!normalized) return "overview";
   if (apiKeyUsageIDFromPath(pathname)) return "api-keys";
+  if (pluginDetailRouteFromPath(pathname)) return "plugins";
   return routeViews[normalized] ?? "overview";
 }
 
@@ -33,7 +35,7 @@ export function playgroundModels(data: AppData, sortByRoutes = data.routes.lengt
     .filter((model) => model.status === "active" && (model.modality === "" || model.modality === "chat"))
     .sort((a, b) => {
       const routeDiff = sortByRoutes ? activeRouteCount(b.name, data) - activeRouteCount(a.name, data) : 0;
-      return routeDiff || modelCategoryRank(a) - modelCategoryRank(b) || a.name.localeCompare(b.name);
+      return routeDiff || modelCategoryRank(a, data) - modelCategoryRank(b, data) || a.name.localeCompare(b.name);
     });
 }
 
@@ -180,9 +182,10 @@ export type ModelAvailabilitySummary = {
 export function modelAvailabilitySummary(model: Model, data: AppData, readOnly = false): ModelAvailabilitySummary {
   const routes = modelRoutesFor(model, data);
   const activeRoutes = routes.filter((route) => route.status === "active");
-  const healthyRoutes = activeRoutes.filter((route) => isCodexSubscriptionImageModel(model)
-    ? codexImageRouteHasHealthyTarget(route, data)
-    : routeHasHealthyTarget(route, data));
+  const healthyRoutes = activeRoutes.filter((route) => {
+    const imageProfile = routeImageCapabilityProfile(route, data);
+    return imageProfile ? imageCapabilityRouteHasHealthyTarget(route, data, imageProfile) : routeHasHealthyTarget(route, data);
+  });
   if (model.status !== "active") {
     return {
       tone: "blocked",
@@ -260,8 +263,8 @@ export function routeHasHealthyTarget(route: ModelRoute, data: AppData) {
   return true;
 }
 
-function codexImageRouteHasHealthyTarget(route: ModelRoute, data: AppData) {
-  const capableResources = codexImageCapableResources(data).filter((resource) => resource.provider_id === route.provider_id);
+function imageCapabilityRouteHasHealthyTarget(route: ModelRoute, data: AppData, imageProfile: NonNullable<ReturnType<typeof routeImageCapabilityProfile>>) {
+  const capableResources = imageCapabilityCapableResources(data, route.provider_id, imageProfile);
   if (route.provider_resource_id) {
     return capableResources.some((resource) => resource.id === route.provider_resource_id);
   }
@@ -271,17 +274,18 @@ function codexImageRouteHasHealthyTarget(route: ModelRoute, data: AppData) {
 export function keyWizardModelOptions(data: AppData) {
   const activeChatModels = playgroundModels(data, data.routes.length > 0);
   const routed = activeChatModels.filter((model) => data.routes.length === 0 || activeRouteCount(model.name, data) > 0);
-  const codexImageModels = data.models.filter((model) =>
-    model.status === "active" && isCodexSubscriptionImageModel(model) && activeRouteCount(model.name, data) > 0,
+  const imageCapabilityModels = data.models.filter((model) =>
+    model.status === "active" && modelHasImageCapability(data, model) && activeRouteCount(model.name, data) > 0,
   );
-  return [...(routed.length > 0 ? routed : activeChatModels), ...codexImageModels].sort((left, right) =>
-    modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name),
+  return [...(routed.length > 0 ? routed : activeChatModels), ...imageCapabilityModels].sort((left, right) =>
+    modelCategoryRank(left, data) - modelCategoryRank(right, data) || left.name.localeCompare(right.name),
   );
 }
 
-export function modelCategoryRank(model: Model) {
-  const index = preferredModelCategories.indexOf(modelCategory(model));
-  return index >= 0 ? index : preferredModelCategories.length;
+export function modelCategoryRank(model: Model, data?: Pick<AppData, "plugins" | "providerAdapters">) {
+  const definitions = data ? preferredModelCategoriesFromData(data) : preferredModelCategories;
+  const index = definitions.indexOf(modelCategory(model, data));
+  return index >= 0 ? index : definitions.length;
 }
 
 export function uniqueUIID(prefix: string) {
@@ -395,7 +399,7 @@ export function modelToForm(item: Model) {
   return {
     ...stringifyForm(item),
     display_name: modelDisplayName(item.metadata, ""),
-    cache_read_price_usd_per_1m: item.cache_read_price_usd_per_1m
+    cache_read_price_usd_per_1m: (item.cache_read_price_usd_per_1m || item.metadata?.cache_read_price_configured === "true")
       ? String(item.cache_read_price_usd_per_1m)
       : "",
     cache_write_price_usd_per_1m: configuredPriceFormValue(item.cache_write_price_usd_per_1m, item.cache_write_price_configured),

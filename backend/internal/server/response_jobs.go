@@ -296,6 +296,10 @@ func (s *Server) responseWorker(index int) {
 		}
 		requeued, failed, cancelled, err := s.store.RecoverResponseJobs(resultTTL)
 		if err != nil {
+			if responseWorkerStoreClosed(err) {
+				log.Printf("[tokenhub] response job worker stopped after store closed worker=%d: %v", index, err)
+				return
+			}
 			log.Printf("[tokenhub] response job recovery failed worker=%d: %v", index, err)
 		}
 		s.metrics.ObserveResponseJobRecovery("requeued", requeued)
@@ -305,6 +309,10 @@ func (s *Server) responseWorker(index int) {
 		s.metrics.ObserveResponseJobTerminalCount(responseJobStatusCancelled, "response_cancelled_worker_lost", cancelled)
 		expired, err := s.store.ExpireResponseJobs()
 		if err != nil {
+			if responseWorkerStoreClosed(err) {
+				log.Printf("[tokenhub] response job worker stopped after store closed worker=%d: %v", index, err)
+				return
+			}
 			log.Printf("[tokenhub] response job expiry failed worker=%d: %v", index, err)
 		}
 		s.metrics.ObserveResponseJobTerminalCount(responseJobStatusExpired, "response_expired", expired)
@@ -315,6 +323,10 @@ func (s *Server) responseWorker(index int) {
 		}
 		job, claimed, err := s.store.ClaimResponseJob(owner, leaseTTL, resultTTL)
 		if err != nil {
+			if responseWorkerStoreClosed(err) {
+				log.Printf("[tokenhub] response job worker stopped after store closed worker=%d: %v", index, err)
+				return
+			}
 			log.Printf("[tokenhub] response job claim failed worker=%d: %v", index, err)
 			timer.Reset(poll)
 			continue
@@ -336,7 +348,16 @@ func (s *Server) responseWorker(index int) {
 	}
 }
 
+func responseWorkerStoreClosed(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "sql: database is closed")
+}
+
 func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time.Duration, resultTTL time.Duration) {
+	s.pluginRuntimeMu.RLock()
+	defer s.pluginRuntimeMu.RUnlock()
 	if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 		return
 	}
@@ -409,6 +430,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		return
 	}
 	call.Stream = false
+	call.RouteProtocol = providerRouteProtocolResponses
 	job.RequestID = call.RequestID
 	// The admitted call context is cancelled if either concurrency lease can no
 	// longer be renewed. All expensive work and the provider invocation must
@@ -423,6 +445,54 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		return
 	}
 
+	if err := s.runGatewayAuthContextHooks(ctx, &call, envelope.Headers); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, request, resultTTL)
+		return
+	}
+	if err := s.runGatewayResponsesDecodeNormalizeHooks(ctx, call, envelope.Headers, &request); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, request, resultTTL)
+		return
+	}
+	if err := s.runGatewayAdmissionHooks(ctx, call, envelope.Headers, request, requestTokenReservation(request)); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, request, resultTTL)
+		return
+	}
+	if err := s.runGatewayResponsesPrivacyPreHooks(ctx, call, envelope.Headers, &request); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
+		return
+	}
+	if err := s.runGatewayResponsesGuardrailPreHooks(ctx, call, &request); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
+		return
+	}
+	if err := s.runGatewayResponsesContextOptimizeHooks(ctx, call, &request); err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
+		return
+	}
 	decision, err := s.evaluateOutboundGuardrails(ctx, call.Project.ID, responsesGuardrailTargets(&request))
 	auditPayload := guardrailRequestAuditPayload(request.Model, decision, request)
 	if err != nil {
@@ -431,6 +501,51 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		}
 		httpErr := AsHTTPError(err)
 		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+		return
+	}
+	response, usage, hit, err := s.runGatewayCacheLookupHooks(ctx, call, request)
+	if err != nil {
+		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+			return
+		}
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+		return
+	}
+	if hit {
+		response, err = s.runGatewayResponsePostHooks(ctx, call, RouteSelection{}, response, providerRouteProtocolResponses)
+		if err != nil {
+			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+				return
+			}
+			httpErr := AsHTTPError(err)
+			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		response, err = s.runGatewayGuardrailPostHooks(ctx, call, RouteSelection{}, response, usage, providerRouteProtocolResponses)
+		if err != nil {
+			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+				return
+			}
+			httpErr := AsHTTPError(err)
+			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		usage, err = s.runGatewayUsageAttributionHooks(ctx, call, RouteSelection{}, response, usage, providerRouteProtocolResponses)
+		if err != nil {
+			if s.stopResponseJobForShutdown(job, owner, resultTTL) {
+				return
+			}
+			httpErr := AsHTTPError(err)
+			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		resultJSON, marshalErr := json.Marshal(response)
+		if marshalErr != nil {
+			s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, http.StatusInternalServerError, "response_result_invalid", "Response result could not be serialized", auditPayload, resultTTL)
+			return
+		}
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, usage, nil, http.StatusOK, "", "", auditPayload, resultTTL, resultJSON)
 		return
 	}
 	routed, err := s.prepareAdmittedRoutedCall(ctx, call, request.Model)
@@ -442,7 +557,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, routed.Call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 		return
 	}
-	routed.Routes = s.routesWithAdapterCapability(routed.Routes, AdapterCapabilityResponses)
+	routed.Routes = s.routesWithAdapterCapabilityOrProviderCall(routed.Call, routed.Routes, AdapterCapabilityResponses, providerRouteProtocolResponses)
 	if len(routed.Routes) == 0 {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return
@@ -450,7 +565,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, routed.Call, RouteSelection{}, Usage{}, nil, http.StatusNotImplemented, "provider_capability_not_supported", "Responses are not supported", auditPayload, resultTTL)
 		return
 	}
-	if err := s.applyResponseJobAffinity(&routed, key, envelope.Headers, request); err != nil {
+	if err := s.applyResponseJobAffinity(ctx, &routed, key, envelope.Headers, request); err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return
 		}
@@ -471,6 +586,26 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 	}
 	response, route, usage, attempts, invokeErr := s.executeRoutedResponsesContext(ctx, envelope.Headers, routed, request)
 	if invokeErr == nil {
+		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response, providerRouteProtocolResponses)
+		if invokeErr != nil {
+			httpErr := AsHTTPError(invokeErr)
+			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		response, invokeErr = s.runGatewayGuardrailPostHooks(ctx, routed.Call, route, response, usage, providerRouteProtocolResponses)
+		if invokeErr != nil {
+			httpErr := AsHTTPError(invokeErr)
+			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		usage, invokeErr = s.runGatewayUsageAttributionHooks(ctx, routed.Call, route, response, usage, providerRouteProtocolResponses)
+		if invokeErr != nil {
+			httpErr := AsHTTPError(invokeErr)
+			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+			return
+		}
+		attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+		s.runGatewayCacheWriteHooks(ctx, routed.Call, route, request, response, usage, providerRouteProtocolResponses)
 		resultJSON, marshalErr := json.Marshal(response)
 		if marshalErr != nil {
 			s.finalizeResponseJob(job, owner, routed.Call, route, usage, attempts, http.StatusInternalServerError, "response_result_invalid", "Response result could not be serialized", auditPayload, resultTTL)
@@ -576,25 +711,27 @@ func (s *Server) watchResponseJobCancellation(ctx context.Context, cancel contex
 	}
 }
 
-func (s *Server) applyResponseJobAffinity(routed *RoutedCall, key APIKey, headers http.Header, request ResponsesRequest) error {
-	affinity, err := resolveCodexSessionAffinity(s.config.SecretKey, key.ID, headers, request)
-	if err != nil {
-		return err
+func (s *Server) applyResponseJobAffinity(ctx context.Context, routed *RoutedCall, key APIKey, headers http.Header, request ResponsesRequest) error {
+	if adapterType := s.firstRouteAdapterTypeWithCapability(routed.Routes, AdapterCapabilityAffinity); adapterType != "" {
+		affinity, err := resolveProviderSessionAffinityWithPolicy(s.config.SecretKey, key.ID, adapterType, adapterSessionAffinityPolicy(s.adapterRegistry, adapterType), headers, request)
+		if err != nil {
+			return err
+		}
+		if affinity != nil {
+			routed.Affinity = affinity
+			routed.Call.Affinity = affinity
+			routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routed.Routes)
+			return nil
+		}
 	}
-	if affinity != nil && routesContainAdapterType(routed.Routes, ProviderOpenAICodex) {
-		routed.Affinity = affinity
-		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
-		return nil
-	}
-	affinity, err = s.responsesCacheLocalityAffinity(key.ID, headers, request)
+	affinity, err := s.responsesCacheLocalityAffinity(key.ID, headers, request)
 	if err != nil {
 		return err
 	}
 	if affinity != nil {
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+		routed.Routes = s.planRouteOrderWithContext(ctx, routed.Call, routed.Routes)
 	}
 	return nil
 }
@@ -646,7 +783,7 @@ func (s *Server) finalizeResponseJob(job ResponseJob, owner string, call CallCon
 		ErrorMessage: errorMessage,
 		FinishedAt:   tracingFinishedAt(),
 	}
-	s.emitGatewayTrace(completion)
+	s.emitGatewayCompletionTraceExports(completion)
 	return true
 }
 

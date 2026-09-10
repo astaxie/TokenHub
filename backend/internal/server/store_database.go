@@ -307,25 +307,28 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 	}
 
 	store := &GormStore{
-		db:                   db,
-		analyticsDB:          analyticsDB,
-		mu:                   &sync.Mutex{},
-		leaseHeartbeats:      &sync.Map{},
-		heartbeatState:       new(atomic.Int32),
-		instanceHeartbeatID:  instanceHeartbeatID,
-		lastUsed:             newLastUsedThrottle(),
-		modelLabels:          newModelLabelCache(),
-		secretKey:            config.SecretKey,
-		failureThreshold:     defaultInt(config.ResourceFailureThreshold, 3),
-		cooldownDuration:     cooldownSecondsToDuration(defaultInt(config.ResourceCooldownSeconds, 300)),
-		cooldownMax:          cooldownSecondsToDuration(defaultInt(config.ResourceCooldownMaxSeconds, 3600)),
-		sqliteDSN:            dsn,
-		backupDir:            defaultString(config.SQLiteBackupDir, "data/backups"),
-		dbDriver:             driver,
-		inFlightLeaseTTL:     time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300)) * time.Second,
-		clusterLockTTL:       time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
-		imageCapabilityRetry: time.Duration(defaultInt(config.ImageCapabilityRetrySecs, 86400)) * time.Second,
-		billingRedis:         billingRedis,
+		db:                           db,
+		analyticsDB:                  analyticsDB,
+		mu:                           &sync.Mutex{},
+		leaseHeartbeats:              &sync.Map{},
+		heartbeatState:               new(atomic.Int32),
+		heartbeatStop:                &instanceHeartbeatStopper{},
+		instanceHeartbeatID:          instanceHeartbeatID,
+		lastUsed:                     newLastUsedThrottle(),
+		modelLabels:                  newModelLabelCache(),
+		secretKey:                    config.SecretKey,
+		failureThreshold:             defaultInt(config.ResourceFailureThreshold, 3),
+		cooldownDuration:             cooldownSecondsToDuration(defaultInt(config.ResourceCooldownSeconds, 300)),
+		cooldownMax:                  cooldownSecondsToDuration(defaultInt(config.ResourceCooldownMaxSeconds, 3600)),
+		sqliteDSN:                    dsn,
+		backupDir:                    defaultString(config.SQLiteBackupDir, "data/backups"),
+		dbDriver:                     driver,
+		inFlightLeaseTTL:             time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300)) * time.Second,
+		clusterLockTTL:               time.Duration(defaultInt(config.ClusterLockTTLSeconds, 180)) * time.Second,
+		imageCapabilityRetry:         time.Duration(defaultInt(config.ImageCapabilityRetrySecs, 86400)) * time.Second,
+		providerCredentialIdentities: map[string]providerResourceCredentialIdentityRegistration{},
+		providerCredentialRefreshers: map[string]providerResourceCredentialRefreshRegistration{},
+		billingRedis:                 billingRedis,
 	}
 	store.billingPersistence = billingpersistence.NewStore(db, store.mu, config.SecretKey, store.recordScheduledBillingAudit)
 	store.billingRepository = store.billingPersistence
@@ -452,6 +455,9 @@ func backfillQuotaBucketAttribution(db *gorm.DB) error {
 // Close releases the primary and analytics database pools owned by the store.
 func (s *GormStore) Close() error {
 	var closeErr error
+	if s.heartbeatStop != nil {
+		s.heartbeatStop.Stop()
+	}
 	if s.db != nil {
 		if db, err := s.db.DB(); err != nil {
 			closeErr = errors.Join(closeErr, err)

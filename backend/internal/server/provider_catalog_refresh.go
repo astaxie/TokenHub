@@ -36,12 +36,12 @@ type providerCatalogHTTPClient interface {
 func (s *providerCatalogService) refreshLocked(ctx context.Context, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, string, error) {
 	entries, upstreamErr := s.loadUpstreamProviderCatalog(ctx)
 	if upstreamErr == nil {
-		if localEntries, localErr := loadLocalProviderCatalog(s.catalogFile); localErr == nil {
+		if localEntries, localErr := s.loadLocalProviderCatalog(); localErr == nil {
 			entries = mergeCuratedProviderCatalogEntries(entries, localEntries)
 		}
 	}
 	if upstreamErr == nil {
-		entries, upstreamErr = prepareProviderCatalogRefresh(entries, previous)
+		entries, upstreamErr = prepareProviderCatalogRefreshWithDefault(entries, previous, s.defaultType)
 	}
 	if upstreamErr == nil {
 		if err := context.Cause(ctx); err != nil {
@@ -56,9 +56,9 @@ func (s *providerCatalogService) refreshLocked(ctx context.Context, previous []P
 		return nil, providerCatalogUpstreamSource, err
 	}
 
-	entries, localErr := loadLocalProviderCatalog(s.catalogFile)
+	entries, localErr := s.loadLocalProviderCatalog()
 	if localErr == nil {
-		entries, localErr = prepareProviderCatalogRefresh(entries, previous)
+		entries, localErr = prepareProviderCatalogRefreshWithDefault(entries, previous, s.defaultType)
 	}
 	if localErr != nil {
 		return nil, providerCatalogLocalSource, fmt.Errorf("upstream provider catalog refresh failed (%v); local fallback failed: %w", upstreamErr, localErr)
@@ -123,7 +123,7 @@ func (s *providerCatalogService) loadUpstreamProviderCatalog(ctx context.Context
 	if len(content) > providerCatalogMaxBytes {
 		return nil, fmt.Errorf("read provider catalog upstream: response exceeds %d bytes", providerCatalogMaxBytes)
 	}
-	entries, err := parseProviderCatalog(content, providerCatalogUpstreamSource)
+	entries, err := parseProviderCatalogWithPolicy(content, providerCatalogUpstreamSource, s.catalogTypes, s.defaultType, s.modelCategories)
 	if err != nil {
 		return nil, fmt.Errorf("parse provider catalog upstream: %w", err)
 	}

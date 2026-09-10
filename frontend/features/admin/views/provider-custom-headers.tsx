@@ -14,18 +14,20 @@ export function ProviderCustomHeaders({
   onChange,
   inheritedValue = "",
   disabled = false,
+  managedHeaders = [],
   validationErrors = [],
 }: {
   value: string;
   onChange: (value: string) => void;
   inheritedValue?: string;
   disabled?: boolean;
+  managedHeaders?: string[];
   validationErrors?: string[];
 }) {
   const entries = useMemo(() => parseProviderHeaderEntries(value), [value]);
   const inherited = useMemo(() => parseProviderHeaderEntries(inheritedValue), [inheritedValue]);
   const effective = useMemo(() => effectiveProviderHeaderEntries(inherited, entries), [entries, inherited]);
-  const errors = Array.from(new Set([...providerHeaderEntryErrors(entries), ...providerHeaderEntryErrors(effective)]));
+  const errors = Array.from(new Set([...providerHeaderEntryErrors(entries, managedHeaders), ...providerHeaderEntryErrors(effective, managedHeaders)]));
   const locked = disabled && validationErrors.length === 0;
 
   function changeEntry(index: number, patch: Partial<ProviderHeaderEntry>) {

@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.fireworks-ai"
+name: "Fireworks AI"
+version: 1.0.0
+summary: "Connect TokenHub to Fireworks AI."
+description: "Connect TokenHub to Fireworks AI. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.fireworks.ai/inference/v1/"
+    catalog:
+      id: "fireworks-ai"
+      name: "Fireworks AI"
+      display_name: "Fireworks AI"
+      type: "openai_compatible"
+      base_url: "https://api.fireworks.ai/inference/v1/"
+      doc_url: "https://fireworks.ai/docs/"
+      categories: []
+      models_count: 14
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

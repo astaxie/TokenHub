@@ -2,9 +2,9 @@ import { useState } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ProviderAPIQuickConnect } from "./provider-api-quick-connect";
+import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 
-function ProviderHarness() {
+function ProviderHarness({ apiKeyRequired = true }: { apiKeyRequired?: boolean }) {
   const [values, setValues] = useState<Record<string, string>>({
     name: "Local Test Provider",
     type: "openai_compatible",
@@ -16,6 +16,7 @@ function ProviderHarness() {
     <ProviderAPIQuickConnect
       api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
       catalogID="custom"
+      providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, apiKeyRequired }]}
       modelCount={0}
       models={[]}
       modelsLoading={false}
@@ -35,6 +36,89 @@ function ProviderHarness() {
 }
 
 describe("ProviderAPIQuickConnect", () => {
+  it("tests an optional-credential custom upstream without a placeholder key", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ProviderHarness apiKeyRequired={false} />);
+    await user.type(screen.getByLabelText("Base URL"), "http://localhost:8000/v1");
+    expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("连接测试通过"));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({ type: "openai_compatible", api_key: "", base_url: "http://localhost:8000/v1" });
+  });
+
+  it("renders provider catalog cards contributed by matching plugins", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <ProviderAPIQuickCatalog
+        entries={[
+          {
+            id: "plugin-kimi",
+            name: "Kimi Provider",
+            display_name: "Kimi Provider",
+            type: "kimi_subscription",
+            models_count: 0,
+            source: "plugin:local_file",
+          },
+          {
+            id: "plugin-zhipu",
+            name: "Zhipu Plugin",
+            display_name: "Zhipu Plugin",
+            type: "zhipu_subscription",
+            models_count: 3,
+            source: "plugin:local_file",
+          },
+          {
+            id: "openai",
+            name: "OpenAI",
+            display_name: "OpenAI",
+            type: "openai_compatible",
+            models_count: 2,
+            source: "builtin",
+          },
+        ]}
+        onQueryChange={vi.fn()}
+        onSelect={onSelect}
+        onSelectCustom={vi.fn()}
+        pluginCatalogCards={[
+          {
+            plugin_id: "tokenhub.provider.kimi",
+            id: "catalog-card",
+            slot: "provider.catalog.card",
+            title: "Kimi Subscription",
+            provider_types: ["kimi_subscription"],
+            schema: { description: "Connect a Kimi account from the plugin marketplace." },
+          },
+          {
+            plugin_id: "tokenhub.provider.other",
+            id: "catalog-card",
+            slot: "provider.catalog.card",
+            title: "Other Subscription",
+            provider_types: ["other_subscription"],
+            schema: { description: "Should not render." },
+          },
+        ]}
+        providerTypeOptions={[
+          { value: "openai_compatible", label: "OpenAI Compatible Adapter", supportsCustomHeaders: true },
+        ]}
+        query=""
+        selectedID="plugin-kimi"
+        total={3}
+      />,
+    );
+
+    expect(screen.getByText("Kimi Subscription")).toBeInTheDocument();
+    expect(screen.getByText("Connect a Kimi account from the plugin marketplace.")).toBeInTheDocument();
+    expect(screen.getByText(/Zhipu Plugin · 3/)).toBeInTheDocument();
+    expect(screen.queryByText("Other Subscription")).not.toBeInTheDocument();
+    expect(screen.getByText(/OpenAI Compatible Adapter/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Kimi Subscription/ }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "plugin-kimi", type: "kimi_subscription" }));
+  });
+
   it("enables connection testing only after required fields are present and sends the expected payload", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 12 }), {
@@ -66,4 +150,77 @@ describe("ProviderAPIQuickConnect", () => {
       api_key: "provider-secret",
     });
   });
+
+  it("uses plugin preview action schema to make API keys optional", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 9 }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    function PluginHarness() {
+      const [values, setValues] = useState<Record<string, string>>({
+        name: "Plugin Local",
+        type: "plugin_local",
+        base_url: "",
+        api_key: "",
+        priority: "10",
+      });
+      return (
+        <ProviderAPIQuickConnect
+          api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+          catalogID="plugin-local"
+          entry={{ id: "plugin-local", name: "Plugin Local", display_name: "Plugin Local", type: "plugin_local", base_url: "http://127.0.0.1:19090/v1", models_count: 0, source: "plugin:local_file" }}
+          modelCount={0}
+          models={[]}
+          modelsLoading={false}
+          modelsError=""
+          modelQuery=""
+          selectedModelCount={0}
+          selectedModels={{}}
+          activeTab="connect"
+          values={values}
+          onModelQueryChange={vi.fn()}
+          onModelToggle={vi.fn()}
+          onReloadModels={vi.fn()}
+          onTabChange={vi.fn()}
+          onUpdate={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
+          pluginActions={[{ plugin_id: "tokenhub.provider.local", action_id: "plugin_local.models.preview", kind: "read", capability: "models.preview", subject: "plugin_local", input_schema: { type: "object", required: ["base_url"] } }]}
+        />
+      );
+    }
+
+    render(<PluginHarness />);
+
+    const testButton = screen.getByRole("button", { name: "测试连接" });
+    expect(testButton).toBeDisabled();
+    await user.type(screen.getByLabelText("Base URL"), "http://127.0.0.1:19090/v1");
+    expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
+    expect(testButton).toBeEnabled();
+    await user.click(testButton);
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("连接测试通过"));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
+      catalog_id: "plugin-local",
+      type: "plugin_local",
+      base_url: "http://127.0.0.1:19090/v1",
+      api_key: "",
+    });
+  });
+  it("shows actionable Fake-IP settings guidance when a connection is blocked", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: "provider_models_address_blocked", message: "private upstream diagnostic" },
+    }), { status: 502, headers: { "content-type": "application/json" } })));
+    render(<ProviderHarness />);
+    await user.type(screen.getByLabelText("Base URL"), "https://provider.example/v1");
+    await user.type(screen.getByLabelText("API Key"), "test-key");
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("系统设置 → 基础设置 → 编辑配置"));
+    expect(screen.getByRole("status")).toHaveTextContent("允许 Provider 使用 Synthetic DNS / Fake-IP");
+    expect(screen.getByRole("status")).toHaveTextContent("代理实际使用的地址池");
+    expect(screen.getByRole("status")).not.toHaveTextContent("private upstream diagnostic");
+  });
+
 });

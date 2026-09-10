@@ -1,0 +1,20 @@
+schema_version: 2
+id: "tokenhub.admin.plugin-ecosystem"
+name: "TokenHub Plugin Ecosystem Dashboard"
+version: 1.0.0
+summary: "Expose plugin operations and status in the admin console."
+description: "Expose plugin operations and status in the admin console."
+category: ui_template
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+distribution:
+  license: Apache-2.0
+kinds: ["admin_ui"]
+placement: ["presentation"]
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

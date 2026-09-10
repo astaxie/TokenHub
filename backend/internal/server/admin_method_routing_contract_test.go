@@ -1,12 +1,16 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type adminMethodRouteContract struct {
@@ -71,6 +75,11 @@ func TestAdminGETMethodRoutesRejectHEADAfterAuthorization(t *testing.T) {
 		"/api/admin/auth/me",
 		"/api/admin/overview",
 		"/api/admin/provider-adapters",
+		"/api/admin/plugins",
+		"/api/admin/plugin-chain",
+		"/api/admin/plugin-ui-manifest",
+		"/api/admin/plugin-actions",
+		"/api/admin/plugin-background-jobs",
 		"/api/admin/providers/monitoring",
 		"/api/admin/provider-models",
 	}
@@ -144,6 +153,77 @@ func TestAdminMethodRouteProviderAdaptersReachesHandler(t *testing.T) {
 	}
 }
 
+func TestAdminMethodRoutePluginsReachesHandler(t *testing.T) {
+	_, app := newMethodRoutingAdminServer(t, "admin-plugin-routing-password")
+	adminToken, _ := loginMethodRoutingAdmin(t, app, "admin-plugin-routing-password")
+
+	response := methodRoutingRequest(app, http.MethodGet, "/api/admin/plugins", adminToken)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugins: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if contentType := response.Header().Get("content-type"); !strings.HasPrefix(contentType, "application/json") {
+		t.Fatalf("GET /api/admin/plugins: content type = %q, want application/json", contentType)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `"data"`) || !strings.Contains(body, `"tokenhub.provider.openai-codex"`) {
+		t.Fatalf("GET /api/admin/plugins: response does not include builtin plugins: %s", body)
+	}
+}
+
+func TestAdminMethodRoutePluginChainReachesHandler(t *testing.T) {
+	_, app := newMethodRoutingAdminServer(t, "admin-plugin-chain-routing-password")
+	adminToken, _ := loginMethodRoutingAdmin(t, app, "admin-plugin-chain-routing-password")
+
+	response := methodRoutingRequest(app, http.MethodGet, "/api/admin/plugin-chain", adminToken)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugin-chain: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if contentType := response.Header().Get("content-type"); !strings.HasPrefix(contentType, "application/json") {
+		t.Fatalf("GET /api/admin/plugin-chain: content type = %q, want application/json", contentType)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `"data"`) || !strings.Contains(body, `"decode_normalize"`) {
+		t.Fatalf("GET /api/admin/plugin-chain: response does not include host stage contracts: %s", body)
+	}
+	if !strings.Contains(body, `"hooks":[]`) {
+		t.Fatalf("GET /api/admin/plugin-chain: empty hooks must encode as an array: %s", body)
+	}
+	var payload struct {
+		Data pluginmeta.GatewayChainPlan `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("decode plugin chain response: %v", err)
+	}
+	if !slices.Equal(payload.Data.Stages, pluginmeta.OrderedGatewayStages()) {
+		t.Fatalf("plugin chain stages = %v, want canonical stages", payload.Data.Stages)
+	}
+	if len(payload.Data.Hooks) != 0 {
+		t.Fatalf("plugin chain exposes host internals as plugin hooks: %+v", payload.Data.Hooks)
+	}
+	for _, envelope := range payload.Data.Envelopes {
+		if envelope.ExecutionMode == "" {
+			t.Fatalf("stage %q has no execution mode", envelope.Stage)
+		}
+	}
+}
+
+func TestAdminMethodRoutePluginUIManifestReachesHandler(t *testing.T) {
+	_, app := newMethodRoutingAdminServer(t, "admin-plugin-ui-routing-password")
+	adminToken, _ := loginMethodRoutingAdmin(t, app, "admin-plugin-ui-routing-password")
+
+	response := methodRoutingRequest(app, http.MethodGet, "/api/admin/plugin-ui-manifest", adminToken)
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugin-ui-manifest: expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if contentType := response.Header().Get("content-type"); !strings.HasPrefix(contentType, "application/json") {
+		t.Fatalf("GET /api/admin/plugin-ui-manifest: content type = %q, want application/json", contentType)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `"data"`) || !strings.Contains(body, `"provider.resource.panel"`) {
+		t.Fatalf("GET /api/admin/plugin-ui-manifest: response does not include builtin UI contributions: %s", body)
+	}
+}
+
 func TestAdminModelPOSTRoutesPreserveRBACForOtherWriteMethods(t *testing.T) {
 	store, app := newMethodRoutingAdminServer(t, "admin-model-write-routing-password")
 	user, err := store.CreateAdminUser(AdminUser{
@@ -202,6 +282,19 @@ func adminMethodRouteContracts() []adminMethodRouteContract {
 		{name: "playground_chat", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/playground/chat", userWantStatus: http.StatusMethodNotAllowed, userWantCode: "method_not_allowed"},
 		{name: "playground_chat_stream", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/playground/chat/stream", userWantStatus: http.StatusMethodNotAllowed, userWantCode: "method_not_allowed"},
 		{name: "provider_adapters", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/provider-adapters", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugins", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugins", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_install", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/plugins/install", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_permission_diff_install", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/plugins/permission-diff", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_update", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/plugins/tokenhub.provider.openai-codex/update", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_permission_diff_update", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/plugins/tokenhub.provider.openai-codex/permission-diff", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_package_delete", allowedMethod: http.MethodDelete, wrongMethod: http.MethodGet, path: "/api/admin/plugin-packages/tokenhub.provider.openai-codex", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_chain", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugin-chain", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_ui_manifest", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugin-ui-manifest", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_actions", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugin-actions", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_background_jobs", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/plugin-background-jobs", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_state", allowedMethod: http.MethodPatch, wrongMethod: http.MethodGet, path: "/api/admin/plugins/tokenhub.provider.openai-codex/state", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "plugin_action", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/plugins/tokenhub.provider.openai-codex/actions/openai_codex.quota.read", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
+		{name: "provider_action", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/provider-actions/openai_codex/oauth.start", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
 		{name: "openai_oauth_generate", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/provider-account-oauth/openai/generate-auth-url", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
 		{name: "openai_oauth_exchange", allowedMethod: http.MethodPost, wrongMethod: http.MethodGet, path: "/api/admin/provider-account-oauth/openai/exchange-code", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},
 		{name: "provider_monitoring", allowedMethod: http.MethodGet, wrongMethod: http.MethodPost, path: "/api/admin/providers/monitoring", userWantStatus: http.StatusForbidden, userWantCode: "admin_forbidden"},

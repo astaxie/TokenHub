@@ -24,6 +24,15 @@ func newTestServer() http.Handler {
 	return New(store).Handler()
 }
 
+func mustCodexSubscriptionAdapterForTest(t testing.TB, server *Server) *CodexSubscriptionAdapter {
+	t.Helper()
+	adapter, err := server.codexSubscriptionAdapter()
+	if err != nil {
+		t.Fatalf("resolve Codex subscription adapter: %v", err)
+	}
+	return adapter
+}
+
 func configureTestSMTPChannel(t *testing.T, store *GormStore) <-chan string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -132,8 +141,9 @@ func assertPasswordResetEmail(t *testing.T, messages <-chan string, recipient st
 }
 
 type responseBody struct {
-	Code int
-	Body string
+	Code   int
+	Header http.Header
+	Body   string
 }
 
 func doJSON(t *testing.T, handler http.Handler, method string, path string, payload any, token string) responseBody {
@@ -234,8 +244,10 @@ func findResource(t *testing.T, store *GormStore, id string) ProviderResource {
 }
 
 type captureAdapter struct {
-	seenKey     string
-	seenOptions map[string]string
+	seenKey             string
+	seenOptions         map[string]string
+	seenResponsesInput  any
+	seenEmbeddingsInput any
 }
 
 func (a *captureAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
@@ -253,12 +265,14 @@ func (a *captureAdapter) ChatStream(ctx context.Context, provider Provider, prov
 func (a *captureAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
 	a.seenKey = provider.APIKey
 	a.seenOptions = provider.Options
+	a.seenResponsesInput = req.Input
 	return MockAdapter{}.Responses(ctx, provider, providerModel, req)
 }
 
 func (a *captureAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
 	a.seenKey = provider.APIKey
 	a.seenOptions = provider.Options
+	a.seenEmbeddingsInput = req.Input
 	return MockAdapter{}.Embeddings(ctx, provider, providerModel, req)
 }
 

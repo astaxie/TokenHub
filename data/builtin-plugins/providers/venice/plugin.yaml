@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.venice"
+name: "Venice AI"
+version: 1.0.0
+summary: "Connect TokenHub to Venice AI."
+description: "Connect TokenHub to Venice AI. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "venice"
+      name: "Venice AI"
+      display_name: "Venice AI"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://docs.venice.ai"
+      categories: []
+      models_count: 75
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

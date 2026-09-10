@@ -416,3 +416,19 @@ func (d *difyStreamDecoder) consume(payload map[string]any) (bool, error) {
 		return false, nil
 	}
 }
+
+// difyConnectionTestCatalog backs the admin connection test for dify
+// providers. Dify apps have no /models endpoint: the parameters probe is the
+// credential check, and the inventory is whatever custom models the
+// administrator declared.
+func (s *Server) difyConnectionTestCatalog(ctx context.Context, req ProviderCreateRequest) (ProviderCatalogEntry, error) {
+	adapter, ok := resolveTypedAdapter[DifyAdapter](s.adapterRegistry, ProviderDify)
+	if !ok {
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Dify adapter is unavailable")
+	}
+	provider := Provider{Name: req.Name, Type: ProviderDify, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
+	if _, err := adapter.Probe(ctx, provider, ProviderResource{}, adapter.DefaultProbeRequest()); err != nil {
+		return ProviderCatalogEntry{}, err
+	}
+	return customProviderCatalogFromModelsWithType(req.CustomModels, req.ModelCategory, ProviderDify), nil
+}

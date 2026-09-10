@@ -49,6 +49,22 @@ func modelPriceAt(model Model, requestStartedAt time.Time) Model {
 		}
 		model.InputPriceUSDPer1M = priceOverride(model.InputPriceUSDPer1M, period.InputPriceUSDPer1M)
 		model.OutputPriceUSDPer1M = priceOverride(model.OutputPriceUSDPer1M, period.OutputPriceUSDPer1M)
+		if period.CacheReadPriceUSDPer1M != nil {
+			model.CacheReadPriceUSDPer1M = *period.CacheReadPriceUSDPer1M
+			model.Metadata = withConfiguredCacheReadPrice(model.Metadata, true)
+		}
+		if period.CacheWritePriceUSDPer1M != nil {
+			model.CacheWritePriceUSDPer1M = *period.CacheWritePriceUSDPer1M
+			model.CacheWritePriceConfigured = true
+		}
+		if period.CacheWrite5mPriceUSDPer1M != nil {
+			model.CacheWrite5mPriceUSDPer1M = *period.CacheWrite5mPriceUSDPer1M
+			model.CacheWrite5mPriceConfigured = true
+		}
+		if period.CacheWrite1hPriceUSDPer1M != nil {
+			model.CacheWrite1hPriceUSDPer1M = *period.CacheWrite1hPriceUSDPer1M
+			model.CacheWrite1hPriceConfigured = true
+		}
 		return model
 	}
 	return model
@@ -69,6 +85,13 @@ func pricingPeriodMatches(period ModelPricingPeriod, instant time.Time) bool {
 	local := instant.In(location)
 	startMinute, hasStart := parsePricingClock(period.StartTime)
 	endMinute, hasEnd := parsePricingClock(period.EndTime)
+	weekday := int(local.Weekday())
+	if hasStart && hasEnd && startMinute > endMinute && local.Hour()*60+local.Minute() < endMinute {
+		weekday = (weekday + 6) % 7
+	}
+	if !pricingWeekdayMatches(period.Weekdays, weekday) {
+		return false
+	}
 	if !hasStart && !hasEnd {
 		return true
 	}
@@ -86,6 +109,9 @@ func pricingPeriodMatches(period ModelPricingPeriod, instant time.Time) bool {
 }
 
 func validateModelPricingPeriods(periods []ModelPricingPeriod) error {
+	if len(periods) > 64 {
+		return invalidModelPricingPeriod(64, "at most 64 pricing periods are supported")
+	}
 	for index, period := range periods {
 		if zone := strings.TrimSpace(period.Timezone); zone != "" {
 			if _, err := time.LoadLocation(zone); err != nil {
@@ -119,7 +145,7 @@ func validateModelPricingPeriods(periods []ModelPricingPeriod) error {
 			}
 		}
 	}
-	return nil
+	return validatePricingSchedule(periods)
 }
 
 func pricingPeriodPriceOverrides(period ModelPricingPeriod) []struct {
@@ -132,10 +158,22 @@ func pricingPeriodPriceOverrides(period ModelPricingPeriod) []struct {
 	}{
 		{name: "input_price_usd_per_1m", value: period.InputPriceUSDPer1M},
 		{name: "output_price_usd_per_1m", value: period.OutputPriceUSDPer1M},
+		{name: "cache_read_price_usd_per_1m", value: period.CacheReadPriceUSDPer1M},
+		{name: "cache_write_price_usd_per_1m", value: period.CacheWritePriceUSDPer1M},
+		{name: "cache_write_5m_price_usd_per_1m", value: period.CacheWrite5mPriceUSDPer1M},
+		{name: "cache_write_1h_price_usd_per_1m", value: period.CacheWrite1hPriceUSDPer1M},
 	}
 }
 
 func applyModelPricingPatch(model *Model, patch Model) error {
+	var err error
+	patch, err = mergeModelPricePatch(*model, patch)
+	if err != nil {
+		return err
+	}
+	if err := validateModelBasePrices(patch); err != nil {
+		return err
+	}
 	model.InputPriceUSDPer1M = patch.InputPriceUSDPer1M
 	model.CacheReadPriceUSDPer1M = patch.CacheReadPriceUSDPer1M
 	model.CacheWritePriceUSDPer1M = patch.CacheWritePriceUSDPer1M

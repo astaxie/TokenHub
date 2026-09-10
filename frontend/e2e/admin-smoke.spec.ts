@@ -24,7 +24,8 @@ test("admin can sign in and sign out of the console", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
 });
 
-test("admin can validate and create a custom Provider", async ({ page }) => {
+for (const authenticated of [true, false]) {
+test(`admin can validate and create a custom Provider with authentication = ${authenticated}`, async ({ page }) => {
   await login(page);
   await sidebar(page).getByRole("button", { name: "Provider 渠道", exact: true }).click();
   await expect(page).toHaveURL(/\/providers$/);
@@ -33,19 +34,23 @@ test("admin can validate and create a custom Provider", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "选择接入方式" })).toBeVisible();
   await page.getByRole("button", { name: "下一步" }).click();
   await page.getByRole("button", { name: "自定义渠道商" }).click();
-  await page.getByLabel("渠道名称").fill("E2E Fake Provider");
-  await page.getByLabel("Base URL").fill(`http://127.0.0.1:${upstreamPort}/v1`);
-  await page.getByLabel("API Key", { exact: true }).fill(upstreamKey);
+  const providerName = authenticated ? "E2E Fake Provider" : "E2E Local Provider";
+  await page.getByLabel("渠道名称").fill(providerName);
+  await page.getByLabel("Base URL").fill(`http://${authenticated ? "127.0.0.1" : "localhost"}:${upstreamPort}${authenticated ? "" : "/open"}/v1`);
+  const credential = page.getByLabel("认证密钥（可选）", { exact: true });
+  if (authenticated) await credential.fill(upstreamKey);
+  else await expect(credential).toHaveValue("");
 
   await page.getByRole("button", { name: "测试连接" }).click();
-  await expect(page.getByRole("status")).toContainText("API Key 配置有效");
+  await expect(page.getByRole("status")).toContainText("连接测试通过");
   await page.getByRole("tab", { name: "模型" }).click();
   await expect(page.getByText("e2e-chat-model", { exact: true }).first()).toBeVisible();
   await page.getByRole("switch", { name: "引入 e2e-chat-model" }).click();
   await page.locator("form.provider-modal").getByRole("button", { name: "新增 Provider" }).click();
 
-  await expect(page.getByText("E2E Fake Provider", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(providerName, { exact: true }).first()).toBeVisible();
 });
+}
 
 test("admin can issue an API Key and open its usage page", async ({ page }) => {
   await login(page);
@@ -75,4 +80,181 @@ test("admin can issue an API Key and open its usage page", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "E2E Regression Key" })).toBeVisible();
   await expect(page.getByText("当前 Key 有效额度", { exact: true })).toBeVisible();
   await expect(page.getByText("所选条件下暂无请求", { exact: true })).toBeVisible();
+});
+
+test("admin can inspect plugin details and files without fake settings", async ({ page }) => {
+  await login(page);
+  await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
+  await expect(page).toHaveURL(/\/plugins$/);
+
+  const pluginSearch = page.getByRole("searchbox", { name: "搜索插件" });
+  await page.getByRole("tab", { name: "Provider 集成" }).click();
+  await pluginSearch.fill("tokenhub.provider-catalog.requesty");
+  const catalogPluginRow = page.locator(".plugin-installed-row").filter({ hasText: "Requesty" });
+  await expect(catalogPluginRow).toBeVisible();
+  await expect(catalogPluginRow.getByText("待配置", { exact: true })).toBeVisible();
+  await expect(catalogPluginRow.getByRole("button", { name: "禁用", exact: true })).toBeVisible();
+  await expect(catalogPluginRow.getByRole("button", { name: "安装", exact: true })).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "全部插件" }).click();
+  await pluginSearch.fill("TokenHub Default Interface Template");
+  const configurableRow = page.locator(".plugin-installed-row").filter({
+    has: page.getByRole("button", { name: "设置", exact: true }),
+  }).first();
+  await expect(configurableRow).toBeVisible();
+  await expect(configurableRow.locator(".plugin-installed-meta")).toBeVisible();
+  await expect(configurableRow.locator(".plugin-title-version")).toHaveCount(0);
+  await expect(configurableRow.locator(".plugin-installed-label")).not.toHaveCount(0);
+  const detailBox = await configurableRow.getByRole("button", { name: "详情", exact: true }).boundingBox();
+  const settingsBox = await configurableRow.getByRole("button", { name: "设置", exact: true }).boundingBox();
+  expect(detailBox).not.toBeNull();
+  expect(settingsBox).not.toBeNull();
+  expect(Math.abs(detailBox!.y - settingsBox!.y)).toBeLessThan(1);
+  expect(settingsBox!.x - detailBox!.x - detailBox!.width).toBeGreaterThanOrEqual(7);
+  expect(detailBox!.width).toBeGreaterThanOrEqual(80);
+  expect(settingsBox!.width).toBeGreaterThanOrEqual(80);
+
+  await pluginSearch.fill("");
+  const detailOnlyRow = page.getByRole("button", { name: "查看插件 TokenHub Core Provider Settings 的详情" })
+    .locator("xpath=ancestor::article");
+  await expect(detailOnlyRow.getByRole("button", { name: "设置", exact: true })).toHaveCount(0);
+  const detailOnlyBox = await detailOnlyRow
+    .getByRole("button", { name: "详情", exact: true })
+    .boundingBox();
+  expect(detailOnlyBox).not.toBeNull();
+  expect(Math.abs(detailOnlyBox!.x - detailBox!.x)).toBeLessThan(1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expect.poll(() => page.locator(".plugin-installed-actions").evaluateAll((actions) => actions.every((item) => item.scrollWidth <= item.clientWidth))).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "查看插件 TokenHub Core Provider Settings 的详情" }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.admin\.core-provider$/);
+  await expect(page.getByText("兼容", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "文件" }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.admin\.core-provider\/files$/);
+  await expect(page.getByRole("button", { name: /plugin\.yaml/ })).toBeVisible();
+  await expect(page.getByText("该内置插件没有独立安装包。")).toHaveCount(0);
+  await page.getByRole("button", { name: "返回插件列表" }).click();
+
+  await page.getByRole("tab", { name: "全部插件" }).click();
+  await page.getByRole("searchbox", { name: "搜索插件" }).fill("External Trace Hook");
+  const externalTraceRow = page.locator(".plugin-installed-row").filter({ hasText: "External Trace Hook" });
+  await expect(externalTraceRow.getByText("启动失败", { exact: true })).toBeVisible();
+  await externalTraceRow.getByRole("button", { name: "详情", exact: true }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace$/);
+  await expect(page.getByRole("heading", { name: "External Trace Hook" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "这个插件做什么" })).toBeVisible();
+  await expect(page.getByText("Contract fixture for an external trace export gateway hook.", { exact: true })).toBeVisible();
+  await expect(page.getByText("请求处理", { exact: true })).toBeVisible();
+  await expect(page.getByText("此功能已声明，但插件启动失败，当前不可用。", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前只能在插件管理中检查此插件包；声明的外部命令不会执行。", { exact: true })).toBeVisible();
+  await expect(page.getByText("export", { exact: true })).not.toBeVisible();
+  await page.getByText("开发者信息", { exact: true }).click();
+  await expect(page.getByText("trace_export", { exact: true })).toBeVisible();
+  await expect(page.getByText("export", { exact: true })).not.toBeVisible();
+  await expect(page.getByText("告诉 TokenHub 这个插件提供的一项扩展功能。", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  const overflowingTechnicalElements = await page.locator(".plugin-technical-details").evaluate((details) => [details, ...details.querySelectorAll<HTMLElement>("*")]
+    .filter((element) => element.scrollWidth > element.clientWidth + 1)
+    .map((element) => `${element.tagName.toLowerCase()}.${element.className}:${element.clientWidth}/${element.scrollWidth}`));
+  expect(overflowingTechnicalElements).toEqual([]);
+
+  await page.getByRole("tab", { name: "文件" }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.extension\.external-trace\/files$/);
+  await expect(page.getByRole("button", { name: /plugin\.yaml/ })).toBeVisible();
+  await page.getByRole("button", { name: /hook\.sh/ }).click();
+  await expect(page.locator(".plugin-file-preview pre")).toContainText("#!/bin/sh");
+
+  await expect(page.getByRole("tab", { name: "设置" })).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "文件" }).click();
+  const fileListBox = await page.locator(".plugin-file-list").boundingBox();
+  const previewBox = await page.locator(".plugin-file-preview").boundingBox();
+  expect(fileListBox).not.toBeNull();
+  expect(previewBox).not.toBeNull();
+  expect(previewBox!.y).toBeGreaterThanOrEqual(fileListBox!.y + fileListBox!.height - 1);
+});
+
+test("admin can adjust UI template settings", async ({ page }) => {
+  await login(page);
+  await sidebar(page).getByRole("button", { name: "插件管理", exact: true }).click();
+  await page.getByRole("tab", { name: "UI 模板" }).click();
+  const templateRow = page.locator(".plugin-installed-row").filter({ hasText: "TokenHub Default Interface Template" });
+  await templateRow.getByRole("button", { name: "设置", exact: true }).click();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);
+  await expect(page.getByRole("heading", { name: "TokenHub Default Interface Template" })).toBeVisible();
+  await page.reload();
+  await expect(page).toHaveURL(/\/plugins\/tokenhub\.sim\.default\/settings$/);
+  await expect(page.getByRole("tab", { name: "TokenHub 默认浅色" })).toBeVisible();
+  await page.getByRole("tab", { name: "TokenHub 默认浅色" }).click();
+  await page.getByRole("textbox", { name: "主题色 当前值" }).fill("#16a34a");
+  await page.getByRole("button", { name: "保存设置" }).click();
+  await expect(page.getByRole("status")).toContainText("设置已保存");
+  await expect(page.locator(".app-shell")).toHaveAttribute("style", /--accent: #16a34a/);
+
+  await page.getByRole("button", { name: "恢复默认" }).click();
+  await expect(page.locator(".app-shell")).toHaveAttribute("style", /--accent: #3e7bf6/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expect.poll(() => page.locator(".plugin-setting-row").evaluateAll((rows) => rows.every((row) => row.scrollWidth <= row.clientWidth))).toBe(true);
+});
+
+test("admin can preview and publish an exact shadow rate card", async ({ page }) => {
+  await login(page);
+  await page.goto("/billing");
+  await expect(page.getByRole("heading", { name: "精确计价与影子核对" })).toBeVisible();
+  await page.getByRole("combobox", { name: "计价对象", exact: true }).selectOption({ index: 1 });
+  await page.getByLabel("价格依据", { exact: true }).fill("E2E pricing fixture");
+  await page.getByLabel("普通输入", { exact: true }).fill("2");
+  await page.getByLabel("缓存读取", { exact: true }).fill("0.5");
+  await page.getByLabel("其他缓存写入", { exact: true }).fill("0");
+  await page.getByLabel("5 分钟缓存写入", { exact: true }).fill("0");
+  await page.getByLabel("1 小时缓存写入", { exact: true }).fill("0");
+  await page.getByLabel("输出", { exact: true }).fill("6");
+  await page.getByRole("button", { name: "预览费用", exact: true }).click();
+  await expect(page.getByText("US$0.86", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "发布影子价目", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "影子价目已发布" })).toBeVisible();
+  await page.getByRole("button", { name: "读取已发布版本" }).click();
+  await expect(page.locator("li").filter({ hasText: /rate_/ }).first()).toBeVisible();
+});
+
+test("admin can preview and export separate billing statements", async ({ page, request }) => {
+  const backendPort = Number(process.env.TOKENHUB_E2E_BACKEND_PORT ?? e2eDefaults.backendPort);
+  const seeded = await request.post(`http://127.0.0.1:${backendPort}/api/admin/models`, {
+    headers: { authorization: "Bearer e2e_admin_token_0000000000000000" },
+    data: { name: "statement-retail-model", family: "test", modality: "chat", status: "active", metadata: { directory_role: "external" } },
+  });
+  expect(seeded.status()).toBe(201);
+  await login(page);
+  await page.goto("/billing");
+  await expect(page.getByRole("heading", { name: "费用对账单", exact: true })).toBeVisible();
+  await page.getByLabel("客户名称", { exact: true }).fill("E2E Customer");
+  await page.getByLabel("客户项目（可多选）").selectOption({ index: 0 });
+  await page.getByRole("button", { name: "预览对账单", exact: true }).click();
+  await expect(page.getByRole("button", { name: "导出当前预览 CSV" })).toBeVisible();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出当前预览 CSV" }).click();
+  expect((await downloaded).suggestedFilename()).toMatch(/^tokenhub-tenant-/);
+  await page.getByLabel("对账单类型").selectOption("provider");
+  await expect(page.getByRole("button", { name: "导出当前预览 CSV" })).toHaveCount(0);
+  await page.getByRole("button", { name: "预览对账单", exact: true }).click();
+  await expect(page.getByText("供应商金额与本地估算分列，不相加；跨期间记录保留全额，不自动分摊。")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.getByRole("heading", { name: "费用对账单", exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath("billing-statements-mobile.png") });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: test.info().outputPath("billing-statements-desktop.png") });
+  await page.goto("/models");
+  await page.getByRole("group", { name: "发布状态" }).getByRole("button", { name: "全部", exact: true }).click();
+  await page.getByRole("button", { name: "下游费用对账单", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "费用对账单", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("对外模型（留空为全部）")).not.toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
 });

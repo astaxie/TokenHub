@@ -1,0 +1,101 @@
+{
+  "id": "cerebras",
+  "name": "Cerebras",
+  "doc": "https://inference-docs.cerebras.ai/models/overview",
+  "display_name": "Cerebras",
+  "models": [
+    {
+      "id": "gpt-oss-120b",
+      "name": "GPT OSS 120B",
+      "family": "gpt-oss",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-08-05",
+      "last_updated": "2026-06-10",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 40960
+      },
+      "cost": {
+        "input": 0.35,
+        "output": 0.75
+      },
+      "display_name": "GPT OSS 120B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "zai-glm-4.7",
+      "name": "Z.AI GLM-4.7",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-01-07",
+      "last_updated": "2026-06-10",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 40960
+      },
+      "status": "beta",
+      "cost": {
+        "input": 2.25,
+        "output": 2.75,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "display_name": "Z.AI GLM-4.7",
+      "type": "chat"
+    }
+  ]
+}

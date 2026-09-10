@@ -1,0 +1,49 @@
+{
+  "id": "tencent-tokenhub",
+  "api": "https://tokenhub.tencentmaas.com/v1",
+  "name": "Tencent TokenHub",
+  "doc": "https://cloud.tencent.com/document/product/1823/130050",
+  "display_name": "Tencent TokenHub",
+  "models": [
+    {
+      "id": "hy3-preview",
+      "name": "Hy3 preview",
+      "family": "Hy",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2026-04-20",
+      "last_updated": "2026-04-20",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 256000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "display_name": "Hy3 preview",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    }
+  ]
+}

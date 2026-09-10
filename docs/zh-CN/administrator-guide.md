@@ -13,6 +13,7 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 | Routing Policies | 细调 Provider 映射、优先级、权重、项目作用域和故障转移策略 |
 | Projects and Teams | 定义 Key、额度和成本归因的组织边界 |
 | Identity Sources | 配置 OAuth 或 OIDC 企业登录 |
+| 插件管理 | 安装和检查外部包、管理生命周期状态，并运行受支持的内置或声明式能力 |
 | Security and Audit | 审查请求日志、后台操作、Key 轮换和策略变更 |
 
 ## 生产上线顺序
@@ -27,6 +28,18 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 8. 在大规模发放 Key 前检查用量归因。
 
 Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上游要求 `Authorization: Bearer`，请打开 Provider 的「高级」页签，保持「渠道商类型」为「Claude / Anthropic」，并在「Anthropic 认证方式」中选择「Authorization Bearer」。TokenHub 会从加密保存的 Provider API Key 生成对应 Header，并且只发送所选的认证 Header；不要在自定义 Headers 中重复填写凭据。
+
+## 插件管理
+
+打开「插件管理」，可以按 Provider 集成、请求链路、UI 模板或自动化分类浏览统一的内置与已安装插件列表。每个详情页都会说明插件用途并展示插件包文件；只有已经实现的声明式设置界面才会显示设置页。从插件市场或本地包安装时，系统会校验 checksum，将包写入 `TOKENHUB_PLUGIN_DIR`，并通过运行时热加载评估。声明式界面包可以生效。带后端命令的启用外部包则会显示为「启动失败」，保持已安装且可检查，并且不会注册 Provider、Hook、任务或 Action，因为当前版本尚不支持外部执行。内置插件可以启用或禁用，但不能卸载；外部包还可以更新或卸载。
+
+Provider 插件可以在 manifest 中声明路由和凭据策略。对上游密钥必须放在 Provider Resource、而不是 Provider 自身上的订阅/账号型 Provider，设置 `capabilities.provider.credentials_scope: resource`。如果每次路由尝试都必须选中可用的 Provider Resource，则设置 `capabilities.provider.route_requires_resource: true`；Core 会在创建 Provider 时持久化这些策略，并应用与内置订阅 Provider 一致的缺失、禁用、不健康、冷却和资源组检查。设置 `capabilities.provider.reasoning_configurable` 可以显式显示或隐藏 Admin 推理参数控制；没有该字段的旧插件仍会回退到路由协议推断。
+
+如果 Provider 插件在兼容桥接后接收 Responses 形态的请求，可以在 `capabilities.provider.route_protocols` 中列出 `codex/responses`。随后 Chat Completions 和 Anthropic Messages 路由会对该 Provider 使用共享的 Chat/Anthropic 到 Responses 桥接，而不是依赖某个内置 Provider 类型。
+
+支持请求会话亲和性的插件还可以在 `capabilities.gateway` 中声明 `session_affinity`，并把 `capabilities.provider.session_affinity_kind` 设置为 `provider_session` 或 `codex_session`。当 Responses、Chat、Anthropic、Gemini 或 Responses Compact 路由根据 session header 或请求 metadata 生成粘性 Provider Resource 绑定时，Core 会使用该策略。
+
+已注册的进程内后台任务可以在后台任务清单中手动运行。手动运行会使用与定时任务相同的 Core runner，包括输入 Schema 校验、重试设置、超时处理、并发限制、最近运行记录、结果脱敏和管理员审计事件。TokenHub 在把运行结果返回给控制台前，会遮蔽 access token、refresh token、API key、密码、cookie、私钥等疑似敏感字段。外部执行不可用期间，外部命令型任务不会注册。
 
 ## 模型演练场诊断
 
@@ -88,6 +101,12 @@ TokenHub 使用与用量统计相同的归属顺序解析用户：先取 API Key
 
 系统会在调用任何 Provider 前预留用户请求数和预估 Token。共享结算事务会把预留量对账为实际计量用量，并以请求 ID 作为持久化幂等标记，覆盖普通、流式、图片和后台 Responses 调用。后台任务会持久化预留状态，使取消、重启恢复和过期 worker 无法重复结算。PostgreSQL 使用事务级 advisory lock 与行锁在多个副本间协调；SQLite 使用单后端事务串行化。被阻止的请求会在调用 Provider 前返回 HTTP 429，并把 `details.scope` 设为 `user`。审计载荷、告警和指标只保留这一有限作用域，不暴露用户 ID 或任何 API Key 密钥。
 
+## 自托管兼容 API
+
+接入使用 OpenAI-compatible 适配器的自托管服务时，如果上游未启用认证，可将认证密钥留空。测试连接、模型发现和推理均支持此方式，无需填写占位 API Key；上游启用认证时应填写真实密钥。编辑已有 Provider 时，留空会保留已保存的密钥，需使用明确的移除密钥选项才能切换为无认证访问。其他适配器仍遵循各自声明的认证要求。
+
+`http://192.168.1.10:8000/v1` 等 RFC1918/ULA 字面量 HTTP 地址默认可用。回环地址仅在自动模式且私网清单为空时自动放行；否则仍需 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`。`host.docker.internal` 等内网域名需要 `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto`。已有非空私网清单继续限制范围。严格模式及代理规则见部署指南。
+
 ## Provider 目录可用性
 
 TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中。每次后端启动时，系统都会校验并加载配置的本地 `provider-catalog.json`，然后原子替换数据库快照。普通「Provider 渠道」请求只读取数据库快照。管理员显式刷新时，系统会下载最新的 `PublicProviderConf` 目录，执行相同的完整性校验，并仅在校验通过后原子替换快照。若上游请求或校验失败，TokenHub 会回退到配置的本地目录；若本地回退也失败，刷新请求会返回错误，并继续使用最后一次有效快照。刷新响应会用 `upstream-provider-catalog` 或 `local-provider-catalog` 标明实际采用的来源。
@@ -98,7 +117,7 @@ TokenHub 会把最后一次成功加载的 Provider 目录保存在数据库中�
 
 ### Kronk 本地推理
 
-在「Provider 渠道」中选择 **Kronk**，即可连接独立运行的 Kronk Model Server。默认 Base URL 为 `http://127.0.0.1:11435/v1`。Kronk 未启用认证时可将 application token 留空；启用认证后，TokenHub 只会将保存的密钥作为 `Authorization: Bearer <token>` 发送。连接测试会分别检查 `/v1/liveness`、`/v1/readiness` 和 `/v1/models`，从而区分进程可达、服务就绪和本地模型可用状态。
+在「Provider 渠道」中选择 **Kronk**，即可连接独立运行的 Kronk Model Server。默认 Base URL 为 `http://127.0.0.1:11435/v1`，仅在自动模式且私网清单为空时自动放行；否则需要 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`。Kronk 运行在其他主机时，应填写可达的私网 IP，默认严格模式即可使用。Kronk 未启用认证时可将 application token 留空；启用认证后，TokenHub 只会将保存的密钥作为 `Authorization: Bearer <token>` 发送。连接测试会分别检查 `/v1/liveness`、`/v1/readiness` 和 `/v1/models`，从而区分进程可达、服务就绪和本地模型可用状态。
 
 模型选择器通过 `GET /v1/models` 发现实时库存，并完整保留 Kronk 模型 ID 中的 `/`、`:` 和量化后缀。引入选中的库存后，在「模型目录」中创建对外标准模型名，再到「路由策略」将其映射到 Kronk 模型 ID。重复引入保持幂等。后续模型发现成功时，已从 Kronk 移除的模型会被标记为不可用，但不会删除其库存或路由；发现失败不会改写现有配置。
 
@@ -122,13 +141,13 @@ Provider 选项决定应用协议：
 
 如果想让 Dify 应用反向通过 TokenHub 调用模型，在 Dify 内添加指向 TokenHub `/v1` 端点、使用 TokenHub API key 的 `OpenAI-API-compatible` 模型供应商即可，TokenHub 侧无需任何配置。
 
-## Claude Code 归因块处理
+## 系统提示词转换处理
 
 Claude Code 可能在 Anthropic Messages 请求的 `system` 数组开头插入归因文本块。该块包含可能随请求变化的客户端元数据，可能导致第三方上游无法复用原本稳定的提示词前缀。
 
-每个 Provider 都可以设置 `claude_code_attribution_policy`。新建 Anthropic 官方 Provider 时默认使用 `preserve`；明确非官方的 Provider 默认使用 `strip`，以提高第三方上游的提示词前缀缓存复用率；来源不明的自定义 Anthropic 端点默认使用 `preserve`。已有 Provider 未配置该字段时也继续保留归因块。`strip` 只在第一个顶层 `system` 元素的 `type` 为 `"text"`，且文本严格以 `x-anthropic-billing-header:` 开头时移除该元素。字符串形式的 `system` 提示词、后续元素、带前导空格的文本及其他元素类型均不会被移除。
+每个 Provider 都可以设置 `system_prompt_transform_policy`。Provider 插件通过 `system_prompt_transform_default` provider policy capability 声明默认策略。新建第三方 Provider 在插件未声明其他默认值时使用 `strip`，以提高上游提示词前缀缓存复用率。已有 Provider 未配置该字段时继续保留归因块。旧的 `claude_code_attribution_policy` option 和 `claude_code_attribution_default` capability 仍作为升级兼容别名被接受。`strip` 只在第一个顶层 `system` 元素的 `type` 为 `"text"`，且文本严格以 `x-anthropic-billing-header:` 开头时移除该元素。字符串形式的 `system` 提示词、后续元素、带前导空格的文本及其他元素类型均不会被移除。
 
-Provider Resource 默认继承 Provider 策略，也可以通过 `options.claude_code_attribution_policy` 将策略覆盖为 `preserve` 或 `strip`；省略该 Resource 选项即可恢复继承。TokenHub 会为每次路由尝试单独应用实际生效的策略，因此故障切换后的 Resource 会收到原始请求，再执行自身策略。审计载荷同样保留原始请求。`POST /v1/messages/count_tokens` 不会选择具体的 Provider Resource，因此仍按原始请求计数。
+Provider Resource 默认继承 Provider 策略，也可以通过 `options.system_prompt_transform_policy` 将策略覆盖为 `preserve` 或 `strip`；省略该 Resource 选项即可恢复继承。TokenHub 会为每次路由尝试单独应用实际生效的策略，因此故障切换后的 Resource 会收到原始请求，再执行自身策略。审计载荷同样保留原始请求。`POST /v1/messages/count_tokens` 不会选择具体的 Provider Resource，因此仍按原始请求计数。
 
 ## Codex 指纹收敛
 
@@ -161,6 +180,13 @@ Provider 模型价格代表真实上游成本，用于内部审计；模型目�
 当 Provider 渠道、模型目录或路由策略还没有配置数据时，控制台会展示同一套三步引导：引入 Provider 库存、从内置模型目录中创建对外模型、再配置路由。主操作按钮始终指向最早尚未完成的前置步骤，避免管理员进入当前还无法完成的表单。
 
 「发布状态」与「运行健康」相互独立。模型要出现在 `GET /v1/models` 中，必须同时满足：对外 `Model` 已启用、至少有一条已启用 `ModelRoute`，且在 API Key 配置了模型白名单时获得授权。Provider 或 Provider Resource 短时不健康不会改变该列表，只会影响当前请求能否成功，并在目录和路由诊断中单独展示。下线对外模型会将它从 `GET /v1/models` 移除，但保留映射，便于之后重新发布。
+
+### GPT-6 Astra
+
+标准模型目录和内置 OpenAI Provider 库存已包含 `gpt-6-astra`。创建模型时选择它，并配置有访问权限的上游路由；目录收录不代表获得上游权限。Codex 订阅库存仍从账户发现。支持的推理档位为 `low`、`medium`、`high`、`xhigh`、`max`；Codex 探测和 Anthropic 到 Codex 的转换会保留 `max`。
+
+模板采用 OpenAI Standard 每百万 token 价格：输入 10 美元、缓存读取 1 美元、缓存写入 12.50 美元、输出 50 美元。输入超过 272,000 token 时，OpenAI 对整个请求的输入及缓存价格乘以 2，输出价格乘以 1.5。Provider 阶梯元数据记录了该差异；标准模板的固定价格不会自动应用上下文阶梯或 Batch/Flex/Fast 折扣及加价，请单独配置适用价格。参见 [OpenAI 模型说明](https://developers.openai.com/api/docs/models/gpt-6-astra)。
+
 
 ## 自定义上游请求头
 

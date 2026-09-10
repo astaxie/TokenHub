@@ -755,7 +755,7 @@ func TestAPIKeyTPMReturnsCodexReservationWhenStreamHasNoBody(t *testing.T) {
 		ProviderModel: "gpt-codex-empty", Status: StatusActive,
 	})
 	server := New(store)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK, Header: make(http.Header),
 			Body: io.NopCloser(strings.NewReader("")), Request: req,

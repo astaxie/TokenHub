@@ -1,0 +1,15 @@
+# 界面模板插件
+
+Language: [English](../../plugin-development/ui-templates.md) | 简体中文 | [日本語](../../ja/plugin-development/ui-templates.md)
+
+界面模板插件是声明式展示包。Plugin API v2 支持 `theme_tokens`、`shell_layouts`、`page_templates` 和 `dashboard_compositions`。Admin UI 贡献可以向允许的 slot 添加 Schema 驱动的面板、Tab、卡片、字段和动作。
+
+只有模板声明了可编辑主题 Token 时才显示设置页。页面用易懂名称、简短说明、分组设置行和主题方案 Tab 展示这些值，并提供恢复默认操作。布局声明和原始 Schema 属于实现细节，不作为设置展示。
+
+安全边界是显式的：模板不能注入任意 JavaScript、CSS、stylesheet URL、远程脚本、`@import` 或 `url(...)`。动作经 Core 执行，继续受 RBAC 和审计约束，且不会获得原始管理员凭证。浏览器本地 Token 覆盖不是团队级服务端配置。
+
+每个贡献都必须在目标 renderer 中测试；Schema 通过不代表所有 slot 都支持其中的每种控件。完整布局、控件和 slot 见[完整指南](guide.md)。
+
+内置插件生态面板及核心上游/Codex 设置随控制台语言切换，支持简体中文、英语和日语。翻译仅作用于已知内置标题、说明、字段标签和帮助文案；插件标识、配置值、第三方及未知元数据保持原样。
+
+禁用内置模板或 Admin UI 插件后，其生效中的界面贡献会立即移除，重启后仍保持禁用状态；声明信息仍可检查。禁用 Provider 插件也会停止提供其管理 Action 和定时任务。重新启用会恢复该插件受支持的贡献。

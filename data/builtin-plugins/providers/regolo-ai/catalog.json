@@ -1,0 +1,473 @@
+{
+  "id": "regolo-ai",
+  "api": "https://api.regolo.ai/v1",
+  "name": "Regolo AI",
+  "doc": "https://docs.regolo.ai/",
+  "display_name": "Regolo AI",
+  "models": [
+    {
+      "id": "llama-3.1-8b-instruct",
+      "name": "Llama 3.1 8B Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-04-07",
+      "last_updated": "2025-04-07",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 120000,
+        "output": 120000
+      },
+      "cost": {
+        "input": 0.05,
+        "output": 0.25
+      },
+      "display_name": "Llama 3.1 8B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "minimax-m2.5",
+      "name": "MiniMax 2.5",
+      "family": "minimax",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2026-03-10",
+      "last_updated": "2026-03-10",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 190000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0.8,
+        "output": 3.5
+      },
+      "display_name": "MiniMax 2.5",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "mistral-small3.2",
+      "name": "Mistral Small 3.2",
+      "family": "mistral-small",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-01-31",
+      "last_updated": "2025-01-31",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 120000,
+        "output": 120000
+      },
+      "cost": {
+        "input": 0.5,
+        "output": 2.2
+      },
+      "display_name": "Mistral Small 3.2",
+      "type": "chat"
+    },
+    {
+      "id": "qwen3-reranker-4b",
+      "name": "Qwen3-Reranker-4B",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "release_date": "2026-02-01",
+      "last_updated": "2026-02-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32768,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.12,
+        "output": 0.12
+      },
+      "display_name": "Qwen3-Reranker-4B",
+      "type": "rerank"
+    },
+    {
+      "id": "qwen3-embedding-8b",
+      "name": "Qwen3-Embedding-8B",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "release_date": "2026-02-01",
+      "last_updated": "2026-02-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32768,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.1,
+        "output": 0.1
+      },
+      "display_name": "Qwen3-Embedding-8B",
+      "type": "embedding"
+    },
+    {
+      "id": "llama-3.3-70b-instruct",
+      "name": "Llama 3.3 70B Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-04-28",
+      "last_updated": "2025-04-28",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0.6,
+        "output": 2.7
+      },
+      "display_name": "Llama 3.3 70B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "qwen-image",
+      "name": "Qwen-Image",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": true,
+      "release_date": "2026-03-01",
+      "last_updated": "2026-03-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 8192,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.5,
+        "output": 2
+      },
+      "display_name": "Qwen-Image",
+      "type": "image-generation"
+    },
+    {
+      "id": "qwen3.5-122b",
+      "name": "Qwen3.5-122B",
+      "family": "qwen",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2026-02-01",
+      "last_updated": "2026-02-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0.9,
+        "output": 3.6
+      },
+      "display_name": "Qwen3.5-122B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "gpt-oss-120b",
+      "name": "GPT-OSS-120B",
+      "family": "gpt-oss",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-08-05",
+      "last_updated": "2025-08-05",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 1,
+        "output": 4.2
+      },
+      "display_name": "GPT-OSS-120B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "qwen3-coder-next",
+      "name": "Qwen3-Coder-Next",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2026-03-01",
+      "last_updated": "2026-03-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0.3,
+        "output": 1.2
+      },
+      "display_name": "Qwen3-Coder-Next",
+      "type": "chat"
+    },
+    {
+      "id": "qwen3.5-9b",
+      "name": "Qwen3.5-9B",
+      "family": "qwen",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2026-02-01",
+      "last_updated": "2026-02-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "display_name": "Qwen3.5-9B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mistral-small-4-119b",
+      "name": "Mistral Small 4 119B",
+      "family": "mistral-small",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2026-03-15",
+      "last_updated": "2026-03-15",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0.75,
+        "output": 3
+      },
+      "display_name": "Mistral Small 4 119B",
+      "type": "chat"
+    },
+    {
+      "id": "gpt-oss-20b",
+      "name": "GPT-OSS-20B",
+      "family": "gpt-oss",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2026-03-01",
+      "last_updated": "2026-03-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0.4,
+        "output": 1.8
+      },
+      "display_name": "GPT-OSS-20B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    }
+  ]
+}

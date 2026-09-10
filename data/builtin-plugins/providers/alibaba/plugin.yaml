@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.alibaba"
+name: "alibaba"
+version: 1.0.0
+summary: "Connect TokenHub to alibaba."
+description: "Connect TokenHub to alibaba. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    catalog:
+      id: "alibaba"
+      name: "alibaba"
+      display_name: "alibaba"
+      type: "openai_compatible"
+      base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+      doc_url: "https://www.alibabacloud.com/help/en/model-studio/models"
+      categories: []
+      models_count: 80
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

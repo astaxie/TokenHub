@@ -1,11 +1,15 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"sync"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type recordingTraceEmitter struct {
@@ -39,6 +43,194 @@ func newTracedTestServer(t *testing.T) (http.Handler, *recordingTraceEmitter) {
 	emitter := &recordingTraceEmitter{}
 	app.traceEmitter = emitter
 	return app.Handler(), emitter
+}
+
+func TestGatewayCompletionRunsTraceExportHooks(t *testing.T) {
+	store := NewMemoryStore()
+	app := New(store)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID: "tokenhub.test-trace",
+		HookID:   "capture",
+		Stage:    pluginmeta.StageTraceExport,
+		Priority: 2000,
+		Reads:    []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+	}
+	if err := app.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace hook: %v", err)
+	}
+	var captured pluginmeta.GatewayHookInput
+	if err := app.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		captured = input
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register trace handler: %v", err)
+	}
+
+	app.finishCall(GatewayCallCompletion{
+		Kind: CompletionKindRejected,
+		Call: CallContext{
+			RequestID: "req_trace_hook",
+			Project:   Project{ID: "prj_trace"},
+			Key:       APIKey{ID: "key_trace"},
+			Model:     Model{Name: "gpt-trace"},
+		},
+		Usage:      Usage{PromptTokens: 3, CompletionTokens: 4, TotalTokens: 7},
+		StatusCode: http.StatusForbidden,
+		ErrorCode:  "blocked",
+	})
+
+	if captured.RequestID != "req_trace_hook" {
+		t.Fatalf("captured request id = %q, want req_trace_hook", captured.RequestID)
+	}
+	if captured.Envelope.Model != "gpt-trace" || captured.Envelope.Operation != string(CompletionKindRejected) {
+		t.Fatalf("captured envelope = %+v", captured.Envelope)
+	}
+	if _, ok := captured.Data[pluginmeta.DataAudit]; !ok {
+		t.Fatalf("captured data has no audit payload: %+v", captured.Data)
+	}
+	var usage Usage
+	if err := json.Unmarshal(captured.Data[pluginmeta.DataUsage], &usage); err != nil {
+		t.Fatalf("unmarshal usage: %v", err)
+	}
+	if usage.TotalTokens != 7 {
+		t.Fatalf("captured usage total tokens = %d, want 7", usage.TotalTokens)
+	}
+}
+
+func TestGatewayCompletionTraceExportRequiresChainRegistration(t *testing.T) {
+	app := New(NewMemoryStore())
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID: "tokenhub.test-trace",
+		HookID:   "unregistered-capture",
+		Stage:    pluginmeta.StageTraceExport,
+		Priority: 2000,
+		Reads:    []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+	}
+	called := false
+	if err := app.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		called = true
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register trace handler: %v", err)
+	}
+
+	app.finishCall(GatewayCallCompletion{
+		Kind: CompletionKindRejected,
+		Call: CallContext{
+			RequestID: "req_trace_hook_unregistered",
+			Project:   Project{ID: "prj_trace"},
+			Key:       APIKey{ID: "key_trace"},
+			Model:     Model{Name: "gpt-trace"},
+		},
+		Usage:      Usage{TotalTokens: 7},
+		StatusCode: http.StatusForbidden,
+		ErrorCode:  "blocked",
+	})
+
+	if called {
+		t.Fatal("trace export handler ran without chain registration")
+	}
+}
+
+func TestGatewayCompletionTraceExportFailureIsObserveOnly(t *testing.T) {
+	store := NewMemoryStore()
+	app := New(store)
+	emitter := &recordingTraceEmitter{}
+	app.traceEmitter = emitter
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-trace",
+		HookID:        "observe-only-error",
+		Stage:         pluginmeta.StageTraceExport,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyObserveOnly,
+	}
+	if err := app.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace hook: %v", err)
+	}
+	if err := app.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return pluginmeta.GatewayHookResult{}, io.ErrUnexpectedEOF
+	})); err != nil {
+		t.Fatalf("register trace handler: %v", err)
+	}
+
+	app.finishCall(GatewayCallCompletion{
+		Call: CallContext{
+			RequestID: "req_trace_observe_only",
+			Project:   Project{ID: "prj_trace"},
+			Key:       APIKey{ID: "key_trace"},
+			Model:     Model{Name: "gpt-trace"},
+		},
+		Usage:      Usage{TotalTokens: 7},
+		StatusCode: http.StatusOK,
+	})
+
+	if completions := emitter.take(); len(completions) != 1 {
+		t.Fatalf("trace emitter completions = %d, want 1", len(completions))
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].RequestID != "req_trace_observe_only" || logs[0].StatusCode != http.StatusOK {
+		t.Fatalf("trace hook failure affected request settlement: %+v", logs)
+	}
+}
+
+func TestGatewayCompletionTraceExportOmitsAttemptErrorText(t *testing.T) {
+	const upstreamError = "upstream body sentinel must not leak to trace export"
+	store := NewMemoryStore()
+	app := New(store)
+	emitter := &recordingTraceEmitter{}
+	app.traceEmitter = emitter
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-trace",
+		HookID:        "redacted-attempts",
+		Stage:         pluginmeta.StageTraceExport,
+		Priority:      2000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyObserveOnly,
+	}
+	if err := app.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace hook: %v", err)
+	}
+	var captured pluginmeta.GatewayHookInput
+	if err := app.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		captured = input
+		return pluginmeta.GatewayHookResult{}, nil
+	})); err != nil {
+		t.Fatalf("register trace handler: %v", err)
+	}
+
+	app.finishCall(GatewayCallCompletion{
+		Call: CallContext{
+			RequestID: "req_trace_attempt_redaction",
+			Project:   Project{ID: "prj_trace"},
+			Key:       APIKey{ID: "key_trace"},
+			Model:     Model{Name: "gpt-trace"},
+		},
+		Route: RouteSelection{Provider: Provider{ID: "prv_backup", Type: ProviderMock}, Route: ModelRoute{ID: "route_backup"}, ProviderModel: "backup-model"},
+		Usage: Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3},
+		Attempts: []RouteAttempt{
+			{Selection: RouteSelection{Provider: Provider{ID: "prv_failed", Type: ProviderMock}, Route: ModelRoute{ID: "route_failed"}, ProviderModel: "failed-model"}, Status: http.StatusBadGateway, ErrorCode: "provider_error", Error: upstreamError},
+			{Selection: RouteSelection{Provider: Provider{ID: "prv_backup", Type: ProviderMock}, Route: ModelRoute{ID: "route_backup"}, ProviderModel: "backup-model"}, Status: http.StatusOK},
+		},
+		StatusCode: http.StatusOK,
+	})
+
+	if captured.RequestID != "req_trace_attempt_redaction" {
+		t.Fatalf("trace export request id = %q", captured.RequestID)
+	}
+	raw := bytes.Join([][]byte{captured.Data[pluginmeta.DataAudit], captured.Data[pluginmeta.DataUsage]}, nil)
+	if bytes.Contains(raw, []byte(upstreamError)) {
+		t.Fatalf("trace export included upstream error text: %s", raw)
+	}
+	completions := emitter.take()
+	if len(completions) != 1 {
+		t.Fatalf("trace emitter completions = %d, want 1", len(completions))
+	}
+	for _, attempt := range completions[0].Attempts {
+		if attempt.Error != "" {
+			t.Fatalf("trace emitter attempt retained upstream error text: %+v", attempt)
+		}
+	}
 }
 
 // TestGatewayCallEmitsExactlyOneCompletion is the load-bearing test for tracing.
@@ -280,7 +472,7 @@ func TestFailoverAttemptsCarryTheirOwnUsage(t *testing.T) {
 	store.AddRoute(ModelRoute{ID: "route_backup", ModelName: "gpt-4.1-mini", ProviderID: backup.ID, ProviderModel: "backup-chat", Priority: 2, Weight: 100, Status: StatusActive, Strategy: "priority_only"})
 
 	server := New(store)
-	registerTestAdapter(server, "partial_usage_mock", partialUsageFailingAdapter{})
+	server.adapterRegistry.Register("partial_usage_mock", partialUsageFailingAdapter{}, AdapterCapabilityChat)
 	emitter := &recordingTraceEmitter{}
 	server.traceEmitter = emitter
 

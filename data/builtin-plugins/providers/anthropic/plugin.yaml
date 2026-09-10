@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider.anthropic"
+name: "Anthropic"
+version: 1.0.0
+summary: "Connect TokenHub to Anthropic."
+description: "Connect TokenHub to Anthropic. Connection behavior is provided by the host-managed anthropic adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "anthropic"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "anthropic"
+  provider:
+    catalog:
+      id: "anthropic"
+      name: "Anthropic"
+      display_name: "Anthropic"
+      type: "anthropic"
+      base_url: ""
+      doc_url: "https://docs.anthropic.com/en/docs/about-claude/models"
+      categories: []
+      models_count: 25
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

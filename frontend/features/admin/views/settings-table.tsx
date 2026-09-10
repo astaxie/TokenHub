@@ -1,7 +1,7 @@
 import { Edit3, Info, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
-import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ModalState, type Model, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
+import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ModalState, type Model, type ModelRoute, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
 import { filterRows } from "../domain/catalog";
 import { readPath, rowID, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
@@ -13,13 +13,16 @@ import { apiKeyStatusAction, APIKeyDownloadMenu, APIKeyStatusSwitch } from "../r
 import { identityProviderConfig, roleConfig, systemSettingConfig } from "../resources/settings-config";
 import { usePagination } from "../shared/pagination";
 import { FieldInput, StatusPill } from "../shared/ui";
-import { identityProviderInitialFormValues } from "../shared/auth";
+import { identityProviderInitialFormValues, identityProviderTemplatesFromData } from "../shared/auth";
 import { CrudView } from "./crud-projects";
 import { IdentityProviderEditModal } from "./modals";
 import { ModelCreateModal } from "./model-create-modal";
+import { AdminUIRouteDetailPanels } from "./admin-ui-route-detail-panels";
+import { AdminUISettingsPanels } from "./admin-ui-settings-panels";
 
 export function SettingsView({
   data,
+  api,
   activeTab,
   language,
   onTabChange,
@@ -32,6 +35,7 @@ export function SettingsView({
   onToolbarAction,
 }: {
   data: AppData;
+  api: ApiContext;
   activeTab: SettingsTabKey;
   language: AppLanguage;
   onTabChange: (tab: SettingsTabKey) => void;
@@ -72,14 +76,17 @@ export function SettingsView({
         ))}
       </div>
       {activeConfig.view === "settings" ? (
-        <SystemSettingsPanel
-          config={activeConfig}
-          items={filteredItems as AdminResource[]}
-          language={language}
-          onLanguageChange={onLanguageChange}
-          onRestoreModelCatalog={onRestoreModelCatalog}
-          onEdit={(item) => onEdit(activeConfig, item)}
-        />
+        <>
+          <SystemSettingsPanel
+            config={activeConfig}
+            items={filteredItems as AdminResource[]}
+            language={language}
+            onLanguageChange={onLanguageChange}
+            onRestoreModelCatalog={onRestoreModelCatalog}
+            onEdit={(item) => onEdit(activeConfig, item)}
+          />
+          <AdminUISettingsPanels api={api} data={data} />
+        </>
       ) : (
         <CrudView
           config={activeConfig}
@@ -482,7 +489,7 @@ export function EditModal<T>({
     ...(state.initialValues ?? {}),
   };
   const [values, setValues] = useState<Record<string, string>>(
-    state.config.view === "identity-providers" ? identityProviderInitialFormValues(initial, !state.item) : initial,
+    state.config.view === "identity-providers" ? identityProviderInitialFormValues(initial, !state.item, identityProviderTemplatesFromData(data)) : initial,
   );
   const [proxyTestProviderID, setProxyTestProviderID] = useState(data.providers.find((provider) => provider.status === "active")?.id ?? data.providers[0]?.id ?? "");
   const [proxyTestState, setProxyTestState] = useState<{ status: "idle" | "testing" | "success" | "error"; message?: string }>({ status: "idle" });
@@ -544,7 +551,7 @@ export function EditModal<T>({
           <button className="icon-button" onClick={onClose} type="button" title={tx("关闭")}>×</button>
         </div>
         <div className="modal-body">
-          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values) ?? true)).map((field) => (
+          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values, data, currentUser) ?? true)).map((field) => (
             <FieldInput
               key={field.key}
               field={field}
@@ -575,6 +582,9 @@ export function EditModal<T>({
               </button>
               {proxyTestState.message ? <small className={proxyTestState.status === "error" ? "error" : "success"}>{proxyTestState.message}</small> : null}
             </div>
+          ) : null}
+          {state.config.view === "routes" && state.item ? (
+            <AdminUIRouteDetailPanels api={api} data={data} route={state.item as unknown as ModelRoute} />
           ) : null}
         </div>
         <div className="modal-actions">

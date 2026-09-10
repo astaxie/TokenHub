@@ -270,15 +270,16 @@ export function RouteModelCard({
 }) {
   const routes = modelRoutesFor(model, data);
   const activeRoutes = routes.filter((route) => route.status === "active");
-  const category = modelCategory(model);
+  const category = modelCategory(model, data);
+  const label = modelCategoryLabel(category, data);
   return (
     <article className="route-model-card">
       <div className="route-model-head">
         <div>
           <div className="model-card-brand compact">
-            <span>{modelCategoryInitial(category, modelCategoryLabel(category))}</span>
+            <span>{modelCategoryInitial(category, label)}</span>
             <div>
-              <em>{modelCategoryLabel(category)}</em>
+              <em>{label}</em>
               <strong>{model.modality || "chat"}</strong>
             </div>
           </div>
@@ -318,8 +319,8 @@ export function RouteModelCard({
   );
 }
 
-export function ModelBrandIcon({ category, label, compact = false }: { category: string; label: string; compact?: boolean }) {
-  const source = modelBrandIconSource(category);
+export function ModelBrandIcon({ category, label, compact = false, data }: { category: string; label: string; compact?: boolean; data?: Pick<AppData, "plugins" | "providerAdapters"> }) {
+  const source = modelBrandIconSource(category, data);
   const className = `model-brand-icon${compact ? " compact" : ""}${source ? "" : " fallback"}`;
   if (source) {
     return (

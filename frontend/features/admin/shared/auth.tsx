@@ -1,7 +1,7 @@
 import { Database, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Moon, ReceiptText, Route, ShieldCheck, Sun, UserRound, UserRoundCheck, Users } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { savePendingOAuthLogin } from "../core/session";
-import { type LoginIdentityProvider, viewRoutes } from "../core/types";
+import { type AppData, type LoginIdentityProvider, type PluginDescriptor, viewRoutes } from "../core/types";
 import { stringifyValue } from "../domain/entities";
 import { identityProviderIconLabel } from "../domain/labels";
 import { buildOAuthLoginStartURL, createOAuthLoginPKCE } from "../domain/oauth-login";
@@ -50,6 +50,37 @@ export type IdentityProviderTemplate = {
   teamClaim: string;
   subjectClaim: string;
   endpoints?: (issuerURL: string) => IdentityProviderEndpointDefaults;
+};
+
+type IdentityProviderTemplatePayload = {
+  key?: string;
+  label?: string;
+  provider_type?: string;
+  providerType?: string;
+  icon_key?: string;
+  iconKey?: string;
+  login_label?: string;
+  loginLabel?: string;
+  configuration_guide_url?: string;
+  configurationGuideURL?: string;
+  configuration_guide_label?: string;
+  configurationGuideLabel?: string;
+  configuration_help?: string;
+  configurationHelp?: string;
+  issuer_placeholder?: string;
+  issuerPlaceholder?: string;
+  default_issuer?: string;
+  defaultIssuer?: string;
+  scopes?: string;
+  username_claim?: string;
+  usernameClaim?: string;
+  email_claim?: string;
+  emailClaim?: string;
+  team_claim?: string;
+  teamClaim?: string;
+  subject_claim?: string;
+  subjectClaim?: string;
+  endpoints?: Record<string, unknown>;
 };
 
 export const identityProviderTemplates: IdentityProviderTemplate[] = [
@@ -246,6 +277,99 @@ export const identityProviderTemplates: IdentityProviderTemplate[] = [
 
 export const identityProviderTemplateOptions = identityProviderTemplates.map((template) => template.key);
 
+export function identityProviderTemplatesFromData(data?: Pick<AppData, "plugins">) {
+  return identityProviderTemplatesFromPlugins(data?.plugins);
+}
+
+export function identityProviderTemplateOptionsFromData(data?: Pick<AppData, "plugins">) {
+  return identityProviderTemplatesFromData(data).map((template) => ({ value: template.key, label: template.label }));
+}
+
+export function identityProviderTemplatesFromPlugins(plugins: PluginDescriptor[] = []) {
+  const byKey = new Map(identityProviderTemplates.map((template) => [template.key, template] as const));
+  for (const plugin of plugins) {
+    for (const capability of plugin.capabilities ?? []) {
+      if (capability.kind !== "identity_provider_template" || capability.name !== "entry") continue;
+      const template = identityProviderTemplateFromCapability(capability.value, capability.subject, plugin.name);
+      if (!template || byKey.has(template.key)) continue;
+      byKey.set(template.key, template);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+function identityProviderTemplateFromCapability(value: string | undefined, subject: string | undefined, pluginName: string) {
+  const payload = parseIdentityProviderTemplatePayload(value);
+  if (!payload) return null;
+  const key = normalizeIdentityProviderTemplateID(payload.key || subject);
+  const providerType = identityProviderProtocol(payload.provider_type || payload.providerType);
+  if (!key || !providerType) return null;
+  const iconKey = normalizedIdentityProviderIconKey(payload.icon_key || payload.iconKey) || "sso";
+  const endpoints = identityProviderTemplateEndpointPayload(payload.endpoints);
+  return {
+    key,
+    label: stringifyValue(payload.label) || pluginName || key,
+    providerType,
+    iconKey,
+    loginLabel: stringifyValue(payload.login_label || payload.loginLabel) || stringifyValue(payload.label) || pluginName || "SSO",
+    configurationGuideURL: safeIdentityProviderURL(payload.configuration_guide_url || payload.configurationGuideURL) || "https://openid.net/specs/openid-connect-core-1_0.html",
+    configurationGuideLabel: stringifyValue(payload.configuration_guide_label || payload.configurationGuideLabel),
+    configurationHelp: stringifyValue(payload.configuration_help || payload.configurationHelp),
+    issuerPlaceholder: stringifyValue(payload.issuer_placeholder || payload.issuerPlaceholder) || "https://sso.example.com",
+    defaultIssuer: safeIdentityProviderURL(payload.default_issuer || payload.defaultIssuer),
+    scopes: stringifyValue(payload.scopes),
+    usernameClaim: stringifyValue(payload.username_claim || payload.usernameClaim) || "preferred_username",
+    emailClaim: stringifyValue(payload.email_claim || payload.emailClaim) || "email",
+    teamClaim: stringifyValue(payload.team_claim || payload.teamClaim),
+    subjectClaim: stringifyValue(payload.subject_claim || payload.subjectClaim) || "sub",
+    endpoints: endpoints ? (issuerURL: string) => resolveIdentityProviderTemplateEndpoints(endpoints, issuerURL) : undefined,
+  } satisfies IdentityProviderTemplate;
+}
+
+function parseIdentityProviderTemplatePayload(value: string | undefined): IdentityProviderTemplatePayload | null {
+  try {
+    const parsed = JSON.parse(String(value || "{}")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as IdentityProviderTemplatePayload : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeIdentityProviderTemplateID(value: string | undefined) {
+  return stringifyValue(value).trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+}
+
+function identityProviderProtocol(value: string | undefined): IdentityProviderTemplate["providerType"] | "" {
+  const normalized = stringifyValue(value).trim().toLowerCase();
+  return normalized === "oidc" || normalized === "oauth2" ? normalized : "";
+}
+
+function identityProviderTemplateEndpointPayload(value: Record<string, unknown> | undefined) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const endpoints: IdentityProviderEndpointDefaults = {};
+  for (const key of ["authorize_url", "token_url", "userinfo_url", "userdetail_url"] as const) {
+    const endpoint = stringifyValue(value[key]);
+    if (endpoint) endpoints[key] = endpoint;
+  }
+  return Object.keys(endpoints).length > 0 ? endpoints : null;
+}
+
+function resolveIdentityProviderTemplateEndpoints(endpoints: IdentityProviderEndpointDefaults, issuerURL: string) {
+  const issuer = normalizeIdentityProviderIssuer(issuerURL);
+  return Object.fromEntries(Object.entries(endpoints).map(([key, value]) => [key, String(value).replace(/\{issuer\}/g, issuer)]));
+}
+
+function safeIdentityProviderURL(value: string | undefined) {
+  const raw = stringifyValue(value);
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString().replace(/\/$/, "") : "";
+  } catch {
+    return "";
+  }
+}
+
 export type LoginIdentityProviderIconComponent = React.ComponentType<{ size?: number }>;
 
 export function identityProviderLoginURL(baseURL: string, provider: LoginIdentityProvider, returnURL: string, codeChallenge?: string) {
@@ -296,25 +420,25 @@ export function normalizedIdentityProviderIconKey(value: string | undefined) {
   return identityProviderIconOptions.includes(normalized) ? normalized : "";
 }
 
-export function normalizedIdentityProviderTemplateKey(value: string | undefined) {
+export function normalizedIdentityProviderTemplateKey(value: string | undefined, templates: IdentityProviderTemplate[] = identityProviderTemplates) {
   const normalized = stringifyValue(value).trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
-  return identityProviderTemplates.some((template) => template.key === normalized) ? normalized : "";
+  return templates.some((template) => template.key === normalized) ? normalized : "";
 }
 
-export function identityProviderTemplateByKey(value: string | undefined) {
-  const normalized = normalizedIdentityProviderTemplateKey(value);
-  return identityProviderTemplates.find((template) => template.key === normalized) ?? identityProviderTemplates[0];
+export function identityProviderTemplateByKey(value: string | undefined, templates: IdentityProviderTemplate[] = identityProviderTemplates) {
+  const normalized = normalizedIdentityProviderTemplateKey(value, templates);
+  return templates.find((template) => template.key === normalized) ?? templates[0] ?? identityProviderTemplates[0];
 }
 
-export function inferIdentityProviderTemplateKey(values: Record<string, string>) {
-  const configured = normalizedIdentityProviderTemplateKey(values.provider_template);
+export function inferIdentityProviderTemplateKey(values: Record<string, string>, templates: IdentityProviderTemplate[] = identityProviderTemplates) {
+  const configured = normalizedIdentityProviderTemplateKey(values.provider_template, templates);
   if (configured) return configured;
   const iconKey = normalizedIdentityProviderIconKey(values.icon_key);
-  if (iconKey && identityProviderTemplates.some((template) => template.key === iconKey)) {
+  if (iconKey && templates.some((template) => template.key === iconKey)) {
     return iconKey;
   }
   const fingerprint = `${values.name ?? ""} ${values.login_label ?? ""} ${values.issuer_url ?? ""}`.toLowerCase();
-  for (const template of identityProviderTemplates) {
+  for (const template of templates) {
     if (template.key !== "generic_oidc" && template.key !== "custom_oauth2" && fingerprint.includes(template.key)) {
       return template.key;
     }
@@ -334,8 +458,8 @@ export function identityProviderEndpointDefaults(template: IdentityProviderTempl
   return template.endpoints?.(normalizeIdentityProviderIssuer(issuerURL)) ?? {};
 }
 
-export function applyIdentityProviderTemplate(values: Record<string, string>, templateKey: string, overwrite = true) {
-  const template = identityProviderTemplateByKey(templateKey);
+export function applyIdentityProviderTemplate(values: Record<string, string>, templateKey: string, overwrite = true, templates: IdentityProviderTemplate[] = identityProviderTemplates) {
+  const template = identityProviderTemplateByKey(templateKey, templates);
   const next: Record<string, string> = { ...values, provider_template: template.key };
   next.provider_type = template.providerType;
   next.icon_key = template.iconKey;
@@ -361,9 +485,9 @@ export function applyIdentityProviderTemplate(values: Record<string, string>, te
   return next;
 }
 
-export function identityProviderInitialFormValues(values: Record<string, string>, createMode: boolean) {
-  const templateKey = inferIdentityProviderTemplateKey(values);
-  const next: Record<string, string> = createMode ? applyIdentityProviderTemplate(values, templateKey, false) : { ...values, provider_template: templateKey };
+export function identityProviderInitialFormValues(values: Record<string, string>, createMode: boolean, templates: IdentityProviderTemplate[] = identityProviderTemplates) {
+  const templateKey = inferIdentityProviderTemplateKey(values, templates);
+  const next: Record<string, string> = createMode ? applyIdentityProviderTemplate(values, templateKey, false, templates) : { ...values, provider_template: templateKey };
   if (createMode) {
     if (next.client_id === "tokenhub-admin") next.client_id = "";
     if (next.issuer_url === "https://sso.example.com") next.issuer_url = "";
@@ -374,10 +498,10 @@ export function identityProviderInitialFormValues(values: Record<string, string>
   return next;
 }
 
-export function updateIdentityProviderFormValue(values: Record<string, string>, key: string, value: string) {
+export function updateIdentityProviderFormValue(values: Record<string, string>, key: string, value: string, templates: IdentityProviderTemplate[] = identityProviderTemplates) {
   if (key === "provider_template") {
-    const currentTemplateKey = inferIdentityProviderTemplateKey(values);
-    const next = applyIdentityProviderTemplate(values, value, true);
+    const currentTemplateKey = inferIdentityProviderTemplateKey(values, templates);
+    const next = applyIdentityProviderTemplate(values, value, true, templates);
     if (currentTemplateKey !== next.provider_template) {
       next.client_id = "";
       next.client_secret = "";
@@ -387,7 +511,7 @@ export function updateIdentityProviderFormValue(values: Record<string, string>, 
   }
   const next = { ...values, [key]: value };
   if (key === "issuer_url") {
-    const template = identityProviderTemplateByKey(next.provider_template || inferIdentityProviderTemplateKey(next));
+    const template = identityProviderTemplateByKey(next.provider_template || inferIdentityProviderTemplateKey(next, templates), templates);
     const previousEndpoints = identityProviderEndpointDefaults(template, values.issuer_url ?? "");
     const nextEndpoints = identityProviderEndpointDefaults(template, value);
     for (const endpointKey of ["authorize_url", "token_url", "userinfo_url", "userdetail_url"] as const) {
@@ -400,7 +524,9 @@ export function updateIdentityProviderFormValue(values: Record<string, string>, 
 }
 
 export function identityProviderTemplateLabel(templateKey: string) {
-  return identityProviderTemplateByKey(templateKey).label;
+  const normalized = normalizedIdentityProviderTemplateKey(templateKey);
+  if (!normalized) return stringifyValue(templateKey) || "-";
+  return identityProviderTemplateByKey(normalized).label;
 }
 
 export function identityProviderTemplateHelp(template: IdentityProviderTemplate) {

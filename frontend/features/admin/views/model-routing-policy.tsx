@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { type AppData, type Model, type ModelRoute, type ModelRoutePolicy, type ModelRoutePolicyRoute, type ModelRouteStrategy } from "../core/types";
 import { priceMetric } from "../domain/catalog";
 import { findProvider, routeProjectScopeSummary } from "../domain/entities";
-import { providerTypeLabel } from "../domain/labels";
+import { providerTypeLabelFromData } from "../domain/labels";
 import { tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 
@@ -347,7 +347,7 @@ function ModelRoutePolicyRow({
       <div className="route-order-badge">{routeBadge(strategy, index, share, draft)}</div>
       <div className="route-provider-main">
         <strong>{provider?.name || route.provider_id}</strong>
-        <span>{providerTypeLabel(provider?.type)} · {provider?.base_url || tx("未配置 Base URL")}</span>
+        <span>{providerTypeLabelFromData(data, provider?.type)} · {provider?.base_url || tx("未配置 Base URL")}</span>
       </div>
       <div className="route-upstream-model">
         <strong>{route.provider_model}</strong>

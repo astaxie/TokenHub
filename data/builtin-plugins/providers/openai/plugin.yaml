@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider.openai"
+name: "OpenAI"
+version: 1.0.0
+summary: "Connect TokenHub to OpenAI."
+description: "Connect TokenHub to OpenAI. Connection behavior is provided by the host-managed openai adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai"
+  provider:
+    catalog:
+      id: "openai"
+      name: "OpenAI"
+      display_name: "OpenAI"
+      type: "openai"
+      base_url: ""
+      doc_url: "https://platform.openai.com/docs/models"
+      categories: []
+      models_count: 52
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

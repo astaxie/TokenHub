@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.tencent-coding-plan"
+name: "Tencent Coding Plan (China)"
+version: 1.0.0
+summary: "Connect TokenHub to Tencent Coding Plan (China)."
+description: "Connect TokenHub to Tencent Coding Plan (China). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.lkeap.cloud.tencent.com/coding/v3"
+    catalog:
+      id: "tencent-coding-plan"
+      name: "Tencent Coding Plan (China)"
+      display_name: "Tencent Coding Plan (China)"
+      type: "openai_compatible"
+      base_url: "https://api.lkeap.cloud.tencent.com/coding/v3"
+      doc_url: "https://cloud.tencent.com/document/product/1772/128947"
+      categories: []
+      models_count: 8
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

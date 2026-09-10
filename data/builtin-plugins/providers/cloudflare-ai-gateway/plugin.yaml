@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.cloudflare-ai-gateway"
+name: "Cloudflare AI Gateway"
+version: 1.0.0
+summary: "Connect TokenHub to Cloudflare AI Gateway."
+description: "Connect TokenHub to Cloudflare AI Gateway. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "cloudflare-ai-gateway"
+      name: "Cloudflare AI Gateway"
+      display_name: "Cloudflare AI Gateway"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://developers.cloudflare.com/ai-gateway/"
+      categories: []
+      models_count: 77
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

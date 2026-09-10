@@ -40,7 +40,7 @@ func (s *Server) handleAdminProvidersPost(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(400, "invalid_provider", "name and type are required"))
 		return
 	}
-	if err := validateProviderHeaderConfig(&provider); err != nil {
+	if err := s.validateProviderHeaderConfig(&provider); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -71,11 +71,16 @@ func (s *Server) handleAdminProviderCatalogGet(w http.ResponseWriter, r *http.Re
 		writeError(w, r, err)
 		return
 	}
+	if merged, added := s.providerCatalogEntriesWithPlugins(entries); added {
+		entries = merged
+		source = firstNonEmpty(source, "catalog") + "+plugins"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": entries, "source": source})
 }
 
 func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
+	user, ok := s.requireAdmin(w, r, "provider", r.Method)
+	if !ok {
 		return
 	}
 	rawID := strings.Trim(strings.TrimPrefix(r.URL.EscapedPath(), "/api/admin/provider-catalog/"), "/")
@@ -91,43 +96,74 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeError(w, r, NewHTTPError(404, "not_found", "Not found"))
 		return
 	}
-	if id == codexProviderCatalogID {
-		var (
-			entry ProviderCatalogEntry
-			err   error
-		)
-		switch r.Method {
-		case http.MethodGet:
-			resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id"))
-			if resourceID == "" {
-				for _, resource := range s.store.ListProviderResources() {
-					if isOpenAIAccountResource(resource.ResourceType) && resource.Status == StatusActive {
-						resourceID = resource.ID
-						break
-					}
-				}
-			}
-			if resourceID == "" {
-				writeError(w, r, NewHTTPError(http.StatusConflict, "codex_account_required", "Connect an OpenAI Codex subscription account before loading its models"))
-				return
-			}
-			entry, err = s.queryOpenAICodexModels(r.Context(), resourceID)
-		case http.MethodPost:
-			var credentials ProviderResourceCredentials
-			if decodeErr := s.decodeJSON(w, r, &credentials); decodeErr != nil {
+	if entry, ok := s.pluginProviderCatalogEntry(id); ok && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
+		if r.Method == http.MethodPost {
+			var payload map[string]any
+			if decodeErr := s.decodeJSON(w, r, &payload); decodeErr != nil {
 				writeError(w, r, decodeErr)
 				return
 			}
-			entry, err = s.codexSubscription.ModelsWithCredentials(r.Context(), credentials)
-		default:
-			jsonMethodNotAllowed(http.MethodGet+", "+http.MethodPost)(w, r)
+			if payload == nil {
+				payload = map[string]any{}
+			}
+			if _, ok := payload["type"]; !ok {
+				payload["type"] = entry.Type
+			}
+			if _, ok := payload["catalog_id"]; !ok {
+				payload["catalog_id"] = entry.ID
+			}
+			var supported bool
+			entry, supported, err = s.executeProviderModelsPreviewAction(r.Context(), user, entry.Type, payload)
+			if !supported {
+				jsonMethodNotAllowed(http.MethodGet)(w, r)
+				return
+			}
+			if err != nil {
+				writeError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 			return
 		}
-		if err != nil {
-			writeError(w, r, err)
+		if r.Method != http.MethodGet {
+			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
+		resourceID := strings.TrimSpace(r.URL.Query().Get("resource_id"))
+		if resourceID == "" {
+			resourceID = s.providerCatalogActiveAccountResourceID(entry.Type, true)
+		}
+		if resourceID != "" {
+			pluginEntry, supported, actionErr := s.executeProviderResourceModelsActionForCatalog(r.Context(), user, entry.Type, resourceID)
+			if actionErr != nil {
+				writeError(w, r, actionErr)
+				return
+			}
+			if supported {
+				writeJSON(w, http.StatusOK, map[string]any{"data": pluginEntry, "source": pluginEntry.Source})
+				return
+			}
+			pluginEntry, supported, actionErr = s.queryProviderResourceModelsForCatalog(r.Context(), entry.Type, resourceID)
+			if actionErr != nil {
+				writeError(w, r, actionErr)
+				return
+			}
+			if supported {
+				writeJSON(w, http.StatusOK, map[string]any{"data": pluginEntry, "source": pluginEntry.Source})
+				return
+			}
+		}
+		if accountErr := s.providerCatalogModelsAccountRequiredError(id, entry.Type); accountErr != nil {
+			writeError(w, r, accountErr)
+			return
+		}
+		merged, source, _, mergeErr := s.providerCatalogEntryWithPlugins(r.Context(), id, r.URL.Query().Get("refresh") == "true")
+		if mergeErr != nil {
+			writeError(w, r, mergeErr)
+			return
+		}
+		entry = merged
+		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": source})
 		return
 	}
 	if id == "custom" && r.Method == http.MethodPost {
@@ -148,7 +184,7 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 				if req.BaseURL == "" {
 					req.BaseURL = provider.BaseURL
 				}
-				if req.APIKey == "" {
+				if req.APIKey == "" && !req.ClearAPIKey {
 					req.APIKey = provider.APIKey
 				}
 				if req.Headers == nil {
@@ -180,7 +216,11 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		var entry ProviderCatalogEntry
 		var err error
 		for _, candidate := range catalogRequests {
-			entry, err = CustomProviderCatalogFromUpstream(r.Context(), s.upstreamClient, candidate)
+			if supportErr := s.validateProviderHeaderSupport(candidate.Type, candidate.Headers); supportErr != nil {
+				err = supportErr
+				continue
+			}
+			entry, err = s.discoverProviderCatalogFromCreateRequest(r.Context(), user, candidate)
 			if err == nil {
 				break
 			}
@@ -192,30 +232,20 @@ func (s *Server) handleAdminProviderCatalogItem(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
 		return
 	}
-	if id == ProviderKronk && r.Method == http.MethodPost {
-		var req ProviderCreateRequest
-		if err := s.decodeJSON(w, r, &req); err != nil {
-			writeError(w, r, err)
-			return
-		}
-		entry, err := s.discoverKronkCatalog(r.Context(), req)
-		if err != nil {
-			writeError(w, r, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": entry, "source": entry.Source})
-		return
-	}
 	if r.Method != http.MethodGet {
 		allowedMethods := http.MethodGet
-		if id == "custom" || id == ProviderKronk {
+		if id == "custom" {
 			allowedMethods += ", " + http.MethodPost
+		} else if entry, ok := s.pluginProviderCatalogEntry(id); ok {
+			if _, ok := s.providerPluginCapabilityActionDescriptor(entry.Type, AdapterCapabilityModels, "models.preview", ""); ok {
+				allowedMethods += ", " + http.MethodPost
+			}
 		}
 		jsonMethodNotAllowed(allowedMethods)(w, r)
 		return
 	}
 	refresh := r.URL.Query().Get("refresh") == "true"
-	entry, source, ok, err := s.providerCatalog.Get(r.Context(), id, refresh)
+	entry, source, ok, err := s.providerCatalogEntryWithPlugins(r.Context(), id, refresh)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -231,37 +261,27 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	var catalog ProviderCatalogEntry
 	catalogSource := ""
 	catalogID := strings.TrimSpace(req.CatalogID)
-	if catalogID == ProviderKronk && len(req.CustomModels) > 0 {
-		catalog = customProviderCatalogFromModels(req.CustomModels, req.ModelCategory)
-		catalog.ID = ProviderKronk
-		catalog.Name = "Kronk"
-		catalog.DisplayName = "Kronk"
-		catalog.Type = ProviderKronk
-		catalog.BaseURL = firstNonEmpty(strings.TrimSpace(req.BaseURL), kronkDefaultBaseURL)
-		catalog.DocURL = kronkDocURL
-		catalog.Source = "kronk-upstream"
-		catalogSource = catalog.Source
-	} else if catalogID == codexProviderCatalogID {
-		if len(req.CustomModels) > 0 {
-			catalog = codexProviderCatalogFromModels(req.CustomModels)
-		} else {
-			catalog = s.codexProviderCatalogFromStandardModels(req.SelectedModels)
-		}
-		catalogSource = catalog.Source
-	} else if catalogID != "" {
-		entry, source, ok, err := s.providerCatalog.Get(ctx, catalogID, false)
+	if catalogID != "" {
+		entry, source, ok, err := s.providerCatalogEntryWithPlugins(ctx, catalogID, false)
 		if err != nil {
 			return Provider{}, ProviderCatalogEntry{}, source, err
 		}
 		if !ok {
 			return Provider{}, ProviderCatalogEntry{}, source, NewHTTPError(400, "provider_catalog_not_found", "Provider catalog entry not found")
 		}
-		catalog = entry
+		_, pluginOK := s.pluginProviderCatalogEntry(catalogID)
+		if pluginOK && len(req.CustomModels) > 0 {
+			catalog = providerCatalogEntryWithSubmittedModels(entry, req.CustomModels, req.ModelCategory, entry.Type)
+		} else if pluginOK && len(req.SelectedModels) > 0 && len(entry.Models) == 0 {
+			catalog = s.providerCatalogEntryWithSelectedStandardModels(entry, req.SelectedModels, req.ModelCategory)
+		} else {
+			catalog = entry
+		}
 		catalogSource = source
 	}
 	if catalog.ID == "custom" {
 		if len(req.CustomModels) > 0 {
-			catalog = customProviderCatalogFromModels(req.CustomModels, req.ModelCategory)
+			catalog = customProviderCatalogFromModelsWithType(req.CustomModels, req.ModelCategory, s.providerCatalog.defaultProviderType())
 		} else {
 			catalog = s.customProviderCatalogFromStandardModels(req.ModelCategory)
 		}
@@ -274,7 +294,7 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	provider := Provider{
 		ID:               id,
 		Name:             firstNonEmpty(req.Name, catalog.DisplayName, catalog.Name),
-		Type:             firstNonEmpty(req.Type, catalog.Type, ProviderOpenAICompatible),
+		Type:             firstNonEmpty(req.Type, catalog.Type, s.providerCatalog.defaultProviderType()),
 		BaseURL:          firstNonEmpty(req.BaseURL, catalog.BaseURL),
 		APIKey:           req.APIKey,
 		ClearAPIKey:      req.ClearAPIKey,
@@ -285,7 +305,8 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 		SensitiveHeaders: req.SensitiveHeaders,
 		Options:          req.Options,
 	}
-	if _, ok := s.adapterRegistry.Describe(provider.Type); !ok {
+	adapterDescriptor, ok := s.adapterRegistry.Describe(provider.Type)
+	if !ok {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, NewHTTPError(
 			http.StatusBadRequest,
 			"provider_adapter_missing",
@@ -295,20 +316,19 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	if provider.Priority == 0 {
 		provider.Priority = 10
 	}
+	applyProviderDescriptorDefaults(&provider, adapterDescriptor)
 	provider.BaseURL = normalizeProviderBaseURL(provider.ID, provider.BaseURL)
 	// SSRF guard at the admin persistence boundary: admin create and update both
-	// flow through here, so those untrusted entry points cannot save a base URL
-	// with a literal IP in loopback, private, link-local or curated high-risk/
-	// non-provider ranges. The operator
-	// allowlist (TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS) and the explicit
-	// loopback opt-in apply exactly as they do for upstream model discovery.
+	// flow through here. Loopback, link-local, and curated special-use literals
+	// cannot be saved. RFC1918/ULA literals follow
+	// TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS (empty uses the default ranges).
+	// The explicit loopback opt-in applies exactly as it does for upstream
+	// model discovery.
 	if err := ValidateProviderUpstreamBaseURL(provider.BaseURL); err != nil {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}
-	if provider.Options == nil {
-		provider.Options = map[string]string{}
-	}
-	if err := configureAnthropicProviderAuth(&provider, req.AnthropicAuthType); err != nil {
+	applyProviderPluginPolicy(&provider, adapterDescriptor)
+	if err := configureProviderAuthMode(&provider, requestedProviderAuthMode(req), adapterDescriptor.ProviderPolicy); err != nil {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}
 	if catalog.ID != "" {
@@ -321,11 +341,11 @@ func (s *Server) providerFromCreateRequest(ctx context.Context, req ProviderCrea
 	if strings.TrimSpace(req.ModelCategory) != "" {
 		provider.Options["model_category"] = strings.TrimSpace(req.ModelCategory)
 	}
-	options, err := applyClaudeCodeAttributionPolicy(provider.Options, req.ClaudeCodeAttributionPolicy)
+	options, err := applySystemPromptTransformPolicy(provider.Options, req.SystemPromptTransformPolicy, req.ClaudeCodeAttributionPolicy)
 	if err != nil {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}
-	if err := validateClaudeCodeAttributionOptions(options); err != nil {
+	if err := validateSystemPromptTransformOptions(options); err != nil {
 		return Provider{}, ProviderCatalogEntry{}, catalogSource, err
 	}
 	provider.Options = options
@@ -351,6 +371,62 @@ func (s *Server) importSelectedProviderCatalogModels(providerID string, catalog 
 		imported++
 	}
 	return imported
+}
+
+func (s *Server) providerCatalogEntryWithSelectedStandardModels(entry ProviderCatalogEntry, selectedModels []string, category string) ProviderCatalogEntry {
+	modelsByName := map[string]Model{}
+	for _, model := range s.store.ListModels() {
+		modelsByName[normalizeModelLookupName(model.Name)] = model
+	}
+	defaultCategory := providerCatalogEntrySelectedModelCategory(entry, category)
+	models := make([]ProviderCatalogModel, 0, len(selectedModels))
+	for _, modelID := range selectedModels {
+		model, ok := modelsByName[normalizeModelLookupName(modelID)]
+		if !ok {
+			continue
+		}
+		modelCategory := standardModelCategory(firstNonEmpty(defaultCategory, model.Category, inferModelCategory(model.Name, model.Name)))
+		models = append(models, ProviderCatalogModel{
+			ID:                        model.Name,
+			Name:                      model.Name,
+			DisplayName:               firstNonEmpty(model.Metadata["display_name"], model.Name),
+			CanonicalName:             model.Name,
+			Category:                  modelCategory,
+			Family:                    model.Family,
+			Type:                      model.Modality,
+			ContextWindow:             model.ContextWindow,
+			InputPriceUSDPer1M:        model.InputPriceUSDPer1M,
+			CacheReadPriceUSDPer1M:    model.CacheReadPriceUSDPer1M,
+			CacheWritePriceUSDPer1M:   model.CacheWritePriceUSDPer1M,
+			CacheWrite5mPriceUSDPer1M: model.CacheWrite5mPriceUSDPer1M,
+			CacheWrite1hPriceUSDPer1M: model.CacheWrite1hPriceUSDPer1M,
+			OutputPriceUSDPer1M:       model.OutputPriceUSDPer1M,
+			InputModalities:           append([]string(nil), model.InputModalities...),
+			OutputModalities:          append([]string(nil), model.OutputModalities...),
+			Capabilities:              append([]string(nil), model.Capabilities...),
+			SupportedParameters:       append([]string(nil), model.SupportedParameters...),
+			Metadata:                  cloneStringMap(model.Metadata),
+		})
+	}
+	catalog := entry
+	if len(models) > 0 {
+		catalog.Categories, catalog.CategoryCounts = catalogCategorySummary(models)
+	}
+	catalog.Models = models
+	catalog.ModelsCount = len(models)
+	return catalog
+}
+
+func providerCatalogEntrySelectedModelCategory(entry ProviderCatalogEntry, requestedCategory string) string {
+	if category := standardModelCategory(requestedCategory); category != "" && category != "all" {
+		return category
+	}
+	for _, category := range entry.Categories {
+		if category = standardModelCategory(category); category != "" && category != "all" {
+			return category
+		}
+	}
+	return ""
 }
 
 func (s *Server) customProviderCatalogFromStandardModels(category string) ProviderCatalogEntry {
@@ -382,14 +458,14 @@ func (s *Server) customProviderCatalogFromStandardModels(category string) Provid
 	}
 	categories, categoryCounts := catalogCategorySummary(models)
 	if len(models) == 0 {
-		entry := customProviderCatalogEntry()
+		entry := s.providerCatalog.customProviderCatalogEntry()
 		entry.Categories = []string{firstNonEmpty(normalizedCategory, "custom")}
 		entry.CategoryCounts = map[string]int{firstNonEmpty(normalizedCategory, "custom"): 0}
 		entry.Models = nil
 		entry.ModelsCount = 0
 		return entry
 	}
-	entry := customProviderCatalogEntry()
+	entry := s.providerCatalog.customProviderCatalogEntry()
 	entry.Categories = categories
 	entry.CategoryCounts = categoryCounts
 	entry.Models = models
@@ -397,7 +473,7 @@ func (s *Server) customProviderCatalogFromStandardModels(category string) Provid
 	return entry
 }
 
-func customProviderCatalogFromModels(input []ProviderCatalogModel, category string) ProviderCatalogEntry {
+func customProviderCatalogFromModelsWithType(input []ProviderCatalogModel, category string, providerType string) ProviderCatalogEntry {
 	normalizedCategory := strings.TrimSpace(category)
 	if normalizedCategory != "" {
 		normalizedCategory = standardModelCategory(normalizedCategory)
@@ -430,7 +506,7 @@ func customProviderCatalogFromModels(input []ProviderCatalogModel, category stri
 	sort.SliceStable(models, func(i, j int) bool {
 		return strings.ToLower(models[i].ID) < strings.ToLower(models[j].ID)
 	})
-	entry := customProviderCatalogEntry()
+	entry := customProviderCatalogEntryWithType(providerType)
 	entry.Source = "custom-upstream"
 	entry.Models = models
 	entry.ModelsCount = len(models)
@@ -482,10 +558,10 @@ func (s *Server) handleAdminProviderItemRoute(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleAdminProviderTestConnectionPost(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
-		return
+	user, ok := s.requireAdmin(w, r, "provider", r.Method)
+	if ok {
+		s.serveAdminProviderTestConnection(w, r, user)
 	}
-	s.serveAdminProviderTestConnection(w, r)
 }
 
 func (s *Server) handleAdminProviderPatch(w http.ResponseWriter, r *http.Request) {
@@ -523,7 +599,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 			jsonMethodNotAllowed(http.MethodPost)(w, r)
 			return
 		}
-		s.serveAdminProviderTestConnection(w, r)
+		s.serveAdminProviderTestConnection(w, r, user)
 		return
 	}
 	if len(parts) == 1 {
@@ -555,7 +631,7 @@ func (s *Server) handleAdminProviderNested(w http.ResponseWriter, r *http.Reques
 	s.serveAdminProviderHealth(w, r, user, parts[0])
 }
 
-func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http.Request) {
+func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http.Request, user AdminUser) {
 	var req ProviderCreateRequest
 	if err := s.decodeJSON(w, r, &req); err != nil {
 		writeError(w, r, err)
@@ -565,43 +641,30 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "provider_base_url_required", "Base URL is required to test the connection"))
 		return
 	}
-	if strings.TrimSpace(req.APIKey) == "" && strings.TrimSpace(req.Type) != ProviderKronk {
+	if strings.TrimSpace(req.APIKey) == "" && providerTestConnectionRequiresAPIKey(s.adapterRegistry, req.Type) {
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "provider_api_key_required", "API key is required to test the connection"))
+		return
+	}
+	if err := s.validateProviderHeaderSupport(req.Type, req.Headers); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	startedAt := time.Now()
 	var catalog ProviderCatalogEntry
-	var health *KronkHealthResult
+	var health any
 	var err error
-	if strings.TrimSpace(req.Type) == ProviderKronk {
-		adapter, ok := resolveTypedAdapter[KronkAdapter](s.adapterRegistry, ProviderKronk)
-		if !ok {
-			writeError(w, r, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Kronk adapter is unavailable"))
-			return
-		}
-		provider := Provider{Name: req.Name, Type: ProviderKronk, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
-		result, healthErr := adapter.Health(ctx, provider)
-		health, err = &result, healthErr
+	if adapter, ok := resolveProviderHealthProber(s.adapterRegistry, strings.TrimSpace(req.Type)); ok {
+		provider := Provider{Name: req.Name, Type: req.Type, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
+		health, err = adapter.ProbeProvider(ctx, provider)
 		if err == nil {
-			catalog, err = KronkProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
+			catalog, err = s.discoverProviderCatalogFromCreateRequest(ctx, user, req)
 		}
 	} else if strings.TrimSpace(req.Type) == ProviderDify {
-		// Dify apps have no /models endpoint; the parameters probe is the
-		// credential check, and the app inventory is whatever custom models the
-		// administrator declared.
-		adapter, ok := resolveTypedAdapter[DifyAdapter](s.adapterRegistry, ProviderDify)
-		if !ok {
-			writeError(w, r, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Dify adapter is unavailable"))
-			return
-		}
-		provider := Provider{Name: req.Name, Type: ProviderDify, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
-		if _, err = adapter.Probe(ctx, provider, ProviderResource{}, adapter.DefaultProbeRequest()); err == nil {
-			catalog = customProviderCatalogFromModels(req.CustomModels, req.ModelCategory)
-		}
+		catalog, err = s.difyConnectionTestCatalog(ctx, req)
 	} else {
-		catalog, err = CustomProviderCatalogFromUpstream(ctx, s.upstreamClient, req)
+		catalog, err = s.discoverProviderCatalogFromCreateRequest(ctx, user, req)
 	}
 	if err != nil {
 		writeError(w, r, err)
@@ -613,6 +676,14 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 		"models_count": catalog.ModelsCount,
 		"health":       health,
 	})
+}
+
+func providerTestConnectionRequiresAPIKey(registry *AdapterRegistry, providerType string) bool {
+	descriptor, ok := registry.Describe(strings.TrimSpace(providerType))
+	if !ok {
+		return true
+	}
+	return descriptor.ProviderPolicy.APIKeyRequired
 }
 
 func (s *Server) serveAdminProviderPatch(w http.ResponseWriter, r *http.Request, user AdminUser, providerID string) {
@@ -645,7 +716,7 @@ func (s *Server) serveAdminProviderPatch(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	provider.ID = providerID
-	if err := validateProviderHeaderSupport(provider.Type, provider.Headers); err != nil {
+	if err := s.validateProviderUpdateHeaders(providerID, current, provider); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -666,16 +737,9 @@ func (s *Server) serveAdminProviderDelete(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
 		return
 	}
-	deleteProvider := func() error { return s.store.DeleteProvider(providerID) }
-	var err error
-	if provider.Type == ProviderOpenAICodex {
-		err = s.store.RunClusterOperation(r.Context(), "codex-image-capability:"+providerID, func(context.Context) error {
-			return deleteProvider()
-		})
-	} else {
-		err = deleteProvider()
-	}
-	if err != nil {
+	if err := s.runProviderAdminOperation(r.Context(), provider, ProviderAdminOperationDeleteProvider, func() error {
+		return s.store.DeleteProvider(providerID)
+	}); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -684,7 +748,10 @@ func (s *Server) serveAdminProviderDelete(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) serveAdminProviderTest(w http.ResponseWriter, r *http.Request, user AdminUser, providerID string) {
-	result, err := s.integrations.TestProvider(r.Context(), providerID)
+	result, supported, err := s.executeProviderProbeAction(r.Context(), user, providerID)
+	if !supported {
+		result, err = s.integrations.TestProvider(r.Context(), providerID)
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -788,7 +855,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		s.serveAdminOpenAIAccountQuotaResetCredits(w, r, user, parts[0])
+		s.serveAdminProviderResourceQuotaResetCredits(w, r, user, parts[0])
 		return
 	}
 	if parts[1] == "quota/reset" {
@@ -796,7 +863,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 			jsonMethodNotAllowed(http.MethodPost)(w, r)
 			return
 		}
-		s.serveAdminOpenAIAccountQuotaReset(w, r, user, parts[0])
+		s.serveAdminProviderResourceQuotaReset(w, r, user, parts[0])
 		return
 	}
 	if parts[1] == "quota" {
@@ -804,7 +871,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 			jsonMethodNotAllowed(http.MethodGet)(w, r)
 			return
 		}
-		s.serveAdminOpenAIAccountQuota(w, r, user, parts[0])
+		s.serveAdminProviderResourceQuota(w, r, user, parts[0])
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -813,7 +880,7 @@ func (s *Server) handleAdminProviderResourceNested(w http.ResponseWriter, r *htt
 	}
 	switch parts[1] {
 	case "image-capability":
-		s.handleAdminCodexImageCapability(w, r, user, parts[0])
+		s.handleAdminProviderImageCapability(w, r, user, parts[0])
 	case "test":
 		s.serveAdminProviderResourceTest(w, r, user, parts[0])
 	case "refresh-token":
@@ -972,12 +1039,12 @@ func (s *Server) handleAdminModelItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveAdminModelPatch(w http.ResponseWriter, r *http.Request, user AdminUser, modelName string) {
-	var req Model
+	var req modelPatchRequest
 	if err := s.decodeJSON(w, r, &req); err != nil {
 		writeError(w, r, err)
 		return
 	}
-	model, err := s.store.UpdateModel(modelName, req)
+	model, err := s.store.UpdateModel(modelName, req.Model)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -1162,7 +1229,7 @@ func (s *Server) serveAdminRouteExplain(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	call := CallContext{RequestID: NewID("exp"), Project: Project{ID: r.URL.Query().Get("project_id")}, Key: APIKey{ID: r.URL.Query().Get("api_key_id")}}
-	planned := s.planRouteOrder(call, routes)
+	planned := s.planRouteOrderWithContext(r.Context(), call, routes)
 	steps := make([]RouteExplainStep, 0, len(planned))
 	for _, route := range planned {
 		steps = append(steps, RouteExplainStep{
@@ -1255,7 +1322,7 @@ func (s *Server) validateRouteAdapterForModel(route ModelRoute, pendingModel *Mo
 	if !ok {
 		return NewHTTPError(http.StatusBadRequest, "provider_adapter_missing", "Route provider adapter is not registered")
 	}
-	if err := s.validateRouteModelProtocol(route.ModelName, pendingModel, provider.Type, descriptor); err != nil {
+	if err := s.validateRouteModelProtocol(route.ModelName, pendingModel, descriptor); err != nil {
 		return err
 	}
 	if strings.TrimSpace(route.ProviderResourceID) == "" {
@@ -1270,7 +1337,7 @@ func (s *Server) validateRouteAdapterForModel(route ModelRoute, pendingModel *Mo
 
 // validateRouteModelProtocol rejects only known catalog mismatches. Models
 // without endpoint metadata remain valid so operators can route custom models.
-func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Model, providerType string, descriptor AdapterDescriptor) error {
+func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Model, descriptor AdapterDescriptor) error {
 	var model Model
 	found := pendingModel != nil && pendingModel.Name == modelName
 	if found {
@@ -1290,33 +1357,13 @@ func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Mode
 	if len(endpoints) == 0 || strings.TrimSpace(model.Metadata["endpoints"]) == "" {
 		return nil
 	}
-	compatible := routeProviderProtocols(providerType, descriptor)
+	compatible := adapterDescriptorRouteProtocolSet(descriptor)
 	for _, endpoint := range endpoints {
 		if compatible[strings.ToLower(strings.TrimSpace(endpoint))] {
 			return nil
 		}
 	}
 	return NewHTTPError(http.StatusBadRequest, "route_protocol_mismatch", "Model does not support the selected Provider protocol")
-}
-
-func routeProviderProtocols(providerType string, descriptor AdapterDescriptor) map[string]bool {
-	if providerType == ProviderAnthropic {
-		return map[string]bool{"anthropic": true}
-	}
-	if providerType == ProviderGemini {
-		return map[string]bool{"gemini": true}
-	}
-	protocols := map[string]bool{}
-	if adapterSupports(descriptor, AdapterCapabilityChat) {
-		protocols["chat/completions"] = true
-	}
-	if adapterSupports(descriptor, AdapterCapabilityResponses) {
-		protocols["responses"] = true
-	}
-	if adapterSupports(descriptor, AdapterCapabilityEmbeddings) {
-		protocols["embeddings"] = true
-	}
-	return protocols
 }
 
 func (s *Server) validateRoutePolicy(route ModelRoute) error {
@@ -1348,17 +1395,17 @@ func (s *Server) validateRoutePolicy(route ModelRoute) error {
 func (s *Server) validateImportedProviderModel(route ModelRoute) error {
 	providerID := strings.TrimSpace(route.ProviderID)
 	upstreamModel := strings.TrimSpace(route.ProviderModel)
-	if strings.TrimSpace(route.ModelName) == codexImageModelName {
-		provider, ok := s.providerByID(providerID)
-		if !ok || provider.Type != ProviderOpenAICodex {
-			return NewHTTPError(http.StatusBadRequest, "codex_image_provider_required", "The Codex subscription image model must use an OpenAI Codex Provider")
+	if profile, ok := s.providerImageCapabilityRouteProfileForModel(route.ModelName); ok {
+		provider, providerOK := s.providerByID(providerID)
+		if !providerOK || (profile.ProviderType != "" && provider.Type != profile.ProviderType) {
+			return providerImageCapabilityRouteError(profile, "provider")
 		}
-		if upstreamModel != codexImageUpstreamModel {
-			return NewHTTPError(http.StatusBadRequest, "codex_image_upstream_model_invalid", "The Codex subscription image route must use gpt-image-2 as its upstream model")
+		if upstreamModel != profile.UpstreamModel {
+			return providerImageCapabilityRouteError(profile, "upstream_model")
 		}
 		status := strings.TrimSpace(route.Status)
-		if (status == "" || status == StatusActive) && !codexImageRouteHasSupportedResource(route, s.store.ListProviderResources()) {
-			return NewHTTPError(http.StatusConflict, "codex_image_capability_required", "Test image generation with an eligible Codex subscription account before activating this route")
+		if (status == "" || status == StatusActive) && !providerImageCapabilityRouteHasSupportedResource(route, s.store.ListProviderResources(), profile) {
+			return providerImageCapabilityRouteError(profile, "capability")
 		}
 		return nil
 	}
@@ -1368,6 +1415,34 @@ func (s *Server) validateImportedProviderModel(route ModelRoute) error {
 		}
 	}
 	return NewHTTPError(http.StatusConflict, "provider_model_not_imported", "Import the upstream model for this Provider before creating a route")
+}
+
+func (s *Server) providerImageCapabilityRouteProfileForModel(modelName string) (providerImageCapabilityRouteProfile, bool) {
+	modelName = strings.TrimSpace(modelName)
+	for _, action := range s.pluginActions.List() {
+		if action.Capability != "image.capability.configure" {
+			continue
+		}
+		profile, ok := providerImageCapabilityRouteProfileFromAction(action)
+		if ok && profile.PublicModel == modelName {
+			return profile, true
+		}
+	}
+	return providerImageCapabilityRouteProfile{}, false
+}
+
+func providerImageCapabilityRouteError(profile providerImageCapabilityRouteProfile, kind string) error {
+	profile.withDefaults()
+	switch kind {
+	case "provider":
+		return NewHTTPError(http.StatusBadRequest, profile.ProviderErrorCode, profile.ProviderErrorMessage)
+	case "upstream_model":
+		return NewHTTPError(http.StatusBadRequest, profile.UpstreamModelErrorCode, profile.UpstreamModelErrorMessage)
+	case "capability":
+		return NewHTTPError(http.StatusConflict, profile.CapabilityErrorCode, profile.CapabilityErrorMessage)
+	default:
+		return NewHTTPError(http.StatusConflict, profile.CapabilityErrorCode, profile.CapabilityErrorMessage)
+	}
 }
 
 func modelRouteMappingExists(candidate ModelRoute, routes []ModelRoute, excludeID string) bool {

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "protocol": "stdio-json-v1",
+  "kind": "gateway_hook",
+  "plugin_id": "tokenhub.hook.trace-go",
+  "hook_id": "trace.export",
+  "stage": "trace_export",
+  "failure_policy": "observe_only",
+  "reads": ["audit", "usage"],
+  "writes": [],
+  "cases": [
+    {
+      "name": "trace export clips sensitive data",
+      "input": {
+        "request_id": "req_trace_contract",
+        "stage": "trace_export",
+        "envelope": {
+          "version": "v1",
+          "protocol": "gateway",
+          "operation": "chat",
+          "model": "gpt-trace"
+        },
+        "data": {
+          "audit": { "request_id": "req_trace_contract", "route": "primary" },
+          "usage": { "total_tokens": 7 }
+        }
+      },
+      "forbidden_fragments": ["provider-secret", "raw prompt sentinel", "request_body"],
+      "expect": {
+        "decision": "continue",
+        "audit_event": "trace_export_seen",
+        "saw_audit": true,
+        "saw_usage": true,
+        "writes": 0
+      }
+    }
+  ]
+}

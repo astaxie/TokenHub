@@ -88,7 +88,7 @@ export function ProviderInlineField({
   );
 }
 
-export function providerCredentialOptions(): Array<{ key: ProviderCredentialMode; label: string; description: string; icon: typeof KeyRound }> {
+export function providerCredentialOptions(accountIntegrationsAvailable = true): Array<{ key: ProviderCredentialMode; label: string; description: string; icon: typeof KeyRound; disabled?: boolean }> {
   return [
     {
       key: "provider_api_key",
@@ -99,8 +99,9 @@ export function providerCredentialOptions(): Array<{ key: ProviderCredentialMode
     {
       key: "account_integration",
       label: "账号资源池",
-      description: "适合 OpenAI 账号、Subscription 或多账号轮询，默认通道会自动推荐。",
+      description: "适合订阅账号、多账号轮询或 OAuth 账号池，默认通道会自动推荐。",
       icon: UserRoundCheck,
+      disabled: !accountIntegrationsAvailable,
     },
   ];
 }
@@ -131,11 +132,4 @@ export function providerCreateWizardStepTitle(title: string, credentialMode: Pro
 
 export function providerCredentialModeLabel(mode: ProviderCredentialMode) {
   return providerCredentialOptions().find((option) => option.key === mode)?.label ?? mode;
-}
-
-export function providerAccountResourceReady(values: Record<string, string>) {
-  if (values.resource_type === "openai_subscription") {
-    return Boolean(values.access_token?.trim() || values.refresh_token?.trim() || values.id_token?.trim());
-  }
-  return Boolean(values.api_key?.trim());
 }

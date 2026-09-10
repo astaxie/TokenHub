@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.alibaba-token-plan-cn"
+name: "Alibaba Token Plan (China)"
+version: 1.0.0
+summary: "Connect TokenHub to Alibaba Token Plan (China)."
+description: "Connect TokenHub to Alibaba Token Plan (China). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    catalog:
+      id: "alibaba-token-plan-cn"
+      name: "Alibaba Token Plan (China)"
+      display_name: "Alibaba Token Plan (China)"
+      type: "openai_compatible"
+      base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+      doc_url: "https://www.alibabacloud.com/help/zh/model-studio/token-plan-overview"
+      categories: []
+      models_count: 16
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

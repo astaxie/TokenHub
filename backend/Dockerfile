@@ -28,7 +28,7 @@ FROM golang:1.26-alpine AS backend-builder
 
 WORKDIR /src
 ARG GOPROXY=https://proxy.golang.org,direct
-ARG TOKENHUB_VERSION=0.6.0
+ARG TOKENHUB_VERSION=0.8.0
 ARG TOKENHUB_BUILD_TYPE=source
 ENV GOPROXY=$GOPROXY
 RUN apk add --no-cache gcc musl-dev
@@ -46,7 +46,7 @@ RUN cd backend && \
 
 FROM ${NODE_IMAGE}
 
-ARG TOKENHUB_VERSION=0.6.0
+ARG TOKENHUB_VERSION=0.8.0
 LABEL org.opencontainers.image.version="${TOKENHUB_VERSION}"
 
 COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
@@ -69,6 +69,7 @@ COPY --chown=node:node deploy/native/tokenhub-run /usr/local/lib/tokenhub-image/
 COPY --chown=node:node deploy/native/tokenhub.service /usr/local/lib/tokenhub-image/deploy/tokenhub.service
 COPY --chown=node:node data/model-catalog.yaml /usr/local/lib/tokenhub-image/catalog/model-catalog.yaml
 COPY --chown=node:node data/provider-catalog.json /usr/local/lib/tokenhub-image/catalog/provider-catalog.json
+COPY --chown=node:node data/builtin-plugins /usr/local/lib/tokenhub-image/catalog/builtin-plugins
 COPY deploy/container/tokenhub-build-id /usr/local/bin/tokenhub-build-id
 COPY deploy/container/tokenhub-entrypoint /usr/local/bin/tokenhub-entrypoint
 
@@ -81,8 +82,8 @@ RUN printf '%s\n' "$TOKENHUB_VERSION" >/usr/local/lib/tokenhub-image/VERSION && 
       /usr/local/lib/tokenhub-image/bin/tokenhub-run && \
     tokenhub-build-id /usr/local/lib/tokenhub-image && \
     chown -R node:node /usr/local/lib/tokenhub-image && \
-    mkdir -p /app/data /opt/tokenhub && \
-    chown node:node /app/data /opt/tokenhub
+    mkdir -p /app/data /app/plugins /opt/tokenhub && \
+    chown node:node /app/data /app/plugins /opt/tokenhub
 
 EXPOSE 8080 3000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=12 \

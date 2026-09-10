@@ -1,14 +1,18 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func responseJobTestConfig() Config {
@@ -178,6 +182,339 @@ func TestBackgroundResponsesSuccessPersistsEncryptedPayloadAndAccountsOnce(t *te
 	}
 }
 
+func TestBackgroundResponseJobRunsTraceExportHookWithoutPayload(t *testing.T) {
+	server, _, secret := newBackgroundResponseTestServer(t)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-trace",
+		HookID:        "export",
+		Stage:         pluginmeta.StageTraceExport,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataAudit, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyObserveOnly,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register trace export hook: %v", err)
+	}
+	var mu sync.Mutex
+	var captured []pluginmeta.GatewayHookInput
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		mu.Lock()
+		captured = append(captured, input)
+		mu.Unlock()
+		return pluginmeta.GatewayHookResult{}, errors.New("trace exporter unavailable")
+	})); err != nil {
+		t.Fatalf("register trace export handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "background trace secret prompt")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["status"] != "completed" {
+		t.Fatalf("trace hook failure affected background job completion: %#v", completed)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(captured) != 1 {
+		t.Fatalf("trace export calls = %d, want 1", len(captured))
+	}
+	input := captured[0]
+	if input.Envelope.Operation != string(CompletionKindRouted) || input.Envelope.Model != "gpt-background" {
+		t.Fatalf("trace envelope = %+v", input.Envelope)
+	}
+	raw := bytes.Join([][]byte{input.Data[pluginmeta.DataAudit], input.Data[pluginmeta.DataUsage]}, nil)
+	if bytes.Contains(raw, []byte("background trace secret prompt")) || bytes.Contains(raw, []byte("Echo: background trace secret prompt")) {
+		t.Fatalf("background trace export included retained payload: %s", raw)
+	}
+}
+
+func TestBackgroundResponsesPrivacyPreHookCanRewriteInputBeforeProvider(t *testing.T) {
+	server, _, secret := newBackgroundResponseTestServer(t)
+	capture := &captureAdapter{}
+	server.adapterRegistry.Register(ProviderMock, capture, AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-privacy",
+		HookID:        "mask-background-input",
+		Scope:         pluginmeta.GatewayHookScope{RouteProtocols: []string{providerRouteProtocolResponses}},
+		Stage:         pluginmeta.StagePrivacyPre,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register privacy hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var request ResponsesRequest
+		if err := json.Unmarshal(input.Data[pluginmeta.DataRequestBody], &request); err != nil {
+			t.Fatalf("decode response request: %v", err)
+		}
+		request.Input = "[background masked]"
+		return rawRequestBodyPatch(t, request), nil
+	})); err != nil {
+		t.Fatalf("register privacy handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "background secret")
+	waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if capture.seenResponsesInput != "[background masked]" {
+		t.Fatalf("provider input = %#v, want masked background input", capture.seenResponsesInput)
+	}
+}
+
+func TestBackgroundResponsesCacheLookupHookCanCompleteJobWithoutProvider(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	server.adapterRegistry.Register(ProviderMock, failingResponseJobAdapter{}, AdapterCapabilityResponses)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-cache",
+		HookID:        "lookup",
+		Stage:         pluginmeta.StageCacheLookup,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRequestBody},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyReturnFallback,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register cache lookup hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Data[pluginmeta.DataRequestBody]) == 0 {
+			t.Fatal("cache lookup did not receive background request body")
+		}
+		return rawProviderCallResult(t, map[string]any{
+			"id":          "resp_background_cache",
+			"object":      "response",
+			"model":       "gpt-background",
+			"output_text": "background cache hit",
+			"output":      []any{},
+		}, Usage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5}), nil
+	})); err != nil {
+		t.Fatalf("register cache lookup handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "cacheable background")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "background cache hit" {
+		t.Fatalf("unexpected cached job result: %#v", completed)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "" {
+		t.Fatalf("cache-hit job reached provider routing or was not audited once: %+v", logs)
+	}
+}
+
+func TestBackgroundResponsesCacheLookupFailOpenCompletesViaProvider(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheLookup)
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "lookup fail-open background")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "Echo: lookup fail-open background" {
+		t.Fatalf("unexpected provider job result after cache lookup failure: %#v", completed)
+	}
+	if *calls != 1 {
+		t.Fatalf("cache lookup hook calls = %d, want 1", *calls)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "prv_background" {
+		t.Fatalf("background provider path was not audited once after lookup failure: %+v", logs)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
+		t.Fatalf("background provider usage was not persisted after lookup failure: %+v", records)
+	}
+}
+
+func TestBackgroundResponsesCacheWriteFailOpenCompletesJob(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	calls := registerFailingCacheHook(t, server, pluginmeta.StageCacheWrite)
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "write fail-open background")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "Echo: write fail-open background" {
+		t.Fatalf("unexpected provider job result after cache write failure: %#v", completed)
+	}
+	if *calls != 1 {
+		t.Fatalf("cache write hook calls = %d, want 1", *calls)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "prv_background" {
+		t.Fatalf("background job was not audited once after cache write failure: %+v", logs)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
+		t.Fatalf("background usage was not persisted after cache write failure: %+v", records)
+	}
+}
+
+func TestBackgroundResponsesResponsePostPersistsTransformedResult(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-response-post",
+		HookID:        "rewrite-result",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register response_post hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		raw := string(input.Data[pluginmeta.DataProviderResponse])
+		if !strings.Contains(raw, "Echo: durable transform source") {
+			t.Fatalf("response_post input = %s, want provider output", raw)
+		}
+		return rawProviderResponsePatch(t, map[string]any{
+			"id":          "resp_background_transformed",
+			"object":      "response",
+			"model":       "gpt-background",
+			"output_text": "background response_post transformed",
+			"output": []map[string]any{{
+				"type": "message",
+				"role": "assistant",
+				"content": []map[string]any{{
+					"type": "output_text",
+					"text": "background response_post transformed",
+				}},
+			}},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register response_post handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "durable transform source")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "background response_post transformed" {
+		t.Fatalf("completed response = %#v, want transformed output", completed)
+	}
+	_, resultJSON, err := store.LoadResponseJobPayload(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultRaw := string(resultJSON)
+	if !strings.Contains(resultRaw, "background response_post transformed") || strings.Contains(resultRaw, "durable transform source") {
+		t.Fatalf("persisted result = %s, want transformed response only", resultRaw)
+	}
+	var persisted ResponseJob
+	if err := store.db.First(&persisted, "id = ?", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(persisted.ResultCiphertext, "background response_post transformed") ||
+		strings.Contains(persisted.ResultCiphertext, "durable transform source") {
+		t.Fatalf("result ciphertext contains plaintext response: %q", persisted.ResultCiphertext)
+	}
+}
+
+func TestBackgroundResponsesCacheWriteReceivesResponsePostOutput(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	responsePost := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-cache-write-transform",
+		HookID:        "response-post",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	cacheWrite := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-cache-write-transform",
+		HookID:        "cache-write",
+		Stage:         pluginmeta.StageCacheWrite,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	for _, hook := range []pluginmeta.GatewayHookDescriptor{responsePost, cacheWrite} {
+		if err := server.gatewayChain.RegisterHook(hook); err != nil {
+			t.Fatalf("register %s hook: %v", hook.Stage, err)
+		}
+	}
+	if err := server.gatewayHooks.RegisterHandler(responsePost, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		return rawProviderResponsePatch(t, map[string]any{
+			"id":          "resp_background_cache_write_transformed",
+			"object":      "response",
+			"model":       "gpt-background",
+			"output_text": "background cache_write transformed",
+			"output":      []map[string]any{},
+		}), nil
+	})); err != nil {
+		t.Fatalf("register response_post handler: %v", err)
+	}
+	cacheWriteCalls := 0
+	if err := server.gatewayHooks.RegisterHandler(cacheWrite, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		cacheWriteCalls++
+		raw := string(input.Data[pluginmeta.DataProviderResponse])
+		if !strings.Contains(raw, "background cache_write transformed") || strings.Contains(raw, "cache write transform source") {
+			t.Fatalf("cache_write provider response = %s, want response_post output only", raw)
+		}
+		if len(input.Data[pluginmeta.DataUsage]) == 0 {
+			t.Fatal("cache_write hook did not receive usage data")
+		}
+		return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+	})); err != nil {
+		t.Fatalf("register cache_write handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "cache write transform source")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "background cache_write transformed" {
+		t.Fatalf("completed response = %#v, want transformed output", completed)
+	}
+	if cacheWriteCalls != 1 {
+		t.Fatalf("cache_write calls = %d, want 1", cacheWriteCalls)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "prv_background" {
+		t.Fatalf("request logs = %+v, want one successful provider-backed job", logs)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
+		t.Fatalf("usage records = %+v, want one provider-backed usage record", records)
+	}
+}
+
+func TestBackgroundResponsesResponseTransformFailOpenPersistsProviderResult(t *testing.T) {
+	server, store, secret := newBackgroundResponseTestServer(t)
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-background-response-post",
+		HookID:        "fail-open",
+		Stage:         pluginmeta.StageResponsePost,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse},
+		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register response_post hook: %v", err)
+	}
+	responsePostCalls := 0
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		responsePostCalls++
+		return pluginmeta.GatewayHookResult{}, errors.New("response transform unavailable")
+	})); err != nil {
+		t.Fatalf("register response_post handler: %v", err)
+	}
+
+	id := submitBackgroundResponse(t, server.Handler(), secret, "fail-open response transform")
+	completed := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
+	if completed["output_text"] != "Echo: fail-open response transform" {
+		t.Fatalf("completed response = %#v, want provider response", completed)
+	}
+	if responsePostCalls != 1 {
+		t.Fatalf("response_post calls = %d, want 1", responsePostCalls)
+	}
+	logs := store.ListRequestLogs()
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].ProviderID != "prv_background" {
+		t.Fatalf("request logs = %+v, want one successful provider-backed job", logs)
+	}
+	records := store.ListUsageRecords()
+	if len(records) != 1 || records[0].ProviderID != "prv_background" || records[0].TotalTokens == 0 {
+		t.Fatalf("usage records = %+v, want provider response usage", records)
+	}
+}
+
 func TestBackgroundResponsesEnforcesExactKeyAndRejectsStreaming(t *testing.T) {
 	server, store, secret := newBackgroundResponseTestServer(t)
 	id := submitBackgroundResponse(t, server.Handler(), secret, "private")
@@ -267,6 +604,37 @@ func TestBackgroundResponsesReservesQuotaBeforeUpstreamExecution(t *testing.T) {
 	}
 }
 
+func TestResponseWorkerStopsWhenStoreIsClosed(t *testing.T) {
+	config := responseJobTestConfig()
+	config.ResponsePollIntervalMillis = 10
+	config.ResponseWorkerConcurrency = 1
+	store := NewMemoryStoreWithConfig(config)
+	server := NewWithConfig(store, config)
+	if server.stopHeartbeat != nil {
+		server.stopHeartbeat()
+		server.stopHeartbeat = nil
+	}
+	sqlDB, err := store.db.DB()
+	if err != nil {
+		t.Fatalf("database handle: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		server.responseWorkerGroup.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		server.responseCancel()
+		t.Fatal("response worker kept polling after the store closed")
+	}
+	server.responseCancel()
+}
+
 type blockingResponseAdapter struct {
 	MockAdapter
 	started chan struct{}
@@ -317,6 +685,7 @@ func (s *pauseAfterResponseClaimStore) ClaimResponseJob(owner string, leaseTTL t
 func TestBackgroundResponsesShutdownAfterClaimRequeuesForRestart(t *testing.T) {
 	config := responseJobTestConfig()
 	config.ResponseLeaseTTLSeconds = 10
+	config.ResponseWorkerStartupEnabled = true
 	store, secret := newBackgroundResponseTestStore(t, config)
 	key := store.ListAPIKeys()[0]
 	project, ok := store.GetProject(key.ProjectID)
@@ -670,6 +1039,7 @@ func TestBackgroundResponsesCancellationWinsCompletionRaceAndSettlesQuota(t *tes
 
 func TestBackgroundResponsesSQLiteRestartProcessesQueuedJob(t *testing.T) {
 	config := responseJobTestConfig()
+	config.ResponseWorkerStartupEnabled = true
 	databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "responses-restart.db")
 	store, err := NewSQLiteStoreWithConfig(databaseURL, config)
 	if err != nil {

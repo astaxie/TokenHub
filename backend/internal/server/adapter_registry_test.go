@@ -1,8 +1,15 @@
 package server
 
 import (
+	"encoding/json"
+	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 // builtinAdapterCapabilities pins the capability set every built-in provider
@@ -68,6 +75,21 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	},
 }
 
+var builtinAdapterPlugins = map[string]string{
+	ProviderMock:             "tokenhub.provider.mock",
+	ProviderOpenAI:           "tokenhub.provider.openai",
+	ProviderOpenAICompatible: "tokenhub.provider.openai-compatible",
+	ProviderOpenAICodex:      "tokenhub.provider.openai-codex",
+	ProviderAzureOpenAI:      "tokenhub.provider.azure-openai",
+	ProviderAnthropic:        "tokenhub.provider.anthropic",
+	ProviderGemini:           "tokenhub.provider.gemini",
+	ProviderDify:             "tokenhub.provider.dify",
+	ProviderKronk:            "tokenhub.provider.kronk",
+	"deepseek":               "tokenhub.provider.deepseek",
+	"qwen":                   "tokenhub.provider.qwen",
+	"local":                  "tokenhub.provider.local",
+}
+
 func TestBuiltinAdaptersResolveWithUnchangedCapabilities(t *testing.T) {
 	server := New(NewMemoryStore())
 
@@ -86,11 +108,816 @@ func TestBuiltinAdaptersResolveWithUnchangedCapabilities(t *testing.T) {
 		if !reflect.DeepEqual(descriptor.Capabilities, want) {
 			t.Fatalf("capabilities for %q = %v, want %v", adapterType, descriptor.Capabilities, want)
 		}
+		if descriptor.PluginID != builtinAdapterPlugins[adapterType] {
+			t.Fatalf("plugin id for %q = %q, want %q", adapterType, descriptor.PluginID, builtinAdapterPlugins[adapterType])
+		}
+		if len(descriptor.ProviderPolicy.RouteProtocols) == 0 {
+			t.Fatalf("provider policy for %q has no route protocols", adapterType)
+		}
 	}
 
 	listed := server.adapterRegistry.List()
 	if len(listed) != len(builtinAdapterCapabilities) {
 		t.Fatalf("registry lists %d adapters, want %d", len(listed), len(builtinAdapterCapabilities))
+	}
+}
+
+func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
+	server := New(NewMemoryStore())
+
+	mock, ok := server.adapterRegistry.Describe(ProviderMock)
+	if !ok {
+		t.Fatal("Mock adapter descriptor is missing")
+	}
+	if !mock.ProviderPolicy.StoreProbeFallback {
+		t.Fatal("Mock adapter should declare store-backed probe fallback through provider policy")
+	}
+
+	anthropic, ok := server.adapterRegistry.Describe(ProviderAnthropic)
+	if !ok {
+		t.Fatal("Anthropic adapter descriptor is missing")
+	}
+	if !reflect.DeepEqual(anthropic.ProviderPolicy.RouteProtocols, []string{"anthropic"}) {
+		t.Fatalf("Anthropic route protocols = %v", anthropic.ProviderPolicy.RouteProtocols)
+	}
+	if anthropic.ProviderPolicy.ErrorProfile != "" {
+		t.Fatalf("Anthropic error profile = %q, want generic", anthropic.ProviderPolicy.ErrorProfile)
+	}
+	if !anthropic.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("Anthropic should support custom headers")
+	}
+	if !reflect.DeepEqual(anthropic.ProviderPolicy.ManagedHeaders, []string{"anthropic-beta", "anthropic-version", "api-key", "x-api-key"}) {
+		t.Fatalf("Anthropic managed headers = %v", anthropic.ProviderPolicy.ManagedHeaders)
+	}
+	if !reflect.DeepEqual(anthropic.ProviderPolicy.AuthModes, []string{anthropicAuthTypeBearer, anthropicAuthTypeAPIKey}) {
+		t.Fatalf("Anthropic auth modes = %v", anthropic.ProviderPolicy.AuthModes)
+	}
+	if anthropic.ProviderPolicy.AuthModeLegacyOption != anthropicAuthTypeOption {
+		t.Fatalf("Anthropic auth mode legacy option = %q, want %q", anthropic.ProviderPolicy.AuthModeLegacyOption, anthropicAuthTypeOption)
+	}
+	if anthropic.ProviderPolicy.AuthModeInvalidErrorCode != "provider_anthropic_auth_type_invalid" ||
+		anthropic.ProviderPolicy.AuthModeInvalidErrorMessage != "Anthropic authentication type must be x-api-key or bearer" {
+		t.Fatalf("Anthropic auth mode invalid error policy = %+v", anthropic.ProviderPolicy)
+	}
+	if anthropic.ProviderPolicy.DefaultBaseURL != "https://api.anthropic.com" {
+		t.Fatalf("Anthropic default base URL = %q", anthropic.ProviderPolicy.DefaultBaseURL)
+	}
+	if anthropic.ProviderPolicy.DefaultCatalogProviderType {
+		t.Fatal("Anthropic should not be the default catalog provider type")
+	}
+	if anthropic.ProviderPolicy.ModelDiscovery.Path != "/v1/models" ||
+		anthropic.ProviderPolicy.ModelDiscovery.Auth != "provider_auth_mode" ||
+		anthropic.ProviderPolicy.ModelDiscovery.Headers["anthropic-version"] != "2023-06-01" {
+		t.Fatalf("Anthropic model discovery policy = %+v", anthropic.ProviderPolicy.ModelDiscovery)
+	}
+
+	azure, ok := server.adapterRegistry.Describe(ProviderAzureOpenAI)
+	if !ok {
+		t.Fatal("Azure OpenAI adapter descriptor is missing")
+	}
+	if azure.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("Azure OpenAI should not support custom headers")
+	}
+
+	kronk, ok := server.adapterRegistry.Describe(ProviderKronk)
+	if !ok {
+		t.Fatal("Kronk adapter descriptor is missing")
+	}
+	if kronk.ProviderPolicy.ErrorProfile != providerErrorProfileKronk {
+		t.Fatalf("Kronk error profile = %q, want %q", kronk.ProviderPolicy.ErrorProfile, providerErrorProfileKronk)
+	}
+	if kronk.ProviderPolicy.APIKeyRequired {
+		t.Fatal("Kronk should declare Provider API keys optional")
+	}
+
+	codex, ok := server.adapterRegistry.Describe(ProviderOpenAICodex)
+	if !ok {
+		t.Fatal("OpenAI Codex adapter descriptor is missing")
+	}
+	if codex.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("OpenAI Codex should not support custom headers")
+	}
+	if !codex.ProviderPolicy.RouteRequiresResource {
+		t.Fatal("OpenAI Codex should require route resources through provider policy")
+	}
+	if codex.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
+		t.Fatalf("OpenAI Codex credentials scope = %q, want resource", codex.ProviderPolicy.CredentialsScope)
+	}
+	if codex.ProviderPolicy.CredentialRefreshProfile != openAIAccountOAuthRefreshProfile {
+		t.Fatalf("OpenAI Codex credential refresh profile = %q, want %q", codex.ProviderPolicy.CredentialRefreshProfile, openAIAccountOAuthRefreshProfile)
+	}
+	if codex.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
+		t.Fatalf("OpenAI Codex session affinity kind = %q, want codex session", codex.ProviderPolicy.SessionAffinityKind)
+	}
+	if codex.ProviderPolicy.SessionAffinityIdentifierProfile != sessionAffinityIdentifierProfileCompatibility {
+		t.Fatalf("OpenAI Codex session affinity identifier profile = %q, want compatibility", codex.ProviderPolicy.SessionAffinityIdentifierProfile)
+	}
+
+	compatible, ok := server.adapterRegistry.Describe(ProviderOpenAICompatible)
+	if !ok {
+		t.Fatal("OpenAI-compatible adapter descriptor is missing")
+	}
+	if compatible.ProviderPolicy.RouteRequiresResource {
+		t.Fatal("OpenAI-compatible should keep route resources optional")
+	}
+	if compatible.ProviderPolicy.APIKeyRequired {
+		t.Fatal("OpenAI-compatible should support upstreams without authentication")
+	}
+	if compatible.ProviderPolicy.CredentialsScope != providerCredentialsScopeProvider {
+		t.Fatalf("OpenAI-compatible credentials scope = %q, want provider", compatible.ProviderPolicy.CredentialsScope)
+	}
+	if compatible.ProviderPolicy.SessionAffinityKind != AffinityKindProviderSession {
+		t.Fatalf("OpenAI-compatible session affinity kind = %q, want provider session", compatible.ProviderPolicy.SessionAffinityKind)
+	}
+	if !compatible.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("OpenAI-compatible should support custom headers")
+	}
+	if !reflect.DeepEqual(compatible.ProviderPolicy.ManagedHeaders, []string{"api-key", "openai-organization", "openai-project", "x-api-key"}) {
+		t.Fatalf("OpenAI-compatible managed headers = %v", compatible.ProviderPolicy.ManagedHeaders)
+	}
+	if !compatible.ProviderPolicy.DefaultCatalogProviderType {
+		t.Fatal("OpenAI-compatible should declare itself as the default catalog provider type")
+	}
+	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"chat/completions", "embeddings", "responses"}) {
+		t.Fatalf("OpenAI-compatible route protocols = %v", compatible.ProviderPolicy.RouteProtocols)
+	}
+
+	deepSeek, ok := server.adapterRegistry.Describe("deepseek")
+	if !ok {
+		t.Fatal("DeepSeek adapter descriptor is missing")
+	}
+	if deepSeek.ProviderPolicy.PreserveReasoningContent == nil || !*deepSeek.ProviderPolicy.PreserveReasoningContent {
+		t.Fatalf("DeepSeek preserve reasoning content policy = %v, want true", deepSeek.ProviderPolicy.PreserveReasoningContent)
+	}
+	if !reflect.DeepEqual(deepSeek.ProviderPolicy.ResponsesModelAllowlist, []string{"deepseek-v4-flash", "deepseek-v4-pro"}) {
+		t.Fatalf("DeepSeek Responses model allowlist = %v", deepSeek.ProviderPolicy.ResponsesModelAllowlist)
+	}
+}
+
+func TestAdapterProviderPolicyDefaultsAreGenericWithoutPluginPolicy(t *testing.T) {
+	registry := NewAdapterRegistry()
+	registry.Register(ProviderOpenAICodex, MockAdapter{}, AdapterCapabilityResponses)
+
+	descriptor, ok := registry.Describe(ProviderOpenAICodex)
+	if !ok {
+		t.Fatal("adapter descriptor is missing")
+	}
+	if descriptor.ProviderPolicy.RouteRequiresResource {
+		t.Fatal("bare adapter registration should not imply route resource policy")
+	}
+	if descriptor.ProviderPolicy.CredentialsScope != providerCredentialsScopeProvider {
+		t.Fatalf("bare adapter credentials scope = %q, want provider", descriptor.ProviderPolicy.CredentialsScope)
+	}
+	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindProviderSession {
+		t.Fatalf("bare adapter session affinity kind = %q, want provider session", descriptor.ProviderPolicy.SessionAffinityKind)
+	}
+	if descriptor.ProviderPolicy.SessionAffinityIdentifierProfile != sessionAffinityIdentifierProfileProvider {
+		t.Fatalf("bare adapter session affinity identifier profile = %q, want provider", descriptor.ProviderPolicy.SessionAffinityIdentifierProfile)
+	}
+	if !descriptor.ProviderPolicy.SupportsCustomHeaders {
+		t.Fatal("bare adapter registration should keep custom headers enabled by default")
+	}
+	if len(descriptor.ProviderPolicy.ManagedHeaders) != 0 {
+		t.Fatalf("bare adapter managed headers = %v, want none", descriptor.ProviderPolicy.ManagedHeaders)
+	}
+	if descriptor.ProviderPolicy.ErrorProfile != "" {
+		t.Fatalf("bare adapter error profile = %q, want generic", descriptor.ProviderPolicy.ErrorProfile)
+	}
+	if descriptor.ProviderPolicy.StoreProbeFallback {
+		t.Fatal("bare adapter registration should not imply store-backed probe fallback")
+	}
+}
+
+func TestAdapterProviderPolicyReadsStoreProbeFallbackFromPluginDescriptor(t *testing.T) {
+	registry := NewAdapterRegistry()
+	providerType := "store_probe_plugin"
+	descriptor := pluginmeta.BuiltInProvider(
+		"tokenhub.provider.store-probe",
+		"Store Probe",
+		[]string{providerType},
+		[]string{string(AdapterCapabilityChat)},
+	)
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    pluginmeta.CapabilityKindProviderPolicy,
+		Name:    pluginmeta.ProviderPolicyStoreProbeFallback,
+		Subject: providerType,
+		Value:   "true",
+	})
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	adapter, ok := registry.Describe(providerType)
+	if !ok {
+		t.Fatal("adapter descriptor is missing")
+	}
+	if !adapter.ProviderPolicy.StoreProbeFallback {
+		t.Fatalf("store probe fallback policy = false, want true: %+v", adapter.ProviderPolicy)
+	}
+}
+
+func TestAdapterRegisterPreservesPluginPolicyWhenReplacingAdapter(t *testing.T) {
+	registry := NewAdapterRegistry()
+	providerType := "replace_store_probe"
+	descriptor := pluginmeta.BuiltInProvider(
+		"tokenhub.provider.replace-store-probe",
+		"Replace Store Probe",
+		[]string{providerType},
+		[]string{string(AdapterCapabilityChat)},
+	)
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    pluginmeta.CapabilityKindProviderPolicy,
+		Name:    pluginmeta.ProviderPolicyStoreProbeFallback,
+		Subject: providerType,
+		Value:   "true",
+	})
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	registry.Register(providerType, recoveryProbeAdapter{})
+
+	adapter, ok := registry.Describe(providerType)
+	if !ok {
+		t.Fatal("adapter descriptor is missing")
+	}
+	if adapter.PluginID != "tokenhub.provider.replace-store-probe" {
+		t.Fatalf("plugin id = %q, want preserved plugin descriptor", adapter.PluginID)
+	}
+	if !adapter.ProviderPolicy.StoreProbeFallback {
+		t.Fatalf("store probe fallback policy was not preserved: %+v", adapter.ProviderPolicy)
+	}
+	if len(adapter.Capabilities) != 0 {
+		t.Fatalf("replacement capabilities = %v, want explicit replacement set", adapter.Capabilities)
+	}
+}
+
+func TestBuiltinProviderPluginsExposeAdapterCapabilities(t *testing.T) {
+	server := New(NewMemoryStore())
+
+	plugins := server.adapterRegistry.ListPlugins()
+	if len(plugins) < len(builtinAdapterPlugins) {
+		t.Fatalf("registry lists %d plugins, want at least %d", len(plugins), len(builtinAdapterPlugins))
+	}
+	for adapterType, pluginID := range builtinAdapterPlugins {
+		descriptor, ok := server.adapterRegistry.plugins.Describe(pluginID)
+		if !ok {
+			t.Fatalf("plugin %q for adapter %q is missing", pluginID, adapterType)
+		}
+		capabilities := map[string]bool{}
+		for _, capability := range descriptor.Capabilities {
+			if capability.Kind == "provider" && capability.Subject == adapterType {
+				capabilities[capability.Name] = true
+			}
+		}
+		for _, capability := range builtinAdapterCapabilities[adapterType] {
+			if !capabilities[string(capability)] {
+				t.Fatalf("plugin %q does not expose %q for adapter %q", pluginID, capability, adapterType)
+			}
+		}
+	}
+}
+
+func TestPluginAdapterDescriptorExposesRouteResourcePolicy(t *testing.T) {
+	registry := NewAdapterRegistry()
+	providerType := "subscription_plugin"
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.subscription-plugin",
+		Name:    "Subscription Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: providerAPIKeyRequiredOption, Subject: providerType, Value: "false"},
+			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "oauth"},
+			{Kind: "provider_policy", Name: "auth_mode", Subject: providerType, Value: "personal_access_token"},
+			{Kind: "provider_policy", Name: providerAuthModeLegacyOptionPolicy, Subject: providerType, Value: "legacy_subscription_auth_type"},
+			{Kind: "provider_policy", Name: providerAuthModeInvalidErrorCodePolicy, Subject: providerType, Value: "provider_subscription_auth_mode_invalid"},
+			{Kind: "provider_policy", Name: providerAuthModeInvalidErrorMessagePolicy, Subject: providerType, Value: "Subscription authentication mode is not supported"},
+			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
+			{Kind: "provider_policy", Name: "session_affinity_kind", Subject: providerType, Value: AffinityKindCodexSession},
+			{Kind: "provider_policy", Name: "session_affinity_identifier_profile", Subject: providerType, Value: sessionAffinityIdentifierProfileCompatibility},
+			{Kind: "provider_policy", Name: systemPromptTransformDefaultPolicy, Subject: providerType, Value: systemPromptTransformStrip},
+			{Kind: "provider_policy", Name: providerReasoningConfigurablePolicy, Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: reasoningContentOption, Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-a"},
+			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-b"},
+			{Kind: "provider_policy", Name: "default_base_url", Subject: providerType, Value: "https://subscription.example/v1"},
+			{Kind: "provider_policy", Name: "default_catalog_provider_type", Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: "error_profile", Subject: providerType, Value: providerErrorProfileKronk},
+			{Kind: "provider_policy", Name: "model_discovery_path", Subject: providerType, Value: "/subscription/models"},
+			{Kind: "provider_policy", Name: "model_discovery_auth", Subject: providerType, Value: "query_param"},
+			{Kind: "provider_policy", Name: "model_discovery_api_key_query_param", Subject: providerType, Value: "access_token"},
+			{Kind: "provider_policy", Name: "model_discovery_headers", Subject: providerType, Value: `{"x-subscription-version":"2026-01-01"}`},
+			{Kind: "provider_resource_type", Name: "subscription_account", Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
+				Type:        "subscription_account",
+				DisplayName: "Subscription Account",
+				AuthModes:   []string{"oauth", "personal_access_token"},
+				Default:     true,
+				Defaults: map[string]string{
+					"auth_type": "oauth",
+					"base_url":  "https://subscription.example/v1",
+				},
+			}.CapabilityValue()},
+		},
+	}, AdapterRegistration{Type: providerType, Adapter: struct{}{}}); err != nil {
+		t.Fatalf("register plugin adapter: %v", err)
+	}
+
+	descriptor, ok := registry.Describe(providerType)
+	if !ok {
+		t.Fatal("plugin adapter descriptor is missing")
+	}
+	if !descriptor.ProviderPolicy.RouteRequiresResource {
+		t.Fatalf("plugin provider policy = %+v, want route resource required", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.APIKeyRequired {
+		t.Fatalf("plugin provider API key policy = %+v, want optional", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.CredentialsScope != providerCredentialsScopeResource {
+		t.Fatalf("plugin provider credentials scope = %+v, want resource", descriptor.ProviderPolicy)
+	}
+	if !reflect.DeepEqual(descriptor.ProviderPolicy.AuthModes, []string{"oauth", "personal_access_token"}) {
+		t.Fatalf("plugin provider auth modes = %+v", descriptor.ProviderPolicy.AuthModes)
+	}
+	if descriptor.ProviderPolicy.AuthModeLegacyOption != "legacy_subscription_auth_type" {
+		t.Fatalf("plugin provider auth mode legacy option = %+v, want legacy_subscription_auth_type", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.AuthModeInvalidErrorCode != "provider_subscription_auth_mode_invalid" ||
+		descriptor.ProviderPolicy.AuthModeInvalidErrorMessage != "Subscription authentication mode is not supported" {
+		t.Fatalf("plugin provider auth mode invalid error policy = %+v", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.SessionAffinityKind != AffinityKindCodexSession {
+		t.Fatalf("plugin provider session affinity kind = %+v, want codex session", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.SessionAffinityIdentifierProfile != sessionAffinityIdentifierProfileCompatibility {
+		t.Fatalf("plugin provider session affinity identifier profile = %+v, want compatibility", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.SystemPromptTransformDefault != systemPromptTransformStrip {
+		t.Fatalf("plugin provider system prompt transform default = %+v, want strip", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.ReasoningConfigurable == nil || !*descriptor.ProviderPolicy.ReasoningConfigurable {
+		t.Fatalf("plugin provider reasoning configuration policy = %+v, want true", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.PreserveReasoningContent == nil || !*descriptor.ProviderPolicy.PreserveReasoningContent {
+		t.Fatalf("plugin provider preserve reasoning content default = %+v, want true", descriptor.ProviderPolicy)
+	}
+	if !reflect.DeepEqual(descriptor.ProviderPolicy.ResponsesModelAllowlist, []string{"model-a", "model-b"}) {
+		t.Fatalf("plugin provider Responses model allowlist = %+v, want model-a/model-b", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.DefaultBaseURL != "https://subscription.example/v1" {
+		t.Fatalf("plugin provider default base URL = %+v, want subscription URL", descriptor.ProviderPolicy)
+	}
+	if !descriptor.ProviderPolicy.DefaultCatalogProviderType {
+		t.Fatalf("plugin provider default catalog type = %+v, want true", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.ErrorProfile != providerErrorProfileKronk {
+		t.Fatalf("plugin provider error profile = %+v, want Kronk profile", descriptor.ProviderPolicy)
+	}
+	if descriptor.ProviderPolicy.ModelDiscovery.Path != "/subscription/models" ||
+		descriptor.ProviderPolicy.ModelDiscovery.Auth != "query_param" ||
+		descriptor.ProviderPolicy.ModelDiscovery.APIKeyQueryParam != "access_token" ||
+		descriptor.ProviderPolicy.ModelDiscovery.Headers["x-subscription-version"] != "2026-01-01" {
+		t.Fatalf("plugin provider model discovery policy = %+v", descriptor.ProviderPolicy.ModelDiscovery)
+	}
+	if len(descriptor.ResourceTypes) != 1 {
+		t.Fatalf("plugin provider resource types = %+v, want one resource type", descriptor.ResourceTypes)
+	}
+	resourceType := descriptor.ResourceTypes[0]
+	if resourceType.Type != "subscription_account" || resourceType.DisplayName != "Subscription Account" || !resourceType.Default {
+		t.Fatalf("plugin provider resource type = %+v, want subscription account metadata", resourceType)
+	}
+	if !reflect.DeepEqual(resourceType.AuthModes, []string{"oauth", "personal_access_token"}) {
+		t.Fatalf("plugin provider resource auth modes = %+v", resourceType.AuthModes)
+	}
+	if resourceType.Defaults["auth_type"] != "oauth" || resourceType.Defaults["base_url"] != "https://subscription.example/v1" {
+		t.Fatalf("plugin provider resource defaults = %+v", resourceType.Defaults)
+	}
+}
+
+func TestReconcileProviderPluginPoliciesPersistsBuiltinProviderPolicy(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID:      "prv_legacy_codex_policy",
+		Name:    "Legacy Codex Policy",
+		Type:    ProviderOpenAICodex,
+		Status:  StatusActive,
+		Healthy: true,
+		Options: map[string]string{"catalog_id": "openai-codex"},
+	})
+	delete(provider.Options, providerRouteRequiresResourceOption)
+	delete(provider.Options, providerCredentialsScopeOption)
+	if err := store.db.Model(&provider).Select("Options").Updates(provider).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	NewWithConfig(store, Config{AdminToken: "dev_admin_token"})
+
+	stored, ok := store.GetProvider(provider.ID)
+	if !ok {
+		t.Fatal("provider disappeared")
+	}
+	if stored.Options["catalog_id"] != "openai-codex" {
+		t.Fatalf("non-policy options were not preserved: %+v", stored.Options)
+	}
+	if stored.Options[providerRouteRequiresResourceOption] != "true" || stored.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource {
+		t.Fatalf("builtin provider policy was not reconciled: %+v", stored.Options)
+	}
+}
+
+func TestReconcileProviderPluginPoliciesPersistsExternalProviderPolicy(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "external_policy_provider"
+	provider := store.AddProvider(Provider{
+		ID:      "prv_external_policy",
+		Name:    "External Policy",
+		Type:    providerType,
+		Status:  StatusActive,
+		Healthy: true,
+		Options: map[string]string{"custom": "preserved"},
+	})
+	registry := NewAdapterRegistry()
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.external-policy",
+		Name:    "External Policy Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_policy", Name: "route_requires_resource", Subject: providerType, Value: "true"},
+			{Kind: "provider_policy", Name: "credentials_scope", Subject: providerType, Value: providerCredentialsScopeResource},
+			{Kind: "provider_policy", Name: "error_profile", Subject: providerType, Value: providerErrorProfileKronk},
+		},
+	}, AdapterRegistration{Type: providerType, Adapter: struct{}{}}); err != nil {
+		t.Fatalf("register plugin adapter: %v", err)
+	}
+
+	updated, err := store.ReconcileProviderPluginPolicies(registry)
+	if err != nil {
+		t.Fatalf("reconcile provider policies: %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("reconciled providers = %d, want 1", updated)
+	}
+	stored, ok := store.GetProvider(provider.ID)
+	if !ok {
+		t.Fatal("provider disappeared")
+	}
+	if stored.Options["custom"] != "preserved" ||
+		stored.Options[providerRouteRequiresResourceOption] != "true" ||
+		stored.Options[providerCredentialsScopeOption] != providerCredentialsScopeResource ||
+		stored.Options[providerErrorProfileOption] != providerErrorProfileKronk {
+		t.Fatalf("external provider policy was not reconciled: %+v", stored.Options)
+	}
+}
+
+func TestBuiltinCodexProviderPluginExposesResourceTypeMetadata(t *testing.T) {
+	server := New(NewMemoryStore())
+	descriptor, ok := server.adapterRegistry.plugins.Describe("tokenhub.provider.openai-codex")
+	if !ok {
+		t.Fatal("Codex provider plugin is missing")
+	}
+	var value string
+	for _, capability := range descriptor.Capabilities {
+		if capability.Kind == "provider_resource_type" && capability.Name == ProviderResourceOpenAISubscription && capability.Subject == ProviderOpenAICodex {
+			value = capability.Value
+			break
+		}
+	}
+	if value == "" {
+		t.Fatalf("Codex provider plugin resource type metadata is missing: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "route_requires_resource", Subject: ProviderOpenAICodex, Value: "true"}) {
+		t.Fatalf("Codex provider plugin route resource policy is missing: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "credentials_scope", Subject: ProviderOpenAICodex, Value: providerCredentialsScopeResource}) {
+		t.Fatalf("Codex provider plugin credentials scope policy is missing: %+v", descriptor.Capabilities)
+	}
+	if !descriptorHasPluginCapability(descriptor, pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: "session_affinity_kind", Subject: ProviderOpenAICodex, Value: AffinityKindCodexSession}) {
+		t.Fatalf("Codex provider plugin session affinity policy is missing: %+v", descriptor.Capabilities)
+	}
+	if catalog, ok := providerCatalogEntryFromPluginCapability(descriptor, AdapterDescriptor{Type: ProviderOpenAICodex}); !ok ||
+		catalog.ID != codexProviderCatalogID || catalog.Type != ProviderOpenAICodex || catalog.BaseURL != openAICodexBaseURL {
+		t.Fatalf("Codex provider plugin catalog entry = %+v found=%t", catalog, ok)
+	}
+	var resourceType pluginmeta.ManifestProviderResourceType
+	if err := json.Unmarshal([]byte(value), &resourceType); err != nil {
+		t.Fatalf("decode Codex resource type metadata: %v", err)
+	}
+	if resourceType.Type != ProviderResourceOpenAISubscription || !resourceType.Default || resourceType.Defaults["base_url"] != openAICodexBaseURL || resourceType.Defaults["max_concurrency"] != "3" {
+		t.Fatalf("Codex resource type metadata = %+v", resourceType)
+	}
+	if resourceType.CredentialIdentityProfile != providerResourceIdentityProfileOpenAIIDToken {
+		t.Fatalf("Codex resource type credential identity profile = %q", resourceType.CredentialIdentityProfile)
+	}
+	if !resourceType.CredentialInputOptional {
+		t.Fatalf("Codex resource type credential input optional = false")
+	}
+	if !reflect.DeepEqual(resourceType.AuthModes, []string{"oauth", "personal_access_token"}) {
+		t.Fatalf("Codex resource type auth modes = %+v", resourceType.AuthModes)
+	}
+}
+
+func TestBuiltinCodexAdminUIContributesFingerprintResourceForm(t *testing.T) {
+	server := New(NewMemoryStore())
+	var found bool
+	for _, contribution := range server.adminUI.List() {
+		if contribution.PluginID != "tokenhub.provider.openai-codex" || contribution.ID != "fingerprint" {
+			continue
+		}
+		found = true
+		if contribution.Slot != pluginmeta.SlotProviderResourceFormSection {
+			t.Fatalf("Codex fingerprint slot = %q", contribution.Slot)
+		}
+		if !reflect.DeepEqual(contribution.ProviderTypes, []string{ProviderOpenAICodex}) {
+			t.Fatalf("Codex fingerprint provider types = %+v", contribution.ProviderTypes)
+		}
+		if !reflect.DeepEqual(contribution.ResourceTypes, []string{ProviderResourceOpenAISubscription}) {
+			t.Fatalf("Codex fingerprint resource types = %+v", contribution.ResourceTypes)
+		}
+		fields, ok := contribution.Schema["fields"].([]any)
+		if !ok || len(fields) != 1 {
+			t.Fatalf("Codex fingerprint fields = %#v", contribution.Schema["fields"])
+		}
+		field, ok := fields[0].(map[string]any)
+		if !ok || field["name"] != "codex_fingerprint_mode" || field["type"] != "select" || field["default"] != "session" {
+			t.Fatalf("Codex fingerprint field = %#v", fields[0])
+		}
+	}
+	if !found {
+		t.Fatal("Codex fingerprint resource form contribution is missing")
+	}
+}
+
+func descriptorHasPluginCapability(descriptor pluginmeta.Descriptor, capability pluginmeta.CapabilityDescriptor) bool {
+	for _, candidate := range descriptor.Capabilities {
+		if candidate == capability {
+			return true
+		}
+	}
+	return false
+}
+
+func TestGatewayStagesRemainHostInternal(t *testing.T) {
+	server := New(NewMemoryStore())
+
+	if _, ok := server.pluginRegistry.Describe(tokenHubCoreGatewayChainPluginID); ok {
+		t.Fatal("host gateway stages were exposed as a plugin")
+	}
+	plan := server.gatewayChain.Plan()
+	if len(plan.Stages) != len(pluginmeta.OrderedGatewayStages()) || len(plan.Envelopes) != len(plan.Stages) {
+		t.Fatalf("host gateway plan = %+v", plan)
+	}
+	if len(plan.Hooks) != 0 {
+		t.Fatalf("host gateway plan exposes synthetic hooks: %+v", plan.Hooks)
+	}
+	for _, envelope := range plan.Envelopes {
+		if envelope.ExecutionMode == "" {
+			t.Fatalf("stage %q has no execution mode", envelope.Stage)
+		}
+	}
+}
+
+func TestServerLoadsLocalPluginManifestsIntoRegistries(t *testing.T) {
+	pluginDir := t.TempDir()
+	writeServerPluginManifest(t, filepath.Join(pluginDir, "privacy"), `
+schema_version: 1
+id: tokenhub.local-privacy
+name: Local Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+capabilities:
+  hooks:
+    - id: mask
+      stage: privacy_pre
+      priority: 2300
+      failure_policy: fail_closed
+      reads:
+        - request_body
+      writes:
+        - request_body
+permissions:
+  data:
+    read:
+      - request_body
+    write:
+      - request_body
+`)
+
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	descriptor, ok := server.pluginRegistry.Describe("tokenhub.local-privacy")
+	if !ok {
+		t.Fatal("local plugin descriptor was not loaded")
+	}
+	if descriptor.Source != pluginmeta.SourceLocalFile {
+		t.Fatalf("local plugin source = %q, want %q", descriptor.Source, pluginmeta.SourceLocalFile)
+	}
+	hooks := server.gatewayChain.Hooks(pluginmeta.StagePrivacyPre)
+	if !gatewayHookExists(hooks, "tokenhub.local-privacy", "mask") {
+		t.Fatalf("privacy hooks = %+v", hooks)
+	}
+}
+
+func TestServerListsDisabledLocalPluginWithoutActivatingHooks(t *testing.T) {
+	pluginDir := t.TempDir()
+	localPluginDir := filepath.Join(pluginDir, "privacy")
+	writeServerPluginManifest(t, localPluginDir, `
+schema_version: 1
+id: tokenhub.local-disabled-privacy
+name: Local Disabled Privacy
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - extension
+placement:
+  - gateway_chain
+capabilities:
+  hooks:
+    - id: mask
+      stage: privacy_pre
+      priority: 2300
+      failure_policy: fail_closed
+      reads:
+        - request_body
+      writes:
+        - request_body
+permissions:
+  data:
+    read:
+      - request_body
+    write:
+      - request_body
+`)
+	if err := os.WriteFile(filepath.Join(localPluginDir, "plugin.state.json"), []byte(`{"status":"disabled"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	descriptor, ok := server.pluginRegistry.Describe("tokenhub.local-disabled-privacy")
+	if !ok {
+		t.Fatal("disabled local plugin descriptor was not loaded")
+	}
+	if descriptor.Status != pluginmeta.StatusDisabled {
+		t.Fatalf("disabled plugin status = %q, want disabled", descriptor.Status)
+	}
+	if gatewayHookExists(server.gatewayChain.Hooks(pluginmeta.StagePrivacyPre), "tokenhub.local-disabled-privacy", "mask") {
+		t.Fatal("disabled local plugin hook was activated")
+	}
+	response := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins", nil, "dev_admin_token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/plugins: expected 200, got %d: %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, `"id":"tokenhub.local-disabled-privacy"`) || !strings.Contains(response.Body, `"status":"disabled"`) {
+		t.Fatalf("GET /api/admin/plugins did not include disabled plugin status: %s", response.Body)
+	}
+}
+
+func TestServerLoadsLocalPluginAdminUIManifestsIntoRegistry(t *testing.T) {
+	pluginDir := t.TempDir()
+	uiPluginDir := filepath.Join(pluginDir, "ui")
+	writeServerPluginManifest(t, uiPluginDir, `
+schema_version: 1
+id: tokenhub.local-ui
+name: Local UI
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - admin_ui
+placement:
+  - presentation
+entry:
+  frontend:
+    schema: ui/admin-ui.schema.json
+capabilities:
+  admin_ui:
+    - provider_resource_panel
+`)
+	if err := os.MkdirAll(filepath.Join(uiPluginDir, "ui"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(uiPluginDir, "ui", "admin-ui.schema.json"), []byte(`{
+		"schema_version": 1,
+		"contributions": [
+			{
+				"id": "health-panel",
+				"slot": "provider.resource.panel",
+				"title": "Provider health",
+				"provider_types": ["openai"]
+			}
+		]
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	contributions := server.adminUI.List()
+	var found bool
+	for _, contribution := range contributions {
+		if contribution.PluginID == "tokenhub.local-ui" && contribution.ID == "health-panel" {
+			found = true
+			if contribution.Slot != pluginmeta.SlotProviderResourcePanel {
+				t.Fatalf("slot = %q, want %q", contribution.Slot, pluginmeta.SlotProviderResourcePanel)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("local admin UI contribution was not loaded: %+v", contributions)
+	}
+}
+
+func TestServerQuarantinesLocalProviderCommandWithoutIsolation(t *testing.T) {
+	pluginDir := t.TempDir()
+	providerPluginDir := filepath.Join(pluginDir, "provider")
+	writeServerPluginManifest(t, providerPluginDir, `
+schema_version: 1
+id: tokenhub.provider.catalog-stdio
+name: Catalog stdio Provider
+version: 1.0.0
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: provider.sh
+capabilities:
+  provider_types:
+    - catalog_stdio
+  provider:
+    catalog:
+      display_name: Catalog Stdio
+      base_url: https://stdio.example/v1
+      doc_url: https://stdio.example/docs
+      categories:
+        - custom
+      models:
+        - id: plugin-model
+          display_name: Plugin Model
+          category: custom
+          type: chat
+          context_window: 128000
+  gateway:
+    - chat
+permissions:
+  data:
+    read:
+      - provider_credentials
+`)
+	if err := os.WriteFile(filepath.Join(providerPluginDir, "provider.sh"), []byte(`#!/bin/sh
+printf '{"response":{},"usage":{}}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "dev_admin_token", PluginDir: pluginDir})
+	if descriptor, ok := server.adapterRegistry.Describe("catalog_stdio"); ok {
+		t.Fatalf("quarantined provider command registered an adapter: %+v", descriptor)
+	}
+	catalog := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog", nil, "dev_admin_token")
+	if catalog.Code != http.StatusOK {
+		t.Fatalf("provider catalog status = %d body=%s", catalog.Code, catalog.Body)
+	}
+	if strings.Contains(catalog.Body, `"id":"catalog_stdio"`) || strings.Contains(catalog.Body, `"source":"plugin:local_file"`) {
+		t.Fatalf("provider catalog exposed quarantined provider command: %s", catalog.Body)
+	}
+	item := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/provider-catalog/catalog_stdio", nil, "dev_admin_token")
+	if item.Code != http.StatusNotFound {
+		t.Fatalf("quarantined provider catalog item status = %d body=%s, want 404", item.Code, item.Body)
+	}
+	detail := doJSON(t, server.Handler(), http.MethodGet, "/api/admin/plugins/tokenhub.provider.catalog-stdio/detail", nil, "dev_admin_token")
+	if detail.Code != http.StatusOK {
+		t.Fatalf("quarantined provider detail status = %d body=%s", detail.Code, detail.Body)
+	}
+	var detailPayload struct {
+		Data adminPluginDetailResponse `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(detail.Body), &detailPayload); err != nil {
+		t.Fatalf("decode quarantined provider detail: %v", err)
+	}
+	plugin := detailPayload.Data.Plugin
+	if plugin.Status != pluginmeta.StatusFailedStartup || plugin.Loadable ||
+		plugin.LastErrorCode != string(pluginmeta.PluginErrorPermissionUnsupported) ||
+		detailPayload.Data.Package == nil || detailPayload.Data.Package.FileCount == 0 {
+		t.Fatalf("quarantined provider detail = %+v, want inspectable startup failure", detailPayload.Data)
 	}
 }
 
@@ -156,4 +983,23 @@ func TestRegisterTestAdapterInjectsAndOverridesWithoutTouchingCapabilities(t *te
 	if !ok || !reflect.DeepEqual(descriptor.Capabilities, builtinAdapterCapabilities[ProviderOpenAI]) {
 		t.Fatalf("overriding an adapter changed its capabilities to %v", descriptor.Capabilities)
 	}
+}
+
+func writeServerPluginManifest(t *testing.T, dir string, body string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func gatewayHookExists(hooks []pluginmeta.GatewayHookDescriptor, pluginID string, hookID string) bool {
+	for _, hook := range hooks {
+		if hook.PluginID == pluginID && hook.HookID == hookID {
+			return true
+		}
+	}
+	return false
 }

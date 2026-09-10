@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.minimax-cn"
+name: "MiniMax (minimaxi.com)"
+version: 1.0.0
+summary: "Connect TokenHub to MiniMax (minimaxi.com)."
+description: "Connect TokenHub to MiniMax (minimaxi.com). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.minimaxi.com/anthropic/v1"
+    catalog:
+      id: "minimax-cn"
+      name: "MiniMax (minimaxi.com)"
+      display_name: "MiniMax (minimaxi.com)"
+      type: "openai_compatible"
+      base_url: "https://api.minimaxi.com/anthropic/v1"
+      doc_url: "https://platform.minimaxi.com/docs/guides/quickstart"
+      categories: []
+      models_count: 7
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

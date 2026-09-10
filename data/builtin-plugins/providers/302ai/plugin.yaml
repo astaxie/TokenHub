@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.302ai"
+name: "302.AI"
+version: 1.0.0
+summary: "Connect TokenHub to 302.AI."
+description: "Connect TokenHub to 302.AI. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.302.ai/v1"
+    catalog:
+      id: "302ai"
+      name: "302.AI"
+      display_name: "302.AI"
+      type: "openai_compatible"
+      base_url: "https://api.302.ai/v1"
+      doc_url: "https://doc.302.ai"
+      categories: []
+      models_count: 97
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

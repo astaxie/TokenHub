@@ -1,0 +1,75 @@
+{
+  "id": "tencent-token-plan-hy-personal",
+  "api": "https://api.lkeap.cloud.tencent.com/plan/v3",
+  "name": "腾讯云 Token Plan / Hy Token Plan（个人版）",
+  "display_name": "腾讯云 Token Plan / Hy Token Plan（个人版）",
+  "doc": "https://cloud.tencent.com/document/product/1823/130060",
+  "models": [
+    {
+      "id": "hy3",
+      "name": "Hy3",
+      "display_name": "Hy3",
+      "family": "hy",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "type": "chat"
+    },
+    {
+      "id": "hy3-preview",
+      "name": "Hy3 preview",
+      "display_name": "Hy3 preview",
+      "family": "hy",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "type": "chat"
+    }
+  ]
+}

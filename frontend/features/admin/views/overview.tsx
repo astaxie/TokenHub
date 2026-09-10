@@ -5,6 +5,7 @@ import { type AdminUser, type AppData, type AppRole, type RequestLog, type Summa
 import { findProvider, providerResourceAuditLabel } from "../domain/entities";
 import { compactNumber, formatDashboardMoney, formatMoney, formatNumber, playgroundModels } from "../domain/formatting";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
+import { AdminUIDashboardCards } from "./admin-ui-dashboard-cards";
 import { hasUsage } from "./usage-billing";
 
 export function OverviewView({
@@ -84,7 +85,7 @@ export function OverviewView({
     <div className="overview-report">
       <header className="overview-report-head">
         <div>
-          <p className="eyebrow">Enterprise AI Gateway</p>
+          <p className="eyebrow">{tx("企业级 AI 网关")}</p>
           <h1>{tx("网关概览")}</h1>
         </div>
         <div className="overview-range-tabs" role="tablist" aria-label={tx("报表时间范围")}>
@@ -119,6 +120,8 @@ export function OverviewView({
           );
         })}
       </section>
+
+      <AdminUIDashboardCards data={data} />
 
       <section className="overview-report-grid">
         <article className="overview-panel overview-trend-panel">

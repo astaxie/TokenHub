@@ -135,6 +135,7 @@ func TestProviderProxyRejectsLegacyPublicHTTPBeforeSendingCredentials(t *testing
 		return proxyURL, nil
 	})
 	request, err := http.NewRequest(http.MethodGet, "http://public.example/v1/models", nil)
+	usePublicProxyTargetLookup(transport)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +378,7 @@ func TestCodexSubscriptionResponsesInheritsEnvironmentProxy(t *testing.T) {
 
 			server, _, secret := newCodexCompatibilityRouteTestServer(t, nil)
 			t.Cleanup(func() { _ = server.Shutdown(t.Context()) })
-			proxyTransport := server.codexSubscription.Client.Transport.(*providerEnvironmentProxyTransport)
+			proxyTransport := mustCodexSubscriptionAdapterForTest(t, server).Client.Transport.(*providerEnvironmentProxyTransport)
 			proxyTransport.lookup = func(context.Context, string) ([]net.IPAddr, error) {
 				return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
 			}

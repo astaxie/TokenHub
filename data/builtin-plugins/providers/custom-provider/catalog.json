@@ -1,0 +1,2240 @@
+{
+  "id": "custom-provider",
+  "name": "custom provider",
+  "display_name": "custom provider",
+  "description": "Generated first-tier fallback catalog combining official high-signal chat, coding, reasoning, and frontier model metadata.",
+  "updated_at": "2026-04-24T00:00:00.000Z",
+  "doc": "docs/custom-provider.md",
+  "tags": [
+    "fallback",
+    "official",
+    "generated",
+    "chat",
+    "coding",
+    "reasoning"
+  ],
+  "models": [
+    {
+      "id": "claude-haiku-4-5",
+      "name": "Claude Haiku 4.5",
+      "display_name": "Claude Haiku 4.5",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": false,
+      "knowledge": "2025-02-28",
+      "release_date": "2025-10-15",
+      "last_updated": "2025-10-15",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 1,
+        "output": 5,
+        "cache_read": 0.1,
+        "cache_write": 1.25
+      },
+      "limit": {
+        "context": 200000,
+        "output": 64000
+      },
+      "metadata": {
+        "selection": [
+          "fast",
+          "near-frontier",
+          "cost-efficient"
+        ],
+        "lifecycle": "active",
+        "snapshotId": "claude-haiku-4-5-20251001",
+        "sourceProvider": "anthropic",
+        "sourceProviderName": "Anthropic",
+        "sourceApiUrl": "https://api.anthropic.com/v1/models",
+        "sourceDocs": [
+          "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "https://docs.anthropic.com/en/api/models-list"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      }
+    },
+    {
+      "id": "claude-opus-4-7",
+      "name": "Claude Opus 4.7",
+      "display_name": "Claude Opus 4.7",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": false,
+      "knowledge": "2026-01-31",
+      "release_date": "2026-04-16",
+      "last_updated": "2026-04-16",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_write": 6.25
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "metadata": {
+        "selection": [
+          "sota",
+          "agentic-coding",
+          "reasoning"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "anthropic",
+        "sourceProviderName": "Anthropic",
+        "sourceApiUrl": "https://api.anthropic.com/v1/models",
+        "sourceDocs": [
+          "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "https://docs.anthropic.com/en/api/models-list"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "high",
+          "effort_options": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "omitted",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude Opus 4.7 and newer Opus models require thinking.type = \"adaptive\" to enable thinking explicitly.",
+            "Manual budget_tokens requests return 400 on Claude Opus 4.7 and newer adaptive-only Opus models.",
+            "task_budget is separate from thinking control and should not be treated as a thinking budget."
+          ]
+        }
+      }
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "name": "Claude Sonnet 4.6",
+      "display_name": "Claude Sonnet 4.6",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": false,
+      "knowledge": "2025-08-31",
+      "release_date": "2026-02-17",
+      "last_updated": "2026-03-13",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 3,
+        "output": 15,
+        "cache_read": 0.3,
+        "cache_write": 3.75
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 64000
+      },
+      "metadata": {
+        "selection": [
+          "balanced",
+          "coding",
+          "reasoning"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "anthropic",
+        "sourceProviderName": "Anthropic",
+        "sourceApiUrl": "https://api.anthropic.com/v1/models",
+        "sourceDocs": [
+          "https://platform.claude.com/docs/en/about-claude/models/overview",
+          "https://docs.anthropic.com/en/api/models-list"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "mixed",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high",
+            "max"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Anthropic recommends adaptive thinking with effort for Claude 4.6; budget_tokens remains a deprecated compatibility path.",
+            "Anthropic API defaults effort to high; lower effort levels should be chosen per workload."
+          ]
+        }
+      }
+    },
+    {
+      "id": "deepseek-chat",
+      "name": "DeepSeek Chat",
+      "display_name": "DeepSeek Chat",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "release_date": "2024-12-26",
+      "last_updated": "2026-04-24",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.14,
+        "output": 0.28,
+        "cache_read": 0.028
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 393216
+      },
+      "metadata": {
+        "selection": [
+          "chat",
+          "coding",
+          "compatibility"
+        ],
+        "lifecycle": "compatibility",
+        "aliasOf": "deepseek-v4-flash",
+        "mode": "non-thinking",
+        "sourceProvider": "deepseek",
+        "sourceProviderName": "DeepSeek",
+        "sourceApiUrl": "https://api.deepseek.com/models",
+        "sourceDocs": [
+          "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+          "https://api-docs.deepseek.com/zh-cn/api/create-chat-completion",
+          "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "deepseek-reasoner",
+      "name": "DeepSeek Reasoner",
+      "display_name": "DeepSeek Reasoner",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": true,
+      "release_date": "2025-01-20",
+      "last_updated": "2026-04-24",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.14,
+        "output": 0.28,
+        "cache_read": 0.028
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 393216
+      },
+      "metadata": {
+        "selection": [
+          "reasoning",
+          "tool-use",
+          "compatibility"
+        ],
+        "lifecycle": "compatibility",
+        "aliasOf": "deepseek-v4-flash",
+        "mode": "thinking",
+        "sourceProvider": "deepseek",
+        "sourceProviderName": "DeepSeek",
+        "sourceApiUrl": "https://api.deepseek.com/models",
+        "sourceDocs": [
+          "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+          "https://api-docs.deepseek.com/zh-cn/api/create-chat-completion",
+          "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "effort_options": [
+            "high",
+            "max"
+          ],
+          "notes": [
+            "Compatibility alias for deepseek-v4-flash thinking mode."
+          ],
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "high"
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "display_name": "DeepSeek V4 Flash",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-04-24",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.14,
+        "output": 0.28,
+        "cache_read": 0.028
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 393216
+      },
+      "metadata": {
+        "selection": [
+          "latest",
+          "cost-efficient",
+          "long-context"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "deepseek",
+        "sourceProviderName": "DeepSeek",
+        "sourceApiUrl": "https://api.deepseek.com/models",
+        "sourceDocs": [
+          "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+          "https://api-docs.deepseek.com/zh-cn/api/create-chat-completion",
+          "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "effort_options": [
+            "high",
+            "max"
+          ],
+          "notes": [
+            "Thinking mode is controlled through the thinking parameter; non-thinking mode disables reasoning."
+          ],
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "high"
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "display_name": "DeepSeek V4 Pro",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-04-24",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 1.74,
+        "output": 3.48,
+        "cache_read": 0.145
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 393216
+      },
+      "metadata": {
+        "selection": [
+          "latest",
+          "frontier",
+          "long-context"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "deepseek",
+        "sourceProviderName": "DeepSeek",
+        "sourceApiUrl": "https://api.deepseek.com/models",
+        "sourceDocs": [
+          "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+          "https://api-docs.deepseek.com/zh-cn/api/create-chat-completion",
+          "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "effort_options": [
+            "high",
+            "max"
+          ],
+          "notes": [
+            "Thinking mode is controlled through the thinking parameter; non-thinking mode disables reasoning."
+          ],
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "high"
+        }
+      }
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
+      "display_name": "Gemini 2.5 Pro",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true,
+        "budget": {
+          "min": 128,
+          "max": 32768,
+          "default": -1
+        }
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-01",
+      "release_date": "2025-03-20",
+      "last_updated": "2025-06-05",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 1.25,
+        "output": 10,
+        "cache_read": 0.125
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "metadata": {
+        "selection": [
+          "stable",
+          "deep-reasoning",
+          "coding"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "gemini",
+        "sourceProviderName": "Gemini",
+        "sourceApiUrl": "https://generativelanguage.googleapis.com/v1beta/models",
+        "sourceDocs": [
+          "https://ai.google.dev/gemini-api/docs/models",
+          "https://ai.google.dev/gemini-api/docs/gemini-3"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "budget",
+          "budget": {
+            "min": 128,
+            "max": 32768,
+            "default": -1,
+            "auto": -1,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "gemini-3-flash-preview",
+      "name": "Gemini 3 Flash Preview",
+      "display_name": "Gemini 3 Flash Preview",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-01",
+      "release_date": "2025-12-17",
+      "last_updated": "2025-12-17",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.5,
+        "output": 3,
+        "cache_read": 0.05
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "metadata": {
+        "selection": [
+          "fast",
+          "multimodal",
+          "reasoning"
+        ],
+        "lifecycle": "preview",
+        "sourceProvider": "gemini",
+        "sourceProviderName": "Gemini",
+        "sourceApiUrl": "https://generativelanguage.googleapis.com/v1beta/models",
+        "sourceDocs": [
+          "https://ai.google.dev/gemini-api/docs/models",
+          "https://ai.google.dev/gemini-api/docs/gemini-3"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "level",
+          "level": "high",
+          "level_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "gemini-3.1-flash-lite-preview",
+      "name": "Gemini 3.1 Flash-Lite Preview",
+      "display_name": "Gemini 3.1 Flash-Lite Preview",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-02-19",
+      "last_updated": "2026-02-19",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.15,
+        "output": 0.6,
+        "cache_read": 0.015
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "metadata": {
+        "selection": [
+          "fast",
+          "cost-efficient",
+          "multimodal"
+        ],
+        "lifecycle": "preview",
+        "sourceProvider": "gemini",
+        "sourceProviderName": "Gemini",
+        "sourceApiUrl": "https://generativelanguage.googleapis.com/v1beta/models",
+        "sourceDocs": [
+          "https://ai.google.dev/gemini-api/docs/models",
+          "https://ai.google.dev/gemini-api/docs/gemini-3"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "level_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "continuation": [
+            "thought_signatures"
+          ],
+          "default_enabled": true,
+          "mode": "level",
+          "level": "medium",
+          "summaries": true,
+          "visibility": "summary"
+        }
+      }
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "name": "Gemini 3.1 Pro Preview",
+      "display_name": "Gemini 3.1 Pro Preview",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-02-19",
+      "last_updated": "2026-02-19",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 2,
+        "output": 12,
+        "cache_read": 0.2
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "metadata": {
+        "selection": [
+          "frontier",
+          "multimodal",
+          "coding"
+        ],
+        "lifecycle": "preview",
+        "sourceProvider": "gemini",
+        "sourceProviderName": "Gemini",
+        "sourceApiUrl": "https://generativelanguage.googleapis.com/v1beta/models",
+        "sourceDocs": [
+          "https://ai.google.dev/gemini-api/docs/models",
+          "https://ai.google.dev/gemini-api/docs/gemini-3"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "level",
+          "level": "high",
+          "level_options": [
+            "low",
+            "high"
+          ],
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "gemini-3.1-pro-preview-customtools",
+      "name": "Gemini 3.1 Pro Preview Custom Tools",
+      "display_name": "Gemini 3.1 Pro Preview Custom Tools",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-02-19",
+      "last_updated": "2026-02-19",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 2,
+        "output": 12,
+        "cache_read": 0.2
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "metadata": {
+        "selection": [
+          "custom-tools",
+          "frontier",
+          "agentic"
+        ],
+        "lifecycle": "preview",
+        "sourceProvider": "gemini",
+        "sourceProviderName": "Gemini",
+        "sourceApiUrl": "https://generativelanguage.googleapis.com/v1beta/models",
+        "sourceDocs": [
+          "https://ai.google.dev/gemini-api/docs/models",
+          "https://ai.google.dev/gemini-api/docs/gemini-3"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "level",
+          "level": "high",
+          "level_options": [
+            "low",
+            "high"
+          ],
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "glm-4.7",
+      "name": "GLM-4.7",
+      "display_name": "GLM-4.7",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-12-22",
+      "last_updated": "2025-12-22",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.6,
+        "output": 2.2,
+        "cache_read": 0.11,
+        "cache_write": 0
+      },
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "metadata": {
+        "selection": [
+          "open-weight",
+          "coding",
+          "reasoning"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "zhipu",
+        "sourceProviderName": "Zhipu",
+        "sourceDocs": [
+          "https://docs.z.ai/guides/llm/glm-5.1",
+          "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+          "https://docs.bigmodel.cn/cn/guide/capabilities/thinking"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "glm-5",
+      "name": "GLM-5",
+      "display_name": "GLM-5",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "release_date": "2026-02-11",
+      "last_updated": "2026-02-11",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 1,
+        "output": 3.2,
+        "cache_read": 0.2,
+        "cache_write": 0
+      },
+      "limit": {
+        "context": 200000,
+        "output": 131072
+      },
+      "metadata": {
+        "selection": [
+          "coding",
+          "agentic",
+          "reasoning"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "zhipu",
+        "sourceProviderName": "Zhipu",
+        "sourceDocs": [
+          "https://docs.z.ai/guides/llm/glm-5.1",
+          "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+          "https://docs.bigmodel.cn/cn/guide/capabilities/thinking"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "glm-5.1",
+      "name": "GLM-5.1",
+      "display_name": "GLM-5.1",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "release_date": "2026-03-27",
+      "last_updated": "2026-03-27",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 6,
+        "output": 24,
+        "cache_read": 1.3,
+        "cache_write": 0
+      },
+      "limit": {
+        "context": 200000,
+        "output": 131072
+      },
+      "metadata": {
+        "selection": [
+          "latest",
+          "coding",
+          "long-horizon"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "zhipu",
+        "sourceProviderName": "Zhipu",
+        "sourceDocs": [
+          "https://docs.z.ai/guides/llm/glm-5.1",
+          "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+          "https://docs.bigmodel.cn/cn/guide/capabilities/thinking"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "glm-5v-turbo",
+      "name": "GLM-5V-Turbo",
+      "display_name": "GLM-5V-Turbo",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "release_date": "2026-04-01",
+      "last_updated": "2026-04-01",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 5,
+        "output": 22,
+        "cache_read": 1.2,
+        "cache_write": 0
+      },
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "metadata": {
+        "selection": [
+          "vision",
+          "coding",
+          "reasoning"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "zhipu",
+        "sourceProviderName": "Zhipu",
+        "sourceDocs": [
+          "https://docs.z.ai/guides/llm/glm-5.1",
+          "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+          "https://docs.bigmodel.cn/cn/guide/capabilities/thinking"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "name": "GPT-5.3 Codex",
+      "display_name": "GPT-5.3 Codex",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-08-31",
+      "release_date": "2026-02-05",
+      "last_updated": "2026-02-05",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 1.75,
+        "output": 14,
+        "cache_read": 0.175
+      },
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "metadata": {
+        "selection": [
+          "coding",
+          "agentic",
+          "reasoning"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "openai",
+        "sourceProviderName": "OpenAI",
+        "sourceApiUrl": "https://api.openai.com/v1/models",
+        "sourceDocs": [
+          "https://developers.openai.com/api/docs/models",
+          "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "https://developers.openai.com/api/docs/models/gpt-5.3-codex"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "gpt-5.4",
+      "name": "GPT-5.4",
+      "display_name": "GPT-5.4",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-08-31",
+      "release_date": "2026-03-05",
+      "last_updated": "2026-03-05",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 2.5,
+        "output": 15,
+        "cache_read": 0.25
+      },
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "metadata": {
+        "selection": [
+          "frontier",
+          "coding",
+          "reasoning"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "openai",
+        "sourceProviderName": "OpenAI",
+        "sourceApiUrl": "https://api.openai.com/v1/models",
+        "sourceDocs": [
+          "https://developers.openai.com/api/docs/models",
+          "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "https://developers.openai.com/api/docs/models/gpt-5.3-codex"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "name": "GPT-5.4 Mini",
+      "display_name": "GPT-5.4 Mini",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-08-31",
+      "release_date": "2026-03-05",
+      "last_updated": "2026-03-05",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.75,
+        "output": 4.5,
+        "cache_read": 0.075
+      },
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "metadata": {
+        "selection": [
+          "fast",
+          "coding",
+          "cost-efficient"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "openai",
+        "sourceProviderName": "OpenAI",
+        "sourceApiUrl": "https://api.openai.com/v1/models",
+        "sourceDocs": [
+          "https://developers.openai.com/api/docs/models",
+          "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "https://developers.openai.com/api/docs/models/gpt-5.3-codex"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "name": "GPT-5.4 Nano",
+      "display_name": "GPT-5.4 Nano",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-08-31",
+      "release_date": "2026-03-05",
+      "last_updated": "2026-03-05",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.2,
+        "output": 1.25,
+        "cache_read": 0.02
+      },
+      "limit": {
+        "context": 400000,
+        "output": 128000
+      },
+      "metadata": {
+        "selection": [
+          "small",
+          "cost-efficient",
+          "fallback"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "openai",
+        "sourceProviderName": "OpenAI",
+        "sourceApiUrl": "https://api.openai.com/v1/models",
+        "sourceDocs": [
+          "https://developers.openai.com/api/docs/models",
+          "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "https://developers.openai.com/api/docs/models/gpt-5.3-codex"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "gpt-5.4-pro",
+      "name": "GPT-5.4 Pro",
+      "display_name": "GPT-5.4 Pro",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": false,
+      "knowledge": "2025-08-31",
+      "release_date": "2026-03-05",
+      "last_updated": "2026-03-05",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 30,
+        "output": 180
+      },
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "metadata": {
+        "selection": [
+          "sota",
+          "frontier",
+          "reasoning"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "openai",
+        "sourceProviderName": "OpenAI",
+        "sourceApiUrl": "https://api.openai.com/v1/models",
+        "sourceDocs": [
+          "https://developers.openai.com/api/docs/models",
+          "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "https://developers.openai.com/api/docs/models/gpt-5.3-codex"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "high",
+          "effort_options": [
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "gpt-5.5",
+      "name": "GPT-5.5",
+      "display_name": "GPT-5.5",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": true,
+      "last_updated": "2026-04-24",
+      "open_weights": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "metadata": {
+        "selection": [
+          "frontier",
+          "coding",
+          "reasoning",
+          "provisional"
+        ],
+        "lifecycle": "api-coming-soon",
+        "apiStatus": "coming-soon",
+        "availability": [
+          "chatgpt",
+          "codex"
+        ],
+        "seedBasis": "gpt-5.4-api-baseline",
+        "notes": [
+          "Official OpenAI models page lists GPT-5.5 as available in ChatGPT and Codex with API availability coming soon.",
+          "Context, output, modalities, and tool metadata are provisional until stable API model documentation is published."
+        ],
+        "sourceProvider": "openai",
+        "sourceProviderName": "OpenAI",
+        "sourceApiUrl": "https://api.openai.com/v1/models",
+        "sourceDocs": [
+          "https://developers.openai.com/api/docs/models",
+          "https://developers.openai.com/api/docs/models/gpt-5.4",
+          "https://developers.openai.com/api/docs/models/gpt-5.3-codex"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "kimi-k2-thinking",
+      "name": "Kimi K2 Thinking",
+      "display_name": "Kimi K2 Thinking",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2024-08",
+      "release_date": "2025-11-06",
+      "last_updated": "2025-11-06",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.6,
+        "output": 2.5,
+        "cache_read": 0.15
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "metadata": {
+        "selection": [
+          "deep-reasoning",
+          "multi-step-tools"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "kimi",
+        "sourceProviderName": "Kimi",
+        "sourceApiUrl": "https://api.moonshot.ai/v1/models",
+        "sourceDocs": [
+          "https://platform.moonshot.ai/",
+          "https://platform.kimi.ai/docs/pricing/chat",
+          "https://platform.moonshot.ai/docs/guide/use-kimi-k2-thinking-model.en-US"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "kimi-k2-thinking-turbo",
+      "name": "Kimi K2 Thinking Turbo",
+      "display_name": "Kimi K2 Thinking Turbo",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2024-08",
+      "release_date": "2025-11-06",
+      "last_updated": "2025-11-06",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 1.15,
+        "output": 8,
+        "cache_read": 0.15
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "metadata": {
+        "selection": [
+          "deep-reasoning",
+          "fast"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "kimi",
+        "sourceProviderName": "Kimi",
+        "sourceApiUrl": "https://api.moonshot.ai/v1/models",
+        "sourceDocs": [
+          "https://platform.moonshot.ai/",
+          "https://platform.kimi.ai/docs/pricing/chat",
+          "https://platform.moonshot.ai/docs/guide/use-kimi-k2-thinking-model.en-US"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "kimi-k2.5",
+      "name": "Kimi K2.5",
+      "display_name": "Kimi K2.5",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": false,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-01-27",
+      "last_updated": "2026-01-27",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.6,
+        "output": 3,
+        "cache_read": 0.1
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "metadata": {
+        "selection": [
+          "multimodal",
+          "reasoning",
+          "coding"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "kimi",
+        "sourceProviderName": "Kimi",
+        "sourceApiUrl": "https://api.moonshot.ai/v1/models",
+        "sourceDocs": [
+          "https://platform.moonshot.ai/",
+          "https://platform.kimi.ai/docs/pricing/chat",
+          "https://platform.moonshot.ai/docs/guide/use-kimi-k2-thinking-model.en-US"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "kimi-k2.6",
+      "name": "Kimi K2.6",
+      "display_name": "Kimi K2.6",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-04-21",
+      "last_updated": "2026-04-21",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.95,
+        "output": 4,
+        "cache_read": 0.16
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "metadata": {
+        "selection": [
+          "latest",
+          "coding",
+          "agentic"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "kimi",
+        "sourceProviderName": "Kimi",
+        "sourceApiUrl": "https://api.moonshot.ai/v1/models",
+        "sourceDocs": [
+          "https://platform.moonshot.ai/",
+          "https://platform.kimi.ai/docs/pricing/chat",
+          "https://platform.moonshot.ai/docs/guide/use-kimi-k2-thinking-model.en-US"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "name": "Kimi K2.7 Code",
+      "display_name": "Kimi K2.7 Code",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-04-21",
+      "last_updated": "2026-04-21",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.95,
+        "output": 4,
+        "cache_read": 0.16
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "metadata": {
+        "selection": [
+          "latest",
+          "coding",
+          "agentic"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "kimi",
+        "sourceProviderName": "Kimi",
+        "sourceApiUrl": "https://api.moonshot.ai/v1/models",
+        "sourceDocs": [
+          "https://platform.moonshot.ai/",
+          "https://platform.kimi.ai/docs/pricing/chat",
+          "https://platform.moonshot.ai/docs/guide/use-kimi-k2-thinking-model.en-US"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "default_enabled": true,
+          "mode": "fixed"
+        }
+      }
+    },
+    {
+      "id": "MiniMax-M2.5",
+      "name": "MiniMax-M2.5",
+      "display_name": "MiniMax-M2.5",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": false,
+      "release_date": "2026-02-12",
+      "last_updated": "2026-02-12",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.3,
+        "output": 1.2,
+        "cache_read": 0.03,
+        "cache_write": 0.375
+      },
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "metadata": {
+        "selection": [
+          "coding",
+          "value",
+          "tool-use"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "minimax",
+        "sourceProviderName": "MiniMax",
+        "sourceDocs": [
+          "https://platform.minimax.io/docs/guides/models-intro",
+          "https://platform.minimax.io/docs/api-reference/api-overview",
+          "https://platform.minimax.io/docs/guides/text-ai-coding-tools"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "MiniMax-M2.5-highspeed",
+      "name": "MiniMax-M2.5-highspeed",
+      "display_name": "MiniMax-M2.5-highspeed",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": false,
+      "release_date": "2026-02-13",
+      "last_updated": "2026-02-13",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.6,
+        "output": 2.4,
+        "cache_read": 0.06,
+        "cache_write": 0.375
+      },
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "metadata": {
+        "selection": [
+          "fast",
+          "coding",
+          "tool-use"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "minimax",
+        "sourceProviderName": "MiniMax",
+        "sourceDocs": [
+          "https://platform.minimax.io/docs/guides/models-intro",
+          "https://platform.minimax.io/docs/api-reference/api-overview",
+          "https://platform.minimax.io/docs/guides/text-ai-coding-tools"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true
+        }
+      }
+    },
+    {
+      "id": "MiniMax-M2.7",
+      "name": "MiniMax-M2.7",
+      "display_name": "MiniMax-M2.7",
+      "type": "chat",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "temperature": true,
+      "tool_call": true,
+      "structured_output": false,
+      "release_date": "2026-03-18",
+      "last_updated": "2026-03-18",
+      "open_weights": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "cost": {
+        "input": 0.3,
+        "output": 1.2,
+        "cache_read": 0.06,
+        "cache_write": 0.375
+      },
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "metadata": {
+        "selection": [
+          "latest",
+          "coding",
+          "agentic"
+        ],
+        "lifecycle": "active",
+        "sourceProvider": "minimax",
+        "sourceProviderName": "MiniMax",
+        "sourceDocs": [
+          "https://platform.minimax.io/docs/guides/models-intro",
+          "https://platform.minimax.io/docs/api-reference/api-overview",
+          "https://platform.minimax.io/docs/guides/text-ai-coding-tools"
+        ],
+        "sourceStatus": "seed",
+        "apiListed": false,
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "default_enabled": true
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "catalogKind": "generated-fallback",
+    "fallbackPriority": "before-aihubmix",
+    "sourcePolicy": "official-api-plus-official-doc-derived-seeds",
+    "source": "public-provider-conf"
+  }
+}

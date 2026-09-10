@@ -3,6 +3,8 @@ import { fieldSummary, projectName, stringifyValue, teamLabel } from "./entities
 import { routeStrategyLabel } from "./formatting";
 import { displayText, tx } from "../i18n/runtime";
 import { identityProviderTemplateLabel, normalizedIdentityProviderIconKey } from "../shared/auth";
+import { codexFingerprintModeLabel } from "../core/project-key-download-templates";
+import { providerCatalogEntriesFromPluginCapabilities } from "./provider-plugin-catalog";
 
 export function compactList(value: unknown) {
   const values = Array.isArray(value) ? value.map(stringifyValue) : splitList(stringifyValue(value));
@@ -200,15 +202,8 @@ export function fieldValueLabel(fieldKey: string, value: unknown): string {
   if (normalizedKey === "icon_key") return identityProviderIconLabel(text);
   if (normalizedKey === "status" || normalizedKey.includes("status")) return enumValueLabel(text);
   if (normalizedKey === "strategy") return routeStrategyLabel(text);
-  if (normalizedKey === "claude_code_attribution_policy") return enumValueLabel(text);
-  if (normalizedKey === "codex_fingerprint_mode") {
-    return tx({
-      off: "关闭（透传）",
-      device: "仅收敛设备",
-      session: "收敛设备与会话（推荐）",
-      full: "完全收敛",
-    }[text.toLowerCase()] ?? text);
-  }
+  if (normalizedKey === "system_prompt_transform_policy" || normalizedKey === "claude_code_attribution_policy") return enumValueLabel(text);
+  if (normalizedKey === "codex_fingerprint_mode") return tx(codexFingerprintModeLabel(text));
   if (normalizedKey === "trigger") return approvalTriggerLabel(text);
   if (normalizedKey === "dataset") return reportDatasetLabel(text);
   if (normalizedKey === "reasoning_effort_unsupported") {
@@ -312,22 +307,34 @@ export function roleLabel(role: string) {
 }
 
 export function providerTypeLabel(type: string | undefined) {
-  const normalized = String(type ?? "").trim().toLowerCase();
+  const normalized = String(type ?? "").trim();
+  return normalized || "-";
+}
+
+export function providerTypeLabelFromData(data: Pick<AppData, "plugins" | "providerCatalog"> & Partial<Pick<AppData, "providerAdapters">>, type: string | undefined) {
+  const normalized = String(type ?? "").trim();
   if (!normalized) return "-";
-  const labels: Record<string, string> = {
-    mock: "模拟渠道",
-    openai: "OpenAI 官方",
-    openai_codex: "Codex Subscription",
-    openai_compatible: "OpenAI 兼容",
-    azure_openai: "Azure OpenAI",
-    anthropic: "Claude / Anthropic",
-    gemini: "Gemini / Google",
-    deepseek: "DeepSeek",
-    qwen: "Qwen / 通义千问",
-    local: "本地模型",
-    kronk: "Kronk 本地推理",
-  };
-  return tx(labels[normalized] ?? type ?? "-");
+  for (const entry of [...(data.providerCatalog ?? []), ...providerCatalogEntriesFromPluginCapabilities(data.plugins)]) {
+    if (entry.type !== normalized) continue;
+    const label = String(entry.display_name || entry.name || "").trim();
+    if (label) return label;
+  }
+  for (const adapter of data.providerAdapters ?? []) {
+    if (adapter.type !== normalized || !adapter.plugin_id) continue;
+    const plugin = (data.plugins ?? []).find((item) => item.id === adapter.plugin_id);
+    const label = String(plugin?.name || "").trim();
+    if (label) return label;
+  }
+  for (const plugin of data.plugins ?? []) {
+    const declaresType = plugin.capabilities.some((capability) => (
+      (capability.kind === "provider_type" && capability.name === normalized) ||
+      (capability.kind === "provider" && (capability.subject === normalized || capability.name === normalized))
+    ));
+    if (!declaresType) continue;
+    const label = String(plugin.name || "").trim();
+    if (label) return label;
+  }
+  return providerTypeLabel(normalized);
 }
 
 export function budgetScopeLabel(scope: string) {

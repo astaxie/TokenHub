@@ -755,7 +755,7 @@ func newMetricsCodexTestServer(t *testing.T, upstream func(*http.Request) *http.
 	if server.metrics == nil {
 		t.Fatal("expected metrics to be enabled")
 	}
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return upstream(req), nil
 	})}
 	return server, secret
@@ -883,7 +883,7 @@ func newMetricsGeminiTestServer(t *testing.T, responder func(map[string]any) str
 	if server.metrics == nil {
 		t.Fatal("expected metrics to be enabled")
 	}
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		var payload map[string]any
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			t.Fatal(err)

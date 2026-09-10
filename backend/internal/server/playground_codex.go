@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// playgroundResponsesRequestForRoute converts only Codex route attempts, leaving
-// other providers on their native Chat request path.
-func playgroundResponsesRequestForRoute(route RouteSelection, req ChatCompletionRequest) (ResponsesRequest, bool, error) {
-	if route.Provider.Type != ProviderOpenAICodex {
+// playgroundResponsesRequestForRoute converts routes that explicitly speak the
+// Codex-compatible Responses protocol, leaving other providers on Chat.
+func playgroundResponsesRequestForRoute(registry *AdapterRegistry, route RouteSelection, req ChatCompletionRequest) (ResponsesRequest, bool, error) {
+	if !routeSupportsProviderProtocol(registry, route, providerRouteProtocolCodexResponses) {
 		return ResponsesRequest{}, false, nil
 	}
 	converted, err := playgroundChatResponsesRequest(req)

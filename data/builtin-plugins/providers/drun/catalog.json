@@ -1,0 +1,137 @@
+{
+  "id": "drun",
+  "api": "https://chat.d.run/v1",
+  "name": "D.Run (China)",
+  "doc": "https://www.d.run",
+  "display_name": "D.Run (China)",
+  "models": [
+    {
+      "id": "public/deepseek-v3",
+      "name": "DeepSeek V3",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-07",
+      "release_date": "2024-12-26",
+      "last_updated": "2024-12-26",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.28,
+        "output": 1.1
+      },
+      "display_name": "DeepSeek V3",
+      "type": "chat"
+    },
+    {
+      "id": "public/deepseek-r1",
+      "name": "DeepSeek R1",
+      "family": "deepseek-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "temperature": true,
+      "knowledge": "2024-12",
+      "release_date": "2025-01-20",
+      "last_updated": "2025-01-20",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131072,
+        "output": 32000
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.2
+      },
+      "display_name": "DeepSeek R1",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "public/minimax-m25",
+      "name": "MiniMax M2.5",
+      "family": "minimax",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_details"
+      },
+      "temperature": true,
+      "release_date": "2025-03-01",
+      "last_updated": "2025-03-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "cost": {
+        "input": 0.29,
+        "output": 1.16
+      },
+      "display_name": "MiniMax M2.5",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    }
+  ]
+}

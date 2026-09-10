@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.drun"
+name: "D.Run (China)"
+version: 1.0.0
+summary: "Connect TokenHub to D.Run (China)."
+description: "Connect TokenHub to D.Run (China). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://chat.d.run/v1"
+    catalog:
+      id: "drun"
+      name: "D.Run (China)"
+      display_name: "D.Run (China)"
+      type: "openai_compatible"
+      base_url: "https://chat.d.run/v1"
+      doc_url: "https://www.d.run"
+      categories: []
+      models_count: 3
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

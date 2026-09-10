@@ -1,0 +1,1354 @@
+{
+  "id": "synthetic",
+  "api": "https://api.synthetic.new/openai/v1",
+  "name": "Synthetic",
+  "doc": "https://synthetic.new/pricing",
+  "display_name": "Synthetic",
+  "models": [
+    {
+      "id": "hf:meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+      "name": "Llama-4-Maverick-17B-128E-Instruct-FP8",
+      "family": "llama",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-08",
+      "release_date": "2025-04-05",
+      "last_updated": "2025-04-05",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 524000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.22,
+        "output": 0.88
+      },
+      "display_name": "Llama-4-Maverick-17B-128E-Instruct-FP8",
+      "type": "chat"
+    },
+    {
+      "id": "hf:meta-llama/Llama-4-Scout-17B-16E-Instruct",
+      "name": "Llama-4-Scout-17B-16E-Instruct",
+      "family": "llama",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-08",
+      "release_date": "2025-04-05",
+      "last_updated": "2025-04-05",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 328000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "display_name": "Llama-4-Scout-17B-16E-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "hf:meta-llama/Llama-3.3-70B-Instruct",
+      "name": "Llama-3.3-70B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-12-06",
+      "last_updated": "2024-12-06",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.9,
+        "output": 0.9
+      },
+      "display_name": "Llama-3.3-70B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "hf:meta-llama/Llama-3.1-70B-Instruct",
+      "name": "Llama-3.1-70B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-07-23",
+      "last_updated": "2024-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.9,
+        "output": 0.9
+      },
+      "display_name": "Llama-3.1-70B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "hf:meta-llama/Llama-3.1-405B-Instruct",
+      "name": "Llama-3.1-405B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-07-23",
+      "last_updated": "2024-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 3,
+        "output": 3
+      },
+      "display_name": "Llama-3.1-405B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "hf:meta-llama/Llama-3.1-8B-Instruct",
+      "name": "Llama-3.1-8B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-07-23",
+      "last_updated": "2024-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.2,
+        "output": 0.2
+      },
+      "display_name": "Llama-3.1-8B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "hf:deepseek-ai/DeepSeek-R1",
+      "name": "DeepSeek R1",
+      "family": "deepseek-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2025-01",
+      "release_date": "2025-01-20",
+      "last_updated": "2025-01-20",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.19
+      },
+      "display_name": "DeepSeek R1",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:deepseek-ai/DeepSeek-V3-0324",
+      "name": "DeepSeek V3 (0324)",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-08-01",
+      "last_updated": "2025-08-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 1.2,
+        "output": 1.2
+      },
+      "display_name": "DeepSeek V3 (0324)",
+      "type": "chat"
+    },
+    {
+      "id": "hf:deepseek-ai/DeepSeek-V3.1-Terminus",
+      "name": "DeepSeek V3.1 Terminus",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-09-22",
+      "last_updated": "2025-09-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 1.2,
+        "output": 1.2
+      },
+      "display_name": "DeepSeek V3.1 Terminus",
+      "type": "chat"
+    },
+    {
+      "id": "hf:deepseek-ai/DeepSeek-R1-0528",
+      "name": "DeepSeek R1 (0528)",
+      "family": "deepseek-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-08-01",
+      "last_updated": "2025-08-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 3,
+        "output": 8
+      },
+      "display_name": "DeepSeek R1 (0528)",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:deepseek-ai/DeepSeek-V3.1",
+      "name": "DeepSeek V3.1",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-08-21",
+      "last_updated": "2025-08-21",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 0.56,
+        "output": 1.68
+      },
+      "display_name": "DeepSeek V3.1",
+      "type": "chat"
+    },
+    {
+      "id": "hf:deepseek-ai/DeepSeek-V3.2",
+      "name": "DeepSeek V3.2",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2025-12-01",
+      "last_updated": "2025-12-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 162816,
+        "input": 162816,
+        "output": 8000
+      },
+      "cost": {
+        "input": 0.27,
+        "output": 0.4,
+        "cache_read": 0.27,
+        "cache_write": 0
+      },
+      "display_name": "DeepSeek V3.2",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "hf:deepseek-ai/DeepSeek-V3",
+      "name": "DeepSeek V3",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-07",
+      "release_date": "2025-01-20",
+      "last_updated": "2025-05-29",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 1.25,
+        "output": 1.25
+      },
+      "display_name": "DeepSeek V3",
+      "type": "chat"
+    },
+    {
+      "id": "hf:moonshotai/Kimi-K2-Thinking",
+      "name": "Kimi K2 Thinking",
+      "family": "kimi-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2025-11",
+      "release_date": "2025-11-07",
+      "last_updated": "2025-11-07",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.19
+      },
+      "display_name": "Kimi K2 Thinking",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:moonshotai/Kimi-K2-Instruct-0905",
+      "name": "Kimi K2 0905",
+      "family": "kimi-k2",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-10",
+      "release_date": "2025-09-05",
+      "last_updated": "2025-09-05",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 32768
+      },
+      "cost": {
+        "input": 1.2,
+        "output": 1.2
+      },
+      "display_name": "Kimi K2 0905",
+      "type": "chat"
+    },
+    {
+      "id": "hf:moonshotai/Kimi-K2.6",
+      "name": "Kimi K2.6",
+      "family": "kimi-k2",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-04-21",
+      "last_updated": "2026-04-21",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.95,
+        "output": 4,
+        "cache_read": 0.95
+      },
+      "display_name": "Kimi K2.6",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary"
+        }
+      }
+    },
+    {
+      "id": "hf:moonshotai/Kimi-K2.5",
+      "name": "Kimi K2.5",
+      "family": "kimi-k2",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "temperature": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-01",
+      "last_updated": "2026-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.19
+      },
+      "display_name": "Kimi K2.5",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:zai-org/GLM-4.7-Flash",
+      "name": "GLM-4.7-Flash",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-01-18",
+      "last_updated": "2026-01-18",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 196608,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.06,
+        "output": 0.4,
+        "cache_read": 0.06
+      },
+      "display_name": "GLM-4.7-Flash",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary"
+        }
+      }
+    },
+    {
+      "id": "hf:zai-org/GLM-4.6",
+      "name": "GLM 4.6",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-09-30",
+      "last_updated": "2025-09-30",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 200000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.19
+      },
+      "display_name": "GLM 4.6",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "hf:zai-org/GLM-5",
+      "name": "GLM-5",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-02-12",
+      "last_updated": "2026-04-08",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 196608,
+        "output": 65536
+      },
+      "cost": {
+        "input": 1,
+        "output": 3,
+        "cache_read": 1
+      },
+      "display_name": "GLM-5",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:zai-org/GLM-4.7",
+      "name": "GLM 4.7",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "temperature": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-12-22",
+      "last_updated": "2025-12-22",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 200000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.19
+      },
+      "display_name": "GLM 4.7",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:zai-org/GLM-5.1",
+      "name": "GLM 5.1",
+      "family": "glm",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-03-27",
+      "last_updated": "2026-04-12",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 196608,
+        "output": 65536
+      },
+      "cost": {
+        "input": 1,
+        "output": 3,
+        "cache_read": 1
+      },
+      "display_name": "GLM 5.1",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary"
+        }
+      }
+    },
+    {
+      "id": "hf:MiniMaxAI/MiniMax-M2.1",
+      "name": "MiniMax-M2.1",
+      "family": "minimax",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "temperature": true,
+      "release_date": "2025-12-23",
+      "last_updated": "2025-12-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 204800,
+        "output": 131072
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.19
+      },
+      "display_name": "MiniMax-M2.1",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary"
+        }
+      }
+    },
+    {
+      "id": "hf:MiniMaxAI/MiniMax-M2",
+      "name": "MiniMax-M2",
+      "family": "minimax",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-10-27",
+      "last_updated": "2025-10-27",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 196608,
+        "output": 131000
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.19
+      },
+      "display_name": "MiniMax-M2",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "hf:MiniMaxAI/MiniMax-M2.5",
+      "name": "MiniMax-M2.5",
+      "family": "minimax",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-02-07",
+      "last_updated": "2026-02-07",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 191488,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.6,
+        "output": 3,
+        "cache_read": 0.6
+      },
+      "display_name": "MiniMax-M2.5",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary"
+        }
+      }
+    },
+    {
+      "id": "hf:openai/gpt-oss-120b",
+      "name": "GPT OSS 120B",
+      "family": "gpt-oss",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-08-05",
+      "last_updated": "2025-08-05",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.1,
+        "output": 0.1
+      },
+      "display_name": "GPT OSS 120B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "hf:Qwen/Qwen3.5-397B-A17B",
+      "name": "Qwen3.5-97B-A17B",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-02-11",
+      "last_updated": "2026-02-11",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "status": "beta",
+      "cost": {
+        "input": 0.6,
+        "output": 3,
+        "cache_read": 0.6
+      },
+      "display_name": "Qwen3.5-97B-A17B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:Qwen/Qwen3-235B-A22B-Thinking-2507",
+      "name": "Qwen3 235B A22B Thinking 2507",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-07-25",
+      "last_updated": "2025-07-25",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 256000,
+        "output": 32000
+      },
+      "cost": {
+        "input": 0.65,
+        "output": 3
+      },
+      "display_name": "Qwen3 235B A22B Thinking 2507",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "name": "Qwen 3 Coder 480B",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-07-23",
+      "last_updated": "2025-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 256000,
+        "output": 32000
+      },
+      "cost": {
+        "input": 2,
+        "output": 2
+      },
+      "display_name": "Qwen 3 Coder 480B",
+      "type": "chat"
+    },
+    {
+      "id": "hf:Qwen/Qwen2.5-Coder-32B-Instruct",
+      "name": "Qwen2.5-Coder-32B-Instruct",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": true,
+      "knowledge": "2024-10",
+      "release_date": "2024-11-11",
+      "last_updated": "2024-11-11",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32768,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.8,
+        "output": 0.8
+      },
+      "display_name": "Qwen2.5-Coder-32B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "hf:Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "name": "Qwen 3 235B Instruct",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2025-04",
+      "release_date": "2025-04-28",
+      "last_updated": "2025-07-21",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 256000,
+        "output": 32000
+      },
+      "cost": {
+        "input": 0.2,
+        "output": 0.6
+      },
+      "display_name": "Qwen 3 235B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "hf:nvidia/Kimi-K2.5-NVFP4",
+      "name": "Kimi K2.5 (NVFP4)",
+      "family": "kimi-k2",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "temperature": true,
+      "knowledge": "2025-01",
+      "release_date": "2026-01",
+      "last_updated": "2026-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.55,
+        "output": 2.19
+      },
+      "display_name": "Kimi K2.5 (NVFP4)",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+      "name": "Nemotron 3 Super 120B",
+      "family": "nemotron",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "interleaved": {
+        "field": "reasoning_content"
+      },
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2024-04",
+      "release_date": "2026-03-11",
+      "last_updated": "2026-04-03",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 262144,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0.3,
+        "output": 1,
+        "cache_read": 0.3
+      },
+      "display_name": "Nemotron 3 Super 120B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    }
+  ]
+}

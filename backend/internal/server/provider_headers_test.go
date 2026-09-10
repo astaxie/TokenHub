@@ -9,7 +9,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
+
+type providerHeaderPolicyTestAdapter struct {
+	MockAdapter
+}
 
 func TestNormalizeProviderHeadersAndMergeResourceOverrides(t *testing.T) {
 	providerHeaders, err := normalizeProviderHeaders(map[string]string{
@@ -39,6 +45,159 @@ func TestNormalizeProviderHeadersAndMergeResourceOverrides(t *testing.T) {
 	}
 	if len(merged) != 3 {
 		t.Fatalf("merged headers = %#v", merged)
+	}
+}
+
+func TestAdminProviderHeadersUseAdapterDeclaredPolicy(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	const providerType = "no_headers_plugin"
+	descriptor := pluginmeta.BuiltInProvider(
+		"tokenhub.provider.no-headers",
+		"No Headers Provider",
+		[]string{providerType},
+		[]string{string(AdapterCapabilityChat)},
+	)
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    "provider_policy",
+		Name:    "supports_custom_headers",
+		Subject: providerType,
+		Value:   "false",
+	})
+	descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      providerHeaderPolicyTestAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+	app := server.Handler()
+
+	createdWithHeaders := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":       "prv_no_headers_rejected",
+		"name":     "No headers rejected",
+		"type":     providerType,
+		"base_url": "https://provider.example/v1",
+		"api_key":  "test-key",
+		"headers":  map[string]string{"X-Tenant": "tenant-one"},
+	}, "")
+	if createdWithHeaders.Code != http.StatusBadRequest || !strings.Contains(createdWithHeaders.Body, `"code":"provider_headers_unsupported"`) {
+		t.Fatalf("provider create with headers = %d: %s", createdWithHeaders.Code, createdWithHeaders.Body)
+	}
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":       "prv_no_headers",
+		"name":     "No headers",
+		"type":     providerType,
+		"base_url": "https://provider.example/v1",
+		"api_key":  "test-key",
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("provider create = %d: %s", created.Code, created.Body)
+	}
+	resourceWithHeaders := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+		"provider_id":   "prv_no_headers",
+		"name":          "No headers resource rejected",
+		"resource_type": ProviderResourceAPIKey,
+		"api_key":       "resource-key",
+		"headers":       map[string]string{"X-Tenant": "tenant-one"},
+	}, "")
+	if resourceWithHeaders.Code != http.StatusBadRequest || !strings.Contains(resourceWithHeaders.Body, `"code":"provider_headers_unsupported"`) {
+		t.Fatalf("resource create with headers = %d: %s", resourceWithHeaders.Code, resourceWithHeaders.Body)
+	}
+	resource := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+		"id":            "rsrc_no_headers",
+		"provider_id":   "prv_no_headers",
+		"name":          "No headers resource",
+		"resource_type": ProviderResourceAPIKey,
+		"api_key":       "resource-key",
+	}, "")
+	if resource.Code != http.StatusCreated {
+		t.Fatalf("resource create = %d: %s", resource.Code, resource.Body)
+	}
+	patched := doJSON(t, app, http.MethodPatch, "/api/admin/provider-resources/rsrc_no_headers", map[string]any{
+		"headers": map[string]string{"X-Tenant": "tenant-two"},
+	}, "")
+	if patched.Code != http.StatusBadRequest || !strings.Contains(patched.Body, `"code":"provider_headers_unsupported"`) {
+		t.Fatalf("resource patch with headers = %d: %s", patched.Code, patched.Body)
+	}
+	testConnection := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", map[string]any{
+		"name":     "No headers test",
+		"type":     providerType,
+		"base_url": "https://provider.example/v1",
+		"api_key":  "test-key",
+		"headers":  map[string]string{"X-Tenant": "tenant-one"},
+	}, "")
+	if testConnection.Code != http.StatusBadRequest || !strings.Contains(testConnection.Body, `"code":"provider_headers_unsupported"`) {
+		t.Fatalf("test connection with headers = %d: %s", testConnection.Code, testConnection.Body)
+	}
+}
+
+func TestProviderHeaderValidationUsesPluginPolicyInsteadOfAdapterType(t *testing.T) {
+	registry := NewAdapterRegistry()
+	const providerType = "descriptor_no_headers"
+	descriptor := pluginmeta.BuiltInProvider("tokenhub.provider.descriptor-no-headers", "Descriptor No Headers", []string{providerType}, []string{string(AdapterCapabilityChat)})
+	descriptor.Capabilities = append(descriptor.Capabilities, pluginmeta.CapabilityDescriptor{
+		Kind:    "provider_policy",
+		Name:    "supports_custom_headers",
+		Subject: providerType,
+		Value:   "false",
+	})
+	descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{Type: providerType, Adapter: providerHeaderPolicyTestAdapter{}, Capabilities: []AdapterCapability{AdapterCapabilityChat}}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+
+	err := validateProviderHeaderSupportWithRegistry(registry, providerType, map[string]string{"X-Tenant": "tenant-one"})
+	if AsHTTPError(err).Code != "provider_headers_unsupported" {
+		t.Fatalf("header validation error = %v", err)
+	}
+}
+
+func TestProviderManagedHeadersUsePluginPolicy(t *testing.T) {
+	registry := NewAdapterRegistry()
+	const providerType = "managed_header_plugin"
+	descriptor := pluginmeta.BuiltInProvider("tokenhub.provider.managed-header", "Managed Header Provider", []string{providerType}, []string{string(AdapterCapabilityChat)})
+	descriptor.Capabilities = append(descriptor.Capabilities,
+		pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    "supports_custom_headers",
+			Subject: providerType,
+			Value:   "true",
+		},
+		pluginmeta.CapabilityDescriptor{
+			Kind:    "provider_policy",
+			Name:    pluginmeta.ProviderPolicyManagedHeader,
+			Subject: providerType,
+			Value:   "x-provider-auth",
+		},
+	)
+	descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+	if err := registry.RegisterPlugin(descriptor, AdapterRegistration{Type: providerType, Adapter: providerHeaderPolicyTestAdapter{}, Capabilities: []AdapterCapability{AdapterCapabilityChat}}); err != nil {
+		t.Fatalf("register provider plugin: %v", err)
+	}
+
+	if err := validateProviderHeaderSupportWithRegistry(registry, providerType, map[string]string{"X-Tenant": "tenant-one"}); err != nil {
+		t.Fatalf("business header should be accepted: %v", err)
+	}
+	err := validateProviderHeaderSupportWithRegistry(registry, providerType, map[string]string{"X-Provider-Auth": "override"})
+	if AsHTTPError(err).Code != "provider_header_managed" {
+		t.Fatalf("managed header validation error = %v", err)
+	}
+}
+
+func TestAdminProviderHeadersRejectPluginManagedHeaders(t *testing.T) {
+	app := newTestServer()
+	response := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", map[string]any{
+		"name":     "Anthropic managed headers",
+		"type":     ProviderAnthropic,
+		"base_url": "https://provider.example",
+		"api_key":  "test-key",
+		"headers":  map[string]string{"Anthropic-Version": "2023-01-01"},
+	}, "")
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body, `"code":"provider_header_managed"`) {
+		t.Fatalf("managed header = %d: %s", response.Code, response.Body)
 	}
 }
 
@@ -764,12 +923,12 @@ func TestLegacyUnsafeProviderHeadersAreReportedAndNotApplied(t *testing.T) {
 	}
 }
 
-func TestLegacyUnsupportedProviderHeadersAreReportedAndNotApplied(t *testing.T) {
+func TestLegacyProviderHeadersWithoutAdapterPolicyRemainUsable(t *testing.T) {
 	store := NewMemoryStore()
 	provider := Provider{
-		ID:      "prv_legacy_unsupported_headers",
-		Name:    "Legacy unsupported headers",
-		Type:    ProviderAzureOpenAI,
+		ID:      "prv_legacy_headers_without_policy",
+		Name:    "Legacy headers without policy",
+		Type:    "legacy_without_header_policy",
 		Status:  StatusActive,
 		Healthy: true,
 		Headers: map[string]string{"User-Agent": "legacy-client"},
@@ -777,11 +936,11 @@ func TestLegacyUnsupportedProviderHeadersAreReportedAndNotApplied(t *testing.T) 
 	if err := store.db.Create(&provider).Error; err != nil {
 		t.Fatal(err)
 	}
-	store.AddModel(Model{Name: "legacy-unsupported-header-model", Modality: "chat", Status: StatusActive})
+	store.AddModel(Model{Name: "legacy-header-policy-model", Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{
-		ModelName:     "legacy-unsupported-header-model",
+		ModelName:     "legacy-header-policy-model",
 		ProviderID:    provider.ID,
-		ProviderModel: "legacy-unsupported-header-model",
+		ProviderModel: "legacy-header-policy-model",
 		Priority:      1,
 		Weight:        100,
 		Status:        StatusActive,
@@ -795,15 +954,15 @@ func TestLegacyUnsupportedProviderHeadersAreReportedAndNotApplied(t *testing.T) 
 			break
 		}
 	}
-	if len(found.HeaderValidationErrors) != 1 || found.HeaderValidationErrors[0] != "provider_headers_unsupported" {
+	if len(found.HeaderValidationErrors) != 0 {
 		t.Fatalf("legacy validation errors = %+v", found.HeaderValidationErrors)
 	}
-	candidates, err := store.SelectRouteCandidates("legacy-unsupported-header-model")
+	candidates, err := store.SelectRouteCandidates("legacy-header-policy-model")
 	if err != nil || len(candidates) != 1 {
 		t.Fatalf("route candidates = %+v, %v", candidates, err)
 	}
-	if len(candidates[0].Provider.Headers) != 0 {
-		t.Fatalf("unsupported legacy headers were applied: %+v", candidates[0].Provider.Headers)
+	if got := candidates[0].Provider.Headers["User-Agent"]; got != "legacy-client" {
+		t.Fatalf("legacy headers were not applied: %+v", candidates[0].Provider.Headers)
 	}
 }
 

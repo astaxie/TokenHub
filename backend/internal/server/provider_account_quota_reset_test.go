@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 const quotaResetTestResourceID = "rsrc_quota_reset_test"
@@ -68,8 +71,8 @@ func newQuotaResetTestServer(t *testing.T, upstream *quotaResetUpstream, credent
 	fake := httptest.NewServer(http.HandlerFunc(upstream.handler))
 	t.Cleanup(fake.Close)
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "quota-reset-test-secret"})
-	server.codexSubscription.QuotaURL = fake.URL + "/backend-api/wham/usage"
-	server.codexSubscription.Client = fake.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).QuotaURL = fake.URL + "/backend-api/wham/usage"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = fake.Client()
 	return server, store, fake
 }
 
@@ -112,6 +115,64 @@ func quotaResetErrorCode(t *testing.T, response *httptest.ResponseRecorder) stri
 		t.Fatalf("decode reset error: %v: %s", err, response.Body.String())
 	}
 	return payload.Error.Code
+}
+
+func TestQuotaResetResourceEligibilityUsesPluginActionMetadata(t *testing.T) {
+	store := NewMemoryStore()
+	providerType := "quota_reset_metadata_provider"
+	resourceType := "quota_reset_metadata_subscription"
+	provider := store.AddProvider(Provider{
+		ID: "prv_quota_reset_metadata", Name: "Quota Reset Metadata Provider", Type: providerType,
+		Status: StatusActive, Healthy: true,
+	})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_quota_reset_metadata", ProviderID: provider.ID, Name: "Quota Reset Metadata Resource",
+		ResourceType: resourceType, Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsupported, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_quota_reset_wrong_type", ProviderID: provider.ID, Name: "Quota Reset Wrong Type",
+		ResourceType: "quota_reset_wrong_subscription", Status: StatusActive, Healthy: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	pluginID := "tokenhub.provider.quota-reset-metadata"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.BuiltInProvider(pluginID, "Quota Reset Metadata", []string{providerType}, []string{string(AdapterCapabilityQuota)}), AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityQuota},
+	}); err != nil {
+		t.Fatalf("register quota reset metadata plugin: %v", err)
+	}
+	if err := server.pluginActions.Register(pluginmeta.ActionDescriptor{
+		PluginID:   pluginID,
+		ActionID:   "quota_reset.metadata_credits",
+		Kind:       pluginmeta.ActionKindRead,
+		Capability: "quota.reset_credits.read",
+		Subject:    providerType,
+		Metadata:   map[string]string{"provider_resource_type": resourceType},
+	}, pluginmeta.ActionHandlerFunc(func(context.Context, pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		return pluginmeta.ActionResult{}, nil
+	})); err != nil {
+		t.Fatalf("register quota reset metadata action: %v", err)
+	}
+
+	gotResource, gotProvider, err := server.providerResourceForQuotaResetCapability(resource.ID, "quota.reset_credits.read")
+	if err != nil {
+		t.Fatalf("metadata-backed quota reset resource rejected: %v", err)
+	}
+	if gotResource.ID != resource.ID || gotProvider.ID != provider.ID {
+		t.Fatalf("metadata-backed quota reset resource mismatch: resource=%+v provider=%+v", gotResource, gotProvider)
+	}
+
+	_, _, err = server.providerResourceForQuotaResetCapability(unsupported.ID, "quota.reset_credits.read")
+	if httpErr := AsHTTPError(err); httpErr.Status != http.StatusBadRequest || httpErr.Code != "provider_resource_quota_reset_unsupported" {
+		t.Fatalf("wrong resource type error = %#v, want provider_resource_quota_reset_unsupported", err)
+	}
 }
 
 func TestCodexQuotaResetRequiresRBACAndDangerousConfirmation(t *testing.T) {
@@ -261,7 +322,7 @@ func TestCodexQuotaResetRefreshesCredentialsAfterUnauthorized(t *testing.T) {
 	openAIAccountOAuthTokenEndpoint = tokenServer.URL
 	defer func() { openAIAccountOAuthTokenEndpoint = previousEndpoint }()
 
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Method == http.MethodGet {
 			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"available_count":1,"credits":[{"id":"credit_refresh","status":"available"}]}`)), Request: request}, nil
 		}

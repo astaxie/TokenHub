@@ -15,7 +15,7 @@ import (
 func TestPrintInitialAdminPassword(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "tokenhub.db")
 	catalogPath := filepath.Join(t.TempDir(), "model-catalog.yaml")
-	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: cli-bootstrap-model\n"), 0o600); err != nil {
+	if err := os.WriteFile(catalogPath, []byte("version: 1\nmodels:\n  - name: cli-bootstrap-model\n    category: cli\n    family: cli\n    modality: chat\n    context_window: 1000\n    input_modalities: [text]\n    output_modalities: [text]\n    capabilities: [chat]\n    supported_parameters: []\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("TOKENHUB_ENV", "prod")

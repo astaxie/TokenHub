@@ -17,13 +17,23 @@ import (
 	"tokenhub/backend/internal/billing"
 	billingadapters "tokenhub/backend/internal/billing/adapters"
 	"tokenhub/backend/internal/guardrails"
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type Server struct {
+	pluginRuntimeMu         sync.RWMutex
+	pluginLifecycleMu       sync.Mutex
 	store                   Store
+	pluginRegistry          *pluginmeta.Registry
+	gatewayChain            *pluginmeta.GatewayChainRegistry
+	gatewayHooks            *pluginmeta.GatewayHookRunner
+	adminUI                 *pluginmeta.AdminUIRegistry
+	pluginActions           *pluginmeta.ActionBroker
+	pluginBackgroundJobs    *pluginmeta.BackgroundJobBroker
+	pluginBackgroundRunner  *pluginmeta.BackgroundJobRunner
 	adapterRegistry         *AdapterRegistry
+	builtinProviderAdapters map[string]any
 	integrations            *IntegrationService
-	codexSubscription       *CodexSubscriptionAdapter
 	providerCatalog         *providerCatalogService
 	billing                 *billing.Service
 	billingAdmin            *admin.BillingHandler
@@ -56,6 +66,8 @@ type Server struct {
 	versions                *versionService
 	guardrailEngine         *guardrails.Engine
 	upstreamClient          *http.Client
+	pluginInstallClient     *http.Client
+	pluginMarketplaceClient *http.Client
 	syntheticDNSPolicy      *providerSyntheticDNSPolicy
 	providerProxyPolicy     *providerProxyPolicy
 	syntheticDNSSetting     sync.Mutex
@@ -140,58 +152,35 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		Timeout:       providerCatalogUpstreamTimeout,
 	}
 	if gormStore, ok := store.(*GormStore); ok {
-		gormStore.providerUpstreamClient = client
 		gormStore.providerProxyPolicy = providerProxyPolicy
 	}
-	allowedProviderUpstreams := allowedProviderUpstreamCIDRs()
-	openai := OpenAICompatibleAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout}
-	kronk := KronkAdapter{OpenAICompatibleAdapter: openai}
-	codexSubscription := &CodexSubscriptionAdapter{
-		Client: &http.Client{
-			// The same SSRF guard the other provider adapters get: a custom
-			// Codex endpoint is validated at save time, but DNS answers can
-			// change afterwards and redirects must not bounce
-			// credential-bearing responses/compact/probe/image calls into
-			// the internal network. No Client.Timeout: streaming stays
-			// bounded by StreamIdleTimeout, exactly as before.
-			Transport:     rotatingProviderUpstreamTransport(allowedProviderUpstreams, syntheticDNSPolicy, providerProxyPolicy, nil),
-			CheckRedirect: strictProviderUpstreamRedirect,
-		},
-		StreamIdleTimeout:  streamIdleTimeout,
-		RefreshCredentials: store.RefreshProviderResourceCredentials,
+	providerRuntime := newBuiltinProviderRuntime(builtinProviderRuntimeDependencies{
+		Store:               store,
+		Client:              client,
+		StreamClient:        streamClient,
+		StreamIdleTimeout:   streamIdleTimeout,
+		SyntheticDNSPolicy:  syntheticDNSPolicy,
+		ProviderProxyPolicy: providerProxyPolicy,
+	})
+	pluginBootstrap, err := bootstrapServerPlugins(config, providerRuntime.adapters)
+	if err != nil {
+		panic(err)
 	}
-	adapters := map[string]ProviderAdapter{
-		ProviderMock:             MockAdapter{},
-		ProviderOpenAI:           openai,
-		ProviderOpenAICompatible: openai,
-		"deepseek":               openai,
-		"qwen":                   openai,
-		"local":                  openai,
-		ProviderKronk:            kronk,
-		ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-		ProviderAnthropic:        AnthropicAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-		ProviderGemini:           GeminiAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-		ProviderDify:             DifyAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-	}
-	registry := NewAdapterRegistry()
-	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
-	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityImageGenerate)
-	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	registry.Register(ProviderKronk, adapters[ProviderKronk], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe)
-	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact, AdapterCapabilityImageGenerate)
-	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
-	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	registry.Register(ProviderDify, adapters[ProviderDify], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
-	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
-		registry.Register(adapterType, adapters[adapterType], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	}
+	providerCatalog := newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient)
+	providerCatalog.UsePluginCatalogTypes(pluginBootstrap.adapterRegistry)
 	s := &Server{
 		store:                   store,
-		adapterRegistry:         registry,
-		integrations:            NewIntegrationService(store, registry, client),
-		codexSubscription:       codexSubscription,
-		providerCatalog:         newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient),
+		pluginRegistry:          pluginBootstrap.pluginRegistry,
+		gatewayChain:            pluginBootstrap.gatewayChain,
+		gatewayHooks:            pluginBootstrap.gatewayHooks,
+		adminUI:                 pluginBootstrap.adminUI,
+		pluginActions:           pluginBootstrap.pluginActions,
+		pluginBackgroundJobs:    pluginBootstrap.pluginBackgroundJobs,
+		pluginBackgroundRunner:  pluginBootstrap.pluginBackgroundRunner,
+		adapterRegistry:         pluginBootstrap.adapterRegistry,
+		builtinProviderAdapters: providerRuntime.adapters,
+		integrations:            NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
+		providerCatalog:         providerCatalog,
 		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
 		billingAvailable:        billingAvailable,
 		reconciliation:          newReconciliationService(store, billingDependencies.ReconciliationReader),
@@ -216,8 +205,22 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 			Timeout: time.Duration(config.GuardrailModelTimeoutSeconds) * time.Second,
 		})),
 		upstreamClient:      client,
+		pluginInstallClient: newPluginDownloadClient(nil),
+		pluginMarketplaceClient: &http.Client{
+			Transport:     client.Transport,
+			CheckRedirect: strictProviderUpstreamRedirect,
+			Timeout:       30 * time.Second,
+		},
 		syntheticDNSPolicy:  syntheticDNSPolicy,
 		providerProxyPolicy: providerProxyPolicy,
+	}
+	s.pluginBackgroundRunner.SetSchedulerSnapshotLocker(s.pluginRuntimeMu.RLocker())
+	s.installServerPluginHandlers(&pluginBootstrap)
+	if err := pluginmeta.NewRuntime(config.PluginDir).CompleteRuntimeRestart(); err != nil {
+		panic(fmt.Errorf("complete TokenHub plugin runtime restart: %w", err))
+	}
+	if err := s.publishServerPluginStoreConfiguration(&pluginBootstrap); err != nil {
+		panic(fmt.Errorf("publish TokenHub plugin store configuration: %w", err))
 	}
 	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
 		DecodeJSON:         s.decodeJSON,
@@ -258,20 +261,98 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	}
 	s.installTraceEmitter(config)
 	s.routes()
-	// Every replica must poll the durable queue even when it was empty at startup.
-	// Otherwise a replica that never handled a submission cannot take over after
-	// the submitting replica fails.
-	s.startResponseWorkers()
+	if config.ResponseWorkerStartupEnabled {
+		// Every replica must poll the durable queue even when it was empty at startup.
+		// Otherwise a replica that never handled a submission cannot take over after
+		// the submitting replica fails.
+		s.startResponseWorkers()
+	}
 	return s
 }
 func (s *Server) Handler() http.Handler {
-	return s.cors(s.mux)
+	return s.withPluginRuntimeSnapshot(s.cors(s.mux))
+}
+
+func (s *Server) withPluginRuntimeSnapshot(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if pluginRuntimeMutationRequest(r) {
+			s.pluginLifecycleMu.Lock()
+			defer s.pluginLifecycleMu.Unlock()
+			next.ServeHTTP(w, r)
+			return
+		}
+		s.pluginRuntimeMu.RLock()
+		defer s.pluginRuntimeMu.RUnlock()
+		next.ServeHTTP(w, r)
+	})
+}
+
+func pluginRuntimeMutationRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	path := strings.TrimSuffix(r.URL.Path, "/")
+	if r.Method == http.MethodPost && path == "/api/admin/plugins/install" {
+		return true
+	}
+	if r.Method == http.MethodDelete && strings.HasPrefix(path, "/api/admin/plugin-packages/") {
+		return true
+	}
+	if !strings.HasPrefix(path, "/api/admin/plugins/") {
+		return false
+	}
+	return r.Method == http.MethodDelete ||
+		r.Method == http.MethodPatch && strings.HasSuffix(path, "/state") ||
+		r.Method == http.MethodPost && (strings.HasSuffix(path, "/update") || strings.HasSuffix(path, "/rollback"))
 }
 func (s *Server) handleAdminProviderAdapters(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.adapterRegistry.List()})
+}
+
+func (s *Server) handleAdminPlugins(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	plugins, err := s.adminPluginDescriptors()
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_discovery_failed", "Plugin packages could not be inspected"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": plugins})
+}
+
+func (s *Server) handleAdminPluginChain(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.gatewayChain.Plan()})
+}
+
+func (s *Server) handleAdminPluginUIManifest(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.adminUI.List()})
+}
+
+func (s *Server) handleAdminPluginActions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginActionDescriptors(s.pluginActions.List())})
+}
+
+func (s *Server) handleAdminPluginBackgroundJobs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": s.pluginBackgroundJobs.List(),
+		"runs": sanitizePluginBackgroundJobRunRecords(s.pluginBackgroundRunner.LastRuns()),
+	})
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
@@ -309,6 +390,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	s.syncProviderImageCapabilityRouteProfiles()
 	models := s.store.AccessibleModels(key)
 	data := make([]modelListItem, 0, len(models))
 	for _, model := range models {
@@ -347,6 +429,7 @@ func (s *Server) handleModelGet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	s.syncProviderImageCapabilityRouteProfiles()
 	for _, model := range s.store.AccessibleModels(key) {
 		if model.Name == modelID || model.ID == modelID {
 			writeJSON(w, http.StatusOK, buildModelListItem(model))

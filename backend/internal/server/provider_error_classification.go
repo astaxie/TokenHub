@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -13,6 +14,35 @@ import (
 // the error message. Provider error bodies are small; the bound is what keeps a
 // misbehaving upstream from making the gateway buffer an arbitrary amount.
 const providerErrorBodyPrefix = 4096
+
+const providerErrorProfileKronk = "kronk"
+
+type providerErrorProfileDescriptor struct {
+	Name               string
+	CodeField          string
+	MessageField       string
+	NormalizeErrorBody bool
+	CodeClassOverrides map[string]providerErrorClass
+}
+
+var providerErrorProfileDescriptors = map[string]providerErrorProfileDescriptor{
+	providerErrorProfileKronk: {
+		Name:               providerErrorProfileKronk,
+		CodeField:          "code",
+		MessageField:       "message",
+		NormalizeErrorBody: true,
+		CodeClassOverrides: map[string]providerErrorClass{
+			"resource_exhausted":     {http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame},
+			"insufficient_resources": {http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame},
+			"out_of_memory":          {http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame},
+			"model_not_found":        {http.StatusBadGateway, "provider_model_not_found", ProviderErrorModelUnsupported},
+			"deadline_exceeded":      {http.StatusGatewayTimeout, "provider_upstream_timeout", ProviderErrorTransientSame},
+			"timeout":                {http.StatusGatewayTimeout, "provider_upstream_timeout", ProviderErrorTransientSame},
+			"unauthenticated":        {http.StatusBadGateway, "provider_auth_error", ProviderErrorAuthBroken},
+			"permission_denied":      {http.StatusBadGateway, "provider_auth_error", ProviderErrorAuthBroken},
+		},
+	},
+}
 
 // An upstream failure has to answer three separate questions, and collapsing them
 // into one status code answers none of them well:
@@ -88,14 +118,22 @@ func newProviderPolicyRefusal(message string) error {
 // provider account, and the bodies quote it: OpenAI echoes a masked API key,
 // Azure names the subscription key. Those go no further than the attempt log,
 // where the recorded upstream status already says what happened.
-func providerErrorMessage(class providerErrorClass, data []byte) string {
+func providerErrorMessage(class providerErrorClass, upstreamStatus int, data []byte) string {
 	switch class.code {
 	case "provider_auth_error":
 		return "The gateway's credential for this provider was rejected"
 	case "provider_payment_required":
 		return "The gateway's account with this provider cannot be billed"
 	}
-	return strings.TrimSpace(string(data))
+	message := strings.TrimSpace(string(data))
+	if message == "" {
+		// Some providers answer a failure with an empty body, and an empty
+		// message tells the caller nothing about what went wrong. The upstream
+		// status is reported rather than class.status, which is what the gateway
+		// decided to return and hides the status the provider actually sent.
+		return fmt.Sprintf("Upstream provider returned HTTP %d", upstreamStatus)
+	}
+	return message
 }
 
 // newProviderMisconfigured reports a provider that cannot be called at all. That
@@ -120,33 +158,46 @@ func checkProviderResponse(resp *http.Response) error {
 }
 
 func checkProviderResponseForProvider(resp *http.Response, provider Provider) error {
+	return checkProviderResponseForProviderPolicy(resp, provider, AdapterProviderPolicy{ErrorProfile: providerErrorProfile(provider)})
+}
+
+func checkProviderResponseForProviderPolicy(resp *http.Response, provider Provider, policy AdapterProviderPolicy) error {
 	if resp.StatusCode < http.StatusBadRequest {
 		return nil
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, providerErrorBodyPrefix))
 	data = redactProviderErrorSecrets(data, provider)
-	if provider.Type == ProviderKronk {
-		return newKronkProviderHTTPError(resp.StatusCode, resp.Header, data)
+	if profile, ok := lookupProviderErrorProfileDescriptor(policy.ErrorProfile); ok {
+		return newProfiledProviderHTTPError(profile, resp.StatusCode, resp.Header, data)
 	}
 	return newProviderHTTPError(resp.StatusCode, resp.Header, data)
 }
 
-func newKronkProviderHTTPError(upstreamStatus int, headers http.Header, data []byte) error {
-	kronkCode := kronkErrorCode(data)
-	normalized := normalizeKronkErrorBody(data)
-	class := classifyProviderStatus(upstreamStatus)
-	switch kronkCode {
-	case "resource_exhausted", "insufficient_resources", "out_of_memory":
-		class = providerErrorClass{http.StatusServiceUnavailable, "provider_resource_exhausted", ProviderErrorTransientSame}
-	case "model_not_found":
-		class = providerErrorClass{http.StatusBadGateway, "provider_model_not_found", ProviderErrorModelUnsupported}
-	case "deadline_exceeded", "timeout":
-		class = providerErrorClass{http.StatusGatewayTimeout, "provider_upstream_timeout", ProviderErrorTransientSame}
-	case "unauthenticated", "permission_denied":
-		class = providerErrorClass{http.StatusBadGateway, "provider_auth_error", ProviderErrorAuthBroken}
+func providerErrorProfile(provider Provider) string {
+	if profile := providerConfiguredErrorProfile(provider); profile != "" {
+		return profile
 	}
-	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, normalized))
+	return ""
+}
+
+func lookupProviderErrorProfileDescriptor(profile string) (providerErrorProfileDescriptor, bool) {
+	profile = strings.ToLower(strings.TrimSpace(profile))
+	if profile == "" {
+		return providerErrorProfileDescriptor{}, false
+	}
+	descriptor, ok := providerErrorProfileDescriptors[profile]
+	return descriptor, ok
+}
+
+func newProfiledProviderHTTPError(profile providerErrorProfileDescriptor, upstreamStatus int, headers http.Header, data []byte) error {
+	profileCode := providerErrorProfileCode(profile, data)
+	normalized := normalizeProviderErrorProfileBody(profile, data)
+	class := classifyProviderStatus(upstreamStatus)
+	if override, ok := profile.CodeClassOverrides[profileCode]; ok {
+		class = override
+	}
+	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, upstreamStatus, normalized))
 	httpErr.UpstreamStatus = upstreamStatus
 	return &ProviderInvocationError{
 		Err:         httpErr,
@@ -155,22 +206,25 @@ func newKronkProviderHTTPError(upstreamStatus int, headers http.Header, data []b
 	}
 }
 
-func kronkErrorCode(data []byte) string {
+func providerErrorProfileCode(profile providerErrorProfileDescriptor, data []byte) string {
 	var payload map[string]any
 	if json.Unmarshal(data, &payload) != nil {
 		return ""
 	}
-	code, _ := payload["code"].(string)
+	code, _ := payload[strings.TrimSpace(profile.CodeField)].(string)
 	return strings.ToLower(strings.TrimSpace(code))
 }
 
-func normalizeKronkErrorBody(data []byte) []byte {
+func normalizeProviderErrorProfileBody(profile providerErrorProfileDescriptor, data []byte) []byte {
+	if !profile.NormalizeErrorBody {
+		return data
+	}
 	var payload map[string]any
 	if json.Unmarshal(data, &payload) != nil {
 		return data
 	}
-	message, _ := payload["message"].(string)
-	code, _ := payload["code"].(string)
+	message, _ := payload[strings.TrimSpace(profile.MessageField)].(string)
+	code, _ := payload[strings.TrimSpace(profile.CodeField)].(string)
 	if strings.TrimSpace(message) == "" && strings.TrimSpace(code) == "" {
 		return data
 	}
@@ -336,7 +390,7 @@ func providerSecretRepresentations(value string) []string {
 // replaced by a fail-closed mask because its string boundaries are ambiguous.
 func newProviderHTTPError(upstreamStatus int, headers http.Header, data []byte) error {
 	class := classifyProviderStatus(upstreamStatus)
-	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, data))
+	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, upstreamStatus, data))
 	httpErr.UpstreamStatus = upstreamStatus
 	return &ProviderInvocationError{
 		Err:         httpErr,

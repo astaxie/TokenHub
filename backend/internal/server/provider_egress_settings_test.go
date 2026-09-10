@@ -118,6 +118,7 @@ func TestGatewaySettingsFailClosedWhenProxyCredentialProtectionFails(t *testing.
 }
 
 func TestConfiguredProxyRoutesProviderModelDiscovery(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL", "true")
 	var proxyRequests atomic.Int32
 	proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		proxyRequests.Add(1)
@@ -165,6 +166,7 @@ func TestConfiguredProxyRoutesProviderModelDiscovery(t *testing.T) {
 }
 
 func TestGatewaySettingsSwitchConfiguredProxyForNewRequests(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL", "true")
 	proxyOne := newProviderModelsProxy(t, "proxy-one-model")
 	defer proxyOne.Close()
 	proxyTwo := newProviderModelsProxy(t, "proxy-two-model")
@@ -266,6 +268,7 @@ func TestConfiguredProxyRejectsMetadataProviderTarget(t *testing.T) {
 }
 
 func TestConfiguredProxyUsesEncryptedBasicCredential(t *testing.T) {
+	t.Setenv("TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL", "true")
 	proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Proxy-Authorization") != "Basic cHJveHktdXNlcjpwcm94eS1wYXNzd29yZA==" {
 			writer.WriteHeader(http.StatusProxyAuthRequired)

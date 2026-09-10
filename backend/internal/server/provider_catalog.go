@@ -23,10 +23,14 @@ const (
 )
 
 type providerCatalogService struct {
-	store          Store
-	catalogFile    string
-	upstreamURL    string
-	upstreamClient providerCatalogHTTPClient
+	store           Store
+	catalogFile     string
+	upstreamURL     string
+	upstreamClient  providerCatalogHTTPClient
+	catalogTypes    map[string]string
+	modelCategories []providerModelCategoryDefinition
+	builtinEntries  []ProviderCatalogEntry
+	defaultType     string
 }
 
 func newProviderCatalogService(store Store, catalogFile string, clients ...providerCatalogHTTPClient) *providerCatalogService {
@@ -43,36 +47,37 @@ func newProviderCatalogService(store Store, catalogFile string, clients ...provi
 		catalogFile:    catalogFile,
 		upstreamURL:    providerCatalogUpstreamURL,
 		upstreamClient: upstreamClient,
+		defaultType:    defaultProviderCatalogProviderType(),
 	}
+}
+
+func (s *providerCatalogService) UsePluginCatalogTypes(registry *AdapterRegistry) {
+	s.catalogTypes = providerCatalogTypesFromRegistry(registry)
+	s.modelCategories = providerModelCategoryDefinitionsFromRegistry(registry)
+	s.builtinEntries = providerCatalogSeedEntriesFromRegistry(registry)
+	if defaultType := providerCatalogDefaultTypeFromRegistry(registry); defaultType != "" {
+		s.defaultType = defaultType
+	}
+}
+
+func (s *providerCatalogService) defaultProviderType() string {
+	if s == nil {
+		return defaultProviderCatalogProviderType()
+	}
+	if providerType := strings.TrimSpace(s.defaultType); providerType != "" {
+		return providerType
+	}
+	return defaultProviderCatalogProviderType()
+}
+
+func defaultProviderCatalogProviderType() string {
+	return strings.TrimSpace(builtinProviderPluginCatalogDefaultType())
 }
 
 // InitializeProviderCatalog refreshes the database snapshot from the tracked
 // local catalog before the backend starts accepting requests.
 func (s *Server) InitializeProviderCatalog(ctx context.Context) (bool, error) {
 	return s.providerCatalog.Initialize(ctx)
-}
-
-var standardModelCategories = map[string]bool{
-	"codex":        true,
-	"openai":       true,
-	"claude":       true,
-	"deepseek":     true,
-	"gemini":       true,
-	"qwen":         true,
-	"glm":          true,
-	"kimi":         true,
-	"doubao":       true,
-	"ernie":        true,
-	"baichuan":     true,
-	"minimax":      true,
-	"stepfun":      true,
-	"wanx":         true,
-	"paddlepaddle": true,
-	"microsoft":    true,
-	"llama":        true,
-	"mistral":      true,
-	"grok":         true,
-	"custom":       true,
 }
 
 func (s *providerCatalogService) List(ctx context.Context, refresh bool) ([]ProviderCatalogEntry, string, error) {
@@ -86,7 +91,7 @@ func (s *providerCatalogService) List(ctx context.Context, refresh bool) ([]Prov
 func (s *providerCatalogService) Get(ctx context.Context, id string, refresh bool) (ProviderCatalogEntry, string, bool, error) {
 	id = strings.TrimSpace(id)
 	if id == "custom" {
-		return customProviderCatalogEntry(), "builtin", true, nil
+		return s.customProviderCatalogEntry(), "builtin", true, nil
 	}
 	if refresh {
 		if _, source, err := s.reload(ctx); err != nil {
@@ -129,7 +134,7 @@ func (s *providerCatalogService) loadStored(includeModels bool) ([]ProviderCatal
 	if found && len(entries) > 0 {
 		return entries, source, fetchedAt, nil
 	}
-	entries = builtinProviderCatalog(true)
+	entries = s.builtinProviderCatalog(true)
 	sortCatalogEntries(entries)
 	fetchedAt = time.Now().UTC()
 	if err := s.store.SaveProviderCatalogSnapshot(entries, "builtin", fetchedAt); err != nil {
@@ -146,9 +151,36 @@ func seedBuiltinProviderCatalog(store Store) error {
 	if err != nil || found {
 		return err
 	}
-	entries := builtinProviderCatalog(true)
+	entries := builtinProviderPluginCatalogSeedEntries()
+	if len(entries) == 0 {
+		entries = builtinProviderCatalog(true)
+	}
+	if !providerCatalogHasEntry(entries, "custom") {
+		entries = append(entries, customProviderCatalogEntryWithType(defaultProviderCatalogProviderType()))
+	}
 	sortCatalogEntries(entries)
 	return store.SaveProviderCatalogSnapshot(entries, "builtin", time.Now().UTC())
+}
+
+func (s *providerCatalogService) builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
+	if len(s.builtinEntries) == 0 {
+		return builtinProviderCatalog(includeModels)
+	}
+	entries := cloneCatalogEntries(s.builtinEntries, includeModels)
+	if !providerCatalogHasEntry(entries, "custom") {
+		entries = append(entries, s.customProviderCatalogEntry())
+	}
+	sortCatalogEntries(entries)
+	return entries
+}
+
+func providerCatalogHasEntry(entries []ProviderCatalogEntry, id string) bool {
+	for _, entry := range entries {
+		if entry.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *providerCatalogService) reload(ctx context.Context) ([]ProviderCatalogEntry, string, error) {
@@ -172,11 +204,11 @@ func (s *providerCatalogService) reload(ctx context.Context) ([]ProviderCatalogE
 
 // reloadLocked refreshes the snapshot while provider-catalog-reload is held.
 func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, error) {
-	entries, err := loadLocalProviderCatalog(s.catalogFile)
+	entries, err := s.loadLocalProviderCatalog()
 	if err != nil {
 		return nil, err
 	}
-	entries, err = prepareProviderCatalogRefresh(entries, previous)
+	entries, err = prepareProviderCatalogRefreshWithDefault(entries, previous, s.defaultType)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +218,7 @@ func (s *providerCatalogService) reloadLocked(previous []ProviderCatalogEntry) (
 	return cloneCatalogEntries(entries, false), nil
 }
 
-func prepareProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, error) {
+func prepareProviderCatalogRefreshWithDefault(entries []ProviderCatalogEntry, previous []ProviderCatalogEntry, defaultType string) ([]ProviderCatalogEntry, error) {
 	if err := validateProviderCatalogRefresh(entries, previous); err != nil {
 		return nil, err
 	}
@@ -196,7 +228,7 @@ func prepareProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []Pr
 			filtered = append(filtered, entry)
 		}
 	}
-	entries = append(filtered, customProviderCatalogEntry())
+	entries = append(filtered, customProviderCatalogEntryWithType(defaultType))
 	sortCatalogEntries(entries)
 	return entries, nil
 }
@@ -206,7 +238,7 @@ func validateProviderCatalogRefresh(entries []ProviderCatalogEntry, previous []P
 	if providerCount < providerCatalogMinProviders || modelCount < providerCatalogMinModels {
 		return NewHTTPError(http.StatusBadGateway, "provider_catalog_incomplete", "Provider catalog file is incomplete")
 	}
-	for _, requiredID := range []string{"openai", "anthropic", "google"} {
+	for _, requiredID := range builtinProviderCatalogRequiredProviderIDs() {
 		if !ids[requiredID] {
 			return NewHTTPError(http.StatusBadGateway, "provider_catalog_incomplete", "Provider catalog file is missing required providers")
 		}
@@ -237,18 +269,34 @@ func providerCatalogStats(entries []ProviderCatalogEntry) (int, int, map[string]
 }
 
 func loadLocalProviderCatalog(catalogFile string) ([]ProviderCatalogEntry, error) {
+	return loadLocalProviderCatalogWithTypes(catalogFile, nil)
+}
+
+func (s *providerCatalogService) loadLocalProviderCatalog() ([]ProviderCatalogEntry, error) {
+	return loadLocalProviderCatalogWithPolicy(s.catalogFile, s.catalogTypes, s.defaultType, s.modelCategories)
+}
+
+func loadLocalProviderCatalogWithTypes(catalogFile string, catalogTypes map[string]string) ([]ProviderCatalogEntry, error) {
+	return loadLocalProviderCatalogWithDefault(catalogFile, catalogTypes, defaultProviderCatalogProviderType())
+}
+
+func loadLocalProviderCatalogWithDefault(catalogFile string, catalogTypes map[string]string, defaultType string) ([]ProviderCatalogEntry, error) {
+	return loadLocalProviderCatalogWithPolicy(catalogFile, catalogTypes, defaultType, nil)
+}
+
+func loadLocalProviderCatalogWithPolicy(catalogFile string, catalogTypes map[string]string, defaultType string, modelCategories []providerModelCategoryDefinition) ([]ProviderCatalogEntry, error) {
 	content, err := os.ReadFile(catalogFile)
 	if err != nil {
 		return nil, fmt.Errorf("read provider catalog %s: %w", catalogFile, err)
 	}
-	entries, err := parseProviderCatalog(content, providerCatalogLocalSource)
+	entries, err := parseProviderCatalogWithPolicy(content, providerCatalogLocalSource, catalogTypes, defaultType, modelCategories)
 	if err != nil {
 		return nil, fmt.Errorf("parse provider catalog %s: %w", catalogFile, err)
 	}
 	return entries, nil
 }
 
-func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry, error) {
+func parseProviderCatalogWithPolicy(content []byte, source string, catalogTypes map[string]string, defaultType string, modelCategories []providerModelCategoryDefinition) ([]ProviderCatalogEntry, error) {
 	var payload struct {
 		Providers map[string]map[string]any `json:"providers"`
 	}
@@ -260,7 +308,7 @@ func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry
 	}
 	entries := make([]ProviderCatalogEntry, 0, len(payload.Providers))
 	for id, raw := range payload.Providers {
-		entry := normalizeProviderCatalogEntry(id, raw)
+		entry := normalizeProviderCatalogEntryWithPolicy(id, raw, catalogTypes, defaultType, modelCategories)
 		if entry.ID == "" || entry.Name == "" {
 			continue
 		}
@@ -277,15 +325,32 @@ func parseProviderCatalog(content []byte, source string) ([]ProviderCatalogEntry
 }
 
 func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalogEntry {
+	return normalizeProviderCatalogEntryWithTypes(id, raw, nil)
+}
+
+func normalizeProviderCatalogEntryWithTypes(id string, raw map[string]any, catalogTypes map[string]string) ProviderCatalogEntry {
+	return normalizeProviderCatalogEntryWithDefault(id, raw, catalogTypes, defaultProviderCatalogProviderType())
+}
+
+func normalizeProviderCatalogEntryWithDefault(id string, raw map[string]any, catalogTypes map[string]string, defaultType string) ProviderCatalogEntry {
+	return normalizeProviderCatalogEntryWithPolicy(id, raw, catalogTypes, defaultType, nil)
+}
+
+func normalizeProviderCatalogEntryWithPolicy(id string, raw map[string]any, catalogTypes map[string]string, defaultType string, modelCategories []providerModelCategoryDefinition) ProviderCatalogEntry {
+	baseURL := firstNonEmpty(catalogStringField(raw, "base_url"), catalogStringField(raw, "api"))
+	fallbackType := strings.TrimSpace(defaultType)
+	if fallbackType == "" {
+		fallbackType = defaultProviderCatalogProviderType()
+	}
 	entry := ProviderCatalogEntry{
 		ID:          firstNonEmpty(catalogStringField(raw, "id"), id),
 		Name:        firstNonEmpty(catalogStringField(raw, "name"), catalogStringField(raw, "display_name"), id),
 		DisplayName: firstNonEmpty(catalogStringField(raw, "display_name"), catalogStringField(raw, "name"), id),
-		BaseURL:     normalizeProviderBaseURL(id, catalogStringField(raw, "api")),
-		DocURL:      catalogStringField(raw, "doc"),
+		BaseURL:     normalizeProviderBaseURL(id, baseURL),
+		DocURL:      firstNonEmpty(catalogStringField(raw, "doc_url"), catalogStringField(raw, "doc")),
 		Source:      "local-provider-catalog",
 	}
-	entry.Type = inferProviderType(entry.ID, entry.BaseURL)
+	entry.Type = firstNonEmpty(catalogStringField(raw, "type"), catalogTypes[strings.TrimSpace(entry.ID)], fallbackType)
 	if rawModels, ok := raw["models"].([]any); ok {
 		entry.Models = make([]ProviderCatalogModel, 0, len(rawModels))
 		for _, rawModel := range rawModels {
@@ -293,7 +358,7 @@ func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalo
 			if !ok {
 				continue
 			}
-			model := normalizeProviderCatalogModel(modelMap)
+			model := normalizeProviderCatalogModelWithCategories(modelMap, modelCategories)
 			if model.ID == "" {
 				continue
 			}
@@ -301,11 +366,15 @@ func normalizeProviderCatalogEntry(id string, raw map[string]any) ProviderCatalo
 		}
 	}
 	entry.ModelsCount = len(entry.Models)
-	entry.Categories, entry.CategoryCounts = catalogCategorySummary(entry.Models)
+	entry.Categories, entry.CategoryCounts = catalogCategorySummaryWithDefinitions(entry.Models, modelCategories)
 	return entry
 }
 
 func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
+	return normalizeProviderCatalogModelWithCategories(raw, nil)
+}
+
+func normalizeProviderCatalogModelWithCategories(raw map[string]any, modelCategories []providerModelCategoryDefinition) ProviderCatalogModel {
 	id := firstNonEmpty(catalogStringField(raw, "id"), catalogStringField(raw, "name"))
 	name := firstNonEmpty(catalogStringField(raw, "name"), id)
 	displayName := firstNonEmpty(catalogStringField(raw, "display_name"), name)
@@ -315,9 +384,9 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 	modalities := catalogObjectField(raw, "modalities")
 	canonicalName := strings.TrimSpace(catalogStringField(raw, "canonical_name"))
 	if canonicalName == "" {
-		canonicalName = canonicalModelName(id, displayName)
+		canonicalName = canonicalModelNameWithDefinitions(id, displayName, modelCategories)
 	} else {
-		canonicalName = canonicalModelName(canonicalName, canonicalName)
+		canonicalName = canonicalModelNameWithDefinitions(canonicalName, canonicalName, modelCategories)
 	}
 	metadata := map[string]string{
 		"source": "local-provider-catalog",
@@ -344,8 +413,8 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 		Name:                      name,
 		DisplayName:               displayName,
 		CanonicalName:             canonicalName,
-		Category:                  inferModelCategory(id, displayName),
-		Family:                    firstNonEmpty(catalogStringField(raw, "family"), inferModelFamily(id)),
+		Category:                  catalogModelCategoryWithDefinitions(raw, id, displayName, modelCategories),
+		Family:                    firstNonEmpty(catalogStringField(raw, "family"), inferModelFamilyWithDefinitions(id, modelCategories)),
 		Type:                      modelType,
 		ContextWindow:             int64(catalogNumberField(limit, "context")),
 		MaxOutputTokens:           int64(catalogNumberField(limit, "output")),
@@ -368,6 +437,13 @@ func normalizeProviderCatalogModel(raw map[string]any) ProviderCatalogModel {
 	model.Capabilities = catalogModelCapabilities(raw, model)
 	model.SupportedParameters = catalogModelParameters(raw, model)
 	return model
+}
+
+func catalogModelCategoryWithDefinitions(raw map[string]any, id string, displayName string, modelCategories []providerModelCategoryDefinition) string {
+	if category := strings.TrimSpace(catalogStringField(raw, "category")); category != "" {
+		return standardModelCategoryWithDefinitions(category, modelCategories)
+	}
+	return inferModelCategoryWithDefinitions(id, displayName, modelCategories)
 }
 
 func catalogModelCapabilities(raw map[string]any, model ProviderCatalogModel) []string {
@@ -433,126 +509,20 @@ func catalogModelParameters(raw map[string]any, model ProviderCatalogModel) []st
 	return catalogUniqueStrings(parameters)
 }
 
-func builtinProviderCatalog(includeModels bool) []ProviderCatalogEntry {
-	entries := []ProviderCatalogEntry{
-		builtinCatalogEntry("openai", "OpenAI", ProviderOpenAI, "https://api.openai.com/v1", "https://platform.openai.com/docs/models", []string{"gpt-5", "gpt-5-mini", "gpt-4.1-mini", "text-embedding-3-small"}),
-		builtinCatalogEntry("anthropic", "Anthropic", ProviderAnthropic, "https://api.anthropic.com", "https://docs.anthropic.com", []string{"claude-sonnet-4.5", "claude-haiku-4.5"}),
-		builtinCatalogEntry("google", "Google Gemini", ProviderGemini, "https://generativelanguage.googleapis.com/v1beta", "https://ai.google.dev/gemini-api/docs", []string{"gemini-2.5-pro", "gemini-2.5-flash"}),
-		deepSeekBuiltinCatalogEntry(),
-		builtinCatalogEntry("qwen", "Qwen", "qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "https://help.aliyun.com/zh/model-studio", []string{"qwen-max", "qwen-plus"}),
-		{ID: "siliconflow", Name: "SiliconFlow", DisplayName: "SiliconFlow", Type: ProviderOpenAICompatible, BaseURL: "https://api.siliconflow.cn/v1", DocURL: "https://cloud.siliconflow.com/models", Source: "builtin"},
-		{ID: "ollama", Name: "Ollama", DisplayName: "Ollama", Type: "local", BaseURL: "http://127.0.0.1:11434/v1", DocURL: "https://ollama.com", Source: "builtin"},
-		kronkCatalogEntry(),
-		customProviderCatalogEntry(),
-	}
-	if includeModels {
-		return entries
-	}
-	return cloneCatalogEntries(entries, false)
-}
-
-func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
-	entry := builtinCatalogEntry(
-		"deepseek",
-		"DeepSeek",
-		"deepseek",
-		"https://api.deepseek.com",
-		"https://api-docs.deepseek.com",
-		[]string{"deepseek-v4-flash", "deepseek-v4-pro"},
-	)
-	for index := range entry.Models {
-		model := &entry.Models[index]
-		switch model.ID {
-		case "deepseek-v4-flash":
-			model.DisplayName = "DeepSeek V4 Flash"
-			model.ContextWindow = 1048576
-			model.MaxOutputTokens = 393216
-			model.InputPriceUSDPer1M = 0.14
-			model.CacheReadPriceUSDPer1M = 0.0028
-			model.OutputPriceUSDPer1M = 0.28
-			model.Metadata = map[string]string{
-				"source":                   "builtin",
-				"upstream_source":          "deepseek-api",
-				"endpoints":                "responses,chat/completions,anthropic",
-				"features":                 "function-calling,structured-outputs,reasoning,apply-patch,web-search",
-				"top_logprobs_range":       "0,20",
-				"responses_stateful":       "false",
-				"prompt_cache_mode":        "automatic",
-				"custom_tool_names":        "apply_patch",
-				"reasoning_effort_options": "low,high,max",
-				"reasoning_default":        "true",
-				"tool_call":                "true",
-				"vision":                   "false",
-			}
-		case "deepseek-v4-pro":
-			model.DisplayName = "DeepSeek V4 Pro"
-			model.ContextWindow = 1048576
-			model.MaxOutputTokens = 393216
-			model.InputPriceUSDPer1M = 0.435
-			model.CacheReadPriceUSDPer1M = 0.003625
-			model.OutputPriceUSDPer1M = 0.87
-			model.Metadata = map[string]string{
-				"source":                   "builtin",
-				"upstream_source":          "deepseek-api",
-				"endpoints":                "responses,chat/completions,anthropic",
-				"features":                 "function-calling,structured-outputs,reasoning,apply-patch,web-search",
-				"top_logprobs_range":       "0,20",
-				"responses_stateful":       "false",
-				"prompt_cache_mode":        "automatic",
-				"custom_tool_names":        "apply_patch",
-				"reasoning_effort_options": "low,high,max",
-				"reasoning_default":        "true",
-				"tool_call":                "true",
-				"vision":                   "false",
-			}
-		default:
-			continue
-		}
-		model.InputModalities = []string{"text"}
-		model.OutputModalities = []string{"text"}
-		model.Capabilities = []string{"chat", "reasoning", "tools", "structured_outputs"}
-		model.SupportedParameters = []string{"temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"}
-	}
-	return entry
-}
-
-func builtinCatalogEntry(id string, name string, providerType string, baseURL string, docURL string, modelIDs []string) ProviderCatalogEntry {
-	models := make([]ProviderCatalogModel, 0, len(modelIDs))
-	for _, modelID := range modelIDs {
-		models = append(models, ProviderCatalogModel{
-			ID:            modelID,
-			Name:          modelID,
-			DisplayName:   modelID,
-			CanonicalName: modelID,
-			Category:      inferModelCategory(modelID, modelID),
-			Family:        inferModelFamily(modelID),
-			Type:          "chat",
-			Capabilities:  []string{"chat"},
-			Metadata:      map[string]string{"source": "builtin"},
-		})
-	}
-	categories, categoryCounts := catalogCategorySummary(models)
-	return ProviderCatalogEntry{
-		ID:             id,
-		Name:           name,
-		DisplayName:    name,
-		Type:           providerType,
-		BaseURL:        baseURL,
-		DocURL:         docURL,
-		Categories:     categories,
-		CategoryCounts: categoryCounts,
-		ModelsCount:    len(models),
-		Source:         "builtin",
-		Models:         models,
-	}
-}
-
 func customProviderCatalogEntry() ProviderCatalogEntry {
+	return customProviderCatalogEntryWithType(defaultProviderCatalogProviderType())
+}
+
+func (s *providerCatalogService) customProviderCatalogEntry() ProviderCatalogEntry {
+	return customProviderCatalogEntryWithType(s.defaultProviderType())
+}
+
+func customProviderCatalogEntryWithType(providerType string) ProviderCatalogEntry {
 	return ProviderCatalogEntry{
 		ID:             "custom",
 		Name:           "自定义 Provider",
 		DisplayName:    "自定义 Provider",
-		Type:           ProviderOpenAICompatible,
+		Type:           firstNonEmpty(strings.TrimSpace(providerType), defaultProviderCatalogProviderType()),
 		Categories:     []string{"custom"},
 		CategoryCounts: map[string]int{"custom": 1},
 		Source:         "builtin",
@@ -577,6 +547,10 @@ func customProviderCatalogEntry() ProviderCatalogEntry {
 }
 
 func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client, req ProviderCreateRequest) (ProviderCatalogEntry, error) {
+	return CustomProviderCatalogFromUpstreamWithDescriptor(ctx, client, req, AdapterDescriptor{})
+}
+
+func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client *http.Client, req ProviderCreateRequest, descriptor AdapterDescriptor) (ProviderCatalogEntry, error) {
 	if err := validateProviderHeaderSupport(req.Type, req.Headers); err != nil {
 		return ProviderCatalogEntry{}, err
 	}
@@ -588,10 +562,8 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		return ProviderCatalogEntry{}, err
 	}
 	providerType := strings.ToLower(strings.TrimSpace(req.Type))
-	modelsURL := strings.TrimRight(baseURL, "/") + "/models"
-	if providerType == ProviderAnthropic {
-		modelsURL = anthropicEndpointURL(baseURL, "/v1/models")
-	}
+	discovery := providerModelDiscoveryPolicy(descriptor)
+	modelsURL := providerModelDiscoveryURL(baseURL, discovery.Path)
 	endpoint, err := url.Parse(modelsURL)
 	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
@@ -605,28 +577,11 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to create upstream models request")
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
-	if providerType == ProviderGemini {
-		if apiKey != "" {
-			query := endpoint.Query()
-			query.Set("key", apiKey)
-			endpoint.RawQuery = query.Encode()
-			httpReq.URL = endpoint
-		}
-	} else if providerType == ProviderAnthropic {
-		if apiKey != "" {
-			provider := Provider{Type: providerType, APIKey: apiKey, Options: req.Options}
-			if err := configureAnthropicProviderAuth(&provider, req.AnthropicAuthType); err != nil {
-				return ProviderCatalogEntry{}, err
-			}
-			applyAnthropicProviderAuth(httpReq, provider)
-		}
-		version := strings.TrimSpace(req.Options["anthropic_version"])
-		if version == "" {
-			version = "2023-06-01"
-		}
-		httpReq.Header.Set("anthropic-version", version)
-	} else if apiKey != "" {
-		httpReq.Header.Set("authorization", "Bearer "+apiKey)
+	if err := applyProviderModelDiscoveryAuth(httpReq, endpoint, req, descriptor, discovery); err != nil {
+		return ProviderCatalogEntry{}, err
+	}
+	for name, value := range providerModelDiscoveryHeaders(req.Options, discovery.Headers) {
+		httpReq.Header.Set(name, value)
 	}
 	headers, err := normalizeProviderHeaders(req.Headers)
 	if err != nil {
@@ -638,14 +593,14 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		if egressErr := providerEgressFailure(err); egressErr != nil {
 			return ProviderCatalogEntry{}, egressErr
 		}
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to request upstream models")
+		return ProviderCatalogEntry{}, providerCatalogConnectionError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		if providerType == ProviderKronk {
-			return ProviderCatalogEntry{}, checkProviderResponseForProvider(resp, Provider{
-				Type: ProviderKronk, APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
-			})
+		if descriptor.ProviderPolicy.ErrorProfile != "" {
+			return ProviderCatalogEntry{}, checkProviderResponseForProviderPolicy(resp, Provider{
+				Type: providerType, APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
+			}, descriptor.ProviderPolicy)
 		}
 		return ProviderCatalogEntry{}, providerModelsUpstreamError(resp.StatusCode)
 	}
@@ -653,7 +608,7 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 5<<20)).Decode(&payload); err != nil {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_invalid_response", "Upstream models response is invalid")
 	}
-	models := customProviderModelsFromPayload(payload)
+	models := customProviderModelsFromPayloadWithDefinitions(payload, providerModelCategoryDefinitionsFromAdapter(descriptor.ProviderPolicy.ModelCategories))
 	if len(models) == 0 {
 		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_empty", "Upstream did not return any models")
 	}
@@ -663,7 +618,7 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		ID:             "custom",
 		Name:           name,
 		DisplayName:    name,
-		Type:           firstNonEmpty(strings.TrimSpace(req.Type), ProviderOpenAICompatible),
+		Type:           firstNonEmpty(strings.TrimSpace(req.Type), strings.TrimSpace(descriptor.Type), defaultProviderCatalogProviderType()),
 		BaseURL:        baseURL,
 		Categories:     categories,
 		CategoryCounts: categoryCounts,
@@ -671,6 +626,106 @@ func CustomProviderCatalogFromUpstream(ctx context.Context, client *http.Client,
 		Source:         "custom-upstream",
 		Models:         models,
 	}, nil
+}
+
+func providerModelDiscoveryPolicy(descriptor AdapterDescriptor) AdapterModelDiscoveryPolicy {
+	policy := descriptor.ProviderPolicy.ModelDiscovery
+	policy.Path = strings.TrimSpace(policy.Path)
+	if policy.Path == "" {
+		policy.Path = "/models"
+	}
+	policy.Auth = strings.ToLower(strings.TrimSpace(policy.Auth))
+	if policy.Auth == "" {
+		policy.Auth = providerModelDiscoveryAuthBearerHeader
+	}
+	policy.APIKeyQueryParam = strings.TrimSpace(policy.APIKeyQueryParam)
+	policy.Headers = normalizedStringMap(policy.Headers)
+	return policy
+}
+
+func providerModelDiscoveryURL(baseURL string, path string) string {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	path = "/" + strings.TrimLeft(strings.TrimSpace(path), "/")
+	if strings.HasSuffix(strings.ToLower(baseURL), "/v1") && strings.HasPrefix(strings.ToLower(path), "/v1/") {
+		path = path[len("/v1"):]
+	}
+	return baseURL + path
+}
+
+func applyProviderModelDiscoveryAuth(httpReq *http.Request, endpoint *url.URL, req ProviderCreateRequest, descriptor AdapterDescriptor, discovery AdapterModelDiscoveryPolicy) error {
+	apiKey := strings.TrimSpace(req.APIKey)
+	if apiKey == "" {
+		return nil
+	}
+	switch discovery.Auth {
+	case providerModelDiscoveryAuthBearerHeader:
+		httpReq.Header.Set("authorization", "Bearer "+apiKey)
+	case providerModelDiscoveryAuthQueryParam:
+		queryParam := firstNonEmpty(discovery.APIKeyQueryParam, "key")
+		query := endpoint.Query()
+		query.Set(queryParam, apiKey)
+		endpoint.RawQuery = query.Encode()
+		httpReq.URL = endpoint
+	case providerModelDiscoveryAuthProviderAuthMode:
+		mode, err := providerModelDiscoveryAuthMode(req, descriptor)
+		if err != nil {
+			return err
+		}
+		switch mode {
+		case providerAuthModeBearer:
+			httpReq.Header.Set("authorization", "Bearer "+apiKey)
+		case providerAuthModeAPIKeyHeader:
+			httpReq.Header.Set("x-api-key", apiKey)
+		case "":
+		default:
+			return providerAuthModeInvalidError(descriptor.ProviderPolicy)
+		}
+	default:
+		return NewHTTPError(http.StatusBadRequest, "provider_model_discovery_auth_invalid", "Provider model discovery authentication mode is not supported")
+	}
+	return nil
+}
+
+func providerModelDiscoveryAuthMode(req ProviderCreateRequest, descriptor AdapterDescriptor) (string, error) {
+	provider := Provider{Type: strings.TrimSpace(req.Type), APIKey: strings.TrimSpace(req.APIKey), Options: req.Options}
+	if err := configureProviderAuthMode(&provider, requestedProviderAuthMode(req), descriptor.ProviderPolicy); err != nil {
+		return "", err
+	}
+	if mode := providerConfiguredAuthMode(provider, descriptor.ProviderPolicy); mode != "" {
+		return mode, nil
+	}
+	return preferredProviderAuthMode(descriptor.ProviderPolicy.AuthModes), nil
+}
+
+func preferredProviderAuthMode(modes []string) string {
+	for _, mode := range modes {
+		if strings.EqualFold(strings.TrimSpace(mode), providerAuthModeAPIKeyHeader) {
+			return providerAuthModeAPIKeyHeader
+		}
+	}
+	for _, mode := range modes {
+		if mode = strings.ToLower(strings.TrimSpace(mode)); mode != "" {
+			return mode
+		}
+	}
+	return ""
+}
+
+func providerModelDiscoveryHeaders(options map[string]string, defaults map[string]string) map[string]string {
+	headers := normalizedStringMap(defaults)
+	if len(headers) == 0 {
+		return nil
+	}
+	for name := range headers {
+		if value := strings.TrimSpace(options[providerModelDiscoveryHeaderOption(name)]); value != "" {
+			headers[name] = value
+		}
+	}
+	return headers
+}
+
+func providerModelDiscoveryHeaderOption(header string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(header)), "-", "_")
 }
 
 func providerModelsUpstreamError(status int) *HTTPError {
@@ -684,7 +739,7 @@ func providerModelsUpstreamError(status int) *HTTPError {
 	}
 }
 
-func customProviderModelsFromPayload(payload map[string]any) []ProviderCatalogModel {
+func customProviderModelsFromPayloadWithDefinitions(payload map[string]any, modelCategories []providerModelCategoryDefinition) []ProviderCatalogModel {
 	rawModels, _ := payload["data"].([]any)
 	if len(rawModels) == 0 {
 		rawModels, _ = payload["models"].([]any)
@@ -711,9 +766,9 @@ func customProviderModelsFromPayload(payload map[string]any) []ProviderCatalogMo
 			ID:                  id,
 			Name:                id,
 			DisplayName:         displayName,
-			CanonicalName:       canonicalModelName(id, displayName),
-			Category:            inferModelCategory(id, displayName),
-			Family:              inferModelFamily(id),
+			CanonicalName:       canonicalModelNameWithDefinitions(id, displayName, modelCategories),
+			Category:            inferModelCategoryWithDefinitions(id, displayName, modelCategories),
+			Family:              inferModelFamilyWithDefinitions(id, modelCategories),
 			Type:                modelType,
 			InputModalities:     []string{"text"},
 			OutputModalities:    []string{"text"},
@@ -777,68 +832,9 @@ func sortCatalogEntries(entries []ProviderCatalogEntry) {
 	})
 }
 
-func inferProviderType(id string, baseURL string) string {
-	normalized := strings.ToLower(id)
-	normalizedBaseURL := strings.ToLower(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
-	switch {
-	case normalized == "openai":
-		return ProviderOpenAI
-	case strings.Contains(normalized, "azure"):
-		return ProviderAzureOpenAI
-	case strings.Contains(normalized, "anthropic") || strings.Contains(normalizedBaseURL, "/anthropic/") || strings.HasSuffix(normalizedBaseURL, "/anthropic"):
-		return ProviderAnthropic
-	case normalized == "google" || strings.Contains(normalized, "gemini"):
-		return ProviderGemini
-	case strings.Contains(normalized, "deepseek"):
-		return "deepseek"
-	case strings.Contains(normalized, "qwen") || strings.Contains(normalized, "alibaba"):
-		return "qwen"
-	case strings.Contains(normalized, "ollama") || strings.Contains(normalized, "lmstudio") || strings.Contains(normalized, "local"):
-		return "local"
-	case strings.Contains(normalized, "kronk"):
-		return ProviderKronk
-	case strings.Contains(normalized, "dify"):
-		return ProviderDify
-	default:
-		return ProviderOpenAICompatible
-	}
-}
-
 func normalizeProviderBaseURL(id string, raw string) string {
 	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
-	switch strings.ToLower(id) {
-	case "openai":
-		return "https://api.openai.com/v1"
-	case "anthropic":
-		return firstNonEmpty(raw, "https://api.anthropic.com")
-	case "google":
-		return firstNonEmpty(raw, "https://generativelanguage.googleapis.com/v1beta")
-	case "ollama":
-		return firstNonEmpty(raw, "http://127.0.0.1:11434/v1")
-	case "lmstudio":
-		return firstNonEmpty(raw, "http://127.0.0.1:1234/v1")
-	case ProviderKronk:
-		return firstNonEmpty(raw, kronkDefaultBaseURL)
-	default:
-		return normalizeOpenAICompatibleBaseURL(id, raw)
-	}
-}
-
-func normalizeOpenAICompatibleBaseURL(id string, raw string) string {
-	if raw == "" {
-		return raw
-	}
-	normalizedID := strings.ToLower(strings.TrimSpace(id))
-	normalizedRaw := strings.ToLower(raw)
-	if normalizedID == "dmxapi" || normalizedRaw == "https://www.dmxapi.cn" || normalizedRaw == "https://api.dmxapi.cn" {
-		return raw + "/v1"
-	}
-	if normalizedID == "302ai" || strings.Contains(normalizedRaw, "api.highwayapi.ai/openai") {
-		if strings.HasSuffix(normalizedRaw, "/openai") {
-			return raw + "/v1"
-		}
-	}
-	return raw
+	return builtinProviderCatalogNormalizeBaseURL(id, raw)
 }
 
 func normalizeModelModality(value string) string {
@@ -855,126 +851,14 @@ func normalizeModelModality(value string) string {
 	}
 }
 
-func inferModelFamily(id string) string {
-	normalized := strings.ToLower(id)
-	for _, family := range []string{"gpt", "claude", "gemini", "deepseek", "qwen", "llama", "mistral", "kimi", "doubao", "glm"} {
-		if strings.Contains(normalized, family) {
-			return family
-		}
-	}
-	parts := strings.FieldsFunc(normalized, func(r rune) bool {
-		return r == '-' || r == '/' || r == '_' || r == '.'
-	})
-	if len(parts) > 0 && parts[0] != "" {
-		return parts[0]
-	}
-	return "custom"
-}
-
-func inferModelCategory(id string, displayName string) string {
-	normalized := strings.ToLower(strings.Join([]string{id, displayName}, " "))
-	switch {
-	case strings.Contains(normalized, "codex"):
-		return "codex"
-	case strings.Contains(normalized, "gpt") || strings.Contains(normalized, "openai") || strings.Contains(normalized, "o1") || strings.Contains(normalized, "o3") || strings.Contains(normalized, "o4"):
-		return "openai"
-	case strings.Contains(normalized, "claude") || strings.Contains(normalized, "anthropic"):
-		return "claude"
-	case strings.Contains(normalized, "deepseek"):
-		return "deepseek"
-	case strings.Contains(normalized, "gemini") || strings.Contains(normalized, "google/"):
-		return "gemini"
-	case strings.Contains(normalized, "qwen") || strings.Contains(normalized, "dashscope") || strings.Contains(normalized, "alibaba"):
-		return "qwen"
-	case strings.Contains(normalized, "glm") || strings.Contains(normalized, "zhipu"):
-		return "glm"
-	case strings.Contains(normalized, "kimi") || strings.Contains(normalized, "moonshot"):
-		return "kimi"
-	case strings.Contains(normalized, "doubao") || strings.Contains(normalized, "volcengine"):
-		return "doubao"
-	case strings.Contains(normalized, "ernie"):
-		return "ernie"
-	case strings.Contains(normalized, "baichuan"):
-		return "baichuan"
-	case strings.Contains(normalized, "minimax") || strings.Contains(normalized, "hailuo"):
-		return "minimax"
-	case strings.Contains(normalized, "step-") || strings.Contains(normalized, "stepaudio"):
-		return "stepfun"
-	case strings.Contains(normalized, "wanx"):
-		return "wanx"
-	case strings.Contains(normalized, "paddleocr"):
-		return "paddlepaddle"
-	case strings.Contains(normalized, "phi-"):
-		return "microsoft"
-	case strings.Contains(normalized, "llama") || strings.Contains(normalized, "meta/"):
-		return "llama"
-	case strings.Contains(normalized, "mistral"):
-		return "mistral"
-	case strings.Contains(normalized, "grok") || strings.Contains(normalized, "xai/"):
-		return "grok"
-	default:
-		return "custom"
-	}
-}
-
-func standardModelCategory(category string) string {
-	category = strings.ToLower(strings.TrimSpace(category))
-	if category == "" {
-		return "custom"
-	}
-	if standardModelCategories[category] {
-		return category
-	}
-	return inferModelCategory(category, "")
-}
-
-func canonicalModelName(id string, displayName string) string {
-	value := strings.TrimSpace(id)
-	if idx := strings.LastIndex(value, "/"); idx >= 0 && idx < len(value)-1 {
-		value = value[idx+1:]
-	}
-	value = strings.TrimSpace(value)
-	if value == "" {
-		value = strings.TrimSpace(displayName)
-	}
-	value = strings.ToLower(value)
-	value = strings.ReplaceAll(value, " ", "-")
-	value = strings.ReplaceAll(value, "_", "-")
-	value = strings.ReplaceAll(value, "--", "-")
-	value = strings.Trim(value, "-")
-	value = normalizeCompactModelVersion(value, "deepseek")
-	value = normalizeCompactModelVersion(value, "claude")
-	value = normalizeCompactModelVersion(value, "gemini")
-	value = normalizeCompactModelVersion(value, "qwen")
-	value = normalizeCompactModelVersion(value, "gpt")
-	value = normalizeCompactModelVersion(value, "glm")
-	if value == "" {
-		return "custom-model"
-	}
-	return value
-}
-
-func normalizeCompactModelVersion(value string, prefix string) string {
-	compact := prefix + "v"
-	if strings.HasPrefix(value, compact) && len(value) > len(compact) {
-		next := value[len(compact)]
-		if next >= '0' && next <= '9' {
-			return prefix + "-v" + value[len(compact):]
-		}
-	}
-	if strings.HasPrefix(value, prefix) && len(value) > len(prefix) {
-		next := value[len(prefix)]
-		if next >= '0' && next <= '9' {
-			return prefix + "-" + value[len(prefix):]
-		}
-	}
-	return value
-}
-
 func catalogCategorySummary(models []ProviderCatalogModel) ([]string, map[string]int) {
+	return catalogCategorySummaryWithDefinitions(models, nil)
+}
+
+func catalogCategorySummaryWithDefinitions(models []ProviderCatalogModel, modelCategories []providerModelCategoryDefinition) ([]string, map[string]int) {
 	counts := map[string]int{}
 	for _, model := range models {
-		category := standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.ID, model.DisplayName)))
+		category := standardModelCategoryWithDefinitions(firstNonEmpty(model.Category, inferModelCategoryWithDefinitions(model.ID, model.DisplayName, modelCategories)), modelCategories)
 		if category == "" {
 			category = "custom"
 		}

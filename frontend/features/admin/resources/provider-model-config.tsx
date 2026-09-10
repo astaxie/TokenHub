@@ -1,13 +1,16 @@
-import { type FieldConfig, type Model, type ModelRoute, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
+import { type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult } from "../core/session";
+import { type AdminUser, type ApiContext, type AppData, type FieldConfig, type Model, type ModelRoute, type PluginActionDescriptor, type Provider, type ProviderResource, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryFormOptions, modelCategoryLabel } from "../domain/catalog";
 import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefaults, modelRoutesFor, modelSelectOptions, projectMemberProjectSelectOptions, providerAccountResourceSummary, providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerModelSelectOptions, providerRouteSummary, providerSelectOptions, routeProjectScopeSummary, routeScoreSummary, stringifyForm } from "../domain/entities";
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
-import { providerTypeLabel, resourceTypeLabel } from "../domain/labels";
-import { providerReasoningFieldConfigs, providerReasoningFormValues, providerSupportsAnthropicReasoning } from "../domain/provider-reasoning";
+import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
+import { cacheReadPriceHelpText } from "../domain/model-pricing-policy";
+import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
+import { defaultProviderResourceTypeMetadata, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder, providerTypeHasPluginMetadata } from "../domain/provider-resource-types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
-import { adminDelete, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, routePayload, testProviderAvailability } from "./payloads";
-import { ModelNameCell, ModelRouteProviders, providerTypeOptions, StatusPill } from "../shared/ui";
+import { adminDelete, adminFetch, adminMutate, createModelRoutes, modelPayload, providerPayload, providerResourcePayload, providerResourceToForm, providerResourceUpdatePayload, providerUpdatePayload, readAdminError, routePayload } from "./payloads";
+import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, StatusPill } from "../shared/ui";
 
 export function providerConfig(): ResourceConfig<Provider> {
   return {
@@ -18,7 +21,7 @@ export function providerConfig(): ResourceConfig<Provider> {
     createLabel: "新增 Provider",
     columns: [
       { key: "name", label: "名称", render: (item, ctx) => providerDisplayName(item, ctx.providerResources) },
-      { key: "type", label: "类型", render: (item, ctx) => providerTypeLabel(providerDisplayType(item, ctx.providerResources)) },
+      { key: "type", label: "类型", render: (item, ctx) => providerTypeLabelFromData(ctx, providerDisplayType(item, ctx.providerResources)) },
       { key: "base_url", label: "Base URL", render: (item, ctx) => providerDisplayBaseURL(item, ctx.providerResources) },
       { key: "models", label: "已引入模型", render: (item, ctx) => ctx.providerModels.filter((model) => model.provider_id === item.id).length },
       { key: "routes", label: "路由线路", render: (item, ctx) => providerRouteSummary(item, ctx) },
@@ -29,18 +32,18 @@ export function providerConfig(): ResourceConfig<Provider> {
     ],
     fields: [
       { key: "name", label: "名称", required: true },
-      { key: "type", label: "类型", type: "select", options: providerTypeOptions, required: true },
+      { key: "type", label: "类型", type: "select", optionsFromData: (data, _currentUser, values) => providerTypeOptionsFromData(data, values), required: true },
       { key: "base_url", label: "Base URL" },
       { key: "api_key", label: "API Key", type: "password", help: "编辑时留空表示不修改现有 Key；只有填写新值才会覆盖。" },
       { key: "priority", label: "优先级", type: "number", placeholder: "留空自动追加", help: "数字越小越先调用；新增时留空会自动排在该统一模型已有 Provider 后面。" },
-      { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["preserve", "strip"], help: "Anthropic 官方默认保留；明确非官方 Provider 默认移除。自定义且来源不明的 Anthropic 端点默认保留。" },
+      { key: "system_prompt_transform_policy", label: "系统提示词转换", type: "select", options: ["preserve", "strip"], help: "Provider 插件可声明默认策略；未声明时默认移除客户端归因块。" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
       { key: "healthy", label: "健康", type: "boolean" },
-      ...providerReasoningFieldConfigs((values) => providerSupportsAnthropicReasoning(values.type)),
+      ...providerReasoningFieldConfigs((values, data) => data ? providerTypeSupportsReasoningConfig(providerTypeOptionsFromData(data, values), values.type) : false),
     ],
     list: (ctx) => ctx.providers,
-    create: (ctx, values) => adminMutate(ctx, "/api/admin/providers", "POST", providerPayload(values)),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/providers/${item.id}`, "PATCH", providerUpdatePayload(values)),
+    create: (ctx, values, data) => adminMutate(ctx, "/api/admin/providers", "POST", providerPayload(values, data)),
+    update: (ctx, item, values, data) => adminMutate(ctx, `/api/admin/providers/${item.id}`, "PATCH", providerUpdatePayload(values, data)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/providers/${item.id}`),
     actions: [
       {
@@ -50,8 +53,8 @@ export function providerConfig(): ResourceConfig<Provider> {
       },
       {
         label: "测试",
-        title: "检测 Provider 可用性；Codex 订阅使用 Luna 中等推理标准速度真实测试",
-        run: testProviderAvailability,
+        title: "检测 Provider 可用性；账号型 Provider 会优先使用插件真实测试",
+        run: runProviderAvailabilityTest,
         doneMessage: (item) => `${item.name} ${tx("检测完成")}`,
       },
     ],
@@ -60,7 +63,7 @@ export function providerConfig(): ResourceConfig<Provider> {
       type: item.type,
       base_url: item.base_url ?? "",
       priority: String(item.priority ?? 10),
-      claude_code_attribution_policy: item.options?.claude_code_attribution_policy ?? "preserve",
+      system_prompt_transform_policy: item.options?.system_prompt_transform_policy ?? item.options?.claude_code_attribution_policy ?? "preserve",
       status: item.status,
       healthy: String(item.healthy),
       ...providerReasoningFormValues(item.options),
@@ -72,17 +75,17 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
   return [
     { key: "provider_id", label: "Provider", type: "select", optionsFromData: providerSelectOptions, required: true, readOnlyOnEdit: Boolean(provider) },
     { key: "name", label: "名称", required: true },
-    { key: "resource_type", label: "账号类型", type: "select", options: ["openai_subscription", "api_key"], required: true },
-    { key: "auth_type", label: "认证方式", type: "select", options: ["oauth", "personal_access_token", "api_key"], visible: openAIAccountFieldVisible },
-    { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: openAIAccountFieldVisible, help: "OpenAI subscription / Codex OAuth access token 或 PAT；保存后不会再次显示。" },
-    { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: openAIAccountFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
-    { key: "id_token", label: "ID Token", type: "textarea", autoComplete: "off", visible: openAIAccountFieldVisible, help: "可选。填写后会自动提取账号邮箱、账号 ID、组织 ID 和计划类型。" },
-    { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values) => values.resource_type !== "openai_subscription", help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
-    { key: "account_email", label: "账号邮箱", autoComplete: "off", visible: openAIAccountFieldVisible },
-    { key: "account_id", label: "账号 ID", autoComplete: "off", visible: openAIAccountFieldVisible },
-    { key: "organization_id", label: "组织 ID", autoComplete: "off", visible: openAIAccountFieldVisible },
-    { key: "plan_type", label: "计划类型", visible: openAIAccountFieldVisible },
-    { key: "base_url", label: "Base URL", placeholder: "https://api.openai.com/v1" },
+    { key: "resource_type", label: "账号类型", type: "select", optionsFromData: providerResourceTypeOptionsFromData, required: true },
+    { key: "auth_type", label: "认证方式", type: "select", optionsFromData: providerResourceAuthTypeOptionsFromData, visible: accountResourceFieldVisible },
+    { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "账号 OAuth access token 或 PAT；保存后不会再次显示。" },
+    { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
+    { key: "id_token", label: "ID Token", type: "textarea", autoComplete: "off", visible: accountResourceFieldVisible, help: "可选。填写后会自动提取账号邮箱、账号 ID、组织 ID 和计划类型。" },
+    { key: "api_key", label: "API Key", type: "password", autoComplete: "new-password", visible: (values, data) => !accountResourceFieldVisible(values, data), help: "普通资源实例的上游 API Key；编辑时留空表示不修改。" },
+    { key: "account_email", label: "账号邮箱", autoComplete: "off", visible: accountResourceFieldVisible },
+    { key: "account_id", label: "账号 ID", autoComplete: "off", visible: accountResourceFieldVisible },
+    { key: "organization_id", label: "组织 ID", autoComplete: "off", visible: accountResourceFieldVisible },
+    { key: "plan_type", label: "计划类型", visible: accountResourceFieldVisible },
+    { key: "base_url", label: "Base URL", placeholder: "https://provider.example/v1" },
     { key: "group", label: "分组" },
     { key: "region", label: "地域", placeholder: "cn-east" },
     { key: "environment", label: "环境", placeholder: "prod" },
@@ -91,15 +94,7 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "rate_limit_rpm", label: "RPM 限制", type: "number" },
     { key: "token_limit_tpm", label: "TPM 限制", type: "number" },
     { key: "max_concurrency", label: "最大并发", type: "number" },
-    {
-      key: "codex_fingerprint_mode",
-      label: "Codex 指纹收敛",
-      type: "select",
-      options: ["off", "device", "session", "full"],
-      visible: openAIAccountFieldVisible,
-      help: "共享同一订阅账号时，将客户端设备与会话标识改写为账号级稳定值，减少上游可见的设备数和会话数。",
-    },
-    { key: "claude_code_attribution_policy", label: "Claude Code 归因块", type: "select", options: ["inherit", "preserve", "strip"], help: "继承 Provider 策略，或只为当前 Resource 覆盖保留或移除行为。" },
+    { key: "system_prompt_transform_policy", label: "系统提示词转换", type: "select", options: ["inherit", "preserve", "strip"], help: "继承 Provider 策略，或只为当前 Resource 覆盖保留或移除客户端归因块。" },
     { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
     { key: "healthy", label: "健康", type: "boolean" },
   ];
@@ -110,12 +105,12 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
     view: "providers",
     title: "账号集成",
     eyebrow: "Provider 账号资源",
-    description: "把 OpenAI subscription、PAT 或普通 API Key 作为 Provider 资源实例加入账号池，并参与路由权重、并发和限流调度。",
+    description: "把账号订阅、PAT 或普通 API Key 作为 Provider 资源实例加入账号池，并参与路由权重、并发和限流调度。",
     createLabel: "添加账号资源",
     columns: [
       { key: "name", label: "名称" },
       { key: "provider_id", label: "Provider", render: (item, ctx) => findProvider(ctx, item.provider_id)?.name || item.provider_id },
-      { key: "resource_type", label: "账号类型", render: (item) => resourceTypeLabel(item.resource_type) },
+      { key: "resource_type", label: "账号类型", render: (item, ctx) => providerResourceTypeMetadataForResource(ctx, item)?.displayName || resourceTypeLabel(item.resource_type) },
       { key: "credential_summary", label: "账号邮箱", render: (item) => item.credential_summary?.account_email || item.credential_summary?.account_id || "-" },
       { key: "weight", label: "权重" },
       { key: "region", label: "地域" },
@@ -124,15 +119,15 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
     ],
     fields: providerResourceFieldConfigs(provider),
     list: (ctx) => ctx.providerResources.filter((item) => !provider || item.provider_id === provider.id),
-    create: (ctx, values) => adminMutate(ctx, "/api/admin/provider-resources", "POST", providerResourcePayload(values)),
-    update: (ctx, item, values) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}`, "PATCH", providerResourceUpdatePayload(values)),
+    create: (ctx, values, data) => adminMutate(ctx, "/api/admin/provider-resources", "POST", providerResourcePayload(values, data)),
+    update: (ctx, item, values, data) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}`, "PATCH", providerResourceUpdatePayload(values, data)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/provider-resources/${item.id}`),
     actions: [
       {
         label: "续租 Token",
         title: "使用保存的 refresh token 续租账号访问 Token",
-        visible: (item) => item.resource_type === "openai_subscription" && item.credential_summary?.has_refresh_token === "true",
-        run: (ctx, item) => adminMutate(ctx, `/api/admin/provider-resources/${item.id}/refresh-token`, "POST", {}),
+        visible: (item, _currentUser, data) => Boolean(providerResourceCredentialRefreshAction(data, item)),
+        run: runProviderResourceCredentialRefreshAction,
         doneMessage: (item) => formatTranslationTemplate(tx("{name} Token 已续租"), { name: item.name }),
       },
     ],
@@ -140,8 +135,257 @@ export function providerResourceConfig(provider?: Provider): ResourceConfig<Prov
   };
 }
 
-export function openAIAccountFieldVisible(values: Record<string, string>) {
-  return values.resource_type === "openai_subscription";
+export function accountResourceFieldVisible(values: Record<string, string>, data?: AppData) {
+  return data ? isProviderAccountResourceTypeForData(data, providerTypeForResourceValues(data, values), values.resource_type) : isProviderAccountResourceType(values.resource_type);
+}
+
+export function providerResourceTypeOptionsFromData(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
+  const providerType = providerTypeForResourceValues(data, values);
+  const resourceTypes = new Map<string, string | undefined>([[providerResourceAPIKeyType, undefined]]);
+  const defaultResourceTypes = new Set<string>();
+  const metadataList = providerResourceTypeMetadataFromData(data, providerType);
+  for (const metadata of metadataList) {
+    if (!providerType && values?.resource_type !== metadata.type) continue;
+    const resourceType = metadata.type.trim();
+    if (!resourceType) continue;
+    if (metadata.default) defaultResourceTypes.add(resourceType);
+    const label = metadata.displayName;
+    if (!resourceTypes.has(resourceType) || label) {
+      resourceTypes.set(resourceType, label);
+    }
+  }
+  const currentResourceType = values?.resource_type?.trim() ?? "";
+  if (currentResourceType && currentResourceType !== providerResourceAPIKeyType && !resourceTypes.has(currentResourceType) && !providerTypeHasPluginMetadata(data, providerType)) {
+    resourceTypes.set(currentResourceType, undefined);
+  }
+  return Array.from(resourceTypes.entries())
+    .filter(([value]) => Boolean(value))
+    .sort(([left], [right]) => providerResourceTypeOptionOrder(left, defaultResourceTypes) - providerResourceTypeOptionOrder(right, defaultResourceTypes) || left.localeCompare(right))
+    .map(([value, label]) => ({ value, label: label || resourceTypeLabel(value) }));
+}
+
+function providerTypeForResourceValues(data: AppData, values?: Record<string, string>) {
+  const providerID = values?.provider_id?.trim();
+  if (!providerID) return "";
+  return data.providers.find((provider) => provider.id === providerID)?.type ?? "";
+}
+
+export async function runProviderAvailabilityTest(ctx: ApiContext, provider: Provider, data: AppData) {
+  const accountResource = data.providerResources.find((resource) => resource.provider_id === provider.id && isProviderAccountResourceForData(data, resource) && resource.status === "active");
+  if (accountResource) {
+    const action = providerPluginActionForResourceCapability(data.pluginActions, provider.type, accountResource.resource_type, "probe.run");
+    if (action) {
+      await runProviderResourcePluginAction(ctx, accountResource, action, providerAccountProbePayload(action, accountResource), providerAccountProbeFallbackLabel(accountResource));
+      return;
+    }
+  }
+  const action = providerPluginActionForCapability(data.pluginActions, provider.type, "provider.probe.run");
+  if (action) {
+    await adminMutate(ctx, providerPluginActionPath(action), "POST", { provider_id: provider.id });
+    return;
+  }
+  await adminMutate(ctx, `/api/admin/providers/${provider.id}/test`, "POST", {});
+}
+
+export function providerPluginActionDefaultPayload(action: Pick<PluginActionDescriptor, "metadata"> | undefined): Record<string, unknown> {
+  const raw = action?.metadata?.default_payload_json?.trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function providerAccountProbePayload(action: PluginActionDescriptor, _resource: ProviderResource) {
+  const metadataPayload = providerPluginActionDefaultPayload(action);
+  if (Object.keys(metadataPayload).length > 0) return metadataPayload;
+  return {};
+}
+
+function providerAccountProbeFallbackLabel(_resource: ProviderResource) {
+  return tx("账号资源测试");
+}
+
+export async function runProviderResourceCredentialRefreshAction(ctx: ApiContext, item: ProviderResource, data: AppData) {
+  const action = providerResourceCredentialRefreshAction(data, item);
+  if (!action) throw new Error(tx("该插件动作尚未注册。"));
+  await runProviderResourceCredentialRefreshPluginAction(ctx, item, action);
+}
+
+export async function runProviderResourceCredentialRefreshPluginAction(ctx: ApiContext, item: ProviderResource, action: PluginActionDescriptor) {
+  await adminMutate(ctx, providerPluginActionPath(action), "POST", providerResourcePluginPayload(item, { force: true }));
+}
+
+export async function runProviderResourcePluginAction<T>(ctx: ApiContext, item: ProviderResource, action: PluginActionDescriptor, payload: Record<string, unknown>, fallbackLabel: string): Promise<T> {
+  const resp = await adminFetch(ctx, providerPluginActionPath(action), {
+    method: "POST",
+    body: JSON.stringify(providerResourcePluginPayload(item, payload)),
+  });
+  if (!resp.ok) throw new Error(await readPluginActionError(resp, action, fallbackLabel));
+  return unwrapPluginActionData<T>(await resp.json());
+}
+
+export async function runProviderPluginAction<T>(ctx: ApiContext, action: PluginActionDescriptor, payload: Record<string, unknown>, fallbackLabel: string): Promise<T> {
+  const result = await runProviderPluginActionEnvelope<T>(ctx, action, payload, fallbackLabel);
+  return unwrapPluginActionData<T>(result);
+}
+
+export async function runProviderPluginActionEnvelope<T>(ctx: ApiContext, action: PluginActionDescriptor, payload: Record<string, unknown>, fallbackLabel: string): Promise<{ data?: T; redirect_url?: string; metadata?: Record<string, string> }> {
+  const resp = await adminFetch(ctx, providerPluginActionPath(action), {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(await readPluginActionError(resp, action, fallbackLabel));
+  return await resp.json() as { data?: T; redirect_url?: string; metadata?: Record<string, string> };
+}
+
+export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, returnURL: string) {
+	const oauthAction = providerPluginActionForCapability(actions, providerType, "oauth.start");
+	if (oauthAction) {
+		const payload = providerPluginOAuthPayload(oauthAction, { return_url: returnURL });
+		return runProviderCapabilityAction<ProviderAccountOAuthGenerateResponse>(ctx, providerType, "oauth.start", oauthAction, payload, tx("生成账号授权地址"));
+	}
+	throw new Error(tx("该 Provider 插件未声明账号授权动作。"));
+}
+
+export async function exchangeProviderAccountOAuthCode(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, payload: { session_id: string; state: string; code: string }) {
+	const exchangeAction = providerPluginActionForCapability(actions, providerType, "oauth.exchange");
+	if (exchangeAction) {
+		const actionPayload = providerPluginOAuthPayload(exchangeAction, { ...payload });
+		return runProviderCapabilityAction<ProviderAccountOAuthResult>(ctx, providerType, "oauth.exchange", exchangeAction, actionPayload, tx("账号授权换取 Token"));
+	}
+	throw new Error(tx("该 Provider 插件未声明账号授权回填动作。"));
+}
+
+export function providerResourceCredentialRefreshAction(data: AppData, item: ProviderResource): PluginActionDescriptor | undefined {
+  const provider = findProvider(data, item.provider_id);
+  if (!provider) return undefined;
+  return providerResourceCredentialRefreshActionForProviderType(data.pluginActions, item, provider.type);
+}
+
+export function providerResourceCredentialRefreshActionForProviderType(actions: PluginActionDescriptor[], item: ProviderResource, providerType: string): PluginActionDescriptor | undefined {
+  if (item.credential_summary?.has_refresh_token !== "true") return undefined;
+  return providerPluginActionForResourceCapability(actions, providerType, item.resource_type, "credentials.refresh");
+}
+
+export function providerPluginActionForCapability(actions: PluginActionDescriptor[], providerType: string, capability: string): PluginActionDescriptor | undefined {
+  return actions.find((action) =>
+    action.capability === capability &&
+    (!action.subject || action.subject === providerType),
+  );
+}
+
+export function providerPluginActionForResourceCapability(actions: PluginActionDescriptor[], providerType: string, resourceType: string, capability: string): PluginActionDescriptor | undefined {
+  const candidates = actions.filter((action) =>
+    action.capability === capability &&
+    (!action.subject || action.subject === providerType),
+  );
+  const normalizedResourceType = resourceType.trim();
+  return candidates.find((action) => action.metadata?.provider_resource_type?.trim() === normalizedResourceType) ??
+    candidates.find((action) => !action.metadata?.provider_resource_type?.trim());
+}
+
+export function providerResourceActionsByID(actions: PluginActionDescriptor[], providerType: string, resources: ProviderResource[], capability: string): Record<string, PluginActionDescriptor> {
+  return Object.fromEntries(resources.flatMap((resource) => {
+    const action = providerPluginActionForResourceCapability(actions, providerType, resource.resource_type, capability);
+    return action ? [[resource.id, action] as const] : [];
+  }));
+}
+
+export function firstProviderResourceActionForSelection(actionsByResourceID: Record<string, PluginActionDescriptor>, resources: ProviderResource[]) {
+  return resources.map((resource) => actionsByResourceID[resource.id]).find(Boolean);
+}
+
+export function providerResourceActionSelection(actions: PluginActionDescriptor[], providerType: string, resources: ProviderResource[], selectedResources: ProviderResource[], capability: string) {
+  const actionsByResourceID = providerResourceActionsByID(actions, providerType, resources, capability);
+  const selected = selectedResources.filter((resource) => actionsByResourceID[resource.id]);
+  return { actionsByResourceID, firstAction: firstProviderResourceActionForSelection(actionsByResourceID, selected), selectedResources: selected };
+}
+
+export function providerResourceSelectionSupportsAction(actions: PluginActionDescriptor[], providerType: string, resources: ProviderResource[], capability: string) {
+  const resourceTypes = Array.from(new Set(resources.map((resource) => resource.resource_type.trim()).filter(Boolean)));
+  if (resourceTypes.length === 1) {
+    return Boolean(providerPluginActionForResourceCapability(actions, providerType, resourceTypes[0], capability));
+  }
+  return Boolean(actions.find((action) =>
+    action.capability === capability &&
+    (!action.subject || action.subject === providerType) &&
+    !action.metadata?.provider_resource_type?.trim(),
+  ));
+}
+
+export function unwrapPluginActionData<T>(payload: unknown): T {
+  if (payload && typeof payload === "object" && "data" in payload) return (payload as { data: T }).data;
+  return payload as T;
+}
+
+export function providerPluginActionPath(action: PluginActionDescriptor) {
+  return `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`;
+}
+
+export function providerCapabilityActionPath(providerType: string, capability: string) {
+  return `/api/admin/provider-actions/${encodeURIComponent(providerType)}/${encodeURIComponent(capability)}`;
+}
+
+export async function runProviderCapabilityAction<T>(
+  ctx: ApiContext,
+  providerType: string,
+  capability: string,
+  action: Pick<PluginActionDescriptor, "metadata"> | undefined,
+  payload: Record<string, unknown>,
+  fallbackLabel: string,
+): Promise<T> {
+  const resp = await adminFetch(ctx, providerCapabilityActionPath(providerType, capability), {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(await readPluginActionError(resp, action, fallbackLabel));
+  return unwrapPluginActionData<T>(await resp.json());
+}
+
+export async function readPluginActionError(resp: Response, action: Pick<PluginActionDescriptor, "metadata"> | undefined, fallback: string) {
+  const body = await resp.clone().text().catch(() => "");
+  const code = pluginActionErrorCode(body);
+  const mapped = pluginActionErrorMessage(action, code);
+  if (mapped) return mapped;
+  return readAdminError(resp, fallback);
+}
+
+export function pluginActionErrorMessage(action: Pick<PluginActionDescriptor, "metadata"> | undefined, code: string | undefined) {
+  if (!code) return "";
+  const direct = action?.metadata?.[`error_message.${code}`]?.trim();
+  if (direct) return tx(direct);
+  const raw = action?.metadata?.error_messages_json?.trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
+    const value = (parsed as Record<string, unknown>)[code];
+    return typeof value === "string" ? tx(value.trim()) : "";
+  } catch {
+    return "";
+  }
+}
+
+function pluginActionErrorCode(body: string) {
+  if (!body) return "";
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: string } };
+    return parsed.error?.code?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function providerResourcePluginPayload(item: ProviderResource, payload: Record<string, unknown>) {
+  return { provider_id: item.provider_id, resource_id: item.id, ...payload };
+}
+
+function providerPluginOAuthPayload(action: PluginActionDescriptor, payload: Record<string, unknown>) {
+  const redirectURI = action.metadata?.oauth_redirect_uri?.trim();
+  return redirectURI ? { ...payload, redirect_uri: redirectURI } : payload;
 }
 
 export function providerCreateAccountResourceFields() {
@@ -152,7 +396,7 @@ export function providerCreateAccountResourceFields() {
 }
 
 export function providerCreateAccountRuntimeFields() {
-  const keys = new Set(["base_url", "group", "priority", "weight", "rate_limit_rpm", "token_limit_tpm", "max_concurrency", "codex_fingerprint_mode", "claude_code_attribution_policy", "status"]);
+  const keys = new Set(["base_url", "group", "priority", "weight", "rate_limit_rpm", "token_limit_tpm", "max_concurrency", "system_prompt_transform_policy", "claude_code_attribution_policy", "status"]);
   return providerResourceFieldConfigs()
     .filter((field) => keys.has(field.key))
     .map((field) => field.key === "base_url" ? { ...field, required: true } : field);
@@ -173,25 +417,28 @@ export function providerAccountTokenSummary(values: Record<string, string>) {
 
 export function defaultProviderResourceName(providerName?: string) {
   const normalized = providerName?.trim() || "Provider";
-  return `${normalized} Codex Account`;
+  return `${normalized} Account`;
 }
 
-export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string }) {
-  return {
+export function providerResourceDraftDefaults(provider: { provider_id?: string; name?: string; base_url?: string; type?: string }, data?: Pick<AppData, "plugins" | "providerAdapters">) {
+  const metadata = data && provider.type ? defaultProviderResourceTypeMetadata(data, provider.type) : null;
+  const metadataDefaults = metadata?.defaults ?? {};
+  const resourceType = metadata?.type || providerResourceAPIKeyType;
+  const authType = metadataDefaults.auth_type || metadata?.authModes[0] || "";
+  const defaults = {
     provider_id: provider.provider_id ?? "",
     name: defaultProviderResourceName(provider.name),
-    resource_type: "openai_subscription",
-    auth_type: "oauth",
+    resource_type: resourceType,
+    auth_type: authType,
     authorization_url: "",
-    base_url: provider.base_url || "https://chatgpt.com/backend-api/codex",
+    base_url: metadataDefaults.base_url || provider.base_url || "",
     group: "default",
     priority: "1",
     weight: "100",
     rate_limit_rpm: "",
     token_limit_tpm: "",
-    max_concurrency: "3",
-    codex_fingerprint_mode: "session",
-    claude_code_attribution_policy: "inherit",
+    max_concurrency: metadataDefaults.max_concurrency || "3",
+    system_prompt_transform_policy: "inherit",
     token_type: "",
     expires_at: "",
     scopes: "",
@@ -199,18 +446,26 @@ export function providerResourceDraftDefaults(provider: { provider_id?: string; 
     healthy: "true",
     ...providerReasoningFormValues(),
   };
+  return {
+    ...defaults,
+    ...metadataDefaults,
+    provider_id: provider.provider_id ?? "",
+    name: defaultProviderResourceName(provider.name),
+    resource_type: resourceType,
+  };
 }
 
-export function providerResourceDefaults(provider: Provider) {
+export function providerResourceDefaults(provider: Provider, data?: AppData) {
   return providerResourceDraftDefaults({
     provider_id: provider.id,
     name: provider.name || provider.id,
     base_url: provider.base_url,
-  });
+    type: provider.type,
+  }, data);
 }
 
 export function assertProviderAccountResourceReady(values: Record<string, string>) {
-  if (values.resource_type === "openai_subscription") {
+  if (isProviderAccountResourceType(values.resource_type)) {
     if (values.access_token?.trim() || values.refresh_token?.trim() || values.id_token?.trim()) return;
     throw new Error(tx("请先完成账号授权回填，或在高级选项中手动粘贴 Token。"));
   }
@@ -227,8 +482,8 @@ export function modelConfig(): ResourceConfig<Model> {
     description: "维护客户端调用的统一模型名、能力和对外价格；不同 Provider 线路共享同一套对外定价。",
     createLabel: "新增模型",
     columns: [
-      { key: "name", label: "对外模型", render: (item) => <ModelNameCell model={item} /> },
-      { key: "category", label: "模型类型", render: (item) => modelCategoryLabel(modelCategory(item)) },
+      { key: "name", label: "对外模型", render: (item, ctx) => <ModelNameCell model={item} data={ctx} /> },
+      { key: "category", label: "模型类型", render: (item, ctx) => modelCategoryLabel(modelCategory(item, ctx), ctx) },
       { key: "capabilities", label: "能力", render: (item) => modelCapabilitySummary(item) },
       { key: "routes", label: "可用供应商", render: (item, ctx) => <ModelRouteProviders model={item} data={ctx} /> },
       { key: "route_count", label: "路由数", render: (item, ctx) => modelRoutesFor(item, ctx).length },
@@ -261,7 +516,7 @@ export function modelConfig(): ResourceConfig<Model> {
         label: "对外缓存读价 USD/1M",
         type: "number",
         placeholder: "可选，留空时按同类模型常见比例估算",
-        help: "配置后用于统一对外计费；留空时 DeepSeek V4 Pro 按约 0.83%、其他 DeepSeek 按 2%、其余模型按 10% 估算。",
+        help: cacheReadPriceHelpText,
         visible: (values) => values.modality !== "embedding",
       },
       {
@@ -295,7 +550,7 @@ export function modelConfig(): ResourceConfig<Model> {
         label: "分时价格配置（JSON）",
         type: "textarea",
         placeholder: "[{\"timezone\":\"Asia/Shanghai\",\"start_time\":\"00:00\",\"end_time\":\"08:30\",\"input_price_usd_per_1m\":0.14,\"output_price_usd_per_1m\":0.28}]",
-        help: "按请求开始时间匹配；支持 timezone、start_time、end_time、effective_from、effective_until 以及输入/输出价格覆盖。",
+        help: "按请求开始时间匹配；weekdays 使用 0（周日）到 6（周六），省略表示每天。支持时区、生效区间及全部输入、缓存读写、输出价格覆盖；省略分项表示继承，0 表示免费。跨午夜按开始日匹配，时段不能重叠。",
         visible: (values) => values.modality !== "embedding",
       },
       { key: "capabilities", label: "能力标签，逗号分隔" },

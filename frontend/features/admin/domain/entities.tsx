@@ -1,12 +1,12 @@
 import { appRole } from "../core/navigation";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_PROJECT_ID, type Model, type ModelRoute, type Project, type Provider, type ProviderResource, type RequestLog, type RouteAttemptLog, type UsageBreakdownRow } from "../core/types";
+import { imageCapabilityProfileForModel, type ImageCapabilityProfile, providerImageCapabilityProfilesFromActions } from "./provider-image-capability";
 import { modelCategory, modelCategoryLabel } from "./catalog";
 import { formatMoney, modelCategoryRank } from "./formatting";
-import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabel, roleLabel, splitList } from "./labels";
+import { compactList, enumValueLabel, fieldKeyLabel, fieldValueLabel, providerTypeLabelFromData, roleLabel, splitList } from "./labels";
+import { isProviderAccountResourceForData } from "./provider-resource-types";
 import { tx } from "../i18n/runtime";
-import { preferredModelCategories } from "./model-categories";
-
-export const codexSubscriptionBaseURL = "https://chatgpt.com/backend-api/codex";
+import { modelCategoryDefinitionsFromData, modelCategorySortIndex } from "./model-categories";
 
 export function rowID(item: unknown) {
   return String(readPath(item, "id") || readPath(item, "name") || JSON.stringify(item));
@@ -127,34 +127,33 @@ export function modelSelectOptions(data: AppData) {
   return data.models
     .filter((model) => modelIsInDirectory(model, data))
     .slice()
-    .sort((left, right) => modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name))
+    .sort((left, right) => modelCategoryRank(left, data) - modelCategoryRank(right, data) || left.name.localeCompare(right.name))
     .map((model) => ({
       value: model.name,
-      label: `${model.name} / ${modelCategoryLabel(modelCategory(model))}${model.status !== "active" ? ` / ${enumValueLabel(model.status)}` : ""}`,
+      label: `${model.name} / ${modelCategoryLabel(modelCategory(model, data), data)}${model.status !== "active" ? ` / ${enumValueLabel(model.status)}` : ""}`,
     }));
 }
 
 export function providerSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
-  const providers = values?.model_name?.trim() === codexImageModelName
-    ? data.providers.filter((provider) => provider.type === "openai_codex")
+  const imageProviderIDs = providerIDsForImageCapabilityModel(data, values?.model_name ?? "");
+  const providers = imageProviderIDs.size > 0
+    ? data.providers.filter((provider) => imageProviderIDs.has(provider.id))
     : data.providers;
   return providers
     .slice()
     .sort((left, right) => (left.priority - right.priority) || left.name.localeCompare(right.name))
     .map((provider) => ({
       value: provider.id,
-      label: `${providerDisplayName(provider, data.providerResources)} / ${providerTypeLabel(providerDisplayType(provider, data.providerResources))}${provider.status !== "active" ? ` / ${enumValueLabel(provider.status)}` : ""}`,
+      label: `${providerDisplayName(provider, data.providerResources)} / ${providerTypeLabelFromData(data, providerDisplayType(provider, data.providerResources))}${provider.status !== "active" ? ` / ${enumValueLabel(provider.status)}` : ""}`,
     }));
 }
 
 export function providerModelSelectOptions(data: AppData, _currentUser?: AdminUser | null, values?: Record<string, string>) {
   const providerID = values?.provider_id?.trim();
   if (!providerID) return [];
-  if (values?.model_name?.trim() === codexImageModelName) {
-    return data.providers.some((provider) => provider.id === providerID && provider.type === "openai_codex")
-      ? [{ value: "gpt-image-2", label: "gpt-image-2" }]
-      : [];
-  }
+  const provider = findProvider(data, providerID);
+  const imageProfile = provider ? providerImageCapabilityProfileForModel(data, provider.type, values?.model_name ?? "") : null;
+  if (imageProfile) return [{ value: imageProfile.upstreamModel, label: imageProfile.upstreamModel }];
   const seen = new Set<string>();
   return data.providerModels
     .filter((model) => model.provider_id === providerID)
@@ -474,36 +473,51 @@ export function modelIsInDirectory(model: Model, data: AppData) {
   return source !== "tokenhub-standard-catalog" && source !== "public-provider-conf";
 }
 
-export const codexImageModelName = "codex-gpt-image-2";
-
-export function isCodexSubscriptionImageModel(model: Model | undefined) {
-  return model?.name === codexImageModelName ||
-    model?.metadata?.execution_type === "codex_subscription_image_generation";
+export function modelHasImageCapability(data: AppData, model: Model | undefined) {
+  if (!model) return false;
+  return data.providers.some((provider) => Boolean(providerImageCapabilityProfileForModel(data, provider.type, model)));
 }
 
-export function codexImageCapableResources(data: AppData) {
-  const codexProviderIDs = new Set(
-    data.providers
-      .filter((provider) => provider.type === "openai_codex" && provider.status === "active" && provider.healthy !== false)
-      .map((provider) => provider.id),
-  );
+export function providerImageCapabilityProfileForModel(data: AppData, providerType: string, model: Pick<Model, "name" | "metadata"> | string | undefined) {
+  const modelName = typeof model === "string" ? model : model?.name ?? "";
+  return imageCapabilityProfileForModel(providerImageCapabilityProfilesFromActions(data.pluginActions, providerType), modelName);
+}
+
+export function routeImageCapabilityProfile(route: ModelRoute, data: AppData) {
+  const provider = findProvider(data, route.provider_id);
+  return provider ? providerImageCapabilityProfileForModel(data, provider.type, route.model_name) : null;
+}
+
+export function imageCapabilityCapableResources(data: AppData, providerID: string, profile: ImageCapabilityProfile) {
   return data.providerResources.filter((resource) =>
-    codexProviderIDs.has(resource.provider_id) &&
+    resource.provider_id === providerID &&
     resource.status === "active" &&
     resource.healthy !== false &&
-    resource.options?.image_generation_capability === "supported",
+    resource.options?.[profile.capabilityOption] === profile.capabilitySupportedValue &&
+    (profile.resourceType ? resource.resource_type === profile.resourceType : isProviderAccountResourceForData(data, resource)),
   );
+}
+
+function providerIDsForImageCapabilityModel(data: AppData, modelName: string) {
+  const providerIDs = new Set<string>();
+  const normalizedModelName = modelName.trim();
+  if (!normalizedModelName) return providerIDs;
+  for (const provider of data.providers) {
+    if (providerImageCapabilityProfileForModel(data, provider.type, normalizedModelName)) providerIDs.add(provider.id);
+  }
+  return providerIDs;
 }
 
 export function routeModelCategories(data: AppData) {
+  const definitions = modelCategoryDefinitionsFromData(data);
   const counts = new Map<string, number>();
   for (const model of data.models.filter((item) => modelIsInDirectory(item, data))) {
-    const category = modelCategory(model);
+    const category = modelCategory(model, definitions);
     counts.set(category, (counts.get(category) ?? 0) + 1);
   }
   const items = Array.from(counts.entries())
-    .map(([key, count]) => ({ key, label: modelCategoryLabel(key), count }))
-    .sort((left, right) => preferredModelCategories.indexOf(left.key) - preferredModelCategories.indexOf(right.key) || left.label.localeCompare(right.label));
+    .map(([key, count]) => ({ key, label: modelCategoryLabel(key, definitions), count }))
+    .sort((left, right) => modelCategorySortIndex(left.key, definitions) - modelCategorySortIndex(right.key, definitions) || left.label.localeCompare(right.label));
   const total = items.reduce((sum, item) => sum + item.count, 0);
   return [{ key: "all", label: modelCategoryLabel("all"), count: total }, ...items];
 }
@@ -515,7 +529,7 @@ export function filterRouteModels(data: AppData, category: string, scope: "confi
     .filter((model) => {
       const routes = modelRoutesFor(model, data);
       if (scope === "configured" && routes.length === 0) return false;
-      if (category !== "all" && modelCategory(model) !== category) return false;
+      if (category !== "all" && modelCategory(model, data) !== category) return false;
       if (!normalizedQuery) return true;
       return routeModelSearchText(model, routes, data).includes(normalizedQuery);
     })
@@ -523,7 +537,7 @@ export function filterRouteModels(data: AppData, category: string, scope: "confi
       const leftRoutes = modelRoutesFor(left, data).length;
       const rightRoutes = modelRoutesFor(right, data).length;
       if (leftRoutes !== rightRoutes) return rightRoutes - leftRoutes;
-      return modelCategoryRank(left) - modelCategoryRank(right) || left.name.localeCompare(right.name);
+      return modelCategoryRank(left, data) - modelCategoryRank(right, data) || left.name.localeCompare(right.name);
     });
 }
 
@@ -539,7 +553,7 @@ export function routeModelSearchText(model: Model, routes: ModelRoute[], data: A
       provider?.base_url,
     ];
   });
-  return [model.name, model.id, model.family, model.modality, model.category, ...routeText]
+  return [model.name, model.id, model.family, model.modality, model.category, modelCategory(model, data), ...routeText]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -569,7 +583,7 @@ export function providerRouteSummary(provider: Provider, data: AppData) {
 }
 
 export function providerAccountResourceSummary(provider: Provider, data: AppData) {
-  const resources = data.providerResources.filter((resource) => resource.provider_id === provider.id && resource.resource_type === "openai_subscription");
+  const resources = data.providerResources.filter((resource) => resource.provider_id === provider.id && isProviderAccountResourceForData(data, resource));
   if (resources.length === 0) return <span className="muted-inline">-</span>;
   const active = resources.filter((resource) => resource.status === "active" && resource.healthy).length;
   const first = resources[0]?.credential_summary;
@@ -577,7 +591,7 @@ export function providerAccountResourceSummary(provider: Provider, data: AppData
   return (
     <div className="model-name-cell">
       <strong>{active}/{resources.length} {tx("启用")}</strong>
-      <span>{label || tx("OpenAI 账号资源")}</span>
+      <span>{label || tx("账号资源")}</span>
     </div>
   );
 }
@@ -671,10 +685,11 @@ export function providerRouteDefaults(provider: Provider, data: AppData) {
 }
 
 export function modelRouteDefaults(model: Model, data: AppData) {
-  const firstProvider = isCodexSubscriptionImageModel(model)
-    ? data.providers.find((provider) => provider.type === "openai_codex" && provider.status === "active")
-      ?? data.providers.find((provider) => provider.type === "openai_codex")
+  const firstProvider = modelHasImageCapability(data, model)
+    ? data.providers.find((provider) => providerImageCapabilityProfileForModel(data, provider.type, model) && provider.status === "active")
+      ?? data.providers.find((provider) => providerImageCapabilityProfileForModel(data, provider.type, model))
     : firstActiveProvider(data);
+  const imageProfile = firstProvider ? providerImageCapabilityProfileForModel(data, firstProvider.type, model) : null;
   const matchingProviderModel = data.providerModels.find((providerModel) =>
     providerModel.provider_id === firstProvider?.id
       && (providerModel.upstream_model === model.name || providerModel.canonical_name === model.name),
@@ -682,7 +697,7 @@ export function modelRouteDefaults(model: Model, data: AppData) {
   return {
     model_name: model.name,
     provider_id: firstProvider?.id ?? "",
-    provider_model: isCodexSubscriptionImageModel(model) ? "gpt-image-2" : matchingProviderModel?.upstream_model ?? "",
+    provider_model: imageProfile ? imageProfile.upstreamModel : matchingProviderModel?.upstream_model ?? "",
     priority: "1",
     weight: "100",
     quality_score: "50",

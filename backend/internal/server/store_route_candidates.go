@@ -57,16 +57,16 @@ type providerResourceAvailability struct {
 	cooling   bool
 }
 
-func (availability *providerResourceAvailability) observeMissing(provider Provider) {
-	if provider.Type != ProviderOpenAICodex {
+func (availability *providerResourceAvailability) observeMissing(required bool) {
+	if !required {
 		return
 	}
 	availability.required = true
 	availability.missing = true
 }
 
-func (availability *providerResourceAvailability) observeUnavailable(provider Provider, resource ProviderResource, now time.Time) {
-	if provider.Type != ProviderOpenAICodex {
+func (availability *providerResourceAvailability) observeUnavailable(required bool, resource ProviderResource, now time.Time) {
+	if !required {
 		return
 	}
 	availability.required = true
@@ -92,10 +92,30 @@ func (availability providerResourceAvailability) err() error {
 	case availability.disabled:
 		return NewHTTPError(http.StatusServiceUnavailable, "provider_resource_disabled", "Provider resource is disabled")
 	case availability.missing:
-		return NewHTTPError(http.StatusBadRequest, "provider_resource_missing", "Codex Subscription resource is missing")
+		return NewHTTPError(http.StatusBadRequest, "provider_resource_missing", "Provider resource is missing")
 	default:
 		return nil
 	}
+}
+
+func (s *GormStore) routeCandidateResourceRequired(provider Provider, resource ProviderResource) bool {
+	return providerRouteRequiresResource(provider) || s.IsProviderAccountResourceType(provider.Type, resource.ResourceType)
+}
+
+func (s *GormStore) routeCandidateResourcesRequireSelection(provider Provider, resources []ProviderResource) bool {
+	if routeCandidateProviderRequiresResource(provider) {
+		return true
+	}
+	for _, resource := range resources {
+		if s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) {
+			return true
+		}
+	}
+	return false
+}
+
+func routeCandidateProviderRequiresResource(provider Provider) bool {
+	return providerRouteRequiresResource(provider)
 }
 
 func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.Time) ([]RouteSelection, error) {
@@ -130,11 +150,11 @@ func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.
 		if route.ProviderResourceID != "" {
 			resource, ok := explicitResources[route.ProviderResourceID]
 			if !ok || resource.ProviderID != provider.ID {
-				availability.observeMissing(provider)
+				availability.observeMissing(true)
 				continue
 			}
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
-				availability.observeUnavailable(provider, resource, now)
+				availability.observeUnavailable(true, resource, now)
 				continue
 			}
 			selections = append(selections, s.routeSelection(provider, &resource, route))
@@ -150,7 +170,7 @@ func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.
 			}
 			matched = true
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
-				availability.observeUnavailable(provider, resource, now)
+				availability.observeUnavailable(s.routeCandidateResourceRequired(provider, resource), resource, now)
 				continue
 			}
 			resourceRoute := route
@@ -162,9 +182,9 @@ func (s *GormStore) loadRouteCandidates(db *gorm.DB, modelName string, now time.
 			eligible = true
 		}
 		if !eligible {
-			if provider.Type == ProviderOpenAICodex {
+			if s.routeCandidateResourcesRequireSelection(provider, implicitResources[provider.ID]) {
 				if !matched {
-					availability.observeMissing(provider)
+					availability.observeMissing(true)
 				}
 			} else {
 				selections = append(selections, s.routeSelection(provider, nil, route))
@@ -212,11 +232,11 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 				return nil, err
 			}
 			if !found {
-				availability.observeMissing(provider)
+				availability.observeMissing(true)
 				continue
 			}
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
-				availability.observeUnavailable(provider, resource, now)
+				availability.observeUnavailable(true, resource, now)
 				continue
 			}
 			selections = append(selections, s.routeSelection(provider, &resource, route))
@@ -224,17 +244,21 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 		}
 
 		var resources []ProviderResource
-		query := db.Where("provider_id = ?", provider.ID)
-		if group := strings.TrimSpace(route.ResourceGroup); group != "" {
-			query = query.Where("\"group\" = ?", group)
-		}
-		if err := query.Order("priority asc, weight desc, created_at asc, id asc").Find(&resources).Error; err != nil {
+		if err := db.Where("provider_id = ?", provider.ID).
+			Order("priority asc, weight desc, created_at asc, id asc").
+			Find(&resources).Error; err != nil {
 			return nil, err
 		}
+		group := strings.TrimSpace(route.ResourceGroup)
+		matched := false
 		eligible := false
 		for _, resource := range resources {
+			if group != "" && resource.Group != group {
+				continue
+			}
+			matched = true
 			if resource.Status != StatusActive || !halfOpenEligible(resource, now) {
-				availability.observeUnavailable(provider, resource, now)
+				availability.observeUnavailable(s.routeCandidateResourceRequired(provider, resource), resource, now)
 				continue
 			}
 			resourceRoute := route
@@ -246,9 +270,9 @@ func (s *GormStore) loadRouteCandidatesIndividually(db *gorm.DB, modelName strin
 			eligible = true
 		}
 		if !eligible {
-			if provider.Type == ProviderOpenAICodex {
-				if len(resources) == 0 {
-					availability.observeMissing(provider)
+			if s.routeCandidateResourcesRequireSelection(provider, resources) {
+				if !matched {
+					availability.observeMissing(true)
 				}
 			} else {
 				selections = append(selections, s.routeSelection(provider, nil, route))

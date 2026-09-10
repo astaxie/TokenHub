@@ -52,10 +52,6 @@ type OpenAIAccountQuota struct {
 	FetchedAt             int64                               `json:"fetched_at"`
 }
 
-func (s *Server) queryOpenAIAccountQuota(ctx context.Context, resourceID string) (OpenAIAccountQuota, error) {
-	return s.queryOpenAIAccountQuotaCached(ctx, resourceID, false)
-}
-
 func (s *Server) queryOpenAIAccountQuotaCached(ctx context.Context, resourceID string, force bool) (OpenAIAccountQuota, error) {
 	resource, ok := s.providerResourceByID(resourceID)
 	if !ok {
@@ -144,13 +140,65 @@ func (s *Server) cachedOpenAIAccountQuota(resourceID string, ttl time.Duration) 
 	return quota, true
 }
 
+func pluginActionResultQuotaSnapshot(data any, now time.Time) (map[string]any, string, time.Time, bool) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, "", time.Time{}, false
+	}
+	var snapshot map[string]any
+	if err := json.Unmarshal(raw, &snapshot); err != nil || len(snapshot) == 0 {
+		return nil, "", time.Time{}, false
+	}
+	fetchedAt := quotaSnapshotFetchedAt(snapshot["fetched_at"], now)
+	snapshot["fetched_at"] = fetchedAt.Unix()
+	raw, err = json.Marshal(snapshot)
+	if err != nil {
+		return nil, "", time.Time{}, false
+	}
+	return snapshot, string(raw), fetchedAt, true
+}
+
+func quotaSnapshotFetchedAt(value any, fallback time.Time) time.Time {
+	switch typed := value.(type) {
+	case float64:
+		if typed > 0 {
+			return time.Unix(int64(typed), 0).UTC()
+		}
+	case int64:
+		if typed > 0 {
+			return time.Unix(typed, 0).UTC()
+		}
+	case int:
+		if typed > 0 {
+			return time.Unix(int64(typed), 0).UTC()
+		}
+	case json.Number:
+		if seconds, err := typed.Int64(); err == nil && seconds > 0 {
+			return time.Unix(seconds, 0).UTC()
+		}
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if parsed, err := time.Parse(time.RFC3339, trimmed); err == nil && !parsed.IsZero() {
+			return parsed.UTC()
+		}
+	}
+	if fallback.IsZero() {
+		fallback = time.Now().UTC()
+	}
+	return fallback.UTC()
+}
+
 func (s *Server) fetchOpenAIAccountQuota(ctx context.Context, resourceID string) (OpenAIAccountQuota, error) {
 	creds, err := s.store.RefreshProviderResourceCredentials(ctx, resourceID, false)
 	if err != nil {
 		return OpenAIAccountQuota{}, err
 	}
-	quotaURL := firstNonEmpty(s.codexSubscription.QuotaURL, openAIAccountQuotaURL)
-	quota, status, err := fetchOpenAIAccountQuotaWithClient(ctx, s.codexSubscription.Client, quotaURL, creds)
+	codexSubscription, err := s.codexSubscriptionAdapter()
+	if err != nil {
+		return OpenAIAccountQuota{}, err
+	}
+	quotaURL := firstNonEmpty(codexSubscription.QuotaURL, openAIAccountQuotaURL)
+	quota, status, err := fetchOpenAIAccountQuotaWithClient(ctx, codexSubscription.Client, quotaURL, creds)
 	if status != http.StatusUnauthorized {
 		return quota, err
 	}
@@ -159,7 +207,7 @@ func (s *Server) fetchOpenAIAccountQuota(ctx context.Context, resourceID string)
 	if refreshErr != nil {
 		return OpenAIAccountQuota{}, refreshErr
 	}
-	quota, _, err = fetchOpenAIAccountQuotaWithClient(ctx, s.codexSubscription.Client, quotaURL, refreshed)
+	quota, _, err = fetchOpenAIAccountQuotaWithClient(ctx, codexSubscription.Client, quotaURL, refreshed)
 	return quota, err
 }
 

@@ -6,8 +6,8 @@ export type ProviderHeaderEntry = {
 };
 
 export const providerHeaderMask = "••••••••";
-const reservedProviderHeaders = new Set([
-  "accept-encoding", "anthropic-beta", "anthropic-version", "api-key", "authorization", "connection", "content-length", "content-type", "cookie", "cookie2", "expect", "forwarded", "host", "keep-alive", "openai-organization", "openai-project", "proxy-authenticate", "proxy-authorization", "proxy-connection", "te", "trailer", "transfer-encoding", "upgrade", "via", "x-api-key", "x-forwarded-for", "x-forwarded-host", "x-forwarded-port", "x-forwarded-proto", "x-goog-api-key", "x-real-ip", "x-tokenhub-upstream-account",
+const coreReservedProviderHeaders = new Set([
+  "accept-encoding", "authorization", "connection", "content-length", "content-type", "cookie", "cookie2", "expect", "forwarded", "host", "keep-alive", "proxy-authenticate", "proxy-authorization", "proxy-connection", "te", "trailer", "transfer-encoding", "upgrade", "via", "x-forwarded-for", "x-forwarded-host", "x-forwarded-port", "x-forwarded-proto", "x-real-ip", "x-tokenhub-upstream-account",
 ]);
 
 export function providerHeadersFormValue(headers?: Record<string, string>, sensitiveHeaders: string[] = []) {
@@ -55,9 +55,10 @@ export function providerHeadersPayload(value?: string) {
   };
 }
 
-export function providerHeaderEntryErrors(entries: ProviderHeaderEntry[]) {
+export function providerHeaderEntryErrors(entries: ProviderHeaderEntry[], managedHeaders: string[] = []) {
   const errors: string[] = [];
   const seen = new Set<string>();
+  const pluginManagedHeaders = new Set(managedHeaders.map((name) => name.trim().toLowerCase()).filter(Boolean));
   const encoder = new TextEncoder();
   let totalBytes = 0;
   if (entries.length > 32) errors.push("自定义请求头最多可配置 32 项。");
@@ -67,7 +68,8 @@ export function providerHeaderEntryErrors(entries: ProviderHeaderEntry[]) {
     if (!name) errors.push("请求头名称不能为空。");
     else if (seen.has(comparable)) errors.push("请求头名称不能重复（大小写不敏感）。");
     else if (encoder.encode(name).length > 128 || !/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(name)) errors.push("请求头名称格式不合法。");
-    else if (reservedProviderHeaders.has(comparable)) errors.push("该请求头由 TokenHub 管理，不能覆盖。");
+    else if (coreReservedProviderHeaders.has(comparable)) errors.push("该请求头由 TokenHub 管理，不能覆盖。");
+    else if (pluginManagedHeaders.has(comparable)) errors.push("该请求头由 Provider 插件管理，不能覆盖。");
     else seen.add(comparable);
     if ((!entry.value || entry.value === providerHeaderMask) && (!entry.sensitive || !entry.retained)) errors.push("请求头值不能为空。");
     if (!validProviderHeaderValue(entry.value)) errors.push("请求头值不能包含非法控制字符。");
@@ -78,8 +80,8 @@ export function providerHeaderEntryErrors(entries: ProviderHeaderEntry[]) {
   return errors;
 }
 
-export function providerHeaderFormError(value?: string) {
-  return providerHeaderEntryErrors(parseProviderHeaderEntries(value))[0] ?? "";
+export function providerHeaderFormError(value?: string, managedHeaders: string[] = []) {
+  return providerHeaderEntryErrors(parseProviderHeaderEntries(value), managedHeaders)[0] ?? "";
 }
 
 export function effectiveProviderHeaderEntries(inherited: ProviderHeaderEntry[], overrides: ProviderHeaderEntry[]) {

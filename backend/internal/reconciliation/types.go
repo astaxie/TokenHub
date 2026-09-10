@@ -175,6 +175,7 @@ type Usage struct {
 	ProviderResourceID string
 	CostUSD            float64
 	ProviderCostUSD    float64
+	ProviderCostKnown  bool
 	CreatedAt          time.Time
 }
 

@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.kilo"
+name: "Kilo Gateway"
+version: 1.0.0
+summary: "Connect TokenHub to Kilo Gateway."
+description: "Connect TokenHub to Kilo Gateway. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.kilo.ai/api/gateway"
+    catalog:
+      id: "kilo"
+      name: "Kilo Gateway"
+      display_name: "Kilo Gateway"
+      type: "openai_compatible"
+      base_url: "https://api.kilo.ai/api/gateway"
+      doc_url: "https://kilo.ai"
+      categories: []
+      models_count: 345
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

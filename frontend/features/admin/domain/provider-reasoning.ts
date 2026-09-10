@@ -6,21 +6,9 @@ import {
   providerReasoningOverrideFormValues,
   serializeProviderReasoningOptions,
 } from "./provider-reasoning-options";
+export { providerTypeSupportsReasoningConfig } from "./provider-reasoning-policy";
 
 export { providerHasReasoningOverrides, providerReasoningFormValues, providerReasoningOverrideFormValues };
-
-const anthropicReasoningProviderTypes = new Set([
-  "openai",
-  "openai_compatible",
-  "azure_openai",
-  "deepseek",
-  "qwen",
-  "local",
-]);
-
-export function providerSupportsAnthropicReasoning(providerType?: string) {
-  return anthropicReasoningProviderTypes.has(providerType?.trim().toLowerCase() ?? "");
-}
 
 export function providerReasoningFieldConfigs(visible?: FieldConfig["visible"]): FieldConfig[] {
   return [
@@ -36,7 +24,7 @@ export function providerReasoningFieldConfigs(visible?: FieldConfig["visible"]):
       label: "推理强度映射",
       type: "textarea",
       placeholder: '{"minimal":"low","xhigh":"max"}',
-      help: "把 Claude Code 的推理强度转换为上游值；填写 JSON 对象。",
+      help: "把客户端推理强度转换为上游值；填写 JSON 对象。",
       visible,
     },
     {

@@ -19,9 +19,15 @@ func (s *Server) executeRoutedResponsesContext(ctx context.Context, incoming htt
 		if omitReasoningEffort {
 			upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
 		}
+		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
+			return nil, Usage{}, transformErr
+		}
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq, providerRouteProtocolResponses); err != nil || handled {
+			return resp, usage, err
+		}
 		resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, incoming)
-		if isCodexModelUnsupportedError(err) {
-			s.removeCodexResourceModel(routeResourceID(route), route.ProviderModel)
+		if providerResourceModelUnsupportedError(err) {
+			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
 		}
 		return resp, usage, err
 	})

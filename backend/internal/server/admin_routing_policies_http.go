@@ -51,10 +51,11 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 		})
 		return
 	}
+	call := CallContext{RequestID: NewID("sim"), Project: project, Key: key, Model: Model{Name: modelName}}
 	var routes []RouteSelection
 	var err error
 	if modelName == codexImageModelName || modelName == openAIImageModelName {
-		routes, err = s.imageRouteCandidates(modelName)
+		routes, err = s.imageRouteCandidates(call, modelName)
 	} else {
 		routes, err = s.store.SelectRouteCandidates(modelName)
 	}
@@ -62,7 +63,6 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 		writeError(w, r, err)
 		return
 	}
-	call := CallContext{RequestID: NewID("sim"), Project: project, Key: key, Model: Model{Name: modelName}}
 	if err != nil || len(routes) == 0 {
 		_, resolution, policyErr := s.resolveScopedRoutingPolicy(call, nil)
 		if policyErr != nil {
@@ -91,7 +91,7 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 		writeError(w, r, err)
 		return
 	}
-	planned := s.planRouteOrder(call, filtered)
+	planned := s.planRouteOrderWithContext(r.Context(), call, filtered)
 	if len(planned) > 0 {
 		resolution.SelectedRouteID = planned[0].Route.ID
 	}

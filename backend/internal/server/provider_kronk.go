@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const (
@@ -22,33 +23,43 @@ type KronkAdapter struct {
 }
 
 func (a KronkAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	response, usage, err := a.OpenAICompatibleAdapter.Chat(ctx, provider, providerModel, req)
 	return response, usage, normalizeKronkTransportError(err)
 }
 
 func (a KronkAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, writer io.Writer) (Usage, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	usage, err := a.OpenAICompatibleAdapter.ChatStream(ctx, provider, providerModel, req, writer)
 	return usage, normalizeKronkTransportError(err)
 }
 
 func (a KronkAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	response, usage, err := a.OpenAICompatibleAdapter.Responses(ctx, provider, providerModel, req)
 	return response, usage, normalizeKronkTransportError(err)
 }
 
 func (a KronkAdapter) OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, incoming http.Header) (*http.Response, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	response, err := a.OpenAICompatibleAdapter.OpenResponses(ctx, provider, providerModel, req, incoming)
 	return response, normalizeKronkTransportError(err)
 }
 
 func (a KronkAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
-	provider.Type = ProviderKronk
+	provider = kronkProvider(provider)
 	response, usage, err := a.OpenAICompatibleAdapter.Embeddings(ctx, provider, providerModel, req)
 	return response, usage, normalizeKronkTransportError(err)
+}
+
+func kronkProvider(provider Provider) Provider {
+	provider.Type = ProviderKronk
+	provider.Options = cloneStringMap(provider.Options)
+	if provider.Options == nil {
+		provider.Options = map[string]string{}
+	}
+	provider.Options[providerErrorProfileOption] = providerErrorProfileKronk
+	return provider
 }
 
 func normalizeKronkTransportError(err error) error {
@@ -87,6 +98,35 @@ type KronkHealthResult struct {
 	Ready       bool `json:"ready"`
 	ModelReady  bool `json:"model_ready"`
 	ModelsCount int  `json:"models_count"`
+}
+
+func (a KronkAdapter) DefaultProbeRequest() ProviderProbeRequest {
+	return ProviderProbeRequest{Model: ProviderKronk, Prompt: "health"}
+}
+
+func (a KronkAdapter) Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error) {
+	startedAt := time.Now()
+	effective := effectiveProviderResourceConfig(provider, &resource)
+	result, err := a.Health(ctx, effective)
+	if err != nil {
+		return ProviderProbeResult{}, err
+	}
+	return ProviderProbeResult{
+		ResourceID: resource.ID,
+		Model:      firstNonEmpty(strings.TrimSpace(request.Model), ProviderKronk),
+		OutputText: "Kronk service is live, ready, and has available local models.",
+		LatencyMS:  time.Since(startedAt).Milliseconds(),
+		Response: map[string]any{
+			"live":         result.Live,
+			"ready":        result.Ready,
+			"model_ready":  result.ModelReady,
+			"models_count": result.ModelsCount,
+		},
+	}, nil
+}
+
+func (a KronkAdapter) ProbeProvider(ctx context.Context, provider Provider) (any, error) {
+	return a.Health(ctx, provider)
 }
 
 func (a KronkAdapter) Health(ctx context.Context, provider Provider) (KronkHealthResult, error) {
@@ -156,7 +196,9 @@ func KronkProviderCatalogFromUpstream(ctx context.Context, client *http.Client, 
 	if strings.TrimSpace(req.BaseURL) == "" {
 		req.BaseURL = kronkDefaultBaseURL
 	}
-	entry, err := CustomProviderCatalogFromUpstream(ctx, client, req)
+	entry, err := CustomProviderCatalogFromUpstreamWithDescriptor(ctx, client, req, AdapterDescriptor{
+		ProviderPolicy: AdapterProviderPolicy{ErrorProfile: providerErrorProfileKronk},
+	})
 	if err != nil {
 		if httpErr := AsHTTPError(err); httpErr.Code != "provider_models_empty" {
 			return ProviderCatalogEntry{}, err

@@ -1,4 +1,4 @@
-import { type AdminResource, type FieldConfig, notificationChannelTypes, type ResourceConfig, type SQLiteBackup, type ViewKey } from "../core/types";
+import { type AdminResource, type FieldConfig, notificationChannelTemplates, type ResourceConfig, type SQLiteBackup, type ViewKey } from "../core/types";
 import { notificationChannelLabel, notificationChannelTargetSummary, notificationChannelType, notificationChannelUsesEmail, notificationChannelUsesIncomingWebhook, notificationChannelUsesTelegram, notificationChannelUsesWhatsApp, notificationCredentialSummary } from "../domain/catalog";
 import { apiKeyOwnerSelectOptions, costCenterLabel, costCenterSelectOptions, oauthDefaultProjectRoleOptions, ownerUserLabel, projectMemberProjectSelectOptions, stringifyValue, teamMemberCount, teamSelectOptions, userSelectOptions } from "../domain/entities";
 import { formatBytes, formatNumber, formatTime } from "../domain/formatting";
@@ -11,7 +11,7 @@ import { apiKeyConfig, projectConfig, projectMemberConfig } from "./project-key-
 import { modelConfig, providerConfig, routeConfig } from "./provider-model-config";
 import { routingPolicyConfig } from "./routing-policy-config";
 import { StatusPill } from "../shared/ui";
-import { identityProviderIconOptions, identityProviderInitialFormValues, identityProviderTemplateOptions } from "../shared/auth";
+import { identityProviderIconOptions, identityProviderInitialFormValues, identityProviderTemplateOptionsFromData } from "../shared/auth";
 
 let cachedResourceConfigs: Partial<Record<ViewKey, ResourceConfig<any>>> | undefined;
 
@@ -123,6 +123,7 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
     { key: "default_timeout", label: "默认超时", help: "网关转发上游请求的默认等待时间，例如 120s。" },
     { key: "audit_retention", label: "审计保留", help: "请求和响应正文的保留周期，范围为 1d 至 3650d；请求元数据不会被清理。" },
     { key: "dashboard_timezone", label: "用量看板时区", placeholder: "UTC", help: "用于当天用量和使用趋势的自然日边界。请填写 IANA 时区，例如 UTC、Asia/Shanghai 或 America/New_York。" },
+    { key: "plugin_marketplace_url", label: "插件市场地址", placeholder: "", help: "插件管理页右上角打开的插件市场网站地址。必须使用 HTTP 或 HTTPS。" },
     { key: "api_key_prefix", label: "API Key 前缀", placeholder: "sk_", help: "新建和轮换 Key 时使用；建议以 _ 结尾，例如 sk_。" },
     { key: "api_key_random_length", label: "API Key 随机长度", type: "number", placeholder: "48", help: "前缀后面的随机字符数，系统会限制在 24-128 之间。" },
     {
@@ -135,7 +136,7 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
         { value: "configured_proxy", label: "使用统一代理" },
       ],
       required: true,
-      help: "仅作用于所有 Provider 上游通道。升级后的默认值为继承 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY。",
+      help: "适用于 Provider 上游请求；本机与内网目标默认直连。其他目标默认继承 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY。",
     },
     {
       key: "provider_proxy_protocol",
@@ -208,13 +209,14 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
     toForm: (item) => ({
       ...(base.toForm?.(item) ?? {}),
       dashboard_timezone: stringifyValue(item.fields?.dashboard_timezone) || "UTC",
+      plugin_marketplace_url: stringifyValue(item.fields?.plugin_marketplace_url) || "",
     }),
   };
 }
 
 export function identityProviderConfig(): ResourceConfig<AdminResource> {
   const fields: FieldConfig[] = [
-    { key: "provider_template", label: "身份源模板", type: "select", options: identityProviderTemplateOptions },
+    { key: "provider_template", label: "身份源模板", type: "select", optionsFromData: identityProviderTemplateOptionsFromData },
     { key: "provider_type", label: "协议", type: "select", options: ["oidc", "oauth2", "saml", "ldap"], required: true },
     { key: "icon_key", label: "登录图标", type: "select", options: identityProviderIconOptions, help: "auto 会根据名称、Issuer URL 和类型自动选择登录页图标。" },
     { key: "login_label", label: "登录按钮名称", placeholder: "Google", help: "留空时按图标、Issuer 或身份源名称自动推断。" },
@@ -360,7 +362,7 @@ export function sqliteBackupConfig(): ResourceConfig<SQLiteBackup> {
 
 export function notificationChannelConfig(): ResourceConfig<AdminResource> {
   const fields: FieldConfig[] = [
-    { key: "type", label: "渠道类型", type: "select", options: notificationChannelTypes, required: true },
+    { key: "type", label: "渠道类型", type: "select", optionsFromData: () => notificationChannelTemplates.map((template) => ({ value: template.type, label: template.label })), required: true },
     { key: "webhook_url", label: "Webhook URL", required: true, visible: notificationChannelUsesIncomingWebhook },
     { key: "secret", label: "签名密钥", type: "password", help: "可选预留。当前按普通机器人 Webhook 发送，留空不影响通知。", visible: notificationChannelUsesIncomingWebhook },
     { key: "telegram_bot_token", label: "Telegram Bot Token", type: "password", required: true, help: "编辑时留空表示不修改。", visible: notificationChannelUsesTelegram },

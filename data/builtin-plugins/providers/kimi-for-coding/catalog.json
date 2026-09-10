@@ -1,0 +1,148 @@
+{
+  "id": "kimi-for-coding",
+  "api": "https://api.kimi.com/coding/v1",
+  "name": "Kimi For Coding",
+  "doc": "https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html",
+  "display_name": "Kimi For Coding",
+  "models": [
+    {
+      "id": "k3",
+      "name": "Kimi K3",
+      "display_name": "Kimi K3",
+      "canonical_name": "kimi-k3",
+      "family": "kimi-k3",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "type": "chat"
+    },
+    {
+      "id": "k3-256k",
+      "name": "Kimi K3 256K",
+      "display_name": "Kimi K3 256K",
+      "canonical_name": "kimi-k3-256k",
+      "family": "kimi-k3",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "type": "chat"
+    },
+    {
+      "id": "kimi-for-coding",
+      "name": "Kimi K2.7 Code",
+      "display_name": "Kimi K2.7 Code",
+      "canonical_name": "kimi-k2.7-code",
+      "family": "kimi-k2.7-code",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "type": "chat"
+    },
+    {
+      "id": "kimi-for-coding-highspeed",
+      "name": "Kimi K2.7 Code HighSpeed",
+      "display_name": "Kimi K2.7 Code HighSpeed",
+      "canonical_name": "kimi-k2.7-code-highspeed",
+      "family": "kimi-k2.7-code",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 262144
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "type": "chat"
+    }
+  ]
+}

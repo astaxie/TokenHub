@@ -193,17 +193,22 @@ func providerWriteRequestFrom(p server.Provider) providerWriteRequest {
 }
 
 // migrationProviderOptions preserves the behavior of Providers that predate
-// the attribution setting. The regular create API may choose a cache-friendly
-// default for a new third-party Provider, while a migration must retain the
-// source Provider's legacy preserve behavior when the option is absent.
+// system prompt transform settings. The regular create API may choose a
+// cache-friendly default for a new third-party Provider, while a migration must
+// retain the source Provider's legacy preserve behavior when the option is absent.
 func migrationProviderOptions(options map[string]string) map[string]string {
 	next := make(map[string]string, len(options)+1)
 	for key, value := range options {
 		next[key] = value
 	}
-	if _, configured := next["claude_code_attribution_policy"]; !configured {
-		next["claude_code_attribution_policy"] = "preserve"
+	if _, configured := next["system_prompt_transform_policy"]; !configured {
+		if legacy, hasLegacy := next["claude_code_attribution_policy"]; hasLegacy {
+			next["system_prompt_transform_policy"] = legacy
+		} else {
+			next["system_prompt_transform_policy"] = "preserve"
+		}
 	}
+	delete(next, "claude_code_attribution_policy")
 	return next
 }
 

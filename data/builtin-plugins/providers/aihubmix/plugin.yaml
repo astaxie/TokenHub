@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.aihubmix"
+name: "AIHubMix"
+version: 1.0.0
+summary: "Connect TokenHub to AIHubMix."
+description: "Connect TokenHub to AIHubMix. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "aihubmix"
+      name: "AIHubMix"
+      display_name: "AIHubMix"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: ""
+      categories: []
+      models_count: 787
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

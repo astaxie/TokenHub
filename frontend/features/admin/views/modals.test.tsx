@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
-import { APIKeyWizardModal } from "./modals";
+import { identityProviderConfig } from "../resources/settings-config";
+import { APIKeyWizardModal, IdentityProviderEditModal } from "./modals";
 
 describe("APIKeyWizardModal", () => {
   it("collects project, purpose, model scope, and limits before issuing a key", async () => {
@@ -57,5 +58,50 @@ describe("APIKeyWizardModal", () => {
       allowed_models: "",
       status: "active",
     }));
+  });
+});
+
+describe("IdentityProviderEditModal", () => {
+  it("renders identity provider templates contributed by plugins", () => {
+    const data = emptyData();
+    data.plugins = [{
+      id: "tokenhub.identity.acme",
+      name: "Acme Identity",
+      version: "1.0.0",
+      source: "marketplace",
+      kinds: ["admin_ui"],
+      placements: ["presentation"],
+      capabilities: [{
+        kind: "identity_provider_template",
+        name: "entry",
+        subject: "acme_sso",
+        value: JSON.stringify({
+          label: "Acme SSO",
+          provider_type: "oidc",
+          icon_key: "sso",
+          login_label: "Acme",
+          issuer_placeholder: "https://id.acme.example",
+          scopes: "openid profile email",
+          username_claim: "preferred_username",
+          email_claim: "email",
+          subject_claim: "sub",
+        }),
+      }],
+    }];
+
+    render(
+      <IdentityProviderEditModal
+        currentUser={null}
+        data={data}
+        loading={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        setValues={vi.fn()}
+        state={{ config: identityProviderConfig(), item: undefined }}
+        values={{}}
+      />,
+    );
+
+    expect(screen.getByText("Acme SSO")).toBeInTheDocument();
   });
 });

@@ -106,8 +106,8 @@ func TestCodexModelCatalogUsesETagAndPersistedSnapshot(t *testing.T) {
 	}
 	requests := 0
 	server := New(store)
-	server.codexSubscription.ModelsURL = "https://chatgpt.example/backend-api/codex/models"
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).ModelsURL = "https://chatgpt.example/backend-api/codex/models"
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		requests++
 		if requests == 2 {
 			if req.Header.Get("If-None-Match") != `"models-v1"` {
@@ -211,6 +211,118 @@ func TestCodexRouteFilteringUsesPerAccountModels(t *testing.T) {
 	}
 }
 
+func TestProviderAccountRouteFilteringUsesPluginAccountModels(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID:      "prv_kimi_pool",
+		Name:    "Kimi Pool",
+		Type:    "kimi_subscription",
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	solResource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_sol",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Sol Account",
+		ResourceType: "kimi_subscription_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("kimi-sol", "kimi-luna"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_luna",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Luna Account",
+		ResourceType: "kimi_subscription_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("kimi-luna"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "kimi-sol", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID:            "route_kimi_sol",
+		ModelName:     "kimi-sol",
+		ProviderID:    provider.ID,
+		ProviderModel: "kimi-sol",
+		Status:        StatusActive,
+	})
+
+	routes, err := store.SelectRouteCandidates("kimi-sol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	filtered, err := New(store).filterProviderAccountRoutesByModel("kimi-sol", routes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || routeResourceID(filtered[0]) != solResource.ID {
+		t.Fatalf("expected only Sol-capable plugin account, got %+v", filtered)
+	}
+}
+
+func TestProviderAccountRouteFilteringIgnoresUndeclaredPluginResourceTypes(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{
+		"kimi_subscription": {"kimi_subscription_account"},
+	})
+	provider := store.AddProvider(Provider{
+		ID:      "prv_kimi_policy_pool",
+		Name:    "Kimi Policy Pool",
+		Type:    "kimi_subscription",
+		Status:  StatusActive,
+		Healthy: true,
+	})
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_policy_luna",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Luna Account",
+		ResourceType: "kimi_subscription_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("kimi-luna"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opaqueResource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_policy_opaque",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Opaque Token",
+		ResourceType: "kimi_ephemeral_token",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      codexCapabilityOptionsForTest("kimi-luna"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "kimi-sol", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID:            "route_kimi_policy_sol",
+		ModelName:     "kimi-sol",
+		ProviderID:    provider.ID,
+		ProviderModel: "kimi-sol",
+		Status:        StatusActive,
+	})
+
+	routes, err := store.SelectRouteCandidates("kimi-sol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	filtered, err := server.filterProviderAccountRoutesByModel("kimi-sol", routes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || routeResourceID(filtered[0]) != opaqueResource.ID {
+		t.Fatalf("expected undeclared plugin resource to bypass account model filtering, got %+v", filtered)
+	}
+}
+
 func TestCodexRouteFilteringUsesPersistedAccountCatalog(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{
@@ -260,9 +372,9 @@ func TestCodexRouteFilteringUsesPersistedAccountCatalog(t *testing.T) {
 	})
 
 	server := New(store)
-	server.codexSubscription.ModelsURL = "https://chatgpt.example/backend-api/codex/models"
+	mustCodexSubscriptionAdapterForTest(t, server).ModelsURL = "https://chatgpt.example/backend-api/codex/models"
 	modelRequests := 0
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		modelRequests++
 		model := "gpt-5.6-luna"
 		if req.Header.Get("ChatGPT-Account-ID") == "account_live_sol" {
@@ -358,7 +470,7 @@ func TestCodexUnsupportedModelFailsOverAndUpdatesAccountModels(t *testing.T) {
 	})
 
 	server := New(store)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.Header.Get("ChatGPT-Account-ID") == "account_unsupported" {
 			return &http.Response{
 				StatusCode: http.StatusBadRequest,
@@ -509,8 +621,8 @@ func TestResponsesRawGenerationControlsAreFilteredOnlyForCodex(t *testing.T) {
 
 	server := New(store)
 	var codexPayloads []map[string]any
-	server.codexSubscription.MaxRequestRetries = 1
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		var payload map[string]any
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode Codex request: %v", err)
@@ -652,8 +764,8 @@ func TestCodexSessionAffinityPersistsRebindsAndPreservesProtocol(t *testing.T) {
 
 	newServer := func() *Server {
 		server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "session-affinity-secret"})
-		server.codexSubscription.Client = &http.Client{Transport: transport}
-		server.codexSubscription.MaxRequestRetries = 1
+		mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: transport}
+		mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
 		return server
 	}
 	invoke := func(server *Server, threadID string) *httptest.ResponseRecorder {
@@ -893,9 +1005,9 @@ func TestCodexCompactConvergesFingerprintAcrossRetriesAndPreservesUpstreamMetada
 	})
 
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "compact-secret"})
-	server.codexSubscription.MaxRequestRetries = 1
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
 	var fingerprintHeaders []http.Header
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/backend-api/codex/responses/compact" {
 			t.Fatalf("unexpected compact path: %s", req.URL.Path)
 		}
@@ -987,368 +1099,6 @@ func TestCodexCompactConvergesFingerprintAcrossRetriesAndPreservesUpstreamMetada
 	}
 }
 
-func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
-	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
-		ID:      "prv_monitoring",
-		Name:    "Codex Monitoring",
-		Type:    ProviderOpenAICodex,
-		Status:  StatusActive,
-		Healthy: true,
-	})
-	resource, err := store.AddProviderResource(ProviderResource{
-		ID:           "rsrc_monitoring",
-		ProviderID:   provider.ID,
-		Name:         "Monitoring Account",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-		Credentials:  &ProviderResourceCredentials{AccessToken: "access_monitoring", AccountID: "account_monitoring"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	store.RecordProviderObservation(ProviderObservation{
-		ProviderID:  provider.ID,
-		ResourceID:  resource.ID,
-		AdapterType: provider.Type,
-		Source:      "active_probe",
-		Operation:   "responses",
-		Success:     true,
-		LatencyMS:   321,
-	})
-	quotaCalls := 0
-	server := New(store)
-	server.codexSubscription.QuotaURL = "https://chatgpt.example/backend-api/wham/usage"
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		quotaCalls++
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body: io.NopCloser(strings.NewReader(
-				`{"plan_type":"pro","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":25,"reset_at":1999999999}}}`,
-			)),
-			Request: req,
-		}, nil
-	})}
-	invoke := func() []ProviderMonitoringSnapshot {
-		request := httptest.NewRequest(http.MethodGet, "/api/admin/providers/monitoring", nil)
-		request.Header.Set("Authorization", "Bearer dev_admin_token")
-		response := httptest.NewRecorder()
-		server.Handler().ServeHTTP(response, request)
-		if response.Code != http.StatusOK {
-			t.Fatalf("monitoring request failed: %d %s", response.Code, response.Body.String())
-		}
-		var payload struct {
-			Data []ProviderMonitoringSnapshot `json:"data"`
-		}
-		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-			t.Fatal(err)
-		}
-		return payload.Data
-	}
-	first := invoke()
-	second := invoke()
-	if quotaCalls != 1 {
-		t.Fatalf("quota cache did not prevent duplicate upstream requests: %d", quotaCalls)
-	}
-	if len(first) != 1 || len(second) != 1 {
-		t.Fatalf("unexpected monitoring snapshots: first=%+v second=%+v", first, second)
-	}
-	snapshot := first[0]
-	if snapshot.State != "healthy" || snapshot.ActiveProbe.Source != "active_probe" ||
-		snapshot.ActiveProbe.LatencyMS != 321 || snapshot.Quota.RemainingPercent != 75 ||
-		snapshot.Quota.SuccessfulAccounts != 1 {
-		t.Fatalf("monitoring did not preserve source semantics or quota: %+v", snapshot)
-	}
-}
-
-func TestProviderMonitoringRecoversFromHistoricalFailure(t *testing.T) {
-	now := time.Now().UTC()
-	signal := observationMonitoringSignal(now, "gateway_request", []ProviderObservation{
-		{Success: false, ErrorCode: "internal_error", ObservedAt: now.Add(-time.Minute)},
-		{Success: true, ObservedAt: now},
-	})
-	if signal.State != "degraded" || signal.SuccessRate != 50 {
-		t.Fatalf("a successful latest request must recover Functional Down: %+v", signal)
-	}
-}
-
-func TestCodexSubscriptionProbeAllowsFastModeForAnyModel(t *testing.T) {
-	adapter := CodexSubscriptionAdapter{
-		Client: &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			var payload map[string]any
-			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-				t.Fatal(err)
-			}
-			reasoning, _ := payload["reasoning"].(map[string]any)
-			if payload["model"] != "gpt-5.4" || payload["service_tier"] != "priority" || reasoning["effort"] != "high" {
-				t.Fatalf("unexpected fast probe payload: %#v", payload)
-			}
-			stream := strings.Join([]string{
-				"event: response.output_text.delta",
-				`data: {"type":"response.output_text.delta","delta":"Fast probe works."}`,
-				"",
-				"event: response.completed",
-				`data: {"type":"response.completed","response":{"id":"resp_fast_probe","status":"completed","service_tier":"priority","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`,
-				"",
-			}, "\n")
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-				Body:       io.NopCloser(strings.NewReader(stream)),
-				Request:    req,
-			}, nil
-		})},
-		RefreshCredentials: func(context.Context, string, bool) (ProviderResourceCredentials, error) {
-			return ProviderResourceCredentials{AccessToken: "access_fast_probe", AccountID: "account_fast_probe"}, nil
-		},
-	}
-	provider := Provider{
-		ID:      "prv_fast_probe",
-		Name:    "Fast Probe",
-		Type:    ProviderOpenAICodex,
-		Status:  StatusActive,
-		Healthy: true,
-		Options: map[string]string{"resource_id": "rsrc_fast_probe"},
-	}
-	resource := ProviderResource{
-		ID:           "rsrc_fast_probe",
-		ProviderID:   provider.ID,
-		Name:         "Fast Probe Account",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-	}
-
-	result, err := adapter.Probe(context.Background(), provider, resource, ProviderProbeRequest{
-		Model:           "gpt-5.4",
-		ReasoningEffort: "high",
-		Speed:           "fast",
-		Prompt:          "Confirm fast mode.",
-	})
-	if err != nil {
-		t.Fatalf("fast probe with non-Luna model failed: %v", err)
-	}
-	if result.Model != "gpt-5.4" || result.Speed != "fast" || result.UpstreamServiceTier != "priority" || result.OutputText != "Fast probe works." {
-		t.Fatalf("unexpected fast probe result: %+v", result)
-	}
-}
-
-func TestProviderTestUsesCodexDefaultProbeProfile(t *testing.T) {
-	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
-		ID:      "prv_default_probe",
-		Name:    "Codex Default Probe",
-		Type:    ProviderOpenAICodex,
-		Status:  StatusActive,
-		Healthy: true,
-	})
-	if _, err := store.AddProviderResource(ProviderResource{
-		ID:           "rsrc_default_probe",
-		ProviderID:   provider.ID,
-		Name:         "Default Probe Account",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-		Credentials:  &ProviderResourceCredentials{AccessToken: "access_probe", AccountID: "account_probe"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	server := New(store)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		var payload map[string]any
-		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-			t.Fatal(err)
-		}
-		reasoning, _ := payload["reasoning"].(map[string]any)
-		if payload["model"] != openAICodexDefaultProbeModel || payload["service_tier"] != nil || reasoning["effort"] != "medium" {
-			t.Fatalf("unexpected default probe profile: %#v", payload)
-		}
-		if _, ok := payload["background"]; ok {
-			t.Fatalf("default Codex probe must omit unsupported background parameter: %#v", payload)
-		}
-		stream := strings.Join([]string{
-			"event: response.output_text.delta",
-			`data: {"type":"response.output_text.delta","delta":"Codex connection works."}`,
-			"",
-			"event: response.completed",
-			`data: {"type":"response.completed","response":{"id":"resp_probe","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`,
-			"",
-		}, "\n")
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-			Body:       io.NopCloser(strings.NewReader(stream)),
-			Request:    req,
-		}, nil
-	})}
-	request := httptest.NewRequest(http.MethodPost, "/api/admin/providers/"+provider.ID+"/test", strings.NewReader(`{}`))
-	request.Header.Set("Authorization", "Bearer dev_admin_token")
-	request.Header.Set("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("provider probe failed: %d %s", response.Code, response.Body.String())
-	}
-	var result ProviderProbeBatchResult
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if result.Succeeded != 1 || result.Failed != 0 || !result.Healthy ||
-		len(result.Results) != 1 || result.Results[0].Speed != "standard" {
-		t.Fatalf("unexpected provider probe result: %+v", result)
-	}
-}
-
-func TestProviderAdapterCompatibilityAndLegacyMigration(t *testing.T) {
-	store := NewMemoryStore()
-	codex := store.AddProvider(Provider{
-		ID:      "prv_strict_codex",
-		Name:    "Strict Codex",
-		Type:    ProviderOpenAICodex,
-		Status:  StatusActive,
-		Healthy: true,
-	})
-	if _, err := store.AddProviderResource(ProviderResource{
-		ProviderID:   codex.ID,
-		Name:         "Invalid API Key",
-		ResourceType: ProviderResourceAPIKey,
-		Status:       StatusActive,
-		Healthy:      true,
-	}); AsHTTPError(err).Code != "provider_adapter_resource_conflict" {
-		t.Fatalf("Codex Provider accepted API-key resource: %v", err)
-	}
-	openAIWithKey := store.AddProvider(Provider{
-		ID:      "prv_strict_openai",
-		Name:    "Strict OpenAI",
-		Type:    ProviderOpenAI,
-		APIKey:  "upstream-real-key",
-		Status:  StatusActive,
-		Healthy: true,
-	})
-	if _, err := store.AddProviderResource(ProviderResource{
-		ProviderID:   openAIWithKey.ID,
-		Name:         "Invalid Subscription",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-	}); AsHTTPError(err).Code != "provider_adapter_resource_conflict" {
-		t.Fatalf("OpenAI API Provider accepted subscription resource: %v", err)
-	}
-	emptyOpenAI := store.AddProvider(Provider{
-		ID:      "prv_auto_codex",
-		Name:    "Auto Codex",
-		Type:    ProviderOpenAI,
-		Status:  StatusActive,
-		Healthy: true,
-	})
-	if _, err := store.AddProviderResource(ProviderResource{
-		ProviderID:   emptyOpenAI.ID,
-		Name:         "First Subscription",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	normalized, ok := integrationProvider(store, emptyOpenAI.ID)
-	if !ok || normalized.Type != ProviderOpenAICodex || normalized.BaseURL != openAICodexBaseURL {
-		t.Fatalf("empty OpenAI Provider was not normalized to Codex: %+v", normalized)
-	}
-
-	legacy := store.AddProvider(Provider{
-		ID:               "prv_legacy_mixed",
-		Name:             "Legacy Mixed",
-		Type:             ProviderOpenAI,
-		APIKey:           "legacy-upstream-key",
-		Status:           StatusActive,
-		Healthy:          true,
-		Priority:         3,
-		Headers:          map[string]string{"X-Tenant": "legacy-tenant-secret"},
-		SensitiveHeaders: []string{"X-Tenant"},
-	})
-	direct := ProviderResource{
-		ID:           "rsrc_legacy_direct",
-		ProviderID:   legacy.ID,
-		Name:         "Legacy Direct",
-		ResourceType: ProviderResourceAPIKey,
-		Status:       StatusActive,
-		Healthy:      true,
-	}
-	subscription := ProviderResource{
-		ID:           "rsrc_legacy_subscription",
-		ProviderID:   legacy.ID,
-		Name:         "Legacy Subscription",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-	}
-	if err := store.db.Create(&direct).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := store.db.Create(&subscription).Error; err != nil {
-		t.Fatal(err)
-	}
-	store.AddModel(Model{Name: "gpt-legacy-codex", Category: "codex", Family: "codex", Modality: "chat", Status: StatusActive})
-	store.AddRoute(ModelRoute{
-		ID:                 "route_legacy_subscription",
-		ModelName:          "gpt-legacy-codex",
-		ProviderID:         legacy.ID,
-		ProviderResourceID: subscription.ID,
-		ProviderModel:      "gpt-legacy-codex",
-		Status:             StatusActive,
-	})
-	store.AddRoute(ModelRoute{
-		ID:            "route_legacy_generic",
-		ModelName:     "gpt-legacy-codex",
-		ProviderID:    legacy.ID,
-		ProviderModel: "gpt-legacy-codex",
-		Status:        StatusActive,
-	})
-	if err := store.NormalizeProviderAdapterTypes(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	providersAfterFirst := store.ListProviders()
-	routesAfterFirst := store.ListRoutes()
-	if err := store.NormalizeProviderAdapterTypes(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.ListProviders()) != len(providersAfterFirst) || len(store.ListRoutes()) != len(routesAfterFirst) {
-		t.Fatalf("legacy migration is not idempotent: providers %d/%d routes %d/%d",
-			len(providersAfterFirst), len(store.ListProviders()), len(routesAfterFirst), len(store.ListRoutes()))
-	}
-	var splitProvider Provider
-	for _, provider := range store.ListProviders() {
-		if provider.Type == ProviderOpenAICodex && provider.ID != emptyOpenAI.ID && provider.ID != codex.ID {
-			splitProvider = provider
-		}
-	}
-	if splitProvider.ID == "" {
-		t.Fatal("mixed legacy Provider was not split")
-	}
-	if len(splitProvider.Headers) != 0 || len(splitProvider.SensitiveHeaders) != 0 {
-		t.Fatalf("Codex split inherited unsupported custom headers: %+v", splitProvider)
-	}
-	directProvider, ok := integrationProvider(store, legacy.ID)
-	if !ok || directProvider.Headers["X-Tenant"] != "legacy-tenant-secret" {
-		t.Fatalf("direct Provider lost its sensitive custom header: %+v", directProvider)
-	}
-	migratedSubscription, ok := integrationProviderResource(store, subscription.ID)
-	if !ok || migratedSubscription.ProviderID != splitProvider.ID {
-		t.Fatalf("subscription resource was not moved to Codex Provider: %+v", migratedSubscription)
-	}
-	migratedRoutes := 0
-	for _, route := range store.ListRoutes() {
-		if route.ProviderID == splitProvider.ID {
-			migratedRoutes++
-		}
-	}
-	if migratedRoutes != 2 {
-		t.Fatalf("expected resource route and cloned generic route on split Provider, got %d", migratedRoutes)
-	}
-}
-
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -1358,7 +1108,7 @@ func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 func codexCapabilityOptionsForTest(models ...string) map[string]string {
 	encoded, _ := json.Marshal(models)
 	return map[string]string{
-		codexResourceSupportedModelsOption: string(encoded),
-		codexResourceModelsFetchedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
+		providerResourceSupportedModelsOption: string(encoded),
+		providerResourceModelsFetchedAtOption: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }

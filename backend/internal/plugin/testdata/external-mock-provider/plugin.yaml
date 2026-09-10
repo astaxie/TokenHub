@@ -1,0 +1,44 @@
+schema_version: 1
+id: tokenhub.provider.external-mock
+name: External Mock Provider
+version: 1.0.0
+description: Contract fixture for a third-party stdio provider plugin.
+tokenhub:
+  plugin_api: v1
+kinds:
+  - provider
+placement:
+  - gateway_chain
+entry:
+  backend:
+    protocol: stdio-json-v1
+    command: provider.sh
+capabilities:
+  provider_types:
+    - external_mock
+  provider_resource_types:
+    - external_mock_account
+  provider:
+    route_protocols:
+      - chat/completions
+      - responses
+    supports_custom_headers: false
+    api_key_required: true
+    credentials_scope: provider
+    default_base_url: https://mock-provider.example/v1
+    error_profile: generic
+    model_discovery:
+      path: /models
+      auth: bearer_header
+  gateway:
+    - chat
+    - chat_stream
+    - responses
+    - responses_stream
+    - embeddings
+    - models
+    - probe
+permissions:
+  data:
+    read:
+      - provider_credentials

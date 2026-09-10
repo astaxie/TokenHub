@@ -1,5 +1,6 @@
 "use client";
 
+import { StatementLauncher } from "./billing-statements";
 import { Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type ApiContext, type ProviderModel } from "../core/types";
@@ -144,6 +145,7 @@ export function ProviderModelInventory({
                     <button className="text-button provider-cost-save" disabled={savingID === model.id} onClick={() => void save(model)} type="button">
                       <Save size={14} />{tx(savingID === model.id ? "保存中" : "保存成本")}
                     </button>
+                    <StatementLauncher api={api} side="provider" providerID={model.provider_id} model={model.upstream_model} />
                   </td>
                 </tr>
               );

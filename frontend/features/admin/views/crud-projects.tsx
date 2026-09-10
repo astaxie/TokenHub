@@ -2,19 +2,21 @@ import { Plus, RefreshCw, Search, Trash2, UserRoundCheck, X } from "lucide-react
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { appRole } from "../core/navigation";
-import { type AdminResource, type AdminUser, type ApiContext, type AppData, type AuditEvent, type OpenAIAccountQuota, type OpenAIQuotaWindow, type Project, type Provider, type ProviderMonitoringSnapshot, type ProviderQuotaSummary, type ProviderResource, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type ToolbarAction } from "../core/types";
+import { type AdminResource, type AdminUser, type ApiContext, type AppData, type AuditEvent, type Project, type Provider, type ProviderAccountQuota, type ProviderMonitoringSnapshot, type ProviderQuotaSummary, type ProviderResource, type ProviderQuotaWindow, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type ToolbarAction } from "../core/types";
 import { notificationChannelLabel } from "../domain/catalog";
 import { providerDisplayBaseURL, providerDisplayName, providerDisplayType, providerRoutesFor, providerRouteSummary, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
 import { providerLatencyLabel, providerPerformanceExplanation, providerQualityScoreLabel } from "../domain/provider-monitoring";
-import { enumValueLabel, providerTypeLabel, reportDatasetLabel, roleLabel } from "../domain/labels";
+import { isProviderAccountResource } from "../domain/provider-resource-types";
+import { enumValueLabel, providerTypeLabelFromData, reportDatasetLabel, roleLabel } from "../domain/labels";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
 import { reportExportDefinitions } from "../resources/governance-config";
-import { adminFetch, readAdminError } from "../resources/payloads";
+import { providerPluginActionForResourceCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
 import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
 import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
+import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent } from "./provider-account-ui";
 import { latencyDisplay, requestLogFailed } from "./overview";
 import { PaginationControls, type PaginationState } from "../shared/pagination";
 import { APIKeyFlowHint, EntityTable, ResourceEmptyState, resultCountLabel, RouteStrategyHint, TableSkeleton } from "./settings-table";
@@ -221,7 +223,7 @@ export type ProviderProbeTone = "ok" | "warn" | "down" | "na";
 
 export type ProviderTrendTone = "success" | "warning" | "failure" | "none";
 
-export type ProviderMonitorSampleSource = "codex_test" | "gateway_request";
+export type ProviderMonitorSampleSource = "resource_test" | "gateway_request";
 
 export type ProviderMonitorSample = {
   created_at: string;
@@ -287,9 +289,9 @@ export function ProviderChannelTable({
     if (!api) return;
     setQuotaRefreshing((current) => ({ ...current, [resource.id]: true }));
     try {
-      const resp = await adminFetch(api, `/api/admin/provider-resources/${resource.id}/quota?refresh=true`);
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("查询 Codex 套餐")));
-      const quota = (await resp.json()) as OpenAIAccountQuota;
+      const action = providerQuotaReadAction(data, resource);
+      if (!action) throw new Error(tx("该插件动作尚未注册。"));
+      const quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: true }, tx("查询账号配额"));
       const snapshot = data.providerMonitoring.find((item) => item.provider.id === resource.provider_id);
       if (snapshot) {
         setQuotaOverrides((current) => ({
@@ -329,7 +331,7 @@ export function ProviderChannelTable({
     <section className="provider-channel-list" aria-label={tx("Provider 可用性监控")}>
       <div className="provider-monitor-head">
         <div>
-          <p className="eyebrow">Provider Availability</p>
+          <p className="eyebrow">{tx("上游可用性")}</p>
           <h2>{tx("Provider 渠道与可用性")}</h2>
         </div>
         <div className="provider-monitor-summary" aria-label={tx("Provider 健康摘要")}>
@@ -348,7 +350,7 @@ export function ProviderChannelTable({
               <th>{tx("模型、路由与账号")}</th>
               <th>{tx("真实监控 · L3")}</th>
               <th>{tx("性能与质量")}</th>
-              <th>{tx("Codex 套餐")}</th>
+              <th>{tx("账号配额")}</th>
               <th>{tx("操作")}</th>
             </tr>
           </thead>
@@ -364,7 +366,7 @@ export function ProviderChannelTable({
                     <div>
                       <strong>{providerDisplayName(row.provider, row.resources)}</strong>
                       <span title={providerDisplayBaseURL(row.provider, row.resources)}>
-                        {providerTypeLabel(providerDisplayType(row.provider, row.resources))} · {providerDisplayBaseURL(row.provider, row.resources)}
+                        {providerTypeLabelFromData(data, providerDisplayType(row.provider, row.resources))} · {providerDisplayBaseURL(row.provider, row.resources)}
                       </span>
                     </div>
                   </div>
@@ -414,7 +416,7 @@ export function ProviderChannelTable({
                     <small className="provider-monitor-subtle">{tx(providerPerformanceExplanation)}</small>
                   </div>
                 </td>
-                <td><ProviderCodexQuota quota={row.quota} refreshing={quotaRefreshing} resources={row.resources} onRefresh={refreshQuota} /></td>
+                <td><ProviderAccountQuota quota={row.quota} refreshing={quotaRefreshing} resources={row.resources} onRefresh={refreshQuota} /></td>
                 <td>
                   <div className="row-actions provider-channel-actions">
                     {(config.actions ?? [])
@@ -456,7 +458,12 @@ export function ProviderChannelTable({
   );
 }
 
-export function ProviderCodexQuota({
+export function providerQuotaReadAction(data: AppData, resource: ProviderResource) {
+  const providerType = data.providers.find((provider) => provider.id === resource.provider_id)?.type ?? "";
+  return providerPluginActionForResourceCapability(data.pluginActions, providerType, resource.resource_type, "quota.read");
+}
+
+export function ProviderAccountQuota({
   quota,
   refreshing,
   resources,
@@ -488,19 +495,19 @@ export function ProviderCodexQuota({
     if (closeTimer.current) clearTimeout(closeTimer.current);
   }, []);
 
-  if (!quota.supported) return <span className="provider-codex-quota na">-</span>;
+  if (!quota.supported) return <span className="provider-account-quota na">-</span>;
   const accounts = quota.accounts ?? [];
   if (accounts.length === 0 || quota.successful_accounts === 0) {
     const error = accounts.find((account) => account.error_code)?.error_code;
-    return <span className="provider-codex-quota error" title={error}>{tx("查询失败")}</span>;
+    return <span className="provider-account-quota error" title={error}>{tx("查询失败")}</span>;
   }
   const remaining = quota.remaining_percent ?? 100;
   const plan = quota.plan_type || "-";
   const limited = quota.limit_reached;
   return (
-    <div className="provider-codex-quota-wrap" onMouseLeave={schedulePopoverClose}>
+    <div className="provider-account-quota-wrap" onMouseLeave={schedulePopoverClose}>
       <button
-        className={`provider-codex-quota ${limited ? "limited" : "available"}`}
+        className={`provider-account-quota ${limited ? "limited" : "available"}`}
         onBlur={schedulePopoverClose}
         onFocus={(event) => showPopover(event.currentTarget)}
         onMouseEnter={(event) => showPopover(event.currentTarget)}
@@ -512,7 +519,7 @@ export function ProviderCodexQuota({
       </button>
       {popoverPosition && typeof document !== "undefined" ? createPortal(
         <div
-          className="provider-codex-accounts-popover"
+          className="provider-account-quota-popover"
           onFocus={keepPopover}
           onMouseEnter={keepPopover}
           onMouseLeave={schedulePopoverClose}
@@ -524,14 +531,14 @@ export function ProviderCodexQuota({
             const accountQuota = account.quota;
             const accountLabel = resource?.credential_summary?.account_email || resource?.credential_summary?.account_id || account.resource_name;
             const accountPlan = accountQuota?.plan_type || resource?.credential_summary?.plan_type || "-";
-            const accountLimited = accountQuota?.rate_limit?.limit_reached || accountQuota?.rate_limit?.allowed === false;
+            const accountLimited = providerAccountQuotaIsLimited(accountQuota);
             return (
-              <div className="provider-codex-account" key={account.resource_id}>
+              <div className="provider-account-quota-row" key={account.resource_id}>
                 <div>
                   <strong title={accountLabel}>{accountLabel}</strong>
                   {accountQuota ? (
                     <span className={accountLimited ? "limited" : ""}>
-                      {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))}% · {quotaResetLabel(accountQuota.rate_limit?.primary_window)}
+                      {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))}% · {quotaResetLabel(providerAccountQuotaPrimaryWindow(accountQuota))}
                     </span>
                   ) : (
                     <span className="limited" title={account.error_code}>
@@ -557,19 +564,17 @@ export function ProviderCodexQuota({
   );
 }
 
-function quotaRemainingPercent(quota: OpenAIAccountQuota) {
-  const used = quota.rate_limit?.primary_window?.used_percent;
-  if (!Number.isFinite(used)) return quota.rate_limit?.allowed === false ? 0 : 100;
-  return clampNumber(100 - Number(used), 0, 100);
+function quotaRemainingPercent(quota: ProviderAccountQuota) {
+  return providerAccountQuotaRemainingPercent(quota);
 }
 
-function quotaResetLabel(window?: OpenAIQuotaWindow) {
+function quotaResetLabel(window?: ProviderQuotaWindow) {
   if (!window) return tx("无重置信息");
-  if (window.reset_at > 0) {
-    return new Date(window.reset_at * 1000).toLocaleString(languageLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  if ((window.reset_at ?? 0) > 0) {
+    return new Date((window.reset_at ?? 0) * 1000).toLocaleString(languageLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
-  if (window.reset_after_seconds > 0) {
-    const hours = Math.ceil(window.reset_after_seconds / 3600);
+  if ((window.reset_after_seconds ?? 0) > 0) {
+    const hours = Math.ceil((window.reset_after_seconds ?? 0) / 3600);
     return hours > 1 ? `${hours} ${tx("小时后重置")}` : tx("1 小时内重置");
   }
   return tx("即将重置");
@@ -584,7 +589,7 @@ function formatQuotaPercent(value: number) {
   return String(Math.round(value * 10) / 10);
 }
 
-function updateProviderQuotaSummary(summary: ProviderQuotaSummary, resource: ProviderResource, quota: OpenAIAccountQuota): ProviderQuotaSummary {
+function updateProviderQuotaSummary(summary: ProviderQuotaSummary, resource: ProviderResource, quota: ProviderAccountQuota): ProviderQuotaSummary {
   const accounts = (summary.accounts ?? []).filter((account) => account.resource_id !== resource.id);
   accounts.push({ resource_id: resource.id, resource_name: resource.name, quota });
   return recalculateProviderQuotaSummary({ ...summary, accounts });
@@ -607,7 +612,7 @@ function recalculateProviderQuotaSummary(summary: ProviderQuotaSummary): Provide
     successful_accounts: successful.length,
     failed_accounts: (summary.accounts?.length ?? 0) - successful.length,
     remaining_percent: limiting?.quota ? quotaRemainingPercent(limiting.quota) : undefined,
-    limit_reached: successful.some((account) => account.quota?.rate_limit?.limit_reached || account.quota?.rate_limit?.allowed === false),
+    limit_reached: successful.some((account) => providerAccountQuotaIsLimited(account.quota)),
     plan_type: limiting?.quota?.plan_type,
   };
 }
@@ -641,12 +646,16 @@ export function providerMonitorRowsFromSnapshots(
 }
 
 export function providerChannelAccountDetail(resources: ProviderResource[]) {
-  const accounts = resources.filter((resource) => resource.resource_type === "openai_subscription");
+  const accounts = providerAccountResources(resources);
   if (accounts.length === 0) return "";
   const active = accounts.filter((resource) => resource.status === "active" && resource.healthy).length;
   const first = accounts[0];
-  const label = first.credential_summary?.account_email || first.credential_summary?.account_id || first.name || tx("OpenAI 账号资源");
+  const label = first.credential_summary?.account_email || first.credential_summary?.account_id || first.name || tx("账号资源");
   return `${active}/${accounts.length} ${tx("启用")} · ${label}`;
+}
+
+function providerAccountResources(resources: ProviderResource[]) {
+  return resources.filter(isProviderAccountResource);
 }
 
 function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitoringSnapshot, quotaOverride?: ProviderQuotaSummary): ProviderMonitorRow {
@@ -672,7 +681,7 @@ function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitor
     latencyMS: observedSignal.latency_ms ?? 0,
     availability24h: observedSignal.success_rate ?? 0,
     observed24h: observed,
-    sampleSource: observedSignal.source === "active_probe" ? "codex_test" : "gateway_request",
+    sampleSource: observedSignal.source === "active_probe" ? "resource_test" : "gateway_request",
     quota: quotaOverride ?? snapshot.quota,
     qualityScore: snapshot.quality_score,
     trend: snapshot.trend,
@@ -739,8 +748,8 @@ export function providerMonitorRow(data: AppData, provider: Provider): ProviderM
     activeRouteCount,
     statusTone,
     statusLabel: providerStatusLabel(statusTone),
-    statusDetail: sampleSource === "codex_test"
-      ? providerCodexTestStatusDetail(samples, resources)
+    statusDetail: sampleSource === "resource_test"
+      ? providerResourceTestStatusDetail(samples, providerAccountResources(resources))
       : providerStatusDetail(provider, logs, resources),
     basicPrimaryTone: healthyProvider ? "ok" : "down",
     basicPrimaryDetail: provider.status === "active" ? tx("Provider 在线") : enumValueLabel(provider.status),
@@ -750,8 +759,8 @@ export function providerMonitorRow(data: AppData, provider: Provider): ProviderM
       : tx("未配置账号资源"),
     realTone: providerRealProbeTone(observed24h, availability24h, warning24h.length, failed24h),
     realDetail: observed24h
-      ? `${providerPercent(availability24h)} · ${providerObservationCount(recent24h.length, sampleSource === "codex_test")}`
-      : tx(sampleSource === "codex_test" ? "无 Codex 测试" : "无真实请求"),
+      ? `${providerPercent(availability24h)} · ${providerObservationCount(recent24h.length, sampleSource === "resource_test")}`
+      : tx(sampleSource === "resource_test" ? "无账号资源测试" : "无真实请求"),
     latencyMS,
     availability24h,
     observed24h,
@@ -769,9 +778,9 @@ function providerObservationCount(count: number, test: boolean) {
 }
 
 export function providerMonitorSamples(data: AppData, provider: Provider, resources: ProviderResource[]): { source: ProviderMonitorSampleSource; samples: ProviderMonitorSample[] } {
-  const codexResources = resources.filter((resource) => resource.resource_type === "openai_subscription");
-  if (codexResources.length > 0) {
-    return { source: "codex_test", samples: providerCodexTestSamples(data.auditEvents, codexResources) };
+  const accountResources = providerAccountResources(resources);
+  if (accountResources.length > 0) {
+    return { source: "resource_test", samples: providerResourceTestSamples(data.auditEvents, accountResources) };
   }
   const samples = providerLogsFor(data, provider, resources).map((log) => ({
     created_at: log.created_at,
@@ -782,7 +791,7 @@ export function providerMonitorSamples(data: AppData, provider: Provider, resour
   return { source: "gateway_request", samples };
 }
 
-export function providerCodexTestSamples(events: AuditEvent[], resources: ProviderResource[]): ProviderMonitorSample[] {
+export function providerResourceTestSamples(events: AuditEvent[], resources: ProviderResource[]): ProviderMonitorSample[] {
   const resourceIDs = new Set(resources.map((resource) => resource.id));
   return events
     .filter((event) => event.action === "test" && event.resource_type === "provider_resource" && resourceIDs.has(event.resource_id))
@@ -798,7 +807,7 @@ export function providerCodexTestSamples(events: AuditEvent[], resources: Provid
     .sort((left, right) => safeTime(left.created_at) - safeTime(right.created_at));
 }
 
-export function providerCodexTestStatusDetail(samples: ProviderMonitorSample[], resources: ProviderResource[]) {
+export function providerResourceTestStatusDetail(samples: ProviderMonitorSample[], resources: ProviderResource[]) {
   const latest = samples[samples.length - 1];
   if (latest?.error_code) return `${timeLabel(latest.created_at)} · ${latest.error_code}`;
   if (latest) return timeLabel(latest.created_at);
@@ -806,7 +815,7 @@ export function providerCodexTestStatusDetail(samples: ProviderMonitorSample[], 
     .map((resource) => resource.last_checked_at || resource.updated_at || "")
     .filter(Boolean)
     .sort((left, right) => safeTime(right) - safeTime(left))[0];
-  return latestResourceCheck ? timeLabel(latestResourceCheck) : tx("等待 Codex 测试");
+  return latestResourceCheck ? timeLabel(latestResourceCheck) : tx("等待账号资源测试");
 }
 
 export function auditSnapshot(value: string | undefined): Record<string, unknown> {
