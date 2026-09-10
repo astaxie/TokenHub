@@ -83,6 +83,40 @@ func TestCodexSubscriptionModelsUsesLiveVisibleCatalog(t *testing.T) {
 	}
 }
 
+func TestCodexSubscriptionModelsUsesAstraCapableClientFingerprint(t *testing.T) {
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if got := req.URL.Query().Get("client_version"); got != "0.153.4" {
+			t.Fatalf("client_version = %q, want Astra-capable version 0.153.4", got)
+		}
+		if got := req.Header.Get("Version"); got != "0.153.4" {
+			t.Fatalf("Version header = %q, want 0.153.4", got)
+		}
+		if got := req.Header.Get("User-Agent"); !strings.HasPrefix(got, "codex_cli_rs/0.153.4 ") {
+			t.Fatalf("User-Agent = %q, want Codex CLI 0.153.4", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body: io.NopCloser(strings.NewReader(
+				`{"models":[{"slug":"gpt-6-astra","display_name":"GPT-6 Astra","visibility":"list","supported_in_api":true,"priority":1,"minimal_client_version":"0.153.0"}]}`,
+			)),
+			Request: req,
+		}, nil
+	})}
+	adapter := CodexSubscriptionAdapter{Client: client, ModelsURL: "https://chatgpt.example/backend-api/codex/models"}
+
+	catalog, err := adapter.ModelsWithCredentials(context.Background(), ProviderResourceCredentials{
+		AccessToken: "access_astra",
+		AccountID:   "account_astra",
+	})
+	if err != nil {
+		t.Fatalf("list Astra-capable Codex models: %v", err)
+	}
+	if len(catalog.Models) != 1 || catalog.Models[0].ID != "gpt-6-astra" {
+		t.Fatalf("Astra missing from catalog: %+v", catalog.Models)
+	}
+}
+
 func TestCodexModelCatalogUsesETagAndPersistedSnapshot(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{
