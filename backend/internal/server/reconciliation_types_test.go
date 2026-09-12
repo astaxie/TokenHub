@@ -5,8 +5,12 @@ import (
 
 	"tokenhub/backend/internal/billing"
 	"tokenhub/backend/internal/reconciliation"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 )
 
+// These wire representations keep the pre-extraction server characterization
+// tests readable. Production code uses reconciliation's tag-free domain types
+// and persistence rows directly.
 type BillingConnector = billing.Connector
 type BillingRecord = billing.Record
 
@@ -14,9 +18,7 @@ const (
 	BillingConnectorAliyun = billing.ConnectorAliyun
 	BillingConnectorNewAPI = billing.ConnectorNewAPI
 	BillingConnectorOneAPI = billing.ConnectorOneAPI
-)
 
-const (
 	ReconciliationGranularityDetail = reconciliation.GranularityDetail
 	ReconciliationGranularityHour   = reconciliation.GranularityHour
 	ReconciliationGranularityDay    = reconciliation.GranularityDay
@@ -32,9 +34,6 @@ const (
 	ReconciliationRunFailed    = reconciliation.RunFailed
 )
 
-// ReconciliationRule is the mutable, scheduled configuration used to compare
-// one external billing source with TokenHub usage. Every run copies the rule
-// fields below so later edits cannot change the meaning of historical results.
 type ReconciliationRule struct {
 	ID                      string                       `json:"id" gorm:"primaryKey"`
 	Name                    string                       `json:"name"`
@@ -64,42 +63,6 @@ type ReconciliationRule struct {
 	UpdatedAt               time.Time                    `json:"updated_at"`
 }
 
-type ReconciliationRuleRequest struct {
-	Name                    string                       `json:"name"`
-	ConnectorID             string                       `json:"connector_id"`
-	Status                  string                       `json:"status"`
-	Granularity             string                       `json:"granularity"`
-	MatchDimensions         []string                     `json:"match_dimensions"`
-	DimensionMappings       map[string]map[string]string `json:"dimension_mappings"`
-	AmountTolerance         string                       `json:"amount_tolerance"`
-	RatioTolerance          string                       `json:"ratio_tolerance"`
-	USDExchangeRate         string                       `json:"usd_exchange_rate"`
-	TimeWindowMinutes       int                          `json:"time_window_minutes"`
-	BillingDelayMinutes     int                          `json:"billing_delay_minutes"`
-	ScheduleIntervalMinutes int                          `json:"schedule_interval_minutes"`
-	Timezone                string                       `json:"timezone"`
-	Currency                string                       `json:"currency"`
-}
-
-type ReconciliationRulePatchRequest struct {
-	Name                    *string                       `json:"name"`
-	Status                  *string                       `json:"status"`
-	Granularity             *string                       `json:"granularity"`
-	MatchDimensions         *[]string                     `json:"match_dimensions"`
-	DimensionMappings       *map[string]map[string]string `json:"dimension_mappings"`
-	AmountTolerance         *string                       `json:"amount_tolerance"`
-	RatioTolerance          *string                       `json:"ratio_tolerance"`
-	USDExchangeRate         *string                       `json:"usd_exchange_rate"`
-	TimeWindowMinutes       *int                          `json:"time_window_minutes"`
-	BillingDelayMinutes     *int                          `json:"billing_delay_minutes"`
-	ScheduleIntervalMinutes *int                          `json:"schedule_interval_minutes"`
-	Timezone                *string                       `json:"timezone"`
-	Currency                *string                       `json:"currency"`
-}
-
-// ReconciliationRun is an immutable rule snapshot plus the summary generated
-// from a specific billing period. An unlocked run may be recalculated from the
-// same snapshot; locking freezes it for audit and export.
 type ReconciliationRun struct {
 	ID                  string                       `json:"id" gorm:"primaryKey"`
 	RuleID              string                       `json:"rule_id" gorm:"index"`
@@ -142,14 +105,6 @@ type ReconciliationRun struct {
 	ErrorMessage        string                       `json:"error_message,omitempty"`
 }
 
-type ReconciliationRunRequest struct {
-	PeriodStart time.Time `json:"period_start"`
-	PeriodEnd   time.Time `json:"period_end"`
-}
-
-// ReconciliationItem is a traceable match bucket. ResourceAccount is retained
-// for deterministic recomputation but never serialized; API and CSV consumers
-// receive only ResourceAccountMasked.
 type ReconciliationItem struct {
 	ID                    string    `json:"id" gorm:"primaryKey"`
 	RunID                 string    `json:"run_id" gorm:"index"`
@@ -182,28 +137,4 @@ type ReconciliationDetail struct {
 	Offset int                  `json:"offset"`
 }
 
-type ReconciliationStore interface {
-	CreateReconciliationRule(rule ReconciliationRule) (ReconciliationRule, error)
-	ListReconciliationRules() []ReconciliationRule
-	GetReconciliationRule(id string) (ReconciliationRule, error)
-	UpdateReconciliationRule(rule ReconciliationRule) (ReconciliationRule, error)
-	BackfillReconciliationRuleConnectorSnapshot(rule ReconciliationRule) (ReconciliationRule, error)
-	ListDueReconciliationRules(now time.Time, limit int) []ReconciliationRule
-	ListReconciliationUsages(from time.Time, to time.Time, window time.Duration) ([]UsageRecord, error)
-	SaveReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)
-	ReplaceReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)
-	ListReconciliationRuns(ruleID string, limit int) []ReconciliationRun
-	GetReconciliationRun(id string) (ReconciliationRun, error)
-	ListReconciliationItems(runID string, status string, limit int, offset int) ([]ReconciliationItem, int64)
-	ListReconciliationItemBatch(runID string, status string, afterID string, excludeMatched bool, limit int) []ReconciliationItem
-	LockReconciliationRun(id string, actor string) (ReconciliationRun, error)
-	RecordScheduledReconciliationAudit(run ReconciliationRun)
-}
-
-// ReconciliationBillingReader is owned by the reconciliation consumer. It
-// exposes only the billing projections required to snapshot a connector and
-// calculate a run.
-type ReconciliationBillingReader interface {
-	GetBillingConnector(id string, includeCredentials bool) (BillingConnector, error)
-	ListBillingRecordsInRange(connectorID string, from, to time.Time) ([]BillingRecord, error)
-}
+type ReconciliationBillingReader = reconciliationpersistence.BillingSource

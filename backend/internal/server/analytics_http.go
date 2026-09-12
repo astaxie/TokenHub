@@ -24,6 +24,14 @@ const (
 	tokenCostCursorVersion        = 3
 )
 
+func safeAnalyticsCSVCell(value string) string {
+	trimmed := strings.TrimLeft(value, " \t\r\n")
+	if trimmed != "" && strings.ContainsRune("=+-@", rune(trimmed[0])) {
+		return "'" + value
+	}
+	return value
+}
+
 type tokenCostCursor struct {
 	Version         int                  `json:"v"`
 	AfterAt         time.Time            `json:"after_at"`
@@ -533,11 +541,11 @@ func writeTokenCostCSV(w http.ResponseWriter, rows []TokenCostRow) error {
 	}
 	for _, row := range rows {
 		if err := writer.Write([]string{
-			safeReconciliationCSVCell(row.DedupeKey), safeReconciliationCSVCell(row.Bucket),
-			safeReconciliationCSVCell(row.RequestID), safeReconciliationCSVCell(row.OccurredAt),
-			safeReconciliationCSVCell(row.ProjectID), safeReconciliationCSVCell(row.UserID),
-			safeReconciliationCSVCell(row.APIKeyID), safeReconciliationCSVCell(row.ProviderID),
-			safeReconciliationCSVCell(row.Model), safeReconciliationCSVCell(row.Status), strconv.Itoa(row.StatusCode),
+			safeAnalyticsCSVCell(row.DedupeKey), safeAnalyticsCSVCell(row.Bucket),
+			safeAnalyticsCSVCell(row.RequestID), safeAnalyticsCSVCell(row.OccurredAt),
+			safeAnalyticsCSVCell(row.ProjectID), safeAnalyticsCSVCell(row.UserID),
+			safeAnalyticsCSVCell(row.APIKeyID), safeAnalyticsCSVCell(row.ProviderID),
+			safeAnalyticsCSVCell(row.Model), safeAnalyticsCSVCell(row.Status), strconv.Itoa(row.StatusCode),
 			strconv.FormatInt(row.Metrics.RequestCount, 10), strconv.FormatInt(row.Metrics.ErrorCount, 10),
 			strconv.FormatInt(row.Metrics.InputTokens, 10), strconv.FormatInt(row.Metrics.CachedInputTokens, 10),
 			strconv.FormatInt(row.Metrics.CacheWriteTokens, 10), strconv.FormatInt(row.Metrics.OutputTokens, 10),

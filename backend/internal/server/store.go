@@ -9,6 +9,7 @@ import (
 	"tokenhub/backend/internal/billing"
 	billingpersistence "tokenhub/backend/internal/billing/persistence"
 	"tokenhub/backend/internal/guardrails"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 
 	"gorm.io/gorm"
 )
@@ -110,7 +111,6 @@ type ProviderObservation struct {
 }
 
 type Store interface {
-	ReconciliationStore
 	CreateProject(project Project) Project
 	CreateProjectChecked(project Project) (Project, error)
 	ListProjects() []Project
@@ -322,6 +322,7 @@ type GormStore struct {
 	billingRedis                 *redisBillingCoordinator
 	billingRepository            billing.Repository
 	billingPersistence           *billingpersistence.Store
+	reconciliationPersistence    *reconciliationpersistence.Store
 }
 
 // BillingRepositoryForComposition is deliberately outside Store. Only the
@@ -331,7 +332,7 @@ func (s *GormStore) BillingRepositoryForComposition() billing.Repository {
 	return s.billingRepository
 }
 
-func (s *GormStore) BillingReaderForComposition() ReconciliationBillingReader {
+func (s *GormStore) BillingReaderForComposition() reconciliationpersistence.BillingSource {
 	return s.billingPersistence
 }
 

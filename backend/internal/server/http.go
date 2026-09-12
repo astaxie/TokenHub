@@ -18,59 +18,64 @@ import (
 	billingadapters "tokenhub/backend/internal/billing/adapters"
 	"tokenhub/backend/internal/guardrails"
 	pluginmeta "tokenhub/backend/internal/plugin"
+	"tokenhub/backend/internal/reconciliation"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 )
 
 type Server struct {
-	pluginRuntimeMu         sync.RWMutex
-	pluginLifecycleMu       sync.Mutex
-	store                   Store
-	pluginRegistry          *pluginmeta.Registry
-	gatewayChain            *pluginmeta.GatewayChainRegistry
-	gatewayHooks            *pluginmeta.GatewayHookRunner
-	adminUI                 *pluginmeta.AdminUIRegistry
-	pluginActions           *pluginmeta.ActionBroker
-	pluginBackgroundJobs    *pluginmeta.BackgroundJobBroker
-	pluginBackgroundRunner  *pluginmeta.BackgroundJobRunner
-	adapterRegistry         *AdapterRegistry
-	builtinProviderAdapters map[string]any
-	integrations            *IntegrationService
-	providerCatalog         *providerCatalogService
-	billing                 *billing.Service
-	billingAdmin            *admin.BillingHandler
-	billingAvailable        bool
-	reconciliation          *ReconciliationService
-	credentialRefresh       *ProviderCredentialRefreshService
-	payloadRetention        *requestPayloadRetentionService
-	mux                     *http.ServeMux
-	publicGatewayOperations map[gatewayOperation]bool
-	config                  Config
-	metrics                 *GatewayMetrics
-	traceEmitter            TraceEmitter
-	imageStorageDir         string
-	imageRunner             func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
-	imageContext            context.Context
-	imageCancel             context.CancelFunc
-	imageQueue              chan imageJobWork
-	imageWorkerStart        sync.Once
-	imageWorkerStop         sync.Once
-	imageWorkerGroup        sync.WaitGroup
-	imageAccountMu          sync.Mutex
-	imageAccountSlots       map[string]chan struct{}
-	responseContext         context.Context
-	responseCancel          context.CancelFunc
-	responseWorkerStart     sync.Once
-	responseWorkerStop      sync.Once
-	responseWorkerGroup     sync.WaitGroup
-	responseInstanceID      string
-	stopHeartbeat           func()
-	versions                *versionService
-	guardrailEngine         *guardrails.Engine
-	upstreamClient          *http.Client
-	pluginInstallClient     *http.Client
-	pluginMarketplaceClient *http.Client
-	syntheticDNSPolicy      *providerSyntheticDNSPolicy
-	providerProxyPolicy     *providerProxyPolicy
-	syntheticDNSSetting     sync.Mutex
+	pluginRuntimeMu                  sync.RWMutex
+	pluginLifecycleMu                sync.Mutex
+	store                            Store
+	pluginRegistry                   *pluginmeta.Registry
+	gatewayChain                     *pluginmeta.GatewayChainRegistry
+	gatewayHooks                     *pluginmeta.GatewayHookRunner
+	adminUI                          *pluginmeta.AdminUIRegistry
+	pluginActions                    *pluginmeta.ActionBroker
+	pluginBackgroundJobs             *pluginmeta.BackgroundJobBroker
+	pluginBackgroundRunner           *pluginmeta.BackgroundJobRunner
+	adapterRegistry                  *AdapterRegistry
+	builtinProviderAdapters          map[string]any
+	integrations                     *IntegrationService
+	providerCatalog                  *providerCatalogService
+	billing                          *billing.Service
+	billingAdmin                     *admin.BillingHandler
+	billingAvailable                 bool
+	reconciliationReadAvailable      bool
+	reconciliationExecutionAvailable bool
+	reconciliation                   *reconciliation.Service
+	reconciliationAdmin              *admin.ReconciliationHandler
+	credentialRefresh                *ProviderCredentialRefreshService
+	payloadRetention                 *requestPayloadRetentionService
+	mux                              *http.ServeMux
+	publicGatewayOperations          map[gatewayOperation]bool
+	config                           Config
+	metrics                          *GatewayMetrics
+	traceEmitter                     TraceEmitter
+	imageStorageDir                  string
+	imageRunner                      func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
+	imageContext                     context.Context
+	imageCancel                      context.CancelFunc
+	imageQueue                       chan imageJobWork
+	imageWorkerStart                 sync.Once
+	imageWorkerStop                  sync.Once
+	imageWorkerGroup                 sync.WaitGroup
+	imageAccountMu                   sync.Mutex
+	imageAccountSlots                map[string]chan struct{}
+	responseContext                  context.Context
+	responseCancel                   context.CancelFunc
+	responseWorkerStart              sync.Once
+	responseWorkerStop               sync.Once
+	responseWorkerGroup              sync.WaitGroup
+	responseInstanceID               string
+	stopHeartbeat                    func()
+	versions                         *versionService
+	guardrailEngine                  *guardrails.Engine
+	upstreamClient                   *http.Client
+	pluginInstallClient              *http.Client
+	pluginMarketplaceClient          *http.Client
+	syntheticDNSPolicy               *providerSyntheticDNSPolicy
+	providerProxyPolicy              *providerProxyPolicy
+	syntheticDNSSetting              sync.Mutex
 	// smtpRootCAs is a test seam for implicit-TLS SMTP delivery. When nil the
 	// production dial validates the server certificate against the platform
 	// roots; tests inject the in-process fake server's certificate here.
@@ -82,26 +87,37 @@ func New(store Store) *Server {
 }
 
 func NewWithConfig(store Store, config Config) *Server {
-	return newWithConfig(store, config, billingDependenciesFromStore(store))
+	return newWithConfig(store, config, applicationDependenciesForCompatibility(store))
 }
 
-// BillingDependencies are composition-only billing capabilities. They allow a
-// Store decorator to preserve billing behavior without widening Store itself.
-type BillingDependencies struct {
+// ApplicationDependencies are the domain capabilities supplied by the
+// composition root. They are deliberately separate from Store.
+type ApplicationDependencies struct {
 	Repository           billing.Repository
-	ReconciliationReader ReconciliationBillingReader
+	ReconciliationReader reconciliationpersistence.BillingSource
+	ReconciliationStore  reconciliation.Store
 }
 
-// NewWithConfigAndBillingDependencies constructs a server with explicitly
-// supplied billing dependencies. It is intended for Store decorators that do
-// not expose the private composition hooks implemented by GormStore.
-func NewWithConfigAndBillingDependencies(store Store, config Config, dependencies BillingDependencies) *Server {
+// BillingDependencies remains an alias for callers introduced during the
+// billing extraction. New composition code should use ApplicationDependencies.
+type BillingDependencies = ApplicationDependencies
+
+// NewWithConfigAndDependencies constructs a server with explicit domain
+// capabilities. Production composition must use this constructor.
+func NewWithConfigAndDependencies(store Store, config Config, dependencies ApplicationDependencies) *Server {
 	return newWithConfig(store, config, dependencies)
 }
 
-func newWithConfig(store Store, config Config, billingDependencies BillingDependencies) *Server {
-	billingAvailable := billingDependencies.Repository != nil && billingDependencies.ReconciliationReader != nil
-	billingDependencies = normalizeBillingDependencies(billingDependencies)
+// NewWithConfigAndBillingDependencies is retained for source compatibility.
+func NewWithConfigAndBillingDependencies(store Store, config Config, dependencies BillingDependencies) *Server {
+	return NewWithConfigAndDependencies(store, config, dependencies)
+}
+
+func newWithConfig(store Store, config Config, dependencies ApplicationDependencies) *Server {
+	billingAvailable := dependencies.Repository != nil && dependencies.ReconciliationReader != nil
+	reconciliationReadAvailable := dependencies.ReconciliationStore != nil
+	reconciliationExecutionAvailable := dependencies.ReconciliationReader != nil && dependencies.ReconciliationStore != nil
+	dependencies = normalizeApplicationDependencies(dependencies)
 	if strings.TrimSpace(config.ImageStorageDir) == "" {
 		config.ImageStorageDir = defaultImageStorageDir()
 	}
@@ -169,35 +185,37 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	providerCatalog := newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient)
 	providerCatalog.UsePluginCatalogTypes(pluginBootstrap.adapterRegistry)
 	s := &Server{
-		store:                   store,
-		pluginRegistry:          pluginBootstrap.pluginRegistry,
-		gatewayChain:            pluginBootstrap.gatewayChain,
-		gatewayHooks:            pluginBootstrap.gatewayHooks,
-		adminUI:                 pluginBootstrap.adminUI,
-		pluginActions:           pluginBootstrap.pluginActions,
-		pluginBackgroundJobs:    pluginBootstrap.pluginBackgroundJobs,
-		pluginBackgroundRunner:  pluginBootstrap.pluginBackgroundRunner,
-		adapterRegistry:         pluginBootstrap.adapterRegistry,
-		builtinProviderAdapters: providerRuntime.adapters,
-		integrations:            NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
-		providerCatalog:         providerCatalog,
-		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
-		billingAvailable:        billingAvailable,
-		reconciliation:          newReconciliationService(store, billingDependencies.ReconciliationReader),
-		credentialRefresh:       newProviderCredentialRefreshService(store),
-		payloadRetention:        newRequestPayloadRetentionService(store),
-		mux:                     http.NewServeMux(),
-		publicGatewayOperations: make(map[gatewayOperation]bool),
-		config:                  config,
-		imageStorageDir:         config.ImageStorageDir,
-		imageContext:            imageContext,
-		imageCancel:             imageCancel,
-		imageQueue:              make(chan imageJobWork, config.ImageQueueCapacity),
-		imageAccountSlots:       make(map[string]chan struct{}),
-		responseContext:         responseContext,
-		responseCancel:          responseCancel,
-		responseInstanceID:      NewID("response-worker"),
-		versions:                newVersionService(config),
+		store:                            store,
+		pluginRegistry:                   pluginBootstrap.pluginRegistry,
+		gatewayChain:                     pluginBootstrap.gatewayChain,
+		gatewayHooks:                     pluginBootstrap.gatewayHooks,
+		adminUI:                          pluginBootstrap.adminUI,
+		pluginActions:                    pluginBootstrap.pluginActions,
+		pluginBackgroundJobs:             pluginBootstrap.pluginBackgroundJobs,
+		pluginBackgroundRunner:           pluginBootstrap.pluginBackgroundRunner,
+		adapterRegistry:                  pluginBootstrap.adapterRegistry,
+		builtinProviderAdapters:          providerRuntime.adapters,
+		integrations:                     NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
+		providerCatalog:                  providerCatalog,
+		billing:                          billing.NewService(dependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
+		billingAvailable:                 billingAvailable,
+		reconciliationReadAvailable:      reconciliationReadAvailable,
+		reconciliationExecutionAvailable: reconciliationExecutionAvailable,
+		reconciliation:                   reconciliation.NewService(dependencies.ReconciliationStore, reconciliationpersistence.NewBillingReader(dependencies.ReconciliationReader)),
+		credentialRefresh:                newProviderCredentialRefreshService(store),
+		payloadRetention:                 newRequestPayloadRetentionService(store),
+		mux:                              http.NewServeMux(),
+		publicGatewayOperations:          make(map[gatewayOperation]bool),
+		config:                           config,
+		imageStorageDir:                  config.ImageStorageDir,
+		imageContext:                     imageContext,
+		imageCancel:                      imageCancel,
+		imageQueue:                       make(chan imageJobWork, config.ImageQueueCapacity),
+		imageAccountSlots:                make(map[string]chan struct{}),
+		responseContext:                  responseContext,
+		responseCancel:                   responseCancel,
+		responseInstanceID:               NewID("response-worker"),
+		versions:                         newVersionService(config),
 		guardrailEngine: guardrails.NewEngine(guardrails.NewQwenDetector(guardrails.QwenDetectorConfig{
 			URL:     config.GuardrailModelURL,
 			APIKey:  config.GuardrailModelAPIKey,
@@ -222,7 +240,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 	if err := s.publishServerPluginStoreConfiguration(&pluginBootstrap); err != nil {
 		panic(fmt.Errorf("publish TokenHub plugin store configuration: %w", err))
 	}
-	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
+	s.billingAdmin = admin.NewBillingHandler(dependencies.Repository, s.billing, admin.BillingTransport{
 		DecodeJSON:         s.decodeJSON,
 		DecodeJSONOptional: s.decodeJSONOptional,
 		IsPayloadTooLarge:  isPayloadTooLarge,
@@ -235,6 +253,18 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		Audit: func(r *http.Request, actor admin.BillingActor, event admin.BillingAudit) {
 			s.recordAdminAuditWithStatus(r, AdminUser{ID: actor.ID, Name: actor.Name, Role: actor.Role},
 				event.Action, "billing_connector", event.ResourceID, event.Status, event.Message, event.Before, event.After)
+		},
+	})
+	s.reconciliationAdmin = admin.NewReconciliationHandler(s.reconciliation, admin.ReconciliationTransport{
+		DecodeJSON:        s.decodeJSON,
+		IsPayloadTooLarge: isPayloadTooLarge,
+		ErrorCode:         func(err error) string { return AsHTTPError(err).Code },
+		NewError:          func(status int, code, message string) error { return NewHTTPError(status, code, message) },
+		MapError:          func(err error) error { return reconciliationHTTPError(err) },
+		WriteJSON:         writeJSON,
+		WriteError:        writeError,
+		Audit: func(r *http.Request, actor admin.AdminActor, event admin.AdminAudit) {
+			s.recordAdminAuditWithStatus(r, AdminUser{ID: actor.ID, Name: actor.Name, Role: actor.Role}, event.Action, event.ResourceType, event.ResourceID, event.Status, event.Message, event.Before, event.After)
 		},
 	})
 	if jobs, err := store.FailUnfinishedImageJobs("image_worker_restarted", "Image generation stopped because the server restarted"); err != nil {
