@@ -36,7 +36,6 @@ type Server struct {
 	adapterRegistry                  *AdapterRegistry
 	builtinProviderAdapters          map[string]any
 	integrations                     *IntegrationService
-	codexSubscription                *CodexSubscriptionAdapter
 	providerCatalog                  *providerCatalogService
 	billing                          *billing.Service
 	billingAdmin                     *admin.BillingHandler
