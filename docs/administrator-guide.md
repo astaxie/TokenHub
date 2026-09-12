@@ -137,7 +137,7 @@ Provider options control the app protocol:
 
 The gateway is stateless toward Dify: every request starts a new Dify conversation and the full OpenAI message list is flattened into the call, so Dify-side conversation memory is not used. Chat apps report full prompt, completion, and total usage from Dify's `metadata.usage`. Workflow runs report only the run total in `total_tokens`; TokenHub records it without inventing an input/output split, so per-component cost accounting for workflow-backed models depends on how that model is priced.
 
-Streaming maps Dify SSE events (`message` and `message_end` for chat apps, `text_chunk` and `workflow_finished` for workflows) onto OpenAI chunks, and a Dify stream that ends without its terminal event is treated as truncated rather than completed. Dify providers support chat and streaming chat only; Responses and embeddings answer `501 provider_capability_not_supported`.
+Streaming maps Dify SSE events onto OpenAI chunks: `message` and `message_end` for chat apps (Agent apps deliver the visible answer through `agent_message` instead), `text_chunk` and `workflow_finished` for workflows. A Dify stream that ends without its terminal event is treated as truncated rather than completed. Dify providers support chat and streaming chat only; Responses and embeddings answer `501 provider_capability_not_supported`.
 
 To let a Dify app call models through TokenHub in the opposite direction, add an `OpenAI-API-compatible` model provider inside Dify pointing at the TokenHub `/v1` endpoint with a TokenHub API key. No TokenHub-side configuration is required.
 

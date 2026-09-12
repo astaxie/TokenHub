@@ -380,8 +380,9 @@ func (d *difyStreamDecoder) abort(err error) (Usage, error) {
 // completion.
 func (d *difyStreamDecoder) consume(payload map[string]any) (bool, error) {
 	switch event, _ := payload["event"].(string); event {
-	case "message":
-		// Chat apps stream the visible answer as top-level answer deltas.
+	case "message", "agent_message":
+		// Chat apps stream the visible answer as top-level answer deltas;
+		// Agent apps emit the same shape as agent_message instead.
 		answer, _ := payload["answer"].(string)
 		return false, d.encoder.EmitText(answer)
 	case "text_chunk":
@@ -408,6 +409,10 @@ func (d *difyStreamDecoder) consume(payload map[string]any) (bool, error) {
 		return true, nil
 	case "error":
 		message := firstNonEmpty(difyErrorMessage(payload["message"]), difyErrorMessage(payload["data"]), "unknown error")
+		// The message is upstream-controlled text; without redaction an echoed
+		// app key or sensitive header value would reach the client and the
+		// audit attempt record.
+		message = string(redactProviderErrorSecrets([]byte(message), d.provider))
 		return false, NewHTTPError(http.StatusBadGateway, "provider_stream_error",
 			fmt.Sprintf("dify stream error: %s", message))
 	default:

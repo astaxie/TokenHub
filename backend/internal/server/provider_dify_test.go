@@ -231,6 +231,67 @@ func TestDifyAdapterStreamErrorEventFailsRequest(t *testing.T) {
 	}
 }
 
+// Agent apps stream their visible answer as agent_message events rather than
+// message events; dropping them yielded a successful empty completion.
+func TestDifyAdapterAgentStreamMapsAgentMessageEvents(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		writeFixture(t, w, `data: {"event":"agent_thought","thought":"planning"}`+"\n\n")
+		writeFixture(t, w, `data: {"event":"agent_message","answer":"Tool result: "}`+"\n\n")
+		writeFixture(t, w, `data: {"event":"agent_message","answer":"42"}`+"\n\n")
+		writeFixture(t, w, `data: {"event":"message_end","metadata":{"usage":{"prompt_tokens":9,"completion_tokens":4,"total_tokens":13}}}`+"\n\n")
+	}))
+	defer upstream.Close()
+
+	adapter := DifyAdapter{Client: upstream.Client()}
+	var stream strings.Builder
+	usage, err := adapter.ChatStream(context.Background(), difyTestProvider(upstream.URL), "dify-app-x", difyTestRequest(), &stream)
+	if err != nil {
+		t.Fatalf("chat stream: %v", err)
+	}
+	frames := stream.String()
+	if !strings.Contains(frames, "Tool result: ") || !strings.Contains(frames, "42") {
+		t.Errorf("stream frames missing agent_message deltas:\n%s", frames)
+	}
+	if strings.Contains(frames, "planning") {
+		t.Errorf("stream frames leaked agent_thought content:\n%s", frames)
+	}
+	if !strings.Contains(frames, "data: [DONE]") {
+		t.Errorf("stream frames missing the [DONE] sentinel:\n%s", frames)
+	}
+	if usage.TotalTokens != 13 {
+		t.Errorf("usage total tokens = %d, want 13 from message_end", usage.TotalTokens)
+	}
+}
+
+func TestDifyAdapterStreamErrorRedactsProviderSecrets(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		writeFixture(t, w, `data: {"event":"error","code":"invalid_param","message":"key app-key rejected by tenant header tenant-internal-token for request q7"}`+"\n\n")
+	}))
+	defer upstream.Close()
+
+	provider := difyTestProvider(upstream.URL)
+	provider.Headers = map[string]string{"X-Tenant-Token": "tenant-internal-token"}
+	provider.SensitiveHeaders = []string{"X-Tenant-Token"}
+
+	adapter := DifyAdapter{Client: upstream.Client()}
+	var stream strings.Builder
+	_, err := adapter.ChatStream(context.Background(), provider, "dify-app-x", difyTestRequest(), &stream)
+	if err == nil {
+		t.Fatal("stream error = nil, want the in-stream error event to surface")
+	}
+	message := AsHTTPError(err).Message
+	for _, secret := range []string{"app-key", "tenant-internal-token"} {
+		if strings.Contains(message, secret) {
+			t.Errorf("stream error message leaked %q: %s", secret, message)
+		}
+	}
+	if !strings.Contains(message, "q7") {
+		t.Errorf("stream error message lost the non-secret detail: %s", message)
+	}
+}
+
 func TestDifyAdapterStreamEOFWithoutTerminalAbortsStream(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "text/event-stream")

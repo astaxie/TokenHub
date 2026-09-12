@@ -137,7 +137,7 @@ Provider オプションでアプリのプロトコルを制御します:
 
 ゲートウェイは Dify に対してステートレスです。各リクエストは新しい Dify 会話を開始し、OpenAI のメッセージ一覧全体が呼び出しに平文化されて含まれるため、Dify 側の会話メモリは使用されません。Chat 系アプリは Dify の `metadata.usage` から prompt、completion、total の使用量を完全に報告します。Workflow 実行は `total_tokens` の実行合計のみを報告し、TokenHub は入出力の分割を捏造せずそのまま記録します。そのためワークフロー前提モデルのコンポーネント単位の原価計算は、そのモデルの価格設定に依存します。
 
-ストリーミングでは Dify の SSE イベント（chat アプリは `message` と `message_end`、workflow アプリは `text_chunk` と `workflow_finished`）を OpenAI チャンクへマッピングし、終端イベントなしに閉じた Dify ストリームは完了ではなく打ち切りとして扱われます。Dify Provider がサポートするのは chat とストリーミング chat のみで、Responses と embeddings は `501 provider_capability_not_supported` を返します。
+ストリーミングでは Dify の SSE イベントを OpenAI チャンクへマッピングします。chat アプリは `message` と `message_end`（Agent アプリの可視回答は代わりに `agent_message` で配信されます）、workflow アプリは `text_chunk` と `workflow_finished` です。終端イベントなしに閉じた Dify ストリームは完了ではなく打ち切りとして扱われます。Dify Provider がサポートするのは chat とストリーミング chat のみで、Responses と embeddings は `501 provider_capability_not_supported` を返します。
 
 逆方向で Dify アプリから TokenHub 経由でモデルを呼び出すには、Dify 側で TokenHub の `/v1` エンドポイントと TokenHub API key を指す `OpenAI-API-compatible` モデルプロバイダーを追加するだけでよく、TokenHub 側の設定は不要です。
 

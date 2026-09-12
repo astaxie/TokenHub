@@ -137,7 +137,7 @@ Provider 选项决定应用协议：
 
 网关对 Dify 无状态：每个请求都会开启新的 Dify 会话，完整的 OpenAI 消息列表会被拼接进请求，因此不会使用 Dify 侧的会话记忆。Chat 类应用从 Dify 的 `metadata.usage` 上报完整的 prompt、completion 和 total 用量；Workflow 运行只在 `total_tokens` 中上报运行总量，TokenHub 如实记录、不虚构输入/输出拆分，因此基于组件计价的成本核算取决于该模型的定价方式。
 
-流式请求把 Dify SSE 事件（chat 应用为 `message` 与 `message_end`，workflow 应用为 `text_chunk` 与 `workflow_finished`）映射为 OpenAI 分片；未收到终止事件就结束的 Dify 流会被视为截断而非完成。Dify Provider 仅支持 chat 与流式 chat；Responses 与 embeddings 请求返回 `501 provider_capability_not_supported`。
+流式请求把 Dify SSE 事件映射为 OpenAI 分片：chat 应用为 `message` 与 `message_end`（Agent 应用的可见回答改经 `agent_message` 送达），workflow 应用为 `text_chunk` 与 `workflow_finished`；未收到终止事件就结束的 Dify 流会被视为截断而非完成。Dify Provider 仅支持 chat 与流式 chat；Responses 与 embeddings 请求返回 `501 provider_capability_not_supported`。
 
 如果想让 Dify 应用反向通过 TokenHub 调用模型，在 Dify 内添加指向 TokenHub `/v1` 端点、使用 TokenHub API key 的 `OpenAI-API-compatible` 模型供应商即可，TokenHub 侧无需任何配置。
 
