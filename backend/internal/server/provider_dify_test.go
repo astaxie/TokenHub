@@ -594,3 +594,206 @@ func TestAdminAPICreatesDifyProviderWithWorkflowOptions(t *testing.T) {
 		t.Errorf("provider models = %+v, want the declared custom model imported", store.ListProviderModels())
 	}
 }
+
+// TestAdminProviderTestProbesDifyWithoutResources proves the provider-level
+// test button works for a dify provider created through the admin API: those
+// have no Provider Resource, so the resource-batch path would answer 409
+// instead of validating the app key.
+func TestAdminProviderTestProbesDifyWithoutResources(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/parameters" {
+			t.Errorf("probe path = %s, want /v1/parameters", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writeFixture(t, w, `{"user_input_form":[{"paragraph":{"variable":"query"}}]}`)
+	}))
+	defer upstream.Close()
+
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	added := store.AddProvider(Provider{
+		ID:      "prv_dify_probe",
+		Name:    "Dify Chat App",
+		Type:    ProviderDify,
+		BaseURL: upstream.URL,
+		APIKey:  "app-key",
+		Status:  StatusActive,
+	})
+	app := New(store).Handler()
+
+	response := doJSON(t, app, http.MethodPost, "/api/admin/providers/"+added.ID+"/test", nil, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("provider test status = %d, body = %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Body, "user_input_form") {
+		t.Errorf("provider test response missing the parameters payload: %s", response.Body)
+	}
+	if provider, ok := store.GetProvider(added.ID); !ok || !provider.Healthy {
+		t.Error("successful probe did not mark the provider healthy")
+	}
+}
+
+// TestAdminProviderCatalogDifyPreviewProbesAppKey backs the provider editor's
+// credential-backed model loading: one Dify app previews as exactly one model
+// named after the provider, and a bad app key surfaces the upstream failure.
+func TestAdminProviderCatalogDifyPreviewProbesAppKey(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/parameters" {
+			t.Errorf("preview path = %s, want /v1/parameters", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer app-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			writeFixture(t, w, `{"code":"unauthorized","message":"bad app key"}`)
+			return
+		}
+		writeFixture(t, w, `{"user_input_form":[]}`)
+	}))
+	defer upstream.Close()
+
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	preview := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/dify", map[string]any{
+		"name":     "Report Flow",
+		"base_url": upstream.URL,
+		"api_key":  "app-key",
+	}, "")
+	if preview.Code != http.StatusOK {
+		t.Fatalf("dify catalog preview status = %d, body = %s", preview.Code, preview.Body)
+	}
+	var payload struct {
+		Data ProviderCatalogEntry `json:"data"`
+	}
+	decodeFixtureRequest(t, strings.NewReader(preview.Body), &payload)
+	if payload.Data.ID != "dify" || payload.Data.Type != ProviderDify || payload.Data.ModelsCount != 1 {
+		t.Errorf("preview catalog = %+v, want the dify entry with one model", payload.Data)
+	}
+	if len(payload.Data.Models) != 1 || payload.Data.Models[0].ID != "reportflow" {
+		t.Errorf("preview models = %+v, want one model derived from the provider name", payload.Data.Models)
+	}
+
+	badKey := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/dify", map[string]any{
+		"name":     "Report Flow",
+		"base_url": upstream.URL,
+		"api_key":  "app-wrong-key",
+	}, "")
+	if badKey.Code == http.StatusOK {
+		t.Error("preview with a bad app key succeeded; the credential check is missing")
+	}
+}
+
+// TestAdminProviderCatalogDifyCreationRoundTrip proves the editor flow end to
+// end: preview the app, then create the provider from the previewed catalog
+// entry and imported model.
+func TestAdminProviderCatalogDifyCreationRoundTrip(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/parameters" {
+			writeFixture(t, w, `{"user_input_form":[]}`)
+			return
+		}
+		if r.URL.Path == "/v1/chat-messages" {
+			writeFixture(t, w, `{"answer":"ok","metadata":{"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}}`)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer upstream.Close()
+
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.CreateAPIKey("prj_demo", APIKey{ID: "key_dify_editor", Name: "Editor Key", Status: StatusActive}, "thk_editor"); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"name":       "Report Flow",
+		"catalog_id": "dify",
+		"base_url":   upstream.URL,
+		"api_key":    "app-key",
+		"custom_models": []map[string]any{
+			{"id": "reportflow", "name": "reportflow"},
+		},
+		"selected_models": []string{"reportflow"},
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("provider creation status = %d, body = %s", created.Code, created.Body)
+	}
+	var payload struct {
+		Provider Provider `json:"provider"`
+	}
+	decodeFixtureRequest(t, strings.NewReader(created.Body), &payload)
+	if payload.Provider.Type != ProviderDify {
+		t.Errorf("created provider type = %q, want dify from the catalog entry", payload.Provider.Type)
+	}
+
+	store.AddModel(Model{Name: "reportflow", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ModelName: "reportflow", ProviderID: payload.Provider.ID, ProviderModel: "reportflow", Status: StatusActive})
+	response := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model":    "reportflow",
+		"messages": []map[string]any{{"role": "user", "content": "run"}},
+	}, "thk_editor")
+	if response.Code != http.StatusOK {
+		t.Fatalf("chat completion status = %d, body = %s", response.Code, response.Body)
+	}
+}
+
+// keyBlankingListStore mimics the production listing behavior: GormStore
+// blanks provider secrets in ListProviders so they cannot leak into list
+// responses, while GetProvider returns them decrypted.
+type keyBlankingListStore struct {
+	*MemoryStore
+}
+
+func (s *keyBlankingListStore) ListProviders() []Provider {
+	providers := s.MemoryStore.ListProviders()
+	for i := range providers {
+		providers[i].APIKey = ""
+	}
+	return providers
+}
+
+// TestAdminProviderTestProbesDifyWithStoredSecret guards the probe action
+// against resolving the provider from a secret-blanked listing: with the
+// stored app key invisible, the probe would authenticate with nothing and
+// report a healthy provider as credential-rejected.
+func TestAdminProviderTestProbesDifyWithStoredSecret(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer app-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			writeFixture(t, w, `{"code":"unauthorized","message":"bad app key"}`)
+			return
+		}
+		writeFixture(t, w, `{"user_input_form":[]}`)
+	}))
+	defer upstream.Close()
+
+	store := &keyBlankingListStore{NewMemoryStore()}
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	added := store.AddProvider(Provider{
+		ID:      "prv_dify_secret",
+		Name:    "Dify Chat App",
+		Type:    ProviderDify,
+		BaseURL: upstream.URL,
+		APIKey:  "app-key",
+		Status:  StatusActive,
+	})
+	app := New(store).Handler()
+
+	response := doJSON(t, app, http.MethodPost, "/api/admin/providers/"+added.ID+"/test", nil, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("provider test status = %d, body = %s; the probe must read the stored app key via GetProvider, not a secret-blanked listing", response.Code, response.Body)
+	}
+}

@@ -477,6 +477,127 @@ func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar
 		}
 		return pluginmeta.ActionResult{Data: catalog}, nil
 	}))
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.dify",
+		ActionID:   "dify.provider.probe.run",
+		Kind:       pluginmeta.ActionKindTest,
+		Title:      "Test Dify provider",
+		Capability: "provider.probe.run",
+		Subject:    ProviderDify,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"provider_id"},
+			"properties": map[string]any{
+				"provider_id": map[string]any{"type": "string"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"resource_id", "model", "latency_ms", "response"}, map[string]string{
+			"resource_id": "string",
+			"model":       "string",
+			"latency_ms":  "integer",
+			"response":    "object",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var payload struct {
+			ProviderID string `json:"provider_id"`
+		}
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &payload); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		provider, ok := server.store.GetProvider(payload.ProviderID)
+		if !ok {
+			return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+		}
+		// Dify providers are created through the admin API without a Provider
+		// Resource, so this probes the app key directly instead of going
+		// through the resource batch. GetProvider, not a listing: list results
+		// blank secrets, and this call needs the stored app key.
+		adapter, supported := resolveTypedAdapter[DifyAdapter](server.adapterRegistry, ProviderDify)
+		if !supported {
+			return pluginmeta.ActionResult{}, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Dify adapter is unavailable")
+		}
+		probe, err := adapter.Probe(ctx, provider, ProviderResource{}, adapter.DefaultProbeRequest())
+		if err != nil {
+			_, _ = server.store.SetProviderHealth(provider.ID, false)
+			return pluginmeta.ActionResult{}, err
+		}
+		if _, err := server.store.SetProviderHealth(provider.ID, true); err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		return pluginmeta.ActionResult{Data: probe}, nil
+	}))
+	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
+		PluginID:   "tokenhub.provider.dify",
+		ActionID:   "dify.models.preview",
+		Kind:       pluginmeta.ActionKindRead,
+		Title:      "Preview Dify app model",
+		Capability: "models.preview",
+		Subject:    ProviderDify,
+		InputSchema: map[string]any{
+			"type":     "object",
+			"required": []string{"base_url", "api_key"},
+			"properties": map[string]any{
+				"provider_id": map[string]any{"type": "string"},
+				"id":          map[string]any{"type": "string"},
+				"name":        map[string]any{"type": "string"},
+				"base_url":    map[string]any{"type": "string"},
+				"api_key":     map[string]any{"type": "string"},
+			},
+		},
+		OutputSchema: actionObjectSchema([]string{"id", "models_count", "models"}, map[string]string{
+			"id":              "string",
+			"name":            "string",
+			"display_name":    "string",
+			"type":            "string",
+			"base_url":        "string",
+			"doc_url":         "string",
+			"categories":      "array",
+			"category_counts": "object",
+			"models_count":    "integer",
+			"source":          "string",
+			"etag":            "string",
+			"models":          "array",
+		}),
+	}, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+		var req ProviderCreateRequest
+		if len(invocation.Payload) > 0 {
+			if err := json.Unmarshal(invocation.Payload, &req); err != nil {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
+			}
+		}
+		req.Type = ProviderDify
+		if strings.TrimSpace(req.BaseURL) == "" {
+			return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_required", "Base URL is required to load the Dify app")
+		}
+		if strings.TrimSpace(req.APIKey) == "" {
+			return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_api_key_required", "API key is required to load the Dify app")
+		}
+		adapter, supported := resolveTypedAdapter[DifyAdapter](server.adapterRegistry, ProviderDify)
+		if !supported {
+			return pluginmeta.ActionResult{}, NewHTTPError(http.StatusInternalServerError, "provider_adapter_missing", "Dify adapter is unavailable")
+		}
+		// One provider maps to one Dify app, so the "discovered" inventory is a
+		// single model named after the provider; the parameters probe is what
+		// actually validates the entered credentials.
+		provider := Provider{Name: req.Name, Type: ProviderDify, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
+		if _, err := adapter.Probe(ctx, provider, ProviderResource{}, adapter.DefaultProbeRequest()); err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		modelName := sanitizeIdentifier(strings.TrimSpace(req.Name))
+		if modelName == "" || modelName == "custom" {
+			modelName = "dify-app"
+		}
+		catalog := customProviderCatalogFromModelsWithType([]ProviderCatalogModel{{ID: modelName, Name: modelName}}, req.ModelCategory, ProviderDify)
+		catalog.ID = "dify"
+		catalog.Name = "Dify"
+		catalog.DisplayName = "Dify"
+		catalog.Type = ProviderDify
+		catalog.DocURL = "https://docs.dify.ai"
+		catalog.Source = "dify-upstream"
+		return pluginmeta.ActionResult{Data: catalog}, nil
+	}))
 	imageCapabilityAction := openAICodexImageCapabilityActionDescriptor()
 	mustRegisterPluginAction(actions, imageCapabilityAction, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 		var payload struct {

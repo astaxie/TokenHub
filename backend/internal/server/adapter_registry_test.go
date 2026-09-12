@@ -50,7 +50,8 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
 	},
 	ProviderDify: {
-		AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe,
+		AdapterCapabilityChat, AdapterCapabilityChatStream,
+		AdapterCapabilityModels, AdapterCapabilityProbe,
 	},
 	ProviderKronk: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
