@@ -281,6 +281,37 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	}); err != nil {
 		return err
 	}
+	if err := register("tokenhub.provider.dify", "Dify", builtinProviderAdapter{
+		providerType: ProviderDify,
+		adapter:      adapters[ProviderDify],
+		// One provider maps to one Dify app, so the base URL is wherever that
+		// app runs and the model inventory is whatever the administrator
+		// declares; there is nothing to discover upstream.
+		catalogEntry: builtinProviderPluginCatalogEntry(
+			"dify",
+			"Dify",
+			ProviderDify,
+			"",
+			"https://docs.dify.ai",
+			[]string{"custom"},
+			nil,
+		),
+		// Provider-level testing validates the app key through the parameters
+		// probe; dify providers are created through the admin API without a
+		// Provider Resource, so the resource-batch path has nothing to run.
+		managementActions: []builtinProviderPluginCapability{
+			{id: "dify.provider.probe.run", capability: "provider.probe.run", subject: ProviderDify},
+			{id: "dify.models.preview", capability: "models.preview", subject: ProviderDify},
+		},
+		capabilities: []AdapterCapability{
+			AdapterCapabilityChat,
+			AdapterCapabilityChatStream,
+			AdapterCapabilityModels,
+			AdapterCapabilityProbe,
+		},
+	}); err != nil {
+		return err
+	}
 	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
 		adapter := builtinProviderAdapter{
 			providerType:          adapterType,

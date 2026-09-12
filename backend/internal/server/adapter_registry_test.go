@@ -49,6 +49,10 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
 	},
+	ProviderDify: {
+		AdapterCapabilityChat, AdapterCapabilityChatStream,
+		AdapterCapabilityModels, AdapterCapabilityProbe,
+	},
 	ProviderKronk: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityModels,
@@ -80,6 +84,7 @@ var builtinAdapterPlugins = map[string]string{
 	ProviderAzureOpenAI:      "tokenhub.provider.azure-openai",
 	ProviderAnthropic:        "tokenhub.provider.anthropic",
 	ProviderGemini:           "tokenhub.provider.gemini",
+	ProviderDify:             "tokenhub.provider.dify",
 	ProviderKronk:            "tokenhub.provider.kronk",
 	"deepseek":               "tokenhub.provider.deepseek",
 	"qwen":                   "tokenhub.provider.qwen",
