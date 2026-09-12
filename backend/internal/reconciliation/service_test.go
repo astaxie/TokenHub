@@ -326,6 +326,48 @@ func TestServicePersistenceFailuresDoNotReplacePriorResults(t *testing.T) {
 	})
 }
 
+func TestServiceLockWaitsForRecalculationBeforeSaving(t *testing.T) {
+	base := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	prior := reconciliation.Run{ID: "run-serialized", RuleID: "rule-serialized", ConnectorID: "connector-serialized", ConnectorType: billing.ConnectorOneAPI, ProviderID: "provider-a", Status: reconciliation.RunSucceeded, PeriodStart: base, PeriodEnd: base.Add(time.Hour), Granularity: reconciliation.GranularityDay, MatchDimensions: []string{"model", "currency"}, AmountTolerance: "0", RatioTolerance: "0", USDExchangeRate: "1", Timezone: "UTC", Currency: "USD", InputHash: "sha256:old"}
+	store.runs[prior.ID] = prior
+	store.replaceStarted = make(chan struct{})
+	store.replaceRelease = make(chan struct{})
+	service := reconciliation.NewService(store, &fakeBillingReader{id: prior.ConnectorID, connector: reconciliation.ConnectorSnapshot{Type: billing.ConnectorOneAPI, ProviderID: "provider-a"}})
+	recalculated := make(chan reconciliation.Run, 1)
+	go func() {
+		run, _ := service.Recalculate(context.Background(), prior.ID)
+		recalculated <- run
+	}()
+	select {
+	case <-store.replaceStarted:
+	case <-time.After(time.Second):
+		t.Fatal("recalculation did not reach replacement")
+	}
+	locked := make(chan error, 1)
+	go func() {
+		_, _, err := service.Lock(prior.ID, "actor")
+		locked <- err
+	}()
+	select {
+	case err := <-locked:
+		t.Fatalf("lock completed while recalculation was replacing: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(store.replaceRelease)
+	if err := <-locked; err != nil {
+		t.Fatal(err)
+	}
+	result := <-recalculated
+	stored, err := store.GetRun(prior.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.InputHash != result.InputHash || stored.InputHash == prior.InputHash || stored.LockedBy != "actor" {
+		t.Fatalf("lock overwrote recalculation result: result=%#v stored=%#v", result, stored)
+	}
+}
+
 func TestServiceShutdownHonorsDeadlineWhileRunIsBlocked(t *testing.T) {
 	store := newFakeStore()
 	rule := validRule("rule-blocked", "connector-blocked")
@@ -431,6 +473,9 @@ type fakeStore struct {
 	backfillBarrier  chan struct{}
 	backfillArrivals int
 	backfillWrites   int
+	replaceStarted   chan struct{}
+	replaceRelease   chan struct{}
+	replaceOnce      sync.Once
 }
 
 func newFakeStore() *fakeStore {
@@ -539,6 +584,10 @@ func (s *fakeStore) SaveRun(run reconciliation.Run, items []reconciliation.Item)
 }
 
 func (s *fakeStore) ReplaceRun(run reconciliation.Run, items []reconciliation.Item) (reconciliation.Run, error) {
+	if s.replaceStarted != nil {
+		s.replaceOnce.Do(func() { close(s.replaceStarted) })
+		<-s.replaceRelease
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.replaceCalls++

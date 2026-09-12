@@ -256,6 +256,46 @@ func TestStoreListUsagesExpandsTimeWindow(t *testing.T) {
 	}
 }
 
+func TestStoreListUsagesPreservesProviderCostEvidence(t *testing.T) {
+	store, db := newTestStore(t)
+	if err := db.AutoMigrate(&usageRow{}, &meteringEvidenceRow{}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	rows := []usageRow{
+		{ID: "known", RequestID: "known-request", ProviderID: "provider", ProviderResourceID: "resource", ProviderCostUSD: 2, CreatedAt: at},
+		{ID: "unknown", RequestID: "unknown-request", ProviderID: "provider", ProviderResourceID: "resource", CreatedAt: at},
+		{ID: "free", RequestID: "free-request", ProviderID: "provider", ProviderResourceID: "resource", CreatedAt: at},
+		{ID: "wrong", RequestID: "wrong-request", ProviderID: "provider", ProviderResourceID: "resource", CreatedAt: at},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	prepared := `{"id":"free-attempt","provider_id":"provider","resource_id":"resource"}`
+	settled := `{"attempts":[{"attempt_id":"free-attempt","number":1,"pricing":{"price":{"version":"rate-v1"},"charge":{"currency":"USD","amount":"0"}}}]}`
+	wrongPrepared := `{"id":"wrong-attempt","provider_id":"other-provider","resource_id":"resource"}`
+	entries := []meteringEvidenceRow{
+		{Kind: "attempt_prepared", Scope: "free-request", Payload: prepared},
+		{Kind: "shadow_settlement", Scope: "free-request", Payload: settled},
+		{Kind: "attempt_prepared", Scope: "wrong-request", Payload: wrongPrepared},
+		{Kind: "shadow_settlement", Scope: "wrong-request", Payload: `{"attempts":[{"attempt_id":"wrong-attempt","number":1,"pricing":{"price":{"version":"rate-v1"},"charge":{"currency":"USD","amount":"0"}}}]}`},
+	}
+	if err := db.Create(&entries).Error; err != nil {
+		t.Fatal(err)
+	}
+	values, err := store.ListUsages(at, at.Add(time.Minute), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := map[string]bool{}
+	for _, value := range values {
+		known[value.ID] = value.ProviderCostKnown
+	}
+	if !known["known"] || known["unknown"] || !known["free"] || known["wrong"] {
+		t.Fatalf("provider cost evidence mapping = %#v", known)
+	}
+}
+
 func TestStoreLockRunIsIdempotent(t *testing.T) {
 	store, db := newTestStore(t)
 	now := time.Now().UTC()

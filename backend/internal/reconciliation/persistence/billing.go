@@ -40,7 +40,14 @@ func (b *BillingReader) ListRecordsInRange(connectorID string, from, to time.Tim
 	}
 	result := make([]reconciliation.BillingRecord, len(records))
 	for i, record := range records {
-		result[i] = reconciliation.BillingRecord{ID: record.ID, ExternalID: record.ExternalID, SourceType: record.SourceType, AccountID: record.AccountID, ProviderID: record.Metadata["provider_id"], ProviderResourceID: record.Metadata["provider_resource_id"], ResourceID: record.Metadata["resource_id"], ProjectID: record.Metadata["project_id"], Model: record.Model, Currency: record.Currency, NetAmount: record.NetAmount, UsageStartAt: record.UsageStartAt, ExternalRequestID: record.ExternalRequestID}
+		result[i] = reconciliation.BillingRecord{ID: record.ID, ExternalID: record.ExternalID, SourceType: record.SourceType, AccountID: record.AccountID, ProviderID: attributionValue(record.Metadata, "tokenhub_provider_id", "provider_id"), ProviderResourceID: attributionValue(record.Metadata, "tokenhub_resource_id", "provider_resource_id"), ResourceID: record.Metadata["resource_id"], ProjectID: record.Metadata["project_id"], Model: record.Model, Currency: record.Currency, NetAmount: record.NetAmount, UsageStartAt: record.UsageStartAt, ExternalRequestID: record.ExternalRequestID}
 	}
 	return result, nil
+}
+
+func attributionValue(metadata map[string]string, snapshot, legacy string) string {
+	if value, exists := metadata[snapshot]; exists {
+		return value
+	}
+	return metadata[legacy]
 }

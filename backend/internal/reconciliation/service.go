@@ -206,6 +206,8 @@ func (s *Service) Recalculate(ctx context.Context, runID string) (Run, error) {
 		return Run{}, NewError(ErrorConflict, "reconciliation_in_progress", "This reconciliation is already being recalculated")
 	}
 	defer s.end("run:" + runID)
+	s.runLockMu.Lock()
+	defer s.runLockMu.Unlock()
 	run, err := s.store.GetRun(runID)
 	if err != nil {
 		return Run{}, err

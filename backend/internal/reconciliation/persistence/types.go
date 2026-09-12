@@ -122,5 +122,5 @@ func itemToRow(value reconciliation.Item) ItemRow {
 }
 
 func usageFromRecord(id, requestID, projectID, modelName, providerID, resourceID string, cost, providerCost float64, createdAt time.Time) reconciliation.Usage {
-	return reconciliation.Usage{ID: id, RequestID: requestID, ProjectID: projectID, ModelName: modelName, ProviderID: providerID, ProviderResourceID: resourceID, CostUSD: cost, ProviderCostUSD: providerCost, CreatedAt: createdAt}
+	return reconciliation.Usage{ID: id, RequestID: requestID, ProjectID: projectID, ModelName: modelName, ProviderID: providerID, ProviderResourceID: resourceID, CostUSD: cost, ProviderCostUSD: providerCost, ProviderCostKnown: providerCost != 0, CreatedAt: createdAt}
 }

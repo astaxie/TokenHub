@@ -154,6 +154,9 @@ func (s *Store) ListUsages(from, to time.Time, window time.Duration) ([]reconcil
 	for i, row := range rows {
 		result[i] = usageFromRecord(row.ID, row.RequestID, row.ProjectID, row.ModelName, row.ProviderID, row.ProviderResourceID, row.CostUSD, row.ProviderCostUSD, row.CreatedAt)
 	}
+	if err := applyZeroCostEvidence(s.db, result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
