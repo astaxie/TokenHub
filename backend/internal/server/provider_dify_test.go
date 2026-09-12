@@ -797,3 +797,49 @@ func TestAdminProviderTestProbesDifyWithStoredSecret(t *testing.T) {
 		t.Fatalf("provider test status = %d, body = %s; the probe must read the stored app key via GetProvider, not a secret-blanked listing", response.Code, response.Body)
 	}
 }
+
+// TestAdminProviderCatalogDifyPreviewEditModeUsesStoredSecret mirrors the
+// editor reopening a saved provider: the form carries the Base URL and
+// provider_id but never the stored API key, and the preview must fall back to
+// the stored credential instead of rejecting the request.
+func TestAdminProviderCatalogDifyPreviewEditModeUsesStoredSecret(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer app-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			writeFixture(t, w, `{"code":"unauthorized","message":"bad app key"}`)
+			return
+		}
+		writeFixture(t, w, `{"user_input_form":[]}`)
+	}))
+	defer upstream.Close()
+
+	store := &keyBlankingListStore{NewMemoryStore()}
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	added := store.AddProvider(Provider{
+		ID:      "prv_dify_edit",
+		Name:    "Chat Assistant",
+		Type:    ProviderDify,
+		BaseURL: upstream.URL,
+		APIKey:  "app-key",
+		Status:  StatusActive,
+	})
+	app := New(store).Handler()
+
+	response := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/dify", map[string]any{
+		"provider_id": added.ID,
+		"name":        "Chat Assistant",
+		"base_url":    upstream.URL,
+	}, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("edit-mode preview status = %d, body = %s; the stored app key must fill the empty form field", response.Code, response.Body)
+	}
+	var payload struct {
+		Data ProviderCatalogEntry `json:"data"`
+	}
+	decodeFixtureRequest(t, strings.NewReader(response.Body), &payload)
+	if payload.Data.ModelsCount != 1 || len(payload.Data.Models) != 1 || payload.Data.Models[0].ID != "chatassistant" {
+		t.Errorf("edit-mode preview models = %+v, want one model derived from the provider name", payload.Data.Models)
+	}
+}

@@ -537,7 +537,7 @@ func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar
 		Subject:    ProviderDify,
 		InputSchema: map[string]any{
 			"type":     "object",
-			"required": []string{"base_url", "api_key"},
+			"required": []string{"base_url"},
 			"properties": map[string]any{
 				"provider_id": map[string]any{"type": "string"},
 				"id":          map[string]any{"type": "string"},
@@ -568,6 +568,37 @@ func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar
 			}
 		}
 		req.Type = ProviderDify
+		// The editor reloads models on open in edit mode, where the stored API
+		// key is never echoed back to the form: a provider_id lets the stored
+		// credentials fill the gaps, exactly like the custom catalog flow.
+		if providerID := firstNonEmpty(strings.TrimSpace(req.ProviderID), strings.TrimSpace(req.ID)); providerID != "" {
+			stored, ok := server.store.GetProvider(providerID)
+			if !ok {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
+			}
+			if stored.Type != ProviderDify {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_type_invalid", "Provider is not a Dify provider")
+			}
+			if strings.TrimSpace(req.BaseURL) != "" && strings.TrimSpace(req.BaseURL) != stored.BaseURL {
+				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_override_forbidden", "Save the provider Base URL before loading models from a different destination")
+			}
+			if req.Name == "" {
+				req.Name = stored.Name
+			}
+			if strings.TrimSpace(req.BaseURL) == "" {
+				req.BaseURL = stored.BaseURL
+			}
+			if strings.TrimSpace(req.APIKey) == "" {
+				req.APIKey = stored.APIKey
+			}
+			if req.Headers == nil {
+				req.Headers = stored.Headers
+				req.SensitiveHeaders = stored.SensitiveHeaders
+			}
+			if req.Options == nil {
+				req.Options = stored.Options
+			}
+		}
 		if strings.TrimSpace(req.BaseURL) == "" {
 			return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_required", "Base URL is required to load the Dify app")
 		}
