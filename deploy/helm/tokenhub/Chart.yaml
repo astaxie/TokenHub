@@ -1,0 +1,24 @@
+apiVersion: v2
+name: tokenhub
+description: TokenHub private enterprise AI gateway (Go backend and Next.js console).
+type: application
+version: 0.1.0
+appVersion: "0.8.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/astaxie/TokenHub
+sources:
+  - https://github.com/astaxie/TokenHub
+keywords:
+  - ai-gateway
+  - llm
+  - openai-compatible
+dependencies:
+  # Optional built-in PostgreSQL for quick testing only. Production deployments
+  # should point database.url at a managed PostgreSQL service instead.
+  # 16.2.1 is the newest release still served from the classic HTTPS repository;
+  # newer releases moved to oci://registry-1.docker.io/bitnamicharts and can be
+  # pinned there if the cluster can pull from that registry.
+  - name: postgresql
+    version: 16.2.1
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

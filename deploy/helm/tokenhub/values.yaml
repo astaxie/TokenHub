@@ -1,0 +1,122 @@
+# Default values for the TokenHub Helm chart.
+#
+# One pod serves both the Go API/gateway (port 8080) and the Next.js admin
+# console (port 3000) via tokenhub-run; the container exits when either process
+# dies, so Kubernetes restarts the pod on any process failure. The chart is
+# stateless: all durable state lives in PostgreSQL, and runtime-installed
+# plugin packages live on an emptyDir (bake them into a custom image to keep
+# them across pod replacement).
+
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/astaxie/tokenhub-backend
+  # Defaults to the chart appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+replicaCount: 2
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# The ingress mirrors deploy/nginx.multi-instance.conf: API and probe paths go
+# to the API port, every other path serves the console port. The default
+# annotations assume ingress-nginx; override them for other controllers.
+# Streaming responses (SSE) need buffering off and read/send timeouts above
+# TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS. Keep proxy-body-size at or
+# above TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES (32 MiB by default).
+ingress:
+  enabled: false
+  className: ""
+  # Required when ingress.enabled is true, for example tokenhub.example.com.
+  host: ""
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
+
+# Required: PostgreSQL connection URL, either inline or from an existing
+# secret. Example:
+#   postgresql://tokenhub:password@postgres.example.com:5432/tokenhub?sslmode=require
+database:
+  url: ""
+  existingSecret: ""
+
+# Optional built-in PostgreSQL for quick testing only; not sized or tuned for
+# production. Any bitnami/postgresql subchart value can be added here, for
+# example postgresql.primary.persistence.size=20Gi.
+postgresql:
+  enabled: false
+  auth:
+    username: tokenhub
+    database: tokenhub
+    password: ""
+  # Pinned chart 16.2.1 references tags removed from docker.io/bitnami when
+  # Broadcom reorganized the bitnami images; point at the legacy repository.
+  image:
+    repository: bitnamilegacy/postgresql
+    tag: 17.1.0-debian-12-r0
+
+# Name of an existing secret providing the secretEnv keys; when set, the chart
+# does not render a credentials secret of its own.
+credentialsSecret: ""
+
+# Secret-valued environment entries. In chart-managed mode each entry is
+# rendered into the credentials secret and referenced as an env entry:
+# TOKENHUB_SECRET_KEY is required, TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD is
+# generated when empty, TOKENHUB_DATABASE_URL is composed from the database
+# settings; any other non-empty key is stored as given. With credentialsSecret
+# or externalSecret.enabled the same keys are referenced from that secret
+# instead of being rendered, so provide them there.
+secretEnv:
+  TOKENHUB_SECRET_KEY: ""
+  TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD: ""
+  TOKENHUB_DATABASE_URL: ""
+  # TOKENHUB_METRICS_TOKEN: ""
+
+# Additional environment entries appended after the fixed chart wiring,
+# standard Kubernetes syntax. Use this for any TOKENHUB_* variable documented
+# in docs/deployment.md, for example:
+#
+# extraEnv:
+#   - name: TOKENHUB_METRICS_ENABLED
+#     value: "true"
+#   - name: TOKENHUB_BILLING_REDIS_URL
+#     value: redis://redis.default.svc:6379
+extraEnv: []
+
+# PodMonitor (monitoring.coreos.com/v1) scraping /metrics every 30s. Requires
+# the Prometheus Operator CRDs and TOKENHUB_METRICS_ENABLED=true (enable it via
+# extraEnv, otherwise scrapes fail). The metrics endpoint requires a bearer
+# token: set bearerTokenSecret to the secret holding TOKENHUB_METRICS_TOKEN.
+podMonitor:
+  enabled: false
+  # Labels the Prometheus installation selects, for example: release: prometheus
+  additionalLabels: {}
+  # bearerTokenSecret:
+  #   name: tokenhub-credentials
+  #   key: TOKENHUB_METRICS_TOKEN
+
+# ExternalSecret (external-secrets.io/v1beta1) syncing the credentials secret
+# from an external secret manager (Vault, AWS Secrets Manager, GCP, ...) every
+# 5 minutes. Requires the External Secrets Operator CRDs and a
+# ClusterSecretStore. The remote secret is extracted 1:1 into the chart
+# credentials secret: provide TOKENHUB_SECRET_KEY,
+# TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD, and TOKENHUB_DATABASE_URL there (optional
+# keys such as TOKENHUB_METRICS_TOKEN are picked up too). Mutually exclusive
+# with postgresql.enabled; secretEnv values must stay empty.
+externalSecret:
+  enabled: false
+  # ClusterSecretStore name to sync from.
+  secretStore: ""
+  # Remote secret id, for example tokenhub/prod.
+  sourceSecretId: ""

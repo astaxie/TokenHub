@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tokenhub.fullname" . }}
+  labels:
+    {{- include "tokenhub.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # The database is the source of truth and every replica serves the same
+      # state, so roll forward without ever dropping capacity.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "tokenhub.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- include "tokenhub.podMetadata" . | nindent 6 }}
+    spec:
+      {{- include "tokenhub.podSpec" . | nindent 6 }}

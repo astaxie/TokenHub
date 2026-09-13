@@ -1,0 +1,38 @@
+{{- if not (or .Values.database.url .Values.database.existingSecret .Values.postgresql.enabled .Values.externalSecret.enabled) }}
+{{- /* Rendering failed on the secret template; stay quiet. */}}
+{{- else }}
+TokenHub has been deployed to namespace {{ .Release.Namespace }}.
+
+{{- if and .Values.ingress.enabled .Values.ingress.host }}- Admin console: {{ if .Values.ingress.tls.enabled }}https://{{ .Values.ingress.host }}{{ else }}http://{{ .Values.ingress.host }}{{ end }}
+  API and SDK traffic uses the same host under /v1, /api, and /v1beta.
+{{- else }}- The chart did not create an ingress. Port-forward and open the console:
+
+    kubectl port-forward svc/{{ include "tokenhub.fullname" . }} 8080:8080 3000:3000 -n {{ .Release.Namespace }}
+
+  Console: http://localhost:3000  API: http://localhost:8080/v1
+
+  Set TOKENHUB_PUBLIC_BASE_URL via extraEnv to the URL users will visit so
+  links, CORS, and redirects work.
+{{- end }}
+{{- if and .Values.postgresql.enabled (not .Values.database.url) }}- The built-in PostgreSQL subchart is for quick testing only. For production,
+  point database.url at a managed PostgreSQL service and disable it.
+{{- end }}
+{{- if not (or .Values.credentialsSecret .Values.externalSecret.enabled) }}- Initial admin login: username "admin", password from the credentials secret:
+
+  kubectl get secret {{ include "tokenhub.secretName" . }} -o jsonpath='{.data.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD}' -n {{ .Release.Namespace }} | base64 -d
+
+  Change the password in the admin console after first login.
+{{- end }}
+{{- if .Values.externalSecret.enabled }}- Credentials are synced by ExternalSecret {{ include "tokenhub.fullname" . }}
+  from ClusterSecretStore {{ .Values.externalSecret.secretStore }} into secret
+  {{ include "tokenhub.secretName" . }}.
+{{- end }}
+{{- if .Values.podMonitor.enabled }}- Metrics are scraped by PodMonitor {{ include "tokenhub.fullname" . }} from
+  /metrics on the api port.
+{{- end }}
+- Plugins are stateless: runtime-installed plugin packages are removed when a
+  pod is replaced. Built-in provider plugins ship in the image and always
+  survive. Bake packages into a custom image to keep them.
+- Database upgrades run automatically on pod start (schema AutoMigrate). Take
+  a PostgreSQL backup before upgrading the image tag.
+{{- end }}
