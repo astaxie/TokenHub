@@ -1,0 +1,25 @@
+{{- if .Values.podMonitor.enabled }}
+{{- /* Requires TOKENHUB_METRICS_ENABLED=true via extraEnv; see values.yaml. */}}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "tokenhub.fullname" . }}
+  labels:
+    {{- include "tokenhub.labels" . | nindent 4 }}
+    {{- with .Values.podMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "tokenhub.selectorLabels" . | nindent 6 }}
+  podMetricsEndpoints:
+    - port: api
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      {{- with .Values.podMonitor.bearerTokenSecret }}
+      bearerTokenSecret:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

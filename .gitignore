@@ -64,3 +64,6 @@ yarn-error.log*
 CLAUDE.md
 backend/tokenhub-migrate
 sdk/migration-e2e/report.json
+
+# Vendored Helm subchart archives (rebuilt by helm dependency build)
+deploy/helm/tokenhub/charts/
