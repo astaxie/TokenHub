@@ -4,6 +4,9 @@ import { billingStatementTranslations } from "./billing-statements";
 import { billingPricingTranslations } from "./billing-pricing";
 import { enTranslations } from "./en";
 import { jaTranslations } from "./ja";
+import { ruTranslations } from "./ru";
+import { adminResourcesRuTranslations } from "./admin-resources-ru";
+import { adminDomainRuTranslations } from "./admin-domain-ru";
 import { adminWorkflowTranslations } from "./admin-workflows";
 import { apiKeyUsageTranslations } from "./api-key-usage";
 import { auditFilterTranslations } from "./audit-filters";
@@ -23,7 +26,8 @@ import { usageTranslations } from "./usage";
 import { notificationTranslations } from "./notifications";
 import syntheticDNSTranslations from "./synthetic-dns";
 
-export const translations: Record<"en" | "ja", Record<string, string>> = {
+export const translations: Record<"en" | "ja" | "ru", Record<string, string>> = {
   en: { ...apiKeyAccessTranslations.en, ...adminUICopyTranslations.en, ...billingStatementTranslations.en, ...billingPricingTranslations.en, ...enTranslations, ...adminWorkflowTranslations.en, ...apiKeyUsageTranslations.en, ...auditFilterTranslations.en, ...dbEvolutionTranslations.en, ...routingTranslations.en, ...codexImageTranslations.en, ...scopedRoutingPolicyTranslations.en, ...modelGovernanceTranslations.en, ...gatewayDocsTranslations.en, ...loginHomeTranslations.en, ...providerConnectionTranslations.en, ...providerMonitoringTranslations.en, ...usageTranslations.en, ...playgroundTranslations.en, ...pluginTranslations.en, ...securityTranslations.en, ...notificationTranslations.en, ...syntheticDNSTranslations.en },
   ja: { ...apiKeyAccessTranslations.ja, ...adminUICopyTranslations.ja, ...billingStatementTranslations.ja, ...billingPricingTranslations.ja, ...jaTranslations, ...adminWorkflowTranslations.ja, ...apiKeyUsageTranslations.ja, ...auditFilterTranslations.ja, ...dbEvolutionTranslations.ja, ...routingTranslations.ja, ...codexImageTranslations.ja, ...scopedRoutingPolicyTranslations.ja, ...modelGovernanceTranslations.ja, ...gatewayDocsTranslations.ja, ...loginHomeTranslations.ja, ...providerConnectionTranslations.ja, ...providerMonitoringTranslations.ja, ...usageTranslations.ja, ...playgroundTranslations.ja, ...pluginTranslations.ja, ...securityTranslations.ja, ...notificationTranslations.ja, ...syntheticDNSTranslations.ja },
+  ru: { ...apiKeyAccessTranslations.ru, ...adminUICopyTranslations.ru, ...ruTranslations, ...adminResourcesRuTranslations, ...adminDomainRuTranslations, ...modelGovernanceTranslations.ru },
 };

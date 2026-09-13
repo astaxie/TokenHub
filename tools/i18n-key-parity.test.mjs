@@ -1,10 +1,9 @@
-// Key parity between the English and Japanese admin console dictionaries.
+// Key parity between the English, Japanese, and Russian admin console dictionaries.
 //
 // tx() in frontend/features/admin/i18n/runtime.tsx falls back to `?? value`, and every
 // source key is Chinese. A key that exists in the English dictionary but not the Japanese
-// one therefore does not fail loudly: a Japanese user just sees the raw Chinese string.
-// Fourteen keys sat that way until this gate landed, so the parity check lives in the
-// tools test suite CI already runs rather than in a frontend test nobody wires up.
+// or Russian one therefore does not fail loudly: a user just sees the raw Chinese string.
+// The parity check lives in the tools test suite CI runs to guard all locales against regressions.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -27,7 +26,10 @@ const i18nDir = join(
 // and routing.tsx's computed `[routingKeys.description]` keys for free, and it measures
 // the same object tx() reads at runtime.
 const TYPE_ANNOTATIONS = [
+  ': Record<"en" | "ja" | "ru", Record<string, string>>',
+  ': Record<"en" | "ja", Record<string, string>>',
   ": Record<string, string>",
+  ' satisfies Record<"en" | "ja" | "ru", Record<string, string>>',
   ' satisfies Record<"en" | "ja", Record<string, string>>',
   " as const",
 ];
@@ -49,17 +51,94 @@ async function loadDictionarySource(file) {
   return import(`data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`);
 }
 
+const { apiKeyAccessTranslations } = await loadDictionarySource("api-key-access.tsx");
+const { adminUICopyTranslations } = await loadDictionarySource("admin-ui-copy.tsx");
+const { billingStatementTranslations } = await loadDictionarySource("billing-statements.tsx");
+const { billingPricingTranslations } = await loadDictionarySource("billing-pricing.tsx");
 const { enTranslations } = await loadDictionarySource("en.tsx");
 const { jaTranslations } = await loadDictionarySource("ja.tsx");
-const { modelGovernanceTranslations } = await loadDictionarySource("model-governance.tsx");
+const { ruTranslations } = await loadDictionarySource("ru.tsx");
+const { adminResourcesRuTranslations } = await loadDictionarySource("admin-resources-ru.tsx");
+const { adminDomainRuTranslations } = await loadDictionarySource("admin-domain-ru.tsx");
+const { adminWorkflowTranslations } = await loadDictionarySource("admin-workflows.tsx");
+const { apiKeyUsageTranslations } = await loadDictionarySource("api-key-usage.tsx");
+const { auditFilterTranslations } = await loadDictionarySource("audit-filters.tsx");
+const { dbEvolutionTranslations } = await loadDictionarySource("db-evolution.tsx");
 const { routingTranslations } = await loadDictionarySource("routing.tsx");
+const { codexImageTranslations } = await loadDictionarySource("codex-image.tsx");
+const { scopedRoutingPolicyTranslations } = await loadDictionarySource("scoped-routing-policy.tsx");
+const { modelGovernanceTranslations } = await loadDictionarySource("model-governance.tsx");
+const { gatewayDocsTranslations } = await loadDictionarySource("gateway-docs.tsx");
+const { loginHomeTranslations } = await loadDictionarySource("login-home.tsx");
+const { providerConnectionTranslations } = await loadDictionarySource("provider-connection.tsx");
+const { providerMonitoringTranslations } = await loadDictionarySource("provider-monitoring.tsx");
+const { usageTranslations } = await loadDictionarySource("usage.tsx");
+const { playgroundTranslations } = await loadDictionarySource("playground.tsx");
+const { pluginTranslations } = await loadDictionarySource("plugins.tsx");
+const { securityTranslations } = await loadDictionarySource("security.tsx");
+const { notificationTranslations } = await loadDictionarySource("notifications.tsx");
+const { default: syntheticDNSTranslations } = await loadDictionarySource("synthetic-dns.tsx");
 
-// Mirrors the merge order in translations.tsx. It matters: a key defined in two sources
-// resolves to the one merged last, so parity has to be checked on the merged result and
-// not only file by file.
+// Mirrors the full merge in translations.tsx across all feature dictionaries.
 const merged = {
-  en: { ...enTranslations, ...routingTranslations.en, ...modelGovernanceTranslations.en },
-  ja: { ...jaTranslations, ...routingTranslations.ja, ...modelGovernanceTranslations.ja },
+  en: {
+    ...apiKeyAccessTranslations.en,
+    ...adminUICopyTranslations.en,
+    ...billingStatementTranslations.en,
+    ...billingPricingTranslations.en,
+    ...enTranslations,
+    ...adminWorkflowTranslations.en,
+    ...apiKeyUsageTranslations.en,
+    ...auditFilterTranslations.en,
+    ...dbEvolutionTranslations.en,
+    ...routingTranslations.en,
+    ...codexImageTranslations.en,
+    ...scopedRoutingPolicyTranslations.en,
+    ...modelGovernanceTranslations.en,
+    ...gatewayDocsTranslations.en,
+    ...loginHomeTranslations.en,
+    ...providerConnectionTranslations.en,
+    ...providerMonitoringTranslations.en,
+    ...usageTranslations.en,
+    ...playgroundTranslations.en,
+    ...pluginTranslations.en,
+    ...securityTranslations.en,
+    ...notificationTranslations.en,
+    ...syntheticDNSTranslations.en,
+  },
+  ja: {
+    ...apiKeyAccessTranslations.ja,
+    ...adminUICopyTranslations.ja,
+    ...billingStatementTranslations.ja,
+    ...billingPricingTranslations.ja,
+    ...jaTranslations,
+    ...adminWorkflowTranslations.ja,
+    ...apiKeyUsageTranslations.ja,
+    ...auditFilterTranslations.ja,
+    ...dbEvolutionTranslations.ja,
+    ...routingTranslations.ja,
+    ...codexImageTranslations.ja,
+    ...scopedRoutingPolicyTranslations.ja,
+    ...modelGovernanceTranslations.ja,
+    ...gatewayDocsTranslations.ja,
+    ...loginHomeTranslations.ja,
+    ...providerConnectionTranslations.ja,
+    ...providerMonitoringTranslations.ja,
+    ...usageTranslations.ja,
+    ...playgroundTranslations.ja,
+    ...pluginTranslations.ja,
+    ...securityTranslations.ja,
+    ...notificationTranslations.ja,
+    ...syntheticDNSTranslations.ja,
+  },
+  ru: {
+    ...apiKeyAccessTranslations.ru,
+    ...adminUICopyTranslations.ru,
+    ...ruTranslations,
+    ...adminResourcesRuTranslations,
+    ...adminDomainRuTranslations,
+    ...modelGovernanceTranslations.ru,
+  },
 };
 
 function keysMissingFrom(source, target) {
@@ -71,6 +150,13 @@ function assertSameKeys(label, en, ja) {
   assert.deepEqual(keysMissingFrom(ja, en), [], `${label}: defined in ja, missing from en`);
 }
 
+function assertSameThreeWayKeys(label, en, ja, ru) {
+  assert.deepEqual(keysMissingFrom(en, ja), [], `${label}: defined in en, missing from ja`);
+  assert.deepEqual(keysMissingFrom(ja, en), [], `${label}: defined in ja, missing from en`);
+  assert.deepEqual(keysMissingFrom(en, ru), [], `${label}: defined in en, missing from ru`);
+  assert.deepEqual(keysMissingFrom(ru, en), [], `${label}: defined in ru, missing from en`);
+}
+
 describe("dictionary loading", () => {
   it("parses every dictionary into a non-trivial object", () => {
     // Without this, a transform that silently produced `{}` would make every parity
@@ -78,8 +164,12 @@ describe("dictionary loading", () => {
     const sources = {
       "en.tsx": enTranslations,
       "ja.tsx": jaTranslations,
+      "ru.tsx": ruTranslations,
+      "admin-domain-ru.tsx": adminDomainRuTranslations,
+      "admin-resources-ru.tsx": adminResourcesRuTranslations,
       "model-governance.tsx en": modelGovernanceTranslations.en,
       "model-governance.tsx ja": modelGovernanceTranslations.ja,
+      "model-governance.tsx ru": modelGovernanceTranslations.ru,
       "routing.tsx en": routingTranslations.en,
       "routing.tsx ja": routingTranslations.ja,
     };
@@ -108,6 +198,12 @@ describe("single ownership", () => {
       ["ja.tsx", jaTranslations],
       ["routing.tsx", routingTranslations.ja],
       ["model-governance.tsx", modelGovernanceTranslations.ja],
+    ],
+    ru: [
+      ["ru.tsx", ruTranslations],
+      ["admin-domain-ru.tsx", adminDomainRuTranslations],
+      ["admin-resources-ru.tsx", adminResourcesRuTranslations],
+      ["model-governance.tsx", modelGovernanceTranslations.ru],
     ],
   };
 
@@ -141,10 +237,15 @@ describe("key parity", () => {
   });
 
   it("keeps the model-governance.tsx sections in step", () => {
-    assertSameKeys("model-governance.tsx", modelGovernanceTranslations.en, modelGovernanceTranslations.ja);
+    assertSameThreeWayKeys(
+      "model-governance.tsx",
+      modelGovernanceTranslations.en,
+      modelGovernanceTranslations.ja,
+      modelGovernanceTranslations.ru,
+    );
   });
 
   it("keeps the merged dictionary tx() reads in step", () => {
-    assertSameKeys("merged translations", merged.en, merged.ja);
+    assertSameThreeWayKeys("merged translations", merged.en, merged.ja, merged.ru);
   });
 });

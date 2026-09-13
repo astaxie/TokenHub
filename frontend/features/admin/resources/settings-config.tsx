@@ -449,7 +449,7 @@ export function monitorConfig(): ResourceConfig<AdminResource> {
       { key: "fields.provider_resource_id", label: "资源实例", render: (item) => stringifyValue(item.fields?.provider_resource_id) || "-" },
       { key: "fields.model", label: "模型", render: (item) => stringifyValue(item.fields?.model) || "-" },
       { key: "fields.last_status", label: "最近状态", render: (item) => <StatusPill status={stringifyValue(item.fields?.last_status || item.fields?.last_result || "unknown")} /> },
-      { key: "fields.last_message", label: "最近消息", render: (item) => stringifyValue(item.fields?.last_message) || "-" },
+      { key: "fields.last_message", label: "最近消息", render: (item) => tx(stringifyValue(item.fields?.last_message)) || "-" },
       { key: "fields.latency_ms", label: "延迟", render: (item) => `${numberFromUnknown(item.fields?.latency_ms)}ms` },
       { key: "fields.last_checked_at", label: "最近检测", render: (item) => formatTime(stringifyValue(item.fields?.last_checked_at)) },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },

@@ -2,6 +2,7 @@ import { type AppRole } from "../core/types";
 import { formatNumber } from "../domain/formatting";
 import { type AppLanguage } from "../i18n/runtime";
 import { gatewayJapaneseLLMUsageDocs } from "./gateway-llm-ja";
+import { gatewayRussianLLMUsageDocs } from "./gateway-llm-ru";
 import { gatewayChineseLLMUsageDocs } from "./gateway-llm-zh";
 import { type GatewayDocBundle, type GatewayDocStats } from "./gateway-view";
 
@@ -12,6 +13,7 @@ export function gatewayLLMUsageDocs({
 }: GatewayDocStats & { language: AppLanguage; role: AppRole }): GatewayDocBundle {
   if (language === "zh-CN") return gatewayChineseLLMUsageDocs(stats, role);
   if (language === "ja") return gatewayJapaneseLLMUsageDocs(stats, role);
+  if (language === "ru") return gatewayRussianLLMUsageDocs(stats, role);
   return gatewayEnglishLLMUsageDocs(stats, role);
 }
 

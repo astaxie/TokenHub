@@ -6,7 +6,7 @@ import { stringifyValue } from "../domain/entities";
 import { identityProviderIconLabel } from "../domain/labels";
 import { buildOAuthLoginStartURL, createOAuthLoginPKCE } from "../domain/oauth-login";
 import { LanguageSelect } from "../i18n/language-switcher";
-import { activeLanguage, type AppLanguage, tx } from "../i18n/runtime";
+import { type AppLanguage, formatTranslationTemplate, tx } from "../i18n/runtime";
 
 export const identityProviderIconOptions = [
   "auto",
@@ -530,11 +530,15 @@ export function identityProviderTemplateLabel(templateKey: string) {
 }
 
 export function identityProviderTemplateHelp(template: IdentityProviderTemplate) {
-  if (template.key === "generic_oidc") return "适合标准 OIDC 服务，填写 Issuer 后一般可自动发现端点。";
-  if (template.key === "custom_oauth2") return "适合非标准 OAuth2 服务，需要确认授权、Token 和用户信息端点。";
-  if (activeLanguage === "en") return `Best for ${tx(template.label)} enterprise apps; common endpoints and claims are prefilled.`;
-  if (activeLanguage === "ja") return `${tx(template.label)} の企業アプリ向けです。一般的なエンドポイントと Claim を事前入力します。`;
-  return `适合 ${template.label} 企业应用，常用端点和 Claim 已预置。`;
+  if (template.key === "generic_oidc") {
+    return tx("适合标准 OIDC 服务，填写 Issuer 后一般可自动发现端点。");
+  }
+  if (template.key === "custom_oauth2") {
+    return tx("适合非标准 OAuth2 服务，需要确认授权、Token 和用户信息端点。");
+  }
+  return formatTranslationTemplate(tx("适合 {name} 企业应用，常用端点和 Claim 已预置。"), {
+    name: tx(template.label),
+  });
 }
 
 export function GoogleBrandIcon({ size = 15 }: { size?: number }) {

@@ -1068,6 +1068,7 @@ export const enTranslations: Record<string, string> = {
     "平台不返回邮箱时，用该 Claim 生成稳定的内部邮箱。": "When the provider omits email, this claim is used to generate a stable internal email.",
     "适合标准 OIDC 服务，填写 Issuer 后一般可自动发现端点。": "Best for standard OIDC services; endpoints can usually be discovered from the issuer.",
     "适合非标准 OAuth2 服务，需要确认授权、Token 和用户信息端点。": "Best for non-standard OAuth2 services; verify authorization, token, and userinfo endpoints.",
+    "适合 {name} 企业应用，常用端点和 Claim 已预置。": "Best for {name} enterprise apps; common endpoints and claims are prefilled.",
     "请先填写至少一项希望提升后的目标额度": "Enter at least one target quota to increase",
     "不限额": "Unlimited",
     "项目空间内配置的专属模型调用额度": "Project-specific model call quota",
@@ -1494,5 +1495,5 @@ export const enTranslations: Record<string, string> = {
     "命中详情": "Findings", "未命中检测项": "No detection items matched",
     "放行": "Allow", "使用独立配置的 Qwen3Guard 服务；未配置或不可用时执行下方策略。": "Uses the separately configured Qwen3Guard service; the behavior below applies when it is unconfigured or unavailable.",
     "Provider 出口模式": "Provider Egress Mode", "继承环境变量代理": "Inherit Environment Proxy", "直接连接": "Direct Connection", "使用统一代理": "Use Global Proxy", "代理协议": "Proxy Protocol", "代理 Host": "Proxy Host", "代理端口": "Proxy Port", "启用代理 Basic 认证": "Enable Proxy Basic Authentication", "代理用户名": "Proxy Username", "代理密码": "Proxy Password", "测试目标 Provider": "Test Target Provider", "正在测试代理": "Testing Proxy", "测试代理连接": "Test Proxy Connection", "代理连接测试通过": "Proxy connection test passed", "代理连接测试失败": "Proxy connection test failed",
-    "适用于 Provider 上游请求；本机与内网目标默认直连。其他目标默认继承 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY。": "Applies to Provider upstream requests. Local and private targets connect directly by default; other targets inherit HTTP_PROXY, HTTPS_PROXY, and NO_PROXY.",
-    };
+    "适用于 Provider 上游请求；本机与内网目标默认直连。其他目标默认继承 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY。": "Applies to Provider upstream requests. Local and private targets connect directly by default; other targets inherit HTTP_PROXY, HTTPS_PROXY, and NO_PROXY.", "当前账号没有访问 {label} 的权限。页面已隐藏无权限数据；如需查看或管理，请联系管理员调整角色或项目成员权限。": "This account does not have permission to access {label}. Data outside your permission scope is hidden; ask an admin to adjust your role or project membership if needed.", "已隐藏无权限数据：{summary}。当前页面只展示你有权限查看的内容。": "Hidden due to insufficient permission: {summary}. This page only shows content you can access.", "{seconds}s 后可关闭": "Close in {seconds}s", "第 {start}-{end} 条，共 {total} 条": "{start}-{end} of {total}",
+  };

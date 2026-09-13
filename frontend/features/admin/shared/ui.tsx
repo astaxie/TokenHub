@@ -7,7 +7,7 @@ import { findProvider, modelRoutesFor } from "../domain/entities";
 import { compactNumber, routeStrategyLabel } from "../domain/formatting";
 import { enumOptionLabel, enumValueLabel, providerTypeLabel, splitList } from "../domain/labels";
 import { providerCatalogEntriesFromPluginCapabilities } from "../domain/provider-plugin-catalog";
-import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
+import { clearCustomValidity, formatTranslationTemplate, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
 import { PaginationControls, usePagination } from "./pagination";
 import { useModalFocus } from "./modal-focus";
 
@@ -48,9 +48,9 @@ export function ConfirmDialog({
 }
 
 export function issuedKeyCloseCountdownLabel(seconds: number) {
-  if (activeLanguage === "en") return `Close in ${seconds}s`;
-  if (activeLanguage === "ja") return `${seconds} 秒後に閉じる`;
-  return `${seconds}s 后可关闭`;
+  return formatTranslationTemplate(tx("{seconds}s 后可关闭"), {
+    seconds: String(seconds),
+  });
 }
 
 export function FieldInput({
