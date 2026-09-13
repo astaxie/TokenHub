@@ -42,13 +42,13 @@ helm install tokenhub deploy/helm/tokenhub \
 
 `TOKENHUB_TRUSTED_PROXY_CIDRS` 必须覆盖 Ingress 控制器的来源地址,这样限流、审计等客户端 IP 归属才能拿到真实客户端地址而不是控制器 IP。私有 Pod/Service CIDR 是合理的起点,之后再收紧到你的集群实际网段。
 
-首次登录使用用户名 `admin` 和 chart 生成的随机 bootstrap 密码:
+首次登录使用用户名 `admin` 和你在 `secretEnv.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` 中设置的 bootstrap 密码:
 
 ```bash
 kubectl get secret tokenhub-tokenhub-credentials -o jsonpath='{.data.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d
 ```
 
-首次登录后在管理后台修改密码;bootstrap 种子只在空数据库上运行。想自己控制可以通过 `extraEnv` 设置 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`。
+chart 不会自动生成该密码:请通过 `secretEnv` 设置一个稳定的值,并在后续升级中保持不变,bootstrap 种子只在空数据库上运行。改走 `extraEnv` 会与 chart 已渲染的 Secret 环境项重复。首次登录后在管理后台修改密码。
 
 凭据也可以来自已有的 Secret 而不是内联值:
 

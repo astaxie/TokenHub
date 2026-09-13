@@ -72,9 +72,10 @@ credentialsSecret: ""
 
 # Secret-valued environment entries. In chart-managed mode each entry is
 # rendered into the credentials secret and referenced as an env entry:
-# TOKENHUB_SECRET_KEY is required, TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD is
-# generated when empty, TOKENHUB_DATABASE_URL is composed from the database
-# settings; any other non-empty key is stored as given. With credentialsSecret
+# TOKENHUB_SECRET_KEY and TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD are required
+# explicit values (the bootstrap password is never generated),
+# TOKENHUB_DATABASE_URL is composed from the database settings; any other
+# non-empty key is stored as given. With credentialsSecret
 # or externalSecret.enabled the same keys are referenced from that secret
 # instead of being rendered, so provide them there.
 secretEnv:

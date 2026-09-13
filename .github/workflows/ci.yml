@@ -573,16 +573,22 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Chart.lock pins the dependency but does not register its
+          # repository, so a clean runner must add it before building.
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
           helm dependency build deploy/helm/tokenhub
 
           helm lint deploy/helm/tokenhub \
             --set secretEnv.TOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss \
+            --set secretEnv.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=bootstrap-password \
             --set database.existingSecret=tokenhub-database
 
           helm template tokenhub deploy/helm/tokenhub \
             --set ingress.enabled=true \
             --set ingress.host=tokenhub.example.com \
             --set secretEnv.TOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss \
+            --set secretEnv.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=bootstrap-password \
             --set database.url='postgresql://tokenhub:test@db.example:5432/tokenhub?sslmode=require' \
             --set 'extraEnv[0].name=TOKENHUB_TRUSTED_PROXY_CIDRS' \
             --set 'extraEnv[0].value=10.0.0.0/8' \

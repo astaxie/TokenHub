@@ -42,13 +42,13 @@ helm install tokenhub deploy/helm/tokenhub \
 
 `TOKENHUB_TRUSTED_PROXY_CIDRS` must cover the ingress controller's source addresses so client IP attribution (rate limits, audit entries) sees real client addresses instead of the controller IP. Private pod/service CIDRs are a reasonable starting point; tighten the list to your cluster.
 
-The first login is username `admin` with the random bootstrap password the chart generated:
+The first login is username `admin` with the bootstrap password you configured in `secretEnv.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`:
 
 ```bash
 kubectl get secret tokenhub-tokenhub-credentials -o jsonpath='{.data.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d
 ```
 
-Change the password in the admin console after first login; the bootstrap seed only runs on an empty database. Set `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` via `extraEnv` if you want to control it yourself.
+The chart never generates this password: set a stable value through `secretEnv` and keep it unchanged across upgrades, since the bootstrap seed only runs on an empty database. Setting it through `extraEnv` instead would duplicate the Secret-backed entry the chart already renders. Change the password in the admin console after first login.
 
 Credentials can also come from existing secrets instead of inline values:
 

@@ -42,13 +42,13 @@ helm install tokenhub deploy/helm/tokenhub \
 
 `TOKENHUB_TRUSTED_PROXY_CIDRS` には Ingress コントローラーの送信元アドレス範囲を設定してください。設定しないと、レート制限や監査ログなどでのクライアント IP の特定がコントローラーの IP になってしまいます。プライベートな Pod/Service CIDR から始めて、実際のクラスターのセグメントに絞り込むのが合理的です。
 
-初回ログインはユーザー名 `admin` と、チャートが生成したランダムなブートストラップパスワードを使用します:
+初回ログインはユーザー名 `admin` と、`secretEnv.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` に設定したブートストラップパスワードを使用します:
 
 ```bash
 kubectl get secret tokenhub-tokenhub-credentials -o jsonpath='{.data.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d
 ```
 
-初回ログイン後に管理コンソールでパスワードを変更してください。ブートストラップのシードは空のデータベースでのみ実行されます。自分で管理したい場合は `extraEnv` で `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` を設定できます。
+チャートがパスワードを自動生成することはありません。`secretEnv` で安定した値を設定し、以降のアップグレードでも同じ値を維持してください。ブートストラップのシードは空のデータベースでのみ実行されます。`extraEnv` を使うとチャートがレンダリングする Secret 由来の環境変数と重複します。初回ログイン後に管理コンソールでパスワードを変更してください。
 
 認証情報はインライン値の代わりに既存の Secret からも供給できます:
 

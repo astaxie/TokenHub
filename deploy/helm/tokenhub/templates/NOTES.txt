@@ -17,7 +17,8 @@ TokenHub has been deployed to namespace {{ .Release.Namespace }}.
 {{- if and .Values.postgresql.enabled (not .Values.database.url) }}- The built-in PostgreSQL subchart is for quick testing only. For production,
   point database.url at a managed PostgreSQL service and disable it.
 {{- end }}
-{{- if not (or .Values.credentialsSecret .Values.externalSecret.enabled) }}- Initial admin login: username "admin", password from the credentials secret:
+{{- if not (or .Values.credentialsSecret .Values.externalSecret.enabled) }}- Initial admin login: username "admin", password from the credentials secret
+  (the TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD value you configured):
 
   kubectl get secret {{ include "tokenhub.secretName" . }} -o jsonpath='{.data.TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD}' -n {{ .Release.Namespace }} | base64 -d
 
