@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -293,6 +294,36 @@ func TestStoreListUsagesPreservesProviderCostEvidence(t *testing.T) {
 	}
 	if !known["known"] || known["unknown"] || !known["free"] || known["wrong"] {
 		t.Fatalf("provider cost evidence mapping = %#v", known)
+	}
+}
+
+func TestStoreListUsagesBatchesLargeProviderCostEvidenceLookup(t *testing.T) {
+	store, db := newTestStore(t)
+	if err := db.AutoMigrate(&usageRow{}, &meteringEvidenceRow{}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	rows := make([]usageRow, 2400)
+	for index := range rows {
+		// Repeated request IDs also verify that the lookup deduplicates scopes.
+		requestID := "large-request-" + strconv.Itoa(index%1200)
+		rows[index] = usageRow{ID: "large-usage-" + strconv.Itoa(index), RequestID: requestID, ProviderID: "provider", ProviderResourceID: "resource", CreatedAt: at}
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	values, err := store.ListUsages(at, at.Add(time.Minute), 0)
+	if err != nil {
+		t.Fatalf("large evidence lookup failed: %v", err)
+	}
+	matched := 0
+	for _, value := range values {
+		if strings.HasPrefix(value.ID, "large-usage-") {
+			matched++
+		}
+	}
+	if matched != len(rows) {
+		t.Fatalf("large evidence lookup returned %d generated usages, want %d", matched, len(rows))
 	}
 }
 

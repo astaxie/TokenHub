@@ -1,6 +1,7 @@
 package server
 
 import (
+	"reflect"
 	"time"
 
 	"tokenhub/backend/internal/billing"
@@ -35,6 +36,41 @@ func applicationDependenciesForCompatibility(store Store) ApplicationDependencie
 		return ApplicationDependencies{}
 	}
 	return ApplicationDependenciesForStore(gormStore)
+}
+
+func applicationDependenciesForLegacyBilling(store Store) ApplicationDependencies {
+	if dependencies := applicationDependenciesForCompatibility(store); dependencies.Repository != nil || dependencies.ReconciliationReader != nil || dependencies.ReconciliationStore != nil {
+		return dependencies
+	}
+	if store == nil {
+		return ApplicationDependencies{}
+	}
+	// Preserve compatibility for Store decorators that embed the historical
+	// Store interface. The embedded interface hides the concrete GormStore
+	// from a direct type assertion, so walk anonymous fields to recover it.
+	value := reflect.Indirect(reflect.ValueOf(store))
+	if !value.IsValid() {
+		return ApplicationDependencies{}
+	}
+	if value.Kind() != reflect.Struct {
+		return ApplicationDependencies{}
+	}
+	typeOfStore := value.Type()
+	for index := 0; index < value.NumField(); index++ {
+		fieldType := typeOfStore.Field(index)
+		if !fieldType.Anonymous || !value.Field(index).CanInterface() {
+			continue
+		}
+		underlying, ok := value.Field(index).Interface().(Store)
+		if !ok {
+			continue
+		}
+		dependencies := applicationDependenciesForLegacyBilling(underlying)
+		if dependencies.Repository != nil || dependencies.ReconciliationReader != nil || dependencies.ReconciliationStore != nil {
+			return dependencies
+		}
+	}
+	return ApplicationDependencies{}
 }
 
 func normalizeApplicationDependencies(dependencies ApplicationDependencies) ApplicationDependencies {

@@ -110,6 +110,10 @@ func NewWithConfigAndDependencies(store Store, config Config, dependencies Appli
 
 // NewWithConfigAndBillingDependencies is retained for source compatibility.
 func NewWithConfigAndBillingDependencies(store Store, config Config, dependencies BillingDependencies) *Server {
+	if dependencies.ReconciliationStore == nil && dependencies.Repository != nil && dependencies.ReconciliationReader != nil {
+		compatibility := applicationDependenciesForLegacyBilling(store)
+		dependencies.ReconciliationStore = compatibility.ReconciliationStore
+	}
 	return NewWithConfigAndDependencies(store, config, dependencies)
 }
 

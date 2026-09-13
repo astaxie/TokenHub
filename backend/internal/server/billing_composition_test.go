@@ -40,6 +40,10 @@ func TestNewWithConfigAndBillingDependenciesSupportsStoreDecorator(t *testing.T)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("create billing connector through decorated store: %d %s", response.Code, response.Body)
 	}
+	reconciliation := doJSON(t, app, http.MethodGet, "/api/admin/billing/reconciliation-rules", nil, "billing-composition-admin")
+	if reconciliation.Code != http.StatusOK || !strings.Contains(reconciliation.Body, `"data"`) {
+		t.Fatalf("reconciliation through legacy billing constructor: %d %s", reconciliation.Code, reconciliation.Body)
+	}
 }
 
 func TestNewWithConfigAndBillingDependenciesRejectsMissingBilling(t *testing.T) {
