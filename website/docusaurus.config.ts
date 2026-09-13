@@ -72,8 +72,21 @@ const config: Config = {
     },
   },
 
-  // Architecture and deployment docs embed mermaid flowcharts.
-  themes: ['@docusaurus/theme-mermaid'],
+  // Architecture and deployment docs embed mermaid flowcharts. The search
+  // plugin provides the offline search bar and page for every locale build;
+  // its language list matches the i18n locales above.
+  themes: [
+    '@docusaurus/theme-mermaid',
+    [
+      '@easyops-cn/docusaurus-search-local',
+      {
+        hashed: true,
+        docsRouteBasePath: '/',
+        language: ['en', 'zh', 'ja'],
+        highlightSearchTermsOnTargetPage: true,
+      },
+    ],
+  ],
 
   // Locale trees are generated from docs/zh-CN and docs/ja by the sync script.
   i18n: {
