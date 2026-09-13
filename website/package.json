@@ -1,0 +1,45 @@
+{
+  "name": "tokenhub-docs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "sync-docs": "node scripts/sync-docs.mjs",
+    "prestart": "npm run sync-docs",
+    "start": "docusaurus start",
+    "prebuild": "npm run sync-docs",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.9.0",
+    "@docusaurus/preset-classic": "^3.9.0",
+    "@docusaurus/theme-mermaid": "^3.10.2",
+    "prism-react-renderer": "^2.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@docusaurus/module-type-aliases": "^3.9.0",
+    "@docusaurus/tsconfig": "^3.9.0",
+    "@docusaurus/types": "^3.9.0",
+    "@types/node": "^22.10.10",
+    "typescript": "~5.6.2"
+  },
+  "browserslist": {
+    "production": [
+      ">0.5%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 3 chrome versions",
+      "last 3 firefox versions",
+      "last 5 safari versions"
+    ]
+  },
+  "engines": {
+    "node": ">=20.0"
+  }
+}

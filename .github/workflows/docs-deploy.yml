@@ -1,0 +1,59 @@
+# Deploys the documentation website to GitHub Pages.
+#
+# The site builds from website/ with Docusaurus; website/docs and website/i18n
+# are generated from the repository documentation by website/scripts/sync-docs.mjs
+# as part of `npm run build`.
+#
+# Requires GitHub Pages settings: Source = GitHub Actions
+# (repository Settings -> Pages).
+name: docs-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'website/**'
+      - '.github/workflows/docs-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+      - name: Build documentation site
+        working-directory: website
+        run: npm run build
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
