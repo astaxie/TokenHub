@@ -7,6 +7,7 @@ import { type AppLanguage, languageOptions, tx } from "../i18n/runtime";
 import { SimpleTable } from "../shared/ui";
 import { gatewayEnglishDocs } from "./gateway-docs-en";
 import { gatewayJapaneseDocs } from "./gateway-docs-ja";
+import { gatewayRussianDocs } from "./gateway-docs-ru";
 import { apiMethodClass, GatewayCodeBlock, GatewayCopyCard, gatewayLanguageLabel } from "./gateway-docs-ui";
 import { gatewayChineseDocs } from "./gateway-docs-zh";
 import { gatewayLLMUsageDocs } from "./gateway-llm-en";
@@ -399,6 +400,7 @@ export function gatewayDocBundle({
   }
   if (language === "zh-CN") return gatewayChineseDocs(commonEN);
   if (language === "ja") return gatewayJapaneseDocs(commonEN);
+  if (language === "ru") return gatewayRussianDocs(commonEN);
   return commonEN;
 }
 

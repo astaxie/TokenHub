@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import { activeLanguage, tx } from "../i18n/runtime";
+import { formatLocaleNumber, formatTranslationTemplate, tx } from "../i18n/runtime";
 
 export type PaginationState = {
   page: number;
@@ -50,23 +50,23 @@ export function PaginationControls({ pagination, totalItems }: { pagination: Pag
   return (
     <div className="pagination">
       <div className="pagination-summary">
-        {activeLanguage === "zh-CN"
-          ? `第 ${pagination.startIndex + 1}-${pagination.endIndex} 条，共 ${totalItems} 条`
-          : activeLanguage === "ja"
-            ? `${pagination.startIndex + 1}-${pagination.endIndex} / ${totalItems} 件`
-            : `${pagination.startIndex + 1}-${pagination.endIndex} of ${totalItems}`}
+        {formatTranslationTemplate(tx("第 {start}-{end} 条，共 {total} 条"), {
+          start: formatLocaleNumber(pagination.startIndex + 1),
+          end: formatLocaleNumber(pagination.endIndex),
+          total: formatLocaleNumber(totalItems),
+        })}
       </div>
       <div className="pagination-controls">
         <label className="page-size">
           <span>{tx("每页")}</span>
           <select value={pagination.pageSize} onChange={(event) => pagination.setPageSize(Number(event.target.value))}>
-            {pageSizeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            {pageSizeOptions.map((option) => <option key={option} value={option}>{formatLocaleNumber(option)}</option>)}
           </select>
         </label>
         <div className="page-buttons">
           <button type="button" title={tx("第一页")} onClick={() => pagination.setPage(1)} disabled={pagination.page <= 1}><ChevronsLeft size={15} /></button>
           <button type="button" title={tx("上一页")} onClick={() => pagination.setPage(pagination.page - 1)} disabled={pagination.page <= 1}><ChevronLeft size={15} /></button>
-          <span>{pagination.page} / {pagination.pageCount}</span>
+          <span>{formatLocaleNumber(pagination.page)} / {formatLocaleNumber(pagination.pageCount)}</span>
           <button type="button" title={tx("下一页")} onClick={() => pagination.setPage(pagination.page + 1)} disabled={pagination.page >= pagination.pageCount}><ChevronRight size={15} /></button>
           <button type="button" title={tx("最后一页")} onClick={() => pagination.setPage(pagination.pageCount)} disabled={pagination.page >= pagination.pageCount}><ChevronsRight size={15} /></button>
         </div>

@@ -46,35 +46,83 @@ export function translateGeneratedText(value: string, language: Exclude<AppLangu
   const createListMatch = value.match(/^(.+)列表$/);
   if (createListMatch) {
     const base = translations[language][createListMatch[1]] ?? createListMatch[1];
-    return language === "ja" ? `${base}一覧` : `${base} List`;
+    if (language === "ja") return `${base}一覧`;
+    if (language === "ru") return `Список: ${base}`;
+    return `${base} List`;
   }
   const createMatch = value.match(/^新增(.+)$/);
   if (createMatch) {
     const base = translations[language][createMatch[1]] ?? createMatch[1];
-    return language === "ja" ? `${base}を作成` : `Create ${base}`;
+    if (language === "ja") return `${base}を作成`;
+    if (language === "ru") return `Создать ${base}`;
+    return `Create ${base}`;
   }
   const approvalMatch = value.match(/^已提交审批：(.+)$/);
-  if (approvalMatch) return language === "ja" ? `承認申請済み: ${approvalMatch[1]}` : `Approval submitted: ${approvalMatch[1]}`;
+  if (approvalMatch) {
+    if (language === "ja") return `承認申請済み: ${approvalMatch[1]}`;
+    if (language === "ru") return `Заявка на согласование отправлена: ${approvalMatch[1]}`;
+    return `Approval submitted: ${approvalMatch[1]}`;
+  }
   const exportMatch = value.match(/^(.+) 已导出$/);
-  if (exportMatch) return language === "ja" ? `${exportMatch[1]} をエクスポートしました` : `${exportMatch[1]} exported`;
+  if (exportMatch) {
+    if (language === "ja") return `${exportMatch[1]} をエクスポートしました`;
+    if (language === "ru") return `${exportMatch[1]} экспортировано`;
+    return `${exportMatch[1]} exported`;
+  }
   const sentMatch = value.match(/^(.+) 已发送$/);
-  if (sentMatch) return language === "ja" ? `${sentMatch[1]} を送信しました` : `${sentMatch[1]} sent`;
+  if (sentMatch) {
+    if (language === "ja") return `${sentMatch[1]} を送信しました`;
+    if (language === "ru") return `${sentMatch[1]} отправлено`;
+    return `${sentMatch[1]} sent`;
+  }
   const approvedMatch = value.match(/^(.+) 已批准$/);
-  if (approvedMatch) return language === "ja" ? `${approvedMatch[1]} を承認しました` : `${approvedMatch[1]} approved`;
+  if (approvedMatch) {
+    if (language === "ja") return `${approvedMatch[1]} を承認しました`;
+    if (language === "ru") return `${approvedMatch[1]} утверждено`;
+    return `${approvedMatch[1]} approved`;
+  }
   const rejectedMatch = value.match(/^(.+) 已驳回$/);
-  if (rejectedMatch) return language === "ja" ? `${rejectedMatch[1]} を却下しました` : `${rejectedMatch[1]} rejected`;
+  if (rejectedMatch) {
+    if (language === "ja") return `${rejectedMatch[1]} を却下しました`;
+    if (language === "ru") return `${rejectedMatch[1]} отклонено`;
+    return `${rejectedMatch[1]} rejected`;
+  }
   const confirmedMatch = value.match(/^(.+) 已确认$/);
-  if (confirmedMatch) return language === "ja" ? `${confirmedMatch[1]} を確認しました` : `${confirmedMatch[1]} confirmed`;
+  if (confirmedMatch) {
+    if (language === "ja") return `${confirmedMatch[1]} を確認しました`;
+    if (language === "ru") return `${confirmedMatch[1]} подтверждено`;
+    return `${confirmedMatch[1]} confirmed`;
+  }
   const quotaSubmittedMatch = value.match(/^(.+) 的额度提升申请已提交$/);
-  if (quotaSubmittedMatch) return language === "ja" ? `${quotaSubmittedMatch[1]} のクォータ増額申請を送信しました` : `${quotaSubmittedMatch[1]} quota increase request submitted`;
+  if (quotaSubmittedMatch) {
+    if (language === "ja") return `${quotaSubmittedMatch[1]} のクォータ増額申請を送信しました`;
+    if (language === "ru") return `Запрос на увеличение квоты отправлен для ${quotaSubmittedMatch[1]}`;
+    return `${quotaSubmittedMatch[1]} quota increase request submitted`;
+  }
   const quotaSavedMatch = value.match(/^(.+) 的额度已保存$/);
-  if (quotaSavedMatch) return language === "ja" ? `${quotaSavedMatch[1]} のクォータを保存しました` : `${quotaSavedMatch[1]} quota saved`;
+  if (quotaSavedMatch) {
+    if (language === "ja") return `${quotaSavedMatch[1]} のクォータを保存しました`;
+    if (language === "ru") return `Квота сохранена для ${quotaSavedMatch[1]}`;
+    return `${quotaSavedMatch[1]} quota saved`;
+  }
   const teamLinkedMatch = value.match(/^(.+) 已关联团队$/);
-  if (teamLinkedMatch) return language === "ja" ? `${teamLinkedMatch[1]} にチームを関連付けました` : `Team linked to ${teamLinkedMatch[1]}`;
+  if (teamLinkedMatch) {
+    if (language === "ja") return `${teamLinkedMatch[1]} にチームを関連付けました`;
+    if (language === "ru") return `Команда привязана к ${teamLinkedMatch[1]}`;
+    return `Team linked to ${teamLinkedMatch[1]}`;
+  }
   const teamRoleMatch = value.match(/^(.+) 权限已更新$/);
-  if (teamRoleMatch) return language === "ja" ? `${teamRoleMatch[1]} の権限を更新しました` : `${teamRoleMatch[1]} permissions updated`;
+  if (teamRoleMatch) {
+    if (language === "ja") return `${teamRoleMatch[1]} の権限を更新しました`;
+    if (language === "ru") return `Права обновлены для ${teamRoleMatch[1]}`;
+    return `${teamRoleMatch[1]} permissions updated`;
+  }
   const teamRemovedMatch = value.match(/^(.+) 已移除$/);
-  if (teamRemovedMatch) return language === "ja" ? `${teamRemovedMatch[1]} を削除しました` : `${teamRemovedMatch[1]} removed`;
+  if (teamRemovedMatch) {
+    if (language === "ja") return `${teamRemovedMatch[1]} を削除しました`;
+    if (language === "ru") return `${teamRemovedMatch[1]} удалено`;
+    return `${teamRemovedMatch[1]} removed`;
+  }
   const statusMatch = value.match(/^(.+) 已(启用|禁用|轮换，新 Key 已展示)$/);
   if (statusMatch) {
     const action = statusMatch[2];
@@ -82,18 +130,30 @@ export function translateGeneratedText(value: string, language: Exclude<AppLangu
       const label = action === "启用" ? "有効化しました" : action === "禁用" ? "無効化しました" : "ローテーションしました。新しい Key を表示しています";
       return `${statusMatch[1]} を${label}`;
     }
+    if (language === "ru") {
+      const label = action === "启用" ? "включено" : action === "禁用" ? "отключено" : "обновлено, новый Key отображён";
+      return `${statusMatch[1]}: ${label}`;
+    }
     const label = action === "启用" ? "enabled" : action === "禁用" ? "disabled" : "rotated; new Key is displayed";
     return `${statusMatch[1]} ${label}`;
   }
   const routeOrderMatch = value.match(/^已更新 (.+) 的 Provider 调用顺序$/);
-  if (routeOrderMatch) return language === "ja" ? `${routeOrderMatch[1]} の Provider 呼び出し順を更新しました` : `Updated Provider call order for ${routeOrderMatch[1]}`;
+  if (routeOrderMatch) {
+    if (language === "ja") return `${routeOrderMatch[1]} の Provider 呼び出し順を更新しました`;
+    if (language === "ru") return `Порядок вызова Provider обновлён для ${routeOrderMatch[1]}`;
+    return `Updated Provider call order for ${routeOrderMatch[1]}`;
+  }
   const routePolicyMatch = value.match(/^已应用 (.+) 的模型路由策略$/);
-  if (routePolicyMatch) return language === "ja" ? `${routePolicyMatch[1]} のモデルルーティング戦略を適用しました` : `Applied the model routing strategy for ${routePolicyMatch[1]}`;
+  if (routePolicyMatch) {
+    if (language === "ja") return `${routePolicyMatch[1]} のモデルルーティング戦略を適用しました`;
+    if (language === "ru") return `Применена стратегия маршрутизации модели для ${routePolicyMatch[1]}`;
+    return `Applied the model routing strategy for ${routePolicyMatch[1]}`;
+  }
   const enabledRoutesMatch = value.match(/^(\d+)\/(\d+) 启用 · (.+)$/);
   if (enabledRoutesMatch) {
-    return language === "ja"
-      ? `${enabledRoutesMatch[1]}/${enabledRoutesMatch[2]} 有効 · ${enabledRoutesMatch[3]}`
-      : `${enabledRoutesMatch[1]}/${enabledRoutesMatch[2]} enabled · ${enabledRoutesMatch[3]}`;
+    if (language === "ja") return `${enabledRoutesMatch[1]}/${enabledRoutesMatch[2]} 有効 · ${enabledRoutesMatch[3]}`;
+    if (language === "ru") return `${enabledRoutesMatch[1]}/${enabledRoutesMatch[2]} включено · ${enabledRoutesMatch[3]}`;
+    return `${enabledRoutesMatch[1]}/${enabledRoutesMatch[2]} enabled · ${enabledRoutesMatch[3]}`;
   }
   return undefined;
 }
@@ -113,6 +173,7 @@ export function translatedCell(value: React.ReactNode) {
 export function languageLocale() {
   if (activeLanguage === "en") return "en-US";
   if (activeLanguage === "ja") return "ja-JP";
+  if (activeLanguage === "ru") return "ru-RU";
   return "zh-CN";
 }
 
@@ -120,10 +181,62 @@ export function formatLocaleNumber(value: number) {
   return new Intl.NumberFormat(languageLocale()).format(value);
 }
 
+const russianPluralRules = new Intl.PluralRules("ru");
+
+const RUSSIAN_UNIT_MAP: Record<string, { one: string; few: string; many: string }> = {
+  "人": { one: "участник", few: "участника", many: "участников" },
+  "个模型": { one: "модель", few: "модели", many: "моделей" },
+  "条路由": { one: "маршрут", few: "маршрута", many: "маршрутов" },
+  "条线路": { one: "маршрут", few: "маршрута", many: "маршрутов" },
+  "条启用路由": { one: "активный маршрут", few: "активных маршрута", many: "активных маршрутов" },
+  "条用量记录": { one: "запись использования", few: "записи использования", many: "записей использования" },
+  "条记录": { one: "запись", few: "записи", many: "записей" },
+  "条策略": { one: "политика", few: "политики", many: "политик" },
+  "条": { one: "запись", few: "записи", many: "записей" },
+  "次请求": { one: "запрос", few: "запроса", many: "запросов" },
+  "次测试": { one: "тест", few: "теста", many: "тестов" },
+  "次失败": { one: "ошибка", few: "ошибки", many: "ошибок" },
+  "次无延迟记录": { one: "запись без задержки", few: "записи без задержки", many: "записей без задержки" },
+  "次": { one: "попытка", few: "попытки", many: "попыток" },
+  "个错误": { one: "ошибка", few: "ошибки", many: "ошибок" },
+  "个项目": { one: "проект", few: "проекта", many: "проектов" },
+  "个团队": { one: "команда", few: "команды", many: "команд" },
+  "个渠道": { one: "канал", few: "канала", many: "каналов" },
+  "个待引入模型": { one: "модель для импорта", few: "модели для импорта", many: "моделей для импорта" },
+  "个可引入模型": { one: "доступная для импорта модель", few: "доступные для импорта модели", many: "доступных для импорта моделей" },
+  "类": { one: "категория", few: "категории", many: "категорий" },
+  "项": { one: "элемент", few: "элемента", many: "элементов" },
+  "个": { one: "объект", few: "объекта", many: "объектов" },
+  "个 Key": { one: "ключ", few: "ключа", many: "ключей" },
+  "个用户": { one: "пользователь", few: "пользователя", many: "пользователей" },
+  "个选项": { one: "вариант", few: "варианта", many: "вариантов" },
+};
+
+function russianUnit(count: number, zhUnit: string, enUnit: string, enPluralUnit: string): string {
+  const mapping = RUSSIAN_UNIT_MAP[zhUnit];
+  if (mapping) {
+    const category = russianPluralRules.select(count);
+    return (category in mapping ? mapping[category as keyof typeof mapping] : undefined) ?? mapping.many;
+  }
+  const dynamicMatch = zhUnit.match(/^个(.+)上游模型$/);
+  if (dynamicMatch) {
+    const category = russianPluralRules.select(count);
+    const label = tx(dynamicMatch[1]);
+    if (category === "one") return `модель провайдера (${label})`;
+    if (category === "few") return `модели провайдера (${label})`;
+    return `моделей провайдера (${label})`;
+  }
+  const ruUnit = tx(zhUnit);
+  return ruUnit !== zhUnit ? ruUnit : (count === 1 ? enUnit : enPluralUnit);
+}
+
 export function countWithUnit(count: number, zhUnit: string, enUnit: string, jaUnit: string, enPluralUnit = `${enUnit}s`) {
   const formatted = formatLocaleNumber(count);
   if (activeLanguage === "en") return `${formatted} ${count === 1 ? enUnit : enPluralUnit}`;
   if (activeLanguage === "ja") return `${formatted} ${jaUnit}`;
+  if (activeLanguage === "ru") {
+    return `${formatted} ${russianUnit(count, zhUnit, enUnit, enPluralUnit)}`;
+  }
   return `${formatted} ${zhUnit}`;
 }
 
@@ -131,6 +244,9 @@ export function countRatioWithUnit(current: number, total: number, zhUnit: strin
   const ratio = `${formatLocaleNumber(current)}/${formatLocaleNumber(total)}`;
   if (activeLanguage === "en") return `${ratio} ${current === 1 ? enUnit : enPluralUnit}`;
   if (activeLanguage === "ja") return `${ratio} ${jaUnit}`;
+  if (activeLanguage === "ru") {
+    return `${ratio} ${russianUnit(current, zhUnit, enUnit, enPluralUnit)}`;
+  }
   return `${ratio} ${zhUnit}`;
 }
 
@@ -138,6 +254,7 @@ export function guardrailDetectionItemName(index: number) {
   const formatted = formatLocaleNumber(index);
   if (activeLanguage === "en") return `Detection item ${formatted}`;
   if (activeLanguage === "ja") return `検出項目 ${formatted}`;
+  if (activeLanguage === "ru") return `Элемент проверки ${formatted}`;
   return `检测项 ${formatted}`;
 }
 
@@ -145,11 +262,12 @@ export function millisecondsText(value: number) {
   const formatted = formatLocaleNumber(value);
   if (activeLanguage === "en") return `${formatted} ms`;
   if (activeLanguage === "ja") return `${formatted} ミリ秒`;
+  if (activeLanguage === "ru") return `${formatted} мс`;
   return `${formatted} 毫秒`;
 }
 
 export function guardrailBlockedDiagnostic(reasonLabels: string[], policyLabels: string[], requestID: string) {
-  const joinLabels = (labels: string[]) => labels.join(activeLanguage === "en" ? ", " : "、");
+  const joinLabels = (labels: string[]) => labels.join(activeLanguage === "en" || activeLanguage === "ru" ? ", " : "、");
   if (activeLanguage === "en") {
     const details = [
       reasonLabels.length > 0 ? `Reasons: ${joinLabels(reasonLabels)}` : "",
@@ -165,6 +283,14 @@ export function guardrailBlockedDiagnostic(reasonLabels: string[], policyLabels:
       requestID ? `リクエスト ID：${requestID}` : "",
     ].filter(Boolean);
     return ["コンテンツセキュリティポリシーによりリクエストがブロックされました。", details.join("；")].filter(Boolean).join(" ");
+  }
+  if (activeLanguage === "ru") {
+    const details = [
+      reasonLabels.length > 0 ? `Причина: ${joinLabels(reasonLabels)}` : "",
+      policyLabels.length > 0 ? `Сработавшая политика: ${joinLabels(policyLabels)}` : "",
+      requestID ? `ID запроса: ${requestID}` : "",
+    ].filter(Boolean);
+    return ["Запрос заблокирован политикой безопасности контента.", details.join("; ")].filter(Boolean).join(" ");
   }
   const details = [
     reasonLabels.length > 0 ? `原因：${joinLabels(reasonLabels)}` : "",
@@ -192,6 +318,13 @@ export function providerSaveMessage(updated: boolean, accountResourceCreated: bo
       modelCount ? `${modelCount}を取り込みました` : "",
     ].filter(Boolean).join("、");
   }
+  if (activeLanguage === "ru") {
+    return [
+      `Провайдер ${updated ? "обновлён" : "создан"}`,
+      accountResourceCreated ? "ресурс аккаунта создан" : "",
+      modelCount ? `${modelCount} импортировано` : "",
+    ].filter(Boolean).join(", ");
+  }
   return [
     `Provider 已${updated ? "更新" : "新增"}`,
     accountResourceCreated ? "已创建账号资源" : "",
@@ -200,21 +333,24 @@ export function providerSaveMessage(updated: boolean, accountResourceCreated: bo
 }
 
 export function countWithLabel(count: number, label: string) {
-  if (activeLanguage === "en") return `${formatLocaleNumber(count)} ${tx(label)}`;
-  if (activeLanguage === "ja") return `${formatLocaleNumber(count)} ${tx(label)}`;
+  if (activeLanguage !== "zh-CN") return `${formatLocaleNumber(count)} ${tx(label)}`;
   return `${formatLocaleNumber(count)} ${label}`;
 }
 
 export function selectedModelsText(count: number) {
-  if (activeLanguage === "en") return `${count} models selected`;
-  if (activeLanguage === "ja") return `${count} 件のモデルを選択済み`;
-  return `已选择 ${count} 个模型`;
+  const formatted = formatLocaleNumber(count);
+  if (activeLanguage === "en") return `${formatted} models selected`;
+  if (activeLanguage === "ja") return `${formatted} 件のモデルを選択済み`;
+  if (activeLanguage === "ru") return `Выбрано моделей: ${formatted}`;
+  return `已选择 ${formatted} 个模型`;
 }
 
 export function selectedOptionsText(count: number) {
-  if (activeLanguage === "en") return `${count} options selected`;
-  if (activeLanguage === "ja") return `${count} 件の項目を選択済み`;
-  return `已选择 ${count} 个选项`;
+  const formatted = formatLocaleNumber(count);
+  if (activeLanguage === "en") return `${formatted} options selected`;
+  if (activeLanguage === "ja") return `${formatted} 件の項目を選択済み`;
+  if (activeLanguage === "ru") return `Выбрано вариантов: ${formatted}`;
+  return `已选择 ${formatted} 个选项`;
 }
 
 export function defaultPlaygroundSystemPrompt() {
@@ -226,34 +362,45 @@ export function isDefaultPlaygroundSystemPrompt(value: string) {
     "做一个乐于助人的助手",
     translations.en["做一个乐于助人的助手"],
     translations.ja["做一个乐于助人的助手"],
-  ].includes(value);
+    translations.ru?.["做一个乐于助人的助手"],
+  ].filter(Boolean).includes(value);
 }
 
 export function importUsersDoneMessage(created: number, updated: number, skipped: number) {
+  const fCreated = formatLocaleNumber(created);
+  const fUpdated = formatLocaleNumber(updated);
+  const fSkipped = formatLocaleNumber(skipped);
   if (activeLanguage === "en") {
-    return `User import complete: ${created} created, ${updated} updated${skipped > 0 ? `, ${skipped} skipped` : ""}`;
+    return `User import complete: ${fCreated} created, ${fUpdated} updated${skipped > 0 ? `, ${fSkipped} skipped` : ""}`;
   }
   if (activeLanguage === "ja") {
-    return `ユーザーインポート完了: 作成 ${created}、更新 ${updated}${skipped > 0 ? `、スキップ ${skipped}` : ""}`;
+    return `ユーザーインポート完了: 作成 ${fCreated}、更新 ${fUpdated}${skipped > 0 ? `、スキップ ${fSkipped}` : ""}`;
   }
-  return `用户导入完成：新增 ${created}，更新 ${updated}${skipped > 0 ? `，跳过 ${skipped}` : ""}`;
+  if (activeLanguage === "ru") {
+    return `Импорт пользователей завершен: создано ${fCreated}, обновлено ${fUpdated}${skipped > 0 ? `, пропущено ${fSkipped}` : ""}`;
+  }
+  return `用户导入完成：新增 ${fCreated}，更新 ${fUpdated}${skipped > 0 ? `，跳过 ${fSkipped}` : ""}`;
 }
 
 export function importUsersSkippedMessage(skipped: number, errors: string) {
-  if (activeLanguage === "en") return `${skipped} rows were not imported: ${errors}`;
-  if (activeLanguage === "ja") return `${skipped} 件はインポートされませんでした: ${errors}`;
-  return `有 ${skipped} 条未导入：${errors}`;
+  const fSkipped = formatLocaleNumber(skipped);
+  if (activeLanguage === "en") return `${fSkipped} rows were not imported: ${errors}`;
+  if (activeLanguage === "ja") return `${fSkipped} 件はインポートされませんでした: ${errors}`;
+  if (activeLanguage === "ru") return `Не импортировано строк: ${fSkipped}. Ошибки: ${errors}`;
+  return `有 ${fSkipped} 条未导入：${errors}`;
 }
 
 export function deleteConfirmMessage(name: string) {
   if (activeLanguage === "en") return `After deleting "${name}", the current in-memory data will be removed immediately.`;
   if (activeLanguage === "ja") return `「${name}」を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
+  if (activeLanguage === "ru") return `После удаления «${name}» данные в оперативной памяти будут немедленно удалены.`;
   return `删除「${name}」后，当前内存数据会立即移除。`;
 }
 
 export function bulkDeleteConfirmMessage(count: number) {
   if (activeLanguage === "en") return `After deleting ${formatLocaleNumber(count)} selected records, the current in-memory data will be removed immediately.`;
   if (activeLanguage === "ja") return `選択した ${formatLocaleNumber(count)} 件を削除すると、現在のメモリ上のデータはすぐに削除されます。`;
+  if (activeLanguage === "ru") return `После удаления выбранных записей (${formatLocaleNumber(count)}) данные в оперативной памяти будут немедленно удалены.`;
   return `删除选中的 ${formatLocaleNumber(count)} 条记录后，当前内存数据会立即移除。`;
 }
 
@@ -261,7 +408,36 @@ export function routeAttemptCountText(count: number) {
   if (count > 1) {
     if (activeLanguage === "en") return `${formatLocaleNumber(count)} attempts, with fallback`;
     if (activeLanguage === "ja") return `${formatLocaleNumber(count)} 回、fallback 含む`;
+    if (activeLanguage === "ru") {
+      const category = russianPluralRules.select(count);
+      const unit = category === "one" ? "попытка" : category === "few" ? "попытки" : "попыток";
+      return `${formatLocaleNumber(count)} ${unit}, с fallback`;
+    }
     return `${formatLocaleNumber(count)} 次，含 fallback`;
   }
   return countWithUnit(count, "次", "attempt", "回");
+}
+
+export function formatResetExpiryCountdown(days: number, hours: number, minutes: number): string {
+  const fDays = formatLocaleNumber(days);
+  const fHours = formatLocaleNumber(hours);
+  const fMinutes = formatLocaleNumber(minutes);
+  if (activeLanguage === "en") {
+    if (days > 0) return `${fDays} ${days === 1 ? "day" : "days"} ${fHours} ${hours === 1 ? "hour" : "hours"} left`;
+    if (hours > 0) return `${fHours} ${hours === 1 ? "hour" : "hours"} ${fMinutes} ${minutes === 1 ? "minute" : "minutes"} left`;
+    return `${fMinutes} ${minutes === 1 ? "minute" : "minutes"} left`;
+  }
+  if (activeLanguage === "ja") {
+    if (days > 0) return `${fDays}日${fHours}時間後`;
+    if (hours > 0) return `${fHours}時間${fMinutes}分後`;
+    return `${fMinutes}分後`;
+  }
+  if (activeLanguage === "ru") {
+    if (days > 0) return `через ${fDays} дн. ${fHours} ч.`;
+    if (hours > 0) return `через ${fHours} ч. ${fMinutes} мин.`;
+    return `через ${fMinutes} мин.`;
+  }
+  if (days > 0) return `${fDays}天${fHours}小时后`;
+  if (hours > 0) return `${fHours}小时${fMinutes}分钟后`;
+  return `${fMinutes}分钟后`;
 }

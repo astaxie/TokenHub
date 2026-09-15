@@ -1,7 +1,7 @@
 import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApiContext, PluginActionDescriptor, ProviderResource } from "../core/types";
-import { activeLanguage, languageLocale, tx } from "../i18n/runtime";
+import { formatResetExpiryCountdown, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
 import { providerPluginActionForResourceCapability, providerPluginActionPath, runProviderResourcePluginAction, unwrapPluginActionData } from "../resources/provider-model-config";
 import { providerResourceAccountLabel, QuotaMetric } from "./provider-account-ui";
@@ -322,19 +322,7 @@ function formatResetCreditExpiry(value: string | null | undefined, now: number) 
   const days = Math.floor(totalMinutes / 1_440);
   const hours = Math.floor((totalMinutes % 1_440) / 60);
   const minutes = totalMinutes % 60;
-  if (activeLanguage === "en") {
-    if (days > 0) return `${days} ${days === 1 ? "day" : "days"} ${hours} ${hours === 1 ? "hour" : "hours"} left`;
-    if (hours > 0) return `${hours} ${hours === 1 ? "hour" : "hours"} ${minutes} ${minutes === 1 ? "minute" : "minutes"} left`;
-    return `${minutes} ${minutes === 1 ? "minute" : "minutes"} left`;
-  }
-  if (activeLanguage === "ja") {
-    if (days > 0) return `${days}日${hours}時間後`;
-    if (hours > 0) return `${hours}時間${minutes}分後`;
-    return `${minutes}分後`;
-  }
-  if (days > 0) return `${days}天${hours}小时后`;
-  if (hours > 0) return `${hours}小时${minutes}分钟后`;
-  return `${minutes}分钟后`;
+  return formatResetExpiryCountdown(days, hours, minutes);
 }
 
 function formatResetCreditDate(value?: string | null) {

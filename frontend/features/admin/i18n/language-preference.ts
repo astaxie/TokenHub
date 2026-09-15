@@ -1,9 +1,10 @@
-export type AppLanguage = "zh-CN" | "en" | "ja";
+export type AppLanguage = "zh-CN" | "en" | "ja" | "ru";
 
 export const languageOptions: Array<{ value: AppLanguage; label: string; nativeLabel: string }> = [
   { value: "zh-CN", label: "Chinese", nativeLabel: "简体中文" },
   { value: "en", label: "English", nativeLabel: "English" },
   { value: "ja", label: "Japanese", nativeLabel: "日本語" },
+  { value: "ru", label: "Russian", nativeLabel: "Русский" },
 ];
 
 export function languageFromLocales(locales: readonly string[]): AppLanguage {
@@ -11,12 +12,13 @@ export function languageFromLocales(locales: readonly string[]): AppLanguage {
     const normalized = locale.trim().toLowerCase();
     if (normalized === "zh" || normalized.startsWith("zh-")) return "zh-CN";
     if (normalized === "ja" || normalized.startsWith("ja-")) return "ja";
+    if (normalized === "ru" || normalized.startsWith("ru-")) return "ru";
     if (normalized === "en" || normalized.startsWith("en-")) return "en";
   }
   return "en";
 }
 
 export function preferredLanguage(saved: string | null, locales: readonly string[]): AppLanguage {
-  if (saved === "en" || saved === "ja" || saved === "zh-CN") return saved;
+  if (saved === "en" || saved === "ja" || saved === "zh-CN" || saved === "ru") return saved;
   return languageFromLocales(locales);
 }

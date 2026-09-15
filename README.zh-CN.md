@@ -82,7 +82,7 @@ TokenHub 将日常模型使用、团队治理和平台运维拆成清晰的角�
 - 简洁控制台：分角色导航、全局搜索、黑白主题，以及左侧 API 导航 + 右侧详情的接口文档。
 - SQLite-first 私有化部署，提供原生 systemd 和 Docker Compose 两种方式。
 - PostgreSQL 支持多实例部署：通过远端 PostgreSQL 共享状态，实现前后端实例横向扩展，并提供连接池配置。参见[部署指南](docs/zh-CN/deployment.md)。
-- 管理后台支持英文、中文、日文切换。
+- 管理后台支持英文、中文、日文和俄文切换。
 
 ## Provider 生态
 
