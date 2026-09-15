@@ -19,20 +19,28 @@ type BillingTransport struct {
 	Audit              func(*http.Request, BillingActor, BillingAudit)
 }
 
-type BillingActor struct {
+// AdminActor is the transport identity shared by administrative adapters.
+type AdminActor struct {
 	ID   string
 	Name string
 	Role string
 }
 
-type BillingAudit struct {
-	Action     string
-	ResourceID string
-	Status     string
-	Message    string
-	Before     any
-	After      any
+// AdminAudit is the transport audit event shared by administrative adapters.
+type AdminAudit struct {
+	Action       string
+	ResourceType string
+	ResourceID   string
+	Status       string
+	Message      string
+	Before       any
+	After        any
 }
+
+// BillingActor and BillingAudit remain aliases for existing billing adapter
+// callers while the billing package is migrated independently.
+type BillingActor = AdminActor
+type BillingAudit = AdminAudit
 
 type BillingHandler struct {
 	repository billing.ManagementStore
