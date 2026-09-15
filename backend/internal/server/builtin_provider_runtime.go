@@ -55,6 +55,11 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 				StreamClient:      deps.StreamClient,
 				StreamIdleTimeout: deps.StreamIdleTimeout,
 			},
+			ProviderDify: DifyAdapter{
+				Client:            deps.Client,
+				StreamClient:      deps.StreamClient,
+				StreamIdleTimeout: deps.StreamIdleTimeout,
+			},
 			ProviderOpenAICodex: codexSubscription,
 		},
 	}
