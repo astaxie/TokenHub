@@ -187,7 +187,24 @@ Add it to crontab (backup daily at 2 AM):
 
 ## Migrating from SQLite to PostgreSQL
 
-The current version of TokenHub does not include an automatic migration tool. Migration steps:
+Migration is a planned, verifiable operation. Before any data moves, run the
+read-only preflight against the SQLite source and the empty PostgreSQL
+target:
+
+```bash
+tokenhub db upgrade-plan --from sqlite://data/tokenhub.db \
+  --target postgresql://tokenhub:your-password@localhost:5432/tokenhub
+```
+
+The preflight inventories the source, verifies that encrypted provider
+credentials still decrypt with the resolved secret key, and classifies the
+target. Read
+[docs/development/database-upgrade-design.md](development/database-upgrade-design.md)
+for the full design, the offline-window procedure, and the rollout state of
+the copy (`upgrade-run`) and verification (`upgrade-verify`) commands.
+
+Until those commands ship, data moves with a manual export-and-import as a
+last resort:
 
 1. **Export SQLite data as SQL**
 
@@ -205,7 +222,9 @@ Manually edit `tokenhub_sqlite.sql` to adjust SQLite-specific syntax to PostgreS
 psql -h localhost -U tokenhub -d tokenhub -f tokenhub_sqlite.sql
 ```
 
-**Note**: A data migration tool is planned for a future release.
+**Note**: the manual path cannot verify encrypted credentials, analytics
+watermarks, or trigger state; keep the SQLite file until the PostgreSQL
+deployment has been checked.
 
 ## Performance Tuning
 
