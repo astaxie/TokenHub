@@ -52,6 +52,31 @@ The site URL is `https://astaxie.github.io/TokenHub/`; override `DOCS_URL` and
 "Edit this page" links are generated from `scripts/docs-source-map.json`
 (written by the sync script) and point at the source markdown file in the
 repository — including its language directory — not at the generated copy.
+Pages published without a translated source (the sync log lists them as
+"English fallback") link to the English file instead, so the link always
+resolves.
+
+## Search
+
+Search is the offline `@easyops-cn/docusaurus-search-local` plugin with
+`language: ['en', 'zh', 'ja']`. Enabling `zh` makes the plugin use its jieba
+tokenizer for the whole index, which silently drops Japanese kana, so a
+dependency patch (`patches/`) extends the server-side index tokenizer and the
+client-side query tokenizer with kana runs: runs containing kana are segmented
+with the lunr Japanese tokenizer (tinyseg) instead of jieba, and query
+tokenization keeps kana. Chinese segmentation (jieba) and English stemming are
+unchanged. If the plugin is upgraded, re-apply or port the patch —
+`patch-package` runs on `npm ci` and fails loudly when it no longer applies.
+
+## HTML sanitization
+
+react-dom 18 renders Docusaurus pages with `renderToPipeableStream`, which
+emits U+0000 markers into text it splits across stream chunks
+(https://github.com/react/react/issues/31134). The marker bytes corrupt
+heading `id` attributes in the written HTML (in-page anchors then stop
+matching the table of contents). `npm run build` therefore ends with
+`scripts/sanitize-build.mjs`, which strips U+0000 from the emitted HTML and
+fails the build if a NUL character remains anywhere in the text output.
 
 ## Adding a page
 

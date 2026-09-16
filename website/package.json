@@ -8,6 +8,8 @@
     "start": "docusaurus start",
     "prebuild": "npm run sync-docs",
     "build": "docusaurus build",
+    "postbuild": "node scripts/sanitize-build.mjs",
+    "postinstall": "patch-package",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
     "typecheck": "tsc"
@@ -26,6 +28,7 @@
     "@docusaurus/tsconfig": "^3.9.0",
     "@docusaurus/types": "^3.9.0",
     "@types/node": "^22.10.10",
+    "patch-package": "^8.0.1",
     "typescript": "~5.6.2"
   },
   "browserslist": {

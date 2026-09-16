@@ -432,6 +432,50 @@ function sidebarTranslations({ linkLabels, categoryLabels }) {
   return translations;
 }
 
+// Code translations for the site chrome: footer strings are defined with
+// translate() in docusaurus.config.ts, whose English defaults live there and
+// whose localized values live in the per-locale code.json written here.
+const FOOTER_TRANSLATIONS = {
+  'zh-Hans': {
+    'footer.linkColumns.Documentation': { message: '文档' },
+    'footer.linkColumns.Platform': { message: '平台' },
+    'footer.linkColumns.Community': { message: '社区' },
+    'footer.links.Architecture': { message: '架构' },
+    'footer.links.UserGuide': { message: '用户指南' },
+    'footer.links.AdministratorGuide': { message: '管理员指南' },
+    'footer.links.Deployment': { message: '部署' },
+    'footer.links.BillingAndPricing': { message: '计费与定价' },
+    'footer.links.AgentTokenCostAPI': { message: 'Agent Token 成本 API' },
+    'footer.links.PluginDevelopment': { message: '插件开发' },
+    'footer.links.Migration': { message: '迁移' },
+    'footer.links.GitHub': { message: 'GitHub' },
+    'footer.links.Issues': { message: '问题反馈' },
+    'footer.links.ApacheLicense': { message: 'Apache-2.0 许可证' },
+    'footer.copyright': {
+      message: '© {year} TokenHub 贡献者。基于 Apache-2.0 许可发布。',
+    },
+  },
+  ja: {
+    'footer.linkColumns.Documentation': { message: 'ドキュメント' },
+    'footer.linkColumns.Platform': { message: 'プラットフォーム' },
+    'footer.linkColumns.Community': { message: 'コミュニティ' },
+    'footer.links.Architecture': { message: 'アーキテクチャ' },
+    'footer.links.UserGuide': { message: 'ユーザーガイド' },
+    'footer.links.AdministratorGuide': { message: '管理者ガイド' },
+    'footer.links.Deployment': { message: 'デプロイ' },
+    'footer.links.BillingAndPricing': { message: '課金と価格' },
+    'footer.links.AgentTokenCostAPI': { message: 'Agent Token コスト API' },
+    'footer.links.PluginDevelopment': { message: 'プラグイン開発' },
+    'footer.links.Migration': { message: '移行' },
+    'footer.links.GitHub': { message: 'GitHub' },
+    'footer.links.Issues': { message: 'Issues' },
+    'footer.links.ApacheLicense': { message: 'Apache-2.0 ライセンス' },
+    'footer.copyright': {
+      message: '© {year} TokenHub コントリビューター。Apache-2.0 ライセンス。',
+    },
+  },
+};
+
 function main() {
   const plan = buildPlan();
   const stats = { strippedLines: 0, rewrittenLinks: 0, githubDocLinks: 0 };
@@ -452,7 +496,7 @@ function main() {
   for (const [source, page] of plan) {
     const rawContent = readFileSync(resolve(sourceDocsDir, source), 'utf8');
     renderInto(targetDocsDir, rawContent, page, plan, stats);
-    sourceMap[page.dest] = source;
+    sourceMap[page.dest] = { source, translated: {} };
   }
   writeSectionCategories(targetDocsDir);
   cpSync(resolve(sourceDocsDir, 'assets'), resolve(targetDocsDir, 'assets'), {
@@ -476,6 +520,9 @@ function main() {
       if (hasTranslation) {
         translated += 1;
       }
+      // Record which locales have a real translation so "Edit this page" can
+      // fall back to the English source for pages that do not.
+      sourceMap[page.dest].translated[locale] = hasTranslation;
       const rawContent = readFileSync(
         hasTranslation ? localizedPath : resolve(sourceDocsDir, source),
         'utf8',
@@ -496,6 +543,11 @@ function main() {
     writeFileSync(
       translationPath,
       `${JSON.stringify(sidebarTranslations(localeConfig), null, 2)}\n`,
+    );
+    const codeTranslationsPath = resolve(targetI18nDir, locale, 'code.json');
+    writeFileSync(
+      codeTranslationsPath,
+      `${JSON.stringify(FOOTER_TRANSLATIONS[locale] ?? {}, null, 2)}\n`,
     );
     cpSync(resolve(sourceDocsDir, 'assets'), resolve(destRoot, 'assets'), {
       recursive: true,

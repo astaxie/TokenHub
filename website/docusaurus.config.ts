@@ -17,12 +17,15 @@ const localeSourceDirs: Record<string, string> = {
 
 // website/docs is generated from the repository English documentation by
 // scripts/sync-docs.mjs, which also writes a generated -> source map so
-// "Edit this page" can point at the canonical markdown file.
+// "Edit this page" can point at the canonical markdown file. The map records
+// per locale whether a translated source exists; pages without one fall back
+// to the English content, so their edit link must point at the English file.
 const require = createRequire(import.meta.url);
 const sourceMapPath = fileURLToPath(
   new URL('./scripts/docs-source-map.json', import.meta.url),
 );
-const docsSourceMap: Record<string, string> = existsSync(sourceMapPath)
+type SourceMapEntry = { source: string; translated: Record<string, boolean> };
+const docsSourceMap: Record<string, SourceMapEntry> = existsSync(sourceMapPath)
   ? require(sourceMapPath)
   : {};
 
@@ -32,8 +35,8 @@ function docsEditUrl(
 ): string | undefined {
   const localeMatch =
     /^i18n\/([^/]+)\/docusaurus-plugin-content-docs\/current\/(.*)$/.exec(docPath);
-  const source = docsSourceMap[localeMatch ? localeMatch[2] : docPath];
-  if (!source) {
+  const entry = docsSourceMap[localeMatch ? localeMatch[2] : docPath];
+  if (!entry) {
     return undefined;
   }
   const localeName = localeMatch ? localeMatch[1] : locale;
@@ -41,7 +44,12 @@ function docsEditUrl(
     localeName && localeName !== 'en'
       ? (localeSourceDirs[localeName] ?? localeName)
       : undefined;
-  const docsPath = sourceDir ? `${sourceDir}/${source}` : source;
+  const hasTranslatedSource = sourceDir
+    ? Boolean(entry.translated?.[localeName ?? ''])
+    : false;
+  const docsPath = hasTranslatedSource
+    ? `${sourceDir}/${entry.source}`
+    : entry.source;
   return `${repoUrl}/edit/${repoBranch}/docs/${docsPath}`;
 }
 
@@ -146,6 +154,11 @@ const config: Config = {
     },
     footer: {
       style: 'light',
+      // Footer strings are localized by src/theme/Footer (a swizzle of the
+      // classic theme footer) using translate(); the localized values live in
+      // i18n/<locale>/code.json, written by scripts/sync-docs.mjs from its
+      // FOOTER_TRANSLATIONS table. The strings below are the English
+      // defaults; the copyright template is interpolated with {year}.
       links: [
         {
           title: 'Documentation',
@@ -174,7 +187,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `© ${new Date().getFullYear()} TokenHub contributors. Apache-2.0 licensed.`,
+      copyright: '© {year} TokenHub contributors. Apache-2.0 licensed.',
     },
     prism: {
       theme: prismThemes.github,
