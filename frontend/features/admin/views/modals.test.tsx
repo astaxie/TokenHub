@@ -59,6 +59,51 @@ describe("APIKeyWizardModal", () => {
       status: "active",
     }));
   });
+
+  it("only offers models allowed by a restricted project", async () => {
+    const user = userEvent.setup();
+    const currentUser = {
+      id: "usr_admin",
+      username: "admin",
+      name: "Admin",
+      email: "admin@example.com",
+      role: "admin",
+      status: "active",
+    };
+    const data = emptyData();
+    data.users = [currentUser];
+    data.models = [
+      { id: "deepseek-v4-flash-0731", name: "deepseek-v4-flash-0731", family: "deepseek", modality: "chat", status: "active" },
+      { id: "gpt-5.4-mini", name: "gpt-5.4-mini", family: "openai", modality: "chat", status: "active" },
+    ];
+    data.projects = [{
+      id: "prj_restricted",
+      name: "Restricted Project",
+      owner_user_id: currentUser.id,
+      status: "active",
+      model_access_mode: "restricted",
+      allowed_models: ["deepseek-v4-flash-0731"],
+    }];
+
+    render(
+      <APIKeyWizardModal
+        data={data}
+        currentUser={currentUser}
+        initialValues={{ project_id: "prj_restricted", owner_user_id: currentUser.id }}
+        loading={false}
+        onClose={vi.fn()}
+        onCreate={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.type(screen.getByLabelText("Key 名称"), "restricted-key");
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: /指定模型白名单/ }));
+
+    expect(screen.getByText("deepseek-v4-flash-0731")).toBeInTheDocument();
+    expect(screen.queryByText("gpt-5.4-mini")).not.toBeInTheDocument();
+  });
 });
 
 describe("IdentityProviderEditModal", () => {
