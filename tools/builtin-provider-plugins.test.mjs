@@ -15,7 +15,7 @@ test("every Provider catalog entry has one real built-in plugin package", async 
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
-  assert.equal(catalogIDs.length, 158);
+  assert.equal(catalogIDs.length, 159);
   assert.deepEqual(packageIDs, catalogIDs);
 
   const pluginIDs = new Set();

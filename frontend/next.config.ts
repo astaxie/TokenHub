@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  // Keep isolated UI runs independent of unrelated lockfiles above the checkout.
+  turbopack: process.env.TOKENHUB_UI_RUN === "1" ? { root: process.cwd() } : undefined,
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   distDir: process.env.TOKENHUB_NEXT_DIST_DIR || ".next",
   async headers() {

@@ -3,6 +3,72 @@
 # Source updated_at: 2026-07-08T06:38:13.852Z.
 version: 1
 models:
+  - name: "jev-1.13.0"
+    title: "jev-1.13.0"
+    description: "TypeSafe System One model for typed semantic judgments."
+    category: "typesafe"
+    family: "jev"
+    modality: "decision"
+    context_window: 64000
+    input_price_usd_per_1m: 0.042
+    output_price_usd_per_1m: 0
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["systemone"]
+    supported_parameters: ["state", "questions"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "https://docs.typesafe.ai/models"
+      provider_catalog_id: "typesafe"
+      provider_model_id: "jev-1.13.0"
+      endpoints: "systemone"
+      state_question_context_window: "32000"
+      pricing_verified_at: "2026-09-19"
+      pricing_note: "Input-only pricing. Aliases may change versions; pin a version for calibrated decisions."
+  - name: "jev-latest"
+    title: "jev-latest"
+    description: "TypeSafe System One model for typed semantic judgments."
+    category: "typesafe"
+    family: "jev"
+    modality: "decision"
+    context_window: 64000
+    input_price_usd_per_1m: 0.042
+    output_price_usd_per_1m: 0
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["systemone"]
+    supported_parameters: ["state", "questions"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "https://docs.typesafe.ai/models"
+      provider_catalog_id: "typesafe"
+      provider_model_id: "jev-latest"
+      endpoints: "systemone"
+      state_question_context_window: "32000"
+      pricing_verified_at: "2026-09-19"
+      pricing_note: "Input-only pricing. Aliases may change versions; pin a version for calibrated decisions."
+  - name: "jev-preview"
+    title: "jev-preview"
+    description: "TypeSafe System One model for typed semantic judgments."
+    category: "typesafe"
+    family: "jev"
+    modality: "decision"
+    context_window: 64000
+    input_price_usd_per_1m: 0.042
+    output_price_usd_per_1m: 0
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["systemone"]
+    supported_parameters: ["state", "questions"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "https://docs.typesafe.ai/models"
+      provider_catalog_id: "typesafe"
+      provider_model_id: "jev-preview"
+      endpoints: "systemone"
+      state_question_context_window: "32000"
+      pricing_verified_at: "2026-09-19"
+      pricing_note: "Input-only pricing. Aliases may change versions; pin a version for calibrated decisions."
   - name: "gpt-6-astra"
     title: "GPT-6 Astra"
     category: "openai"

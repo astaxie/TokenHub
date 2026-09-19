@@ -33,6 +33,7 @@ func (s *Server) routes() {
 	s.registerPublicDirectMethodRoute(http.MethodPost, "/v1/responses/compact", s.gatewayInFlight(s.handleResponsesCompact))
 	s.mux.HandleFunc(http.MethodGet+" /v1/responses/compact", jsonMethodNotAllowed(http.MethodPost))
 	s.mux.HandleFunc("/v1/responses/", s.handleResponseJob)
+	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/systemone", s.gatewayInFlight(s.handleSystemOne), jsonMethodNotAllowed(http.MethodPost))
 	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/embeddings", s.gatewayInFlight(s.handleEmbeddings), jsonMethodNotAllowed(http.MethodPost))
 	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/images/generations", s.handleImageGenerations, jsonMethodNotAllowed(http.MethodPost))
 	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/images/edits", s.handleImageEdits, jsonMethodNotAllowed(http.MethodPost))

@@ -179,6 +179,7 @@ export function enumValueLabel(value: string | undefined) {
     text: "文本",
     chat: "文本对话",
     embedding: "向量嵌入",
+    decision: "决策",
     image: "图像",
     video: "视频",
     audio: "音频",

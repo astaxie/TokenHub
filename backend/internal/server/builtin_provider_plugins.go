@@ -281,6 +281,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	}); err != nil {
 		return err
 	}
+	if err := register("tokenhub.provider.typesafe", "TypeSafe", typeSafeBuiltinAdapter(adapters[providerTypeSafe])); err != nil {
+		return err
+	}
 	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
 		adapter := builtinProviderAdapter{
 			providerType:          adapterType,

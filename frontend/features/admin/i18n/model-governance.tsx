@@ -1,4 +1,5 @@
 const en: Record<string, string> = {
+  "决策": "Decision",
   "Provider 是上游渠道实例；先选择并引入它实际提供的模型，再分别维护渠道成本、对外模型和路由。": "A Provider is an upstream channel. Select and import the models it serves, then manage Provider costs, external models, and routes separately.",
   "Provider 模型价格用于真实成本审计；客户端仍按模型目录中的统一价格计费。": "Provider model prices are used for actual-cost audit; clients are still billed at the unified Model Directory price.",
   "Provider 模型目录": "Provider Model Catalog",
@@ -141,6 +142,7 @@ const en: Record<string, string> = {
 };
 
 const ja: Record<string, string> = {
+  "决策": "判定",
   "Provider 是上游渠道实例；先选择并引入它实际提供的模型，再分别维护渠道成本、对外模型和路由。": "Provider は上流チャネルです。提供するモデルを選択して取り込み、Provider コスト、外部モデル、ルートを個別に管理します。",
   "Provider 模型价格用于真实成本审计；客户端仍按模型目录中的统一价格计费。": "Provider モデル価格は実コスト監査に使用し、クライアントには Model Directory の統一価格で請求します。",
   "Provider 模型目录": "Provider モデルカタログ",

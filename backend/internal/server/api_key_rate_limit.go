@@ -10,6 +10,8 @@ const defaultOutputTokenReservation int64 = 4096
 
 func requestTokenReservation(payload any) int64 {
 	switch request := payload.(type) {
+	case SystemOneRequest:
+		return systemOneTokenReservation(request)
 	case ChatCompletionRequest:
 		input := saturatingAddNonNegative(estimateChatMessagesTokens(request.Messages), estimateJSONTokens(request.Tools))
 		input = saturatingAddNonNegative(input, estimateJSONTokens(request.ToolChoice))

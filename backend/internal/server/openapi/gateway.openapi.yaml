@@ -3,14 +3,14 @@ info:
   title: TokenHub Public Gateway API
   summary: OpenAPI contract for TokenHub's externally supported model gateway.
   description: |
-    TokenHub exposes OpenAI-compatible, Anthropic-compatible, and native Gemini gateway endpoints.
+    TokenHub exposes OpenAI-compatible, Anthropic-compatible, native Gemini, and TypeSafe System One gateway endpoints.
     Administrative, analytics, health, and metrics endpoints are intentionally excluded from this
     public gateway contract. They require a separate authenticated specification if documented later.
 
     Entered project API keys are bearer tokens. Documentation clients must keep them in memory,
     never in URLs, local storage, logs, examples, or exported files.
-  version: 0.6.0
-  x-tokenhub-contract-version: gateway-2026-08-issue-260
+  version: 0.7.0
+  x-tokenhub-contract-version: gateway-2026-09-systemone
 jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
 servers:
   - url: https://tokenhub.example
@@ -26,6 +26,8 @@ tags:
     description: OpenAI-compatible Responses API, streaming, background jobs, cancellation, and compaction.
   - name: Anthropic Messages
     description: Anthropic-compatible messages and token counting.
+  - name: System One
+    description: Native TypeSafe choice, noul, and score decisions.
   - name: Embeddings
     description: OpenAI-compatible embeddings.
   - name: Images
@@ -426,6 +428,70 @@ paths:
           $ref: "#/components/responses/AnthropicUnauthorized"
         "403":
           $ref: "#/components/responses/AnthropicModelNotAllowed"
+  /v1/systemone:
+    post:
+      operationId: createSystemOne
+      tags: [System One]
+      summary: Evaluate structured decisions.
+      description: |
+        Evaluates independent choice, noul, and score questions against shared state.
+        Requires a published model with a systemone-capable route. Streaming and chat fields
+        are unsupported. Low confidence is a successful answer. Billing uses upstream usage.
+        Nested JSON entries allow at most 64 container levels; normal gateway body limits apply.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemOneRequest"
+      responses:
+        "200":
+          description: Native answers, resolved upstream model, and token usage. Request ID headers are exposed to browser clients.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-typesafe-request-id:
+              description: Winning upstream request ID, when reported. Read by the TypeSafe SDK withResponse().requestId; distinct from TokenHub's x-request-id.
+              schema:
+                type: string
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemOneResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "413":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          description: Invalid state, questions, or primitive criteria.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
   /v1/embeddings:
     post:
       operationId: createEmbedding
@@ -1249,6 +1315,167 @@ components:
                   code: provider_error
                 request_id: req_example
   schemas:
+    SystemOneEntry:
+      description: A textual entry, structured JSON object/array, or an omitted description represented by null. Container nesting is limited to 64 levels.
+      type: [string, object, array, "null"]
+    SystemOneRequest:
+      type: object
+      additionalProperties: false
+      required: [model, state, questions]
+      properties:
+        model:
+          type: string
+          minLength: 1
+          description: Published TokenHub model name; the route supplies the upstream model name.
+        state:
+          type: [string, object, array, "null"]
+          description: Shared context for all questions. Nested JSON values retain their original numeric precision.
+        questions:
+          type: object
+          minProperties: 1
+          maxProperties: 1024
+          additionalProperties:
+            oneOf:
+              - $ref: "#/components/schemas/SystemOneChoiceQuestion"
+              - $ref: "#/components/schemas/SystemOneNoulQuestion"
+              - $ref: "#/components/schemas/SystemOneScoreQuestion"
+      example:
+        model: jev-1.13.0
+        state: Please refund this order.
+        questions:
+          intent:
+            type: choice
+            instructions: Classify the customer's intent.
+            criteria:
+              refund: Return funds.
+              other: Another request.
+          urgent:
+            type: noul
+            instructions: Is immediate attention required?
+          severity:
+            type: score
+            instructions: Assess urgency.
+            criteria: [low, high]
+    SystemOneChoiceQuestion:
+      type: object
+      additionalProperties: false
+      required: [type, criteria]
+      properties:
+        type:
+          const: choice
+        instructions:
+          $ref: "#/components/schemas/SystemOneEntry"
+        criteria:
+          type: object
+          minProperties: 1
+          maxProperties: 4096
+          additionalProperties:
+            $ref: "#/components/schemas/SystemOneEntry"
+    SystemOneNoulQuestion:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: noul
+        instructions:
+          $ref: "#/components/schemas/SystemOneEntry"
+        criteria:
+          type: [object, "null"]
+          additionalProperties: false
+          properties:
+            "true":
+              $ref: "#/components/schemas/SystemOneEntry"
+            "false":
+              $ref: "#/components/schemas/SystemOneEntry"
+    SystemOneScoreQuestion:
+      type: object
+      additionalProperties: false
+      required: [type, criteria]
+      properties:
+        type:
+          const: score
+        instructions:
+          $ref: "#/components/schemas/SystemOneEntry"
+        criteria:
+          type: array
+          minItems: 2
+          maxItems: 4096
+          items:
+            $ref: "#/components/schemas/SystemOneEntry"
+    SystemOneProbability:
+      type: number
+      minimum: 0
+      maximum: 1
+    SystemOneResponse:
+      type: object
+      required: [model, answers, usage]
+      properties:
+        model:
+          type: string
+          description: Resolved upstream model version.
+        answers:
+          type: object
+          additionalProperties:
+            oneOf:
+              - $ref: "#/components/schemas/SystemOneChoiceAnswer"
+              - $ref: "#/components/schemas/SystemOneNoulAnswer"
+              - $ref: "#/components/schemas/SystemOneScoreAnswer"
+        usage:
+          type: object
+          required: [input_tokens, output_tokens]
+          properties:
+            input_tokens:
+              type: integer
+              format: int64
+              minimum: 0
+            output_tokens:
+              type: integer
+              format: int64
+              minimum: 0
+              description: Retained in accounting even when the configured output price is zero.
+    SystemOneChoiceAnswer:
+      type: object
+      required: [type, choice, probabilities, confidence]
+      properties:
+        type:
+          const: choice
+        choice:
+          type: string
+        probabilities:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SystemOneProbability"
+        confidence:
+          $ref: "#/components/schemas/SystemOneProbability"
+    SystemOneNoulAnswer:
+      type: object
+      required: [type, noul]
+      properties:
+        type:
+          const: noul
+        noul:
+          $ref: "#/components/schemas/SystemOneProbability"
+    SystemOneScoreAnswer:
+      type: object
+      required: [type, score, legend, probabilities, confidence]
+      properties:
+        type:
+          const: score
+        score:
+          type: number
+          minimum: 0
+          description: Expected level index, bounded by the number of criteria minus one. Must match the raw probability-weighted index sum within one percent of the score range (plus floating-point epsilon); this is a gateway tolerance, not an upstream precision guarantee.
+        legend:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SystemOneEntry"
+        probabilities:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SystemOneProbability"
+        confidence:
+          $ref: "#/components/schemas/SystemOneProbability"
     ErrorResponse:
       type: object
       required: [error, request_id]

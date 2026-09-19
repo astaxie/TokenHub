@@ -447,7 +447,10 @@ func catalogModelCategoryWithDefinitions(raw map[string]any, id string, displayN
 }
 
 func catalogModelCapabilities(raw map[string]any, model ProviderCatalogModel) []string {
-	capabilities := []string{normalizeModelModality(model.Type)}
+	capabilities := catalogStringSliceField(raw, "capabilities")
+	if len(capabilities) == 0 {
+		capabilities = []string{normalizeModelModality(model.Type)}
+	}
 	if catalogBoolField(raw, "attachment") {
 		capabilities = append(capabilities, "attachment")
 	}
@@ -838,6 +841,9 @@ func normalizeProviderBaseURL(id string, raw string) string {
 }
 
 func normalizeModelModality(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "decision") {
+		return "decision"
+	}
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch {
 	case strings.Contains(value, "embed"):

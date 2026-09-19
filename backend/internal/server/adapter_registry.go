@@ -12,6 +12,7 @@ import (
 type AdapterCapability string
 
 const (
+	AdapterCapabilitySystemOne      AdapterCapability = "systemone"
 	AdapterCapabilityChat           AdapterCapability = "chat"
 	AdapterCapabilityChatStream     AdapterCapability = "chat_stream"
 	AdapterCapabilityResponses      AdapterCapability = "responses"

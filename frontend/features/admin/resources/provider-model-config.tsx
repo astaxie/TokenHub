@@ -507,7 +507,7 @@ export function modelConfig(): ResourceConfig<Model> {
       },
       { key: "category", label: "模型类型", type: "select", options: modelCategoryFormOptions(), required: true },
       { key: "family", label: "系列", required: true },
-      { key: "modality", label: "能力", type: "select", options: ["chat", "embedding", "image", "video", "audio", "ocr", "rerank"], required: true },
+      { key: "modality", label: "能力", type: "select", options: ["chat", "embedding", "image", "video", "audio", "ocr", "rerank", "decision"], required: true },
       { key: "input_modalities", label: "输入模态", type: "tag-select", options: ["text", "image", "video", "audio", "pdf"], help: "选择模型实际支持的输入类型。" },
       { key: "context_window", label: "上下文窗口", type: "number" },
       { key: "input_price_usd_per_1m", label: "对外输入价 USD/1M", type: "number", help: "用于客户端用量计费和额度；实际 Provider 成本在 Provider 模型库存中单独维护。" },

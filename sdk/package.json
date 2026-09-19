@@ -7,10 +7,12 @@
   "scripts": {
     "test:anthropic-messages": "node ./test-anthropic-messages.mjs",
     "test:deepseek": "node ./test-deepseek.mjs",
-    "test:security-policy": "node ./test-security-policy.mjs"
+    "test:security-policy": "node ./test-security-policy.mjs",
+    "test:systemone": "node ./test-systemone.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "2.0.50",
+    "@typesafe-ai/sdk": "0.6.0",
     "ai": "6.0.206"
   },
   "engines": {

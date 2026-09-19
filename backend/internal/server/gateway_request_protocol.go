@@ -4,6 +4,8 @@ import "strings"
 
 func gatewayRequestProtocol(path string) string {
 	switch {
+	case path == "/v1/systemone":
+		return providerRouteProtocolSystemOne
 	case strings.Contains(path, "/messages"):
 		return providerRouteProtocolAnthropic
 	case strings.Contains(path, "/responses"):

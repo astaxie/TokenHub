@@ -443,11 +443,15 @@ func TestProviderCatalogServiceUsesPluginCatalogTypes(t *testing.T) {
 	server := New(NewMemoryStore())
 	service := newProviderCatalogService(store, catalogFile)
 	service.UsePluginCatalogTypes(server.adapterRegistry)
-	entry, _, ok, err := service.Get(context.Background(), "anthropic", true)
-	if err != nil || !ok {
-		t.Fatalf("expected plugin-typed provider entry, ok=%v err=%v", ok, err)
+	entries, err := service.loadLocalProviderCatalog()
+	if err != nil {
+		t.Fatalf("load plugin-typed local catalog: %v", err)
 	}
-	if entry.Type != ProviderAnthropic {
+	index := slices.IndexFunc(entries, func(entry ProviderCatalogEntry) bool { return entry.ID == "anthropic" })
+	if index < 0 {
+		t.Fatal("missing plugin-typed provider entry")
+	}
+	if entry := entries[index]; entry.Type != ProviderAnthropic {
 		t.Fatalf("expected plugin catalog provider type, got %q", entry.Type)
 	}
 }
