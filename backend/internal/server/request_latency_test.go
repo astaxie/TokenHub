@@ -116,12 +116,13 @@ func TestFailUnfinishedImageJobsLatencyIsNotNegativeForFutureCreatedAt(t *testin
 	if _, err := store.CreateImageJob(ImageJob{
 		ProjectID: project.ID, RequestID: "req_image_recovery_skew",
 		Status: imageJobStatusQueued, Model: openAIImageModelName, Action: "generate",
-		CreatedAt: time.Now().UTC().Add(4 * time.Minute),
+		WorkerInstance: store.InstanceID(),
+		CreatedAt:      time.Now().UTC().Add(4 * time.Minute),
 	}, "recovered image prompt"); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := store.FailUnfinishedImageJobs("server_restarted", "server restarted"); err != nil {
+	if _, err := store.FailUnfinishedImageJobs(store.InstanceID(), "server_restarted", "server restarted"); err != nil {
 		t.Fatal(err)
 	}
 

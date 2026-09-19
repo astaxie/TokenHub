@@ -583,9 +583,13 @@ type ImageJob struct {
 	TotalTokens                                                 int64      `json:"total_tokens,omitempty"`
 	ErrorCode                                                   string     `json:"error_code,omitempty"`
 	ErrorMessage                                                string     `json:"error_message,omitempty"`
-	CreatedAt                                                   time.Time  `json:"created_at"`
-	StartedAt                                                   *time.Time `json:"started_at,omitempty"`
-	CompletedAt                                                 *time.Time `json:"completed_at,omitempty"`
+	// WorkerInstance identifies the server instance that owns the job (its
+	// heartbeat instance ID). Recovery sweeps fail only jobs whose owner
+	// stopped, so overlapping replicas never fail each other's work.
+	WorkerInstance string     `json:"worker_instance,omitempty" gorm:"index"`
+	CreatedAt      time.Time  `json:"created_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
 }
 
 const (

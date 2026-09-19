@@ -25,10 +25,14 @@ import (
 )
 
 const (
-	imageJobStatusQueued     = "queued"
-	imageJobStatusRunning    = "running"
-	imageJobStatusCompleted  = "completed"
-	imageJobStatusFailed     = "failed"
+	imageJobStatusQueued    = "queued"
+	imageJobStatusRunning   = "running"
+	imageJobStatusCompleted = "completed"
+	imageJobStatusFailed    = "failed"
+	// imageJobStatusFailing is a transient claim marker used by recovery to
+	// atomically transition rows before refunding them. It is never visible
+	// outside the claiming transaction.
+	imageJobStatusFailing    = "failing"
 	imageDownloadTTL         = 24 * time.Hour
 	maxGeneratedImageBytes   = 64 << 20
 	maxImageEditRequestBytes = 128 << 20
@@ -489,6 +493,7 @@ func (s *Server) startImageCall(w http.ResponseWriter, r *http.Request, project 
 }
 
 func (s *Server) createImageJobForRequest(w http.ResponseWriter, r *http.Request, project Project, key APIKey, request imageGenerationRequest, job ImageJob, prompt string) (ImageJob, CallContext, bool, bool, error) {
+	job.WorkerInstance = s.store.InstanceID()
 	if atomicStore, ok := s.store.(*GormStore); ok {
 		persisted, call, err := atomicStore.CreateImageJobWithAdmission(s.imageContext, project, key, request.Model, EstimateTextTokens(prompt), job, prompt)
 		if err == nil {
@@ -679,7 +684,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 				close(work.done)
 			}
 		default:
-			if _, err := s.store.FailUnfinishedImageJobs("image_worker_stopped", "Image generation stopped because the server shut down"); err != nil {
+			if _, err := s.store.FailUnfinishedImageJobs(s.store.InstanceID(), "image_worker_stopped", "Image generation stopped because the server shut down"); err != nil {
 				return err
 			}
 			return nil

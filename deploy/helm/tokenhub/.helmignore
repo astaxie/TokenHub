@@ -1,0 +1,5 @@
+# Patterns to ignore when packaging this chart.
+.git/
+.gitignore
+*.md
+ci/

@@ -183,7 +183,17 @@ type Store interface {
 	GetImageJob(id string) (ImageJob, bool)
 	ListImageJobs(limit int) []ImageJob
 	ListImageJobsForAudit(query ImageJobAuditQuery) []ImageJob
-	FailUnfinishedImageJobs(code string, message string) ([]ImageJob, error)
+	// FailUnfinishedImageJobs fails only the unfinished jobs owned by the
+	// named worker instance; a draining instance must not fail a live
+	// peer's work.
+	FailUnfinishedImageJobs(workerInstance string, code string, message string) ([]ImageJob, error)
+	// FailAbandonedImageJobs fails unfinished jobs whose owner no longer
+	// publishes a live heartbeat, so a peer's startup or the periodic sweep
+	// cleans up after a dead instance without touching live ones.
+	FailAbandonedImageJobs(code string, message string) ([]ImageJob, error)
+	// InstanceID returns the heartbeat identity stamped on jobs this
+	// instance owns.
+	InstanceID() string
 	UpdateImageJob(job ImageJob, revisedPrompt string) error
 	CompleteImageJob(call CallContext, job ImageJob, revisedPrompt string, asset ImageAsset, route RouteSelection, usage Usage, clientIP string, userAgent string) error
 	CreateResponseJob(job ResponseJob, requestJSON []byte) (ResponseJob, error)

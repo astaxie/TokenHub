@@ -581,11 +581,12 @@ func TestFailUnfinishedImageJobsRefundsPersistedAdmission(t *testing.T) {
 		Status:           imageJobStatusQueued,
 		Model:            "user-quota-model",
 		Action:           "generate",
+		WorkerInstance:   store.InstanceID(),
 	}, call), "queued prompt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.FailUnfinishedImageJobs("image_worker_restarted", "restart"); err != nil {
+	if _, err := store.FailUnfinishedImageJobs(store.InstanceID(), "image_worker_restarted", "restart"); err != nil {
 		t.Fatal(err)
 	}
 	failed, ok := store.GetImageJob(job.ID)

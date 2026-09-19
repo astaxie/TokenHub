@@ -1,0 +1,20 @@
+{{- if eq .Values.imageStorage.type "pvc" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "tokenhub.fullname" . }}-images
+  labels:
+    {{- include "tokenhub.labels" . | nindent 4 }}
+spec:
+  # Every replica reads the generated image bytes, so the claim must be
+  # shareable; a storage class without ReadWriteMany support needs an
+  # existingClaim backed by a shared filesystem or object storage instead.
+  accessModes:
+    - ReadWriteMany
+  {{- with .Values.imageStorage.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.imageStorage.size }}
+{{- end }}
