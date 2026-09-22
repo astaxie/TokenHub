@@ -55,6 +55,10 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 		AdapterCapabilityProbe, AdapterCapabilityResponses,
 		AdapterCapabilityResponseStream,
 	},
+	ProviderTypesafe: {
+		AdapterCapabilityChat, AdapterCapabilityChatStream,
+		AdapterCapabilityResponses,
+	},
 	"deepseek": {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
@@ -81,6 +85,7 @@ var builtinAdapterPlugins = map[string]string{
 	ProviderAnthropic:        "tokenhub.provider.anthropic",
 	ProviderGemini:           "tokenhub.provider.gemini",
 	ProviderKronk:            "tokenhub.provider.kronk",
+	ProviderTypesafe:         "tokenhub.provider.typesafe",
 	"deepseek":               "tokenhub.provider.deepseek",
 	"qwen":                   "tokenhub.provider.qwen",
 	"local":                  "tokenhub.provider.local",
