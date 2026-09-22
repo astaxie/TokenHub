@@ -36,6 +36,7 @@ const (
 	ProviderAnthropic        = "anthropic"
 	ProviderGemini           = "gemini"
 	ProviderKronk            = "kronk"
+	ProviderTypesafe         = "typesafe"
 
 	ProviderResourceAPIKey             = "api_key"
 	ProviderResourceOpenAISubscription = "openai_subscription"

@@ -146,6 +146,7 @@ The following are the operational built-in Provider registrations. Effective cap
 | `anthropic` | Chat, streaming Chat, and probes |
 | `gemini` | Chat, streaming Chat, Embeddings, and probes |
 | `openai_codex` | Responses, streaming Responses, models, probes, quota, OAuth, session affinity, Compact, and image generation |
+| `typesafe` | Chat, streaming Chat, and Responses; translates between Chat Completions and TypeSafe System One evaluation (`state` plus typed `questions`) |
 | `mock` | Local verification and tests |
 
 ## Model Request Flow

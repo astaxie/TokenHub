@@ -281,6 +281,28 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	}); err != nil {
 		return err
 	}
+	if err := register("tokenhub.provider.typesafe", "TypeSafe", builtinProviderAdapter{
+		providerType:   ProviderTypesafe,
+		adapter:        adapters[ProviderTypesafe],
+		apiKeyRequired: boolPointer(true),
+		managedHeaders: []string{"authorization"},
+		catalogEntry: builtinProviderPluginCatalogEntry(
+			"typesafe",
+			"TypeSafe",
+			ProviderTypesafe,
+			typesafeDefaultBaseURL,
+			"https://docs.typesafe.ai",
+			[]string{"jev"},
+			[]string{"jev-latest", "jev-preview"},
+		),
+		capabilities: []AdapterCapability{
+			AdapterCapabilityChat,
+			AdapterCapabilityChatStream,
+			AdapterCapabilityResponses,
+		},
+	}); err != nil {
+		return err
+	}
 	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
 		adapter := builtinProviderAdapter{
 			providerType:          adapterType,

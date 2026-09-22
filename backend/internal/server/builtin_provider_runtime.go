@@ -56,6 +56,11 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 				StreamIdleTimeout: deps.StreamIdleTimeout,
 			},
 			ProviderOpenAICodex: codexSubscription,
+			ProviderTypesafe: TypesafeAdapter{
+				Client:            deps.Client,
+				StreamClient:      deps.StreamClient,
+				StreamIdleTimeout: deps.StreamIdleTimeout,
+			},
 		},
 	}
 }

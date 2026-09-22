@@ -149,6 +149,7 @@ Provider 类型与主要能力如下：
 | `anthropic` | Chat、流式 Chat、探测 |
 | `gemini` | Chat、流式 Chat、Embeddings、探测 |
 | `openai_codex` | Responses、流式 Responses、模型发现、探测、额度、OAuth、会话亲和、Compact 和图像生成 |
+| `typesafe` | Chat、流式 Chat、Responses；在 Chat Completions 与 TypeSafe System One 评估（`state` 加类型化 `questions`）之间转换 |
 | `mock` | 本地验证与测试 |
 
 ## 模型请求链路

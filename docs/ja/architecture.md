@@ -146,6 +146,7 @@ flowchart LR
 | `anthropic` | Chat、ストリーミング Chat、プローブ |
 | `gemini` | Chat、ストリーミング Chat、Embeddings、プローブ |
 | `openai_codex` | Responses、ストリーミング Responses、モデル、プローブ、クォータ、OAuth、セッションアフィニティ、Compact、画像生成 |
+| `typesafe` | Chat、ストリーミング Chat、Responses。Chat Completions と TypeSafe System One 評価（`state` と型付き `questions`）を相互変換 |
 | `mock` | ローカル検証とテスト |
 
 ## モデルリクエスト経路
