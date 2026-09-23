@@ -4,7 +4,7 @@ import { buildCustomProviderCatalogEntry } from "./catalog";
 
 describe("buildCustomProviderCatalogEntry", () => {
   it("does not synthesize a legacy OpenAI-compatible provider type", () => {
-    const entry = buildCustomProviderCatalogEntry("openai", []);
+    const entry = buildCustomProviderCatalogEntry("openai");
 
     expect(entry.type).toBe("");
     expect(entry.id).toBe("custom");

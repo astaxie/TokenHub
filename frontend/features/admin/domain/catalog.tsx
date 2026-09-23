@@ -136,8 +136,7 @@ export function providerEntryCategoryCount(entry: ProviderCatalogEntry, category
   return (entry.categories ?? []).some((rawCategory) => standardModelCategory(rawCategory, definitions) === normalizedCategory) ? entry.models_count : 0;
 }
 
-export function buildCustomProviderCatalogEntry(category: string, standardModels: Model[]): ProviderCatalogEntry {
-  void standardModels;
+export function buildCustomProviderCatalogEntry(category: string): ProviderCatalogEntry {
   const normalizedCategory = standardModelCategory(category);
   return {
     id: "custom",

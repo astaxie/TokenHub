@@ -504,7 +504,7 @@ func (r *Runner) verifyApplied(applied []Applied) error {
 		if !ok {
 			return newError(ErrCodeUnknownApplied, row.Version, fmt.Errorf("applied version is not in the registry"))
 		}
-		if m.Checksum() != row.Checksum {
+		if m.Checksum() != row.Checksum && !isHistoricalMeteringChecksum(m, row) {
 			return newError(ErrCodeChecksumMismatch, row.Version, errors.New("applied migration content changed after release"))
 		}
 	}

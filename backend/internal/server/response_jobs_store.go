@@ -825,6 +825,12 @@ func (s *GormStore) FinalizeResponseJob(call CallContext, id string, owner strin
 			if result.RowsAffected != 1 {
 				return gorm.ErrRecordNotFound
 			}
+			if status == responseJobStatusSucceeded && call.jevResponseBinding != nil {
+				pending := call.jevResponseBinding
+				if err := saveJevResponseBinding(tx, pending.binding, pending.protectedIDs); err != nil {
+					return err
+				}
+			}
 			job.Status = status
 			if call.RequestID != "" {
 				job.RequestID = call.RequestID

@@ -12,6 +12,11 @@ import (
 )
 
 type Config struct {
+	SemanticRoutingEnabled   bool
+	SemanticRoutingProjects  []string
+	TypeSafeAPIKey           string
+	TypeSafeModel            string
+	SemanticRoutingTimeoutMS int
 	Environment              string
 	AppVersion               string
 	BuildType                string
@@ -128,6 +133,11 @@ type Config struct {
 
 func ConfigFromEnv() Config {
 	return Config{
+		SemanticRoutingEnabled:           getenvBool("TOKENHUB_SEMANTIC_ROUTING_ENABLED", false),
+		SemanticRoutingProjects:          getenvList("TOKENHUB_SEMANTIC_ROUTING_PROJECTS"),
+		TypeSafeAPIKey:                   getenv("TOKENHUB_TYPESAFE_API_KEY", ""),
+		TypeSafeModel:                    getenv("TOKENHUB_TYPESAFE_MODEL", "jev-1.13.0"),
+		SemanticRoutingTimeoutMS:         getenvSetInt("TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS", 1000),
 		Environment:                      getenv("TOKENHUB_ENV", "dev"),
 		AppVersion:                       DefaultAppVersion,
 		BuildType:                        defaultBuildType,
@@ -196,6 +206,9 @@ func ConfigFromEnv() Config {
 }
 
 func (c Config) ValidateForStartup() error {
+	if err := c.validateSemanticRouting(); err != nil {
+		return err
+	}
 	if repository := strings.TrimSpace(c.ReleaseRepository); repository != "" && !validReleaseRepository(repository) {
 		return fmt.Errorf("invalid TOKENHUB_RELEASE_REPOSITORY: expected owner/repository")
 	}

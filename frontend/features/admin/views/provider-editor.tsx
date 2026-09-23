@@ -1,7 +1,7 @@
 import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
-import { type AdapterDescriptor, type AdminUIContribution, type ApiContext, type Model, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderAccountQuota, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
+import { type AdapterDescriptor, type AdminUIContribution, type ApiContext, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderAccountQuota, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntryCategoryCount, providerEntrySupportsCategory } from "../domain/catalog";
 import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
@@ -38,7 +38,6 @@ export function ProviderUpsertModal({
   provider,
   api,
   catalog,
-  standardModels,
   routes = [],
   providerModels = [],
   resources = emptyProviderResources,
@@ -55,7 +54,6 @@ export function ProviderUpsertModal({
   provider?: Provider;
   api: ApiContext;
   catalog: ProviderCatalogEntry[];
-  standardModels: Model[];
   routes?: ModelRoute[];
   providerModels?: ProviderModel[];
   resources?: ProviderResource[];
@@ -180,7 +178,7 @@ export function ProviderUpsertModal({
   const { actionsByResourceID: accountQuotaActionsByResourceID, selectedResources: selectedQuotaAccountResources } = useMemo(() => providerResourceActionSelection(pluginActions, values.type, accountResources, selectedAccountResources, "quota.read"), [accountResources, pluginActions, selectedAccountResources, values.type]);
   const richQuotaPanel = useMemo(() => providerQuotaPanelSelection(pluginUI, values.type, selectedQuotaAccountResources, accountQuotaActionsByResourceID), [accountQuotaActionsByResourceID, pluginUI, selectedQuotaAccountResources, values.type]);
   const categoryCatalog = useMemo(() => selectableProviderCatalog.filter((entry) => providerEntrySupportsCategory(entry, modelCategory, modelCategoryData)), [modelCategory, modelCategoryData, selectableProviderCatalog]);
-  const customCatalogEntry = useMemo(() => buildCustomProviderCatalogEntry(modelCategory, standardModels), [modelCategory, standardModels]);
+  const customCatalogEntry = useMemo(() => buildCustomProviderCatalogEntry(modelCategory), [modelCategory]);
   const selectedCatalogTemplateEntry = catalogID === "custom" ? customCatalogEntry : selectableProviderCatalog.find((entry) => entry.id === catalogID);
   const selectedCatalogSupportsModelPreview = providerCatalogSupportsModelPreview(selectedCatalogTemplateEntry, pluginActions);
   const selectedCatalogUsesDiscoveryPreview = providerCatalogUsesDiscoveryPreview(catalogID, selectedCatalogTemplateEntry, pluginActions);
@@ -445,19 +443,13 @@ export function ProviderUpsertModal({
   const effectiveCatalogLoading = editingAccountProvider ? accountCatalogLoading : usesAccountCatalog ? accountProviderCatalogLoading : modelLoading;
   const effectiveCatalogError = editingAccountProvider ? Object.values(accountCatalogErrors)[0] || "" : usesAccountCatalog ? accountProviderCatalogError : modelError;
   const models = useMemo(
-    () => (effectiveDetail?.models ?? []).filter((model) => {
-      const canonical = model.canonical_name || canonicalModelNameForUI(model.id, model.display_name, modelCategoryData);
-      return providerCatalogModelIsSelectable({
-        catalogID,
-        supportsModelPreview: selectedCatalogSupportsModelPreview,
-        usesAccountCatalog,
-        quickAPIFlow,
-        selectedCategory: modelCategory,
-        discoveredCategory: modelCategoryForCatalog(model, modelCategoryData),
-        matchesStandardModel: standardModels.some((standard) => canonicalModelNameForUI(standard.name, standard.name, modelCategoryData) === canonicalModelNameForUI(canonical, canonical, modelCategoryData)),
-      });
-    }),
-    [catalogID, effectiveDetail, modelCategory, modelCategoryData, quickAPIFlow, selectedCatalogSupportsModelPreview, standardModels, usesAccountCatalog],
+    () => (effectiveDetail?.models ?? []).filter((model) => providerCatalogModelIsSelectable({
+      supportsModelPreview: selectedCatalogSupportsModelPreview,
+      quickAPIFlow,
+      selectedCategory: modelCategory,
+      discoveredCategory: modelCategoryForCatalog(model, modelCategoryData),
+    })),
+    [effectiveDetail, modelCategory, modelCategoryData, quickAPIFlow, selectedCatalogSupportsModelPreview],
   );
   const listedCatalog = useMemo(
     () => quickAPIFlow ? directCredentialCatalog.filter((entry) => entry.id !== "custom") : categoryCatalog,
@@ -477,10 +469,9 @@ export function ProviderUpsertModal({
   }, [catalogQuery, listedCatalog]);
   const filteredModels = useMemo(() => {
     const normalized = modelQuery.trim().toLowerCase();
-    if (!normalized) return models.slice(0, 80);
+    if (!normalized) return models;
     return models
-      .filter((model) => JSON.stringify(model).toLowerCase().includes(normalized))
-      .slice(0, 80);
+      .filter((model) => JSON.stringify(model).toLowerCase().includes(normalized));
   }, [models, modelQuery]);
   const imageCapabilityProfile = useMemo(() => providerImageCapabilityProfile(pluginUI, pluginActions, provider?.type ?? values.type), [pluginActions, pluginUI, provider?.type, values.type]);
   const importedModels = useMemo(

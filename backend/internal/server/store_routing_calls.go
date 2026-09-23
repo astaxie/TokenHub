@@ -89,7 +89,7 @@ func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
 	var updated Model
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var model Model
-		if err := tx.First(&model, "name = ?", name).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model, "name = ?", name).Error; err != nil {
 			return notFound(err, "model_not_found", "Model not found")
 		}
 		originalID := model.ID
@@ -123,7 +123,7 @@ func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
 		if patch.SupportedParameters != nil {
 			model.SupportedParameters = patch.SupportedParameters
 		}
-		model.Metadata = modelPricingMetadata(model.Metadata, patch)
+		model.Metadata = preserveSemanticRoutingMetadata(model.Metadata, modelPricingMetadata(model.Metadata, patch))
 		if patch.Status != "" {
 			model.Status = patch.Status
 		}
@@ -157,7 +157,7 @@ func (s *GormStore) DeleteModel(name string) error {
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var model Model
-		if err := tx.First(&model, "name = ?", name).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model, "name = ?", name).Error; err != nil {
 			return notFound(err, "model_not_found", "Model not found")
 		}
 		if err := tx.Where("model_name = ?", name).Delete(&ModelRoute{}).Error; err != nil {
@@ -225,61 +225,6 @@ func (s *GormStore) UpdateRoute(id string, patch ModelRoute) (ModelRoute, error)
 		route.Tags = uniqueStrings(patch.Tags)
 	}
 	return route, s.db.Save(&route).Error
-}
-
-func (s *GormStore) UpdateModelRoutePolicy(modelName string, policy ModelRoutePolicy) ([]ModelRoute, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	modelName = strings.TrimSpace(modelName)
-	var updated []ModelRoute
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var routes []ModelRoute
-		if err := tx.Where("model_name = ?", modelName).Order("priority asc, created_at asc, id asc").Find(&routes).Error; err != nil {
-			return err
-		}
-		if len(routes) == 0 {
-			return NewHTTPError(http.StatusNotFound, "model_routes_not_found", "Model has no routing rules")
-		}
-		if len(policy.Routes) != len(routes) {
-			return NewHTTPError(http.StatusBadRequest, "invalid_model_route_policy", "Routing policy must include every route for the model")
-		}
-
-		routeByID := make(map[string]*ModelRoute, len(routes))
-		for index := range routes {
-			routeByID[routes[index].ID] = &routes[index]
-		}
-		seen := make(map[string]bool, len(policy.Routes))
-		for _, patch := range policy.Routes {
-			if seen[patch.RouteID] || routeByID[patch.RouteID] == nil {
-				return NewHTTPError(http.StatusBadRequest, "invalid_model_route_policy", "Routing policy contains an unknown or duplicate route")
-			}
-			if patch.Weight <= 0 || patch.QualityScore < 1 || patch.QualityScore > 100 || patch.CostScore < 1 || patch.CostScore > 100 {
-				return NewHTTPError(http.StatusBadRequest, "invalid_model_route_parameters", "Weight must be positive and route scores must be between 1 and 100")
-			}
-			seen[patch.RouteID] = true
-		}
-
-		updated = make([]ModelRoute, 0, len(routes))
-		for index, patch := range policy.Routes {
-			route := routeByID[patch.RouteID]
-			route.Strategy = policy.Strategy
-			route.Weight = patch.Weight
-			route.QualityScore = patch.QualityScore
-			route.CostScore = patch.CostScore
-			if policy.Strategy == RouteStrategyPriorityOnly {
-				route.Priority = index + 1
-			} else {
-				route.Priority = 1
-			}
-			if err := tx.Save(route).Error; err != nil {
-				return err
-			}
-			updated = append(updated, *route)
-		}
-		return nil
-	})
-	return updated, err
 }
 
 func (s *GormStore) DeleteRoute(id string) error {

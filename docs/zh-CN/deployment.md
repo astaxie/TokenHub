@@ -504,3 +504,15 @@ Kronk 默认监听明文 HTTP。远程部署时应使用可信私网或 TLS 反�
 长文本生成和流式响应可能耗时较长，请合理设置请求体大小和超时时间。
 
 存活探针使用 `/livez`，就绪探针使用 `/readyz`。数据库不可用，或数据库演进状态不可服务（迁移处于脏状态、账本校验失败，或阻塞型数据回填未完成）时，`/readyz` 和向后兼容的 `/healthz` 会返回 `503`。待执行的在线数据回填不影响就绪状态。
+
+## 可选的 Jev 智能路由
+
+灰度启用、请求范围、文本外发、审计和回滚见 [Jev 智能路由](semantic-routing.md)。下列服务端配置还需配合模型级「观察」或「启用」模式。
+
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `TOKENHUB_SEMANTIC_ROUTING_ENABLED` | `false` | 开启独立的 Jev 决策客户端。 |
+| `TOKENHUB_SEMANTIC_ROUTING_PROJECTS` | 空 | 允许外发用户文本的精确项目 ID，以逗号分隔；空名单全部拒绝。 |
+| `TOKENHUB_TYPESAFE_API_KEY` | 空 | 仅供服务端使用的 TypeSafe 凭据。 |
+| `TOKENHUB_TYPESAFE_MODEL` | `jev-1.13.0` | 明确的评估模型版本。 |
+| `TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS` | `1000` | 目录查询与评估超时，范围为 1–10000 ms。 |

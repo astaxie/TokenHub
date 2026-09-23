@@ -74,6 +74,18 @@ func TestSQLiteMeteringMigrationUpgradesAuditCorrelation(t *testing.T) {
 }
 
 func TestSQLiteLegacyMeteringMigrationChecksumRemainsCompatible(t *testing.T) {
+	for _, tc := range []struct{ name, checksum string }{
+		{"original", "4d282c33fb83adcf772a560ddb2b772116e9f6bbd3ecee0a68bda70fc447e50c"},
+		{"intermediate", "tokenhub-schema-metering-evidence-v2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testSQLiteLegacyMeteringMigrationChecksum(t, tc.checksum)
+		})
+	}
+}
+
+func testSQLiteLegacyMeteringMigrationChecksum(t *testing.T, historicalChecksum string) {
+	t.Helper()
 	databaseURL := "sqlite://" + filepath.Join(t.TempDir(), "legacy-metering.db")
 	store, err := NewSQLiteStore(databaseURL)
 	if err != nil {
@@ -81,6 +93,10 @@ func TestSQLiteLegacyMeteringMigrationChecksumRemainsCompatible(t *testing.T) {
 	}
 	sqlDB, err := store.db.DB()
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Pin historical ledger values independently of the current registry.
+	if _, err := sqlDB.Exec(`UPDATE schema_migrations SET checksum = ? WHERE version = 4`, historicalChecksum); err != nil {
 		t.Fatal(err)
 	}
 	// Reconstruct a database produced by the original version 4 migration:
@@ -106,4 +122,19 @@ func TestSQLiteLegacyMeteringMigrationChecksumRemainsCompatible(t *testing.T) {
 	if err := VerifySchemaSemantics(context.Background(), databaseURL); err != nil {
 		t.Fatalf("upgraded legacy database schema: %v", err)
 	}
+	var checksum string
+	if err := upgraded.db.Raw(`SELECT checksum FROM schema_migrations WHERE version = 4`).Scan(&checksum).Error; err != nil {
+		t.Fatal(err)
+	}
+	if checksum != historicalChecksum {
+		t.Fatalf("historical ledger checksum changed: got %q, want %q", checksum, historicalChecksum)
+	}
+	if err := upgraded.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := NewSQLiteStore(databaseURL)
+	if err != nil {
+		t.Fatalf("restart after upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = restarted.Close() })
 }

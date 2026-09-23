@@ -661,6 +661,8 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 		if err == nil {
 			catalog, err = s.discoverProviderCatalogFromCreateRequest(ctx, user, req)
 		}
+	} else if strings.TrimSpace(req.Type) == ProviderDify {
+		catalog, err = s.difyConnectionTestCatalog(ctx, req)
 	} else {
 		catalog, err = s.discoverProviderCatalogFromCreateRequest(ctx, user, req)
 	}
@@ -1095,33 +1097,6 @@ func (s *Server) handleAdminModelRoutingPolicy(w http.ResponseWriter, r *http.Re
 	s.serveAdminModelRoutingPolicyPatch(w, r, user, modelName)
 }
 
-func (s *Server) serveAdminModelRoutingPolicyPatch(w http.ResponseWriter, r *http.Request, user AdminUser, modelName string) {
-	var policy ModelRoutePolicy
-	if err := s.decodeJSON(w, r, &policy); err != nil {
-		writeError(w, r, err)
-		return
-	}
-	policy.Strategy = strings.TrimSpace(policy.Strategy)
-	if policy.Strategy == "" {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_route_strategy", "Routing strategy is required"))
-		return
-	}
-	if err := s.validateRoutePolicy(ModelRoute{Strategy: policy.Strategy}); err != nil {
-		writeError(w, r, err)
-		return
-	}
-	routes, err := s.store.UpdateModelRoutePolicy(modelName, policy)
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-	s.recordAdminAudit(r, user, "update", "model_routing_policy", modelName, "", map[string]any{
-		"strategy": policy.Strategy,
-		"routes":   routes,
-	})
-	writeJSON(w, http.StatusOK, map[string]any{"strategy": policy.Strategy, "data": routes})
-}
-
 func adminModelRoutingPolicyNameFromPath(r *http.Request) (string, bool) {
 	const prefix = "/api/admin/model-routing-policies/"
 	escaped := strings.Trim(strings.TrimPrefix(r.URL.EscapedPath(), prefix), "/")
@@ -1366,7 +1341,7 @@ func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Mode
 
 func (s *Server) validateRoutePolicy(route ModelRoute) error {
 	switch routeStrategy(route) {
-	case RouteStrategyBalanced, RouteStrategyAdaptive, RouteStrategyCost, RouteStrategyQuality, RouteStrategyPriorityWeighted, RouteStrategyPriorityOnly:
+	case RouteStrategyJev, RouteStrategyBalanced, RouteStrategyAdaptive, RouteStrategyCost, RouteStrategyQuality, RouteStrategyPriorityWeighted, RouteStrategyPriorityOnly:
 	default:
 		return NewHTTPError(http.StatusBadRequest, "invalid_route_strategy", "Unsupported route strategy")
 	}

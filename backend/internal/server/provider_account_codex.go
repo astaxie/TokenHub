@@ -17,8 +17,8 @@ const (
 	openAICodexBaseURL           = "https://chatgpt.com/backend-api/codex"
 	openAICodexResponsesURL      = openAICodexBaseURL + "/responses"
 	openAICodexModelsURL         = openAICodexBaseURL + "/models"
-	openAICodexVersion           = "0.145.0"
-	openAICodexUserAgent         = "codex_cli_rs/0.145.0 (Mac OS 15.0.0; arm64) xterm-256color"
+	openAICodexVersion           = "0.155.0"
+	openAICodexUserAgent         = "codex_cli_rs/0.155.0 (Mac OS 15.0.0; arm64) xterm-256color"
 	openAICodexDefaultProbeModel = "gpt-5.6-luna"
 	openAICodexMaxRequestRetries = 4
 	openAICodexStreamIdleTimeout = 5 * time.Minute
@@ -456,7 +456,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 		tracker.ensureStarted()
 		streamWriter := io.Writer(tracker)
 		var transformer *gatewayStreamTransformWriter
-		if s.hasGatewayStreamTransformHooksForRoute(prepared, providerRouteProtocolResponses) {
+		if routed.Call.JevResponseBound || routeStrategy(prepared.Route) == RouteStrategyJev || s.hasGatewayStreamTransformHooksForRoute(prepared, providerRouteProtocolResponses) {
 			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, tracker)
 			streamWriter = transformer
 		}

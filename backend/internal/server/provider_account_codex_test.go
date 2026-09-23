@@ -83,6 +83,44 @@ func TestCodexSubscriptionModelsUsesLiveVisibleCatalog(t *testing.T) {
 	}
 }
 
+func TestCodexSubscriptionModelsUsesGPT6CapableClientFingerprint(t *testing.T) {
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if got := req.URL.Query().Get("client_version"); got != "0.155.0" {
+			t.Fatalf("client_version = %q, want 0.155.0", got)
+		}
+		if got := req.Header.Get("Version"); got != "0.155.0" {
+			t.Fatalf("Version header = %q, want 0.155.0", got)
+		}
+		if got := req.Header.Get("User-Agent"); !strings.HasPrefix(got, "codex_cli_rs/0.155.0 ") {
+			t.Fatalf("User-Agent = %q, want Codex CLI 0.155.0", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body: io.NopCloser(strings.NewReader(
+				`{"models":[{"slug":"gpt-6-astra","display_name":"GPT-6 Astra","visibility":"list","supported_in_api":true,"priority":1,"minimal_client_version":"0.153.0"},{"slug":"gpt-6-sol","display_name":"GPT-6 Sol","visibility":"list","supported_in_api":true,"minimal_client_version":"0.155.0"},{"slug":"gpt-6-luna","display_name":"GPT-6 Luna","visibility":"list","supported_in_api":true,"minimal_client_version":"0.155.0"}]}`,
+			)),
+			Request: req,
+		}, nil
+	})}
+	adapter := CodexSubscriptionAdapter{Client: client, ModelsURL: "https://chatgpt.example/backend-api/codex/models"}
+
+	catalog, err := adapter.ModelsWithCredentials(context.Background(), ProviderResourceCredentials{
+		AccessToken: "access_gpt6",
+		AccountID:   "account_gpt6",
+	})
+	if err != nil {
+		t.Fatalf("list GPT-6 Codex models: %v", err)
+	}
+	ids := make(map[string]bool, len(catalog.Models))
+	for _, model := range catalog.Models {
+		ids[model.ID] = true
+	}
+	if len(catalog.Models) != 3 || !ids["gpt-6-astra"] || !ids["gpt-6-sol"] || !ids["gpt-6-luna"] {
+		t.Fatalf("GPT-6 models missing from catalog: %+v", catalog.Models)
+	}
+}
+
 func TestCodexModelCatalogUsesETagAndPersistedSnapshot(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{

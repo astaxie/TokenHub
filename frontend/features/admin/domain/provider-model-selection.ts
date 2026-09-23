@@ -12,20 +12,18 @@ export type InitialModelRoute = {
 };
 
 type ProviderCatalogModelFilter = {
-  catalogID: string;
   supportsModelPreview: boolean;
-  usesAccountCatalog: boolean;
   quickAPIFlow: boolean;
   selectedCategory: string;
   discoveredCategory: string;
-  matchesStandardModel: boolean;
 };
 
+// Provider 模型目录展示渠道商目录中的全部模型，可按分类筛选；
+// 是否已有对应对外模型不影响上游模型的引入。
 export function providerCatalogModelIsSelectable(filter: ProviderCatalogModelFilter) {
   if (filter.quickAPIFlow || filter.supportsModelPreview) return true;
   if (filter.selectedCategory !== "all" && filter.discoveredCategory !== filter.selectedCategory) return false;
-  if (filter.usesAccountCatalog || filter.catalogID === "custom") return true;
-  return filter.matchesStandardModel;
+  return true;
 }
 
 export function providerModelSelectionValue(providerID: string, upstreamModel: string) {

@@ -546,6 +546,7 @@ export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "pro
 }
 
 function providerTypeOptionLabel(providerType: string, labels: Map<string, string>) {
+  if (providerType === "mock") return providerTypeLabel(providerType);
   return labels.get(providerType) ?? providerTypeLabel(providerType);
 }
 

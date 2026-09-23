@@ -234,6 +234,7 @@ func applyRoutingPolicyResolution(call *CallContext, resolution RoutingPolicyRes
 	if call == nil || resolution.EffectivePolicy == nil {
 		return
 	}
+	call.RoutingStrategyOverride = resolution.EffectivePolicy.Strategy
 	call.RoutingPolicyID = resolution.EffectivePolicy.ID
 	call.RoutingPolicyScope = resolution.EffectivePolicy.Scope
 	call.RoutingPolicyPriority = resolution.EffectivePolicy.Priority

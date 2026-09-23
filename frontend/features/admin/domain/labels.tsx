@@ -171,6 +171,7 @@ export function enumValueLabel(value: string | undefined) {
     adaptive: "自适应",
     quality: "质量优先",
     cost: "成本优先",
+    jev: "Jev 智能路由",
     priority_weighted: "优先级 + 权重",
     priority_only: "仅优先级",
     inherit: "继承 Provider 策略",
@@ -308,12 +309,14 @@ export function roleLabel(role: string) {
 
 export function providerTypeLabel(type: string | undefined) {
   const normalized = String(type ?? "").trim();
+  if (normalized === "mock") return tx("本地服务");
   return normalized || "-";
 }
 
 export function providerTypeLabelFromData(data: Pick<AppData, "plugins" | "providerCatalog"> & Partial<Pick<AppData, "providerAdapters">>, type: string | undefined) {
   const normalized = String(type ?? "").trim();
   if (!normalized) return "-";
+  if (normalized === "mock") return providerTypeLabel(normalized);
   for (const entry of [...(data.providerCatalog ?? []), ...providerCatalogEntriesFromPluginCapabilities(data.plugins)]) {
     if (entry.type !== normalized) continue;
     const label = String(entry.display_name || entry.name || "").trim();

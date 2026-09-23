@@ -16,7 +16,7 @@ models:
     input_modalities: ["text", "image"]
     output_modalities: ["text"]
     capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["tools", "response_format", "reasoning", "reasoning_effort", "image_input"]
+    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "tools", "response_format", "reasoning", "reasoning_effort", "image_input"]
     metadata:
       source: "tokenhub-standard-catalog"
       upstream_source: "https://developers.openai.com/api/docs/models/gpt-6-astra"

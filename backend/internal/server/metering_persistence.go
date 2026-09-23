@@ -19,11 +19,11 @@ type meteringEntry struct {
 }
 
 func meteringMigration() dbschema.Migration {
-	// Version 4 is already present in released ledgers; keep its SQL immutable.
+	// Version 4 is already present in released ledgers; preserve its SQL-derived checksum.
 	return dbschema.Migration{Version: 4, Name: "add-metering-evidence", Statements: []string{
 		`CREATE TABLE IF NOT EXISTS metering_entries (id text PRIMARY KEY, kind text NOT NULL, scope text NOT NULL, payload text NOT NULL, created_at timestamp NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS idx_metering_entries_scope ON metering_entries (kind, scope, created_at)`,
-	}, ChecksumOverride: "tokenhub-schema-metering-evidence-v2", StatementBudget: 10}
+	}, StatementBudget: 10}
 }
 
 func auditCorrelationMigration() dbschema.Migration {

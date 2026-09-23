@@ -23,6 +23,12 @@ export class MockAPI {
   respond(method: string, pathname: string, json: unknown) {
     this.define(method, pathname, () => ({ json: structuredClone(json) }));
   }
+  replaceResponse(method: string, pathname: string, json: unknown) {
+    const key = `${method} ${pathname}`;
+    if (!this.handlers.has(key)) throw new Error(`Cannot replace undeclared UI fixture: ${key}`);
+    this.handlers.delete(key);
+    this.respond(method, pathname, json);
+  }
   assertClean() {
     if (this.violations.length) throw new Error(`UI network contract failed:\n${this.violations.join("\n")}`);
   }

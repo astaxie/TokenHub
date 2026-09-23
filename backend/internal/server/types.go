@@ -15,6 +15,7 @@ const (
 	StatusDisabled = "disabled"
 	StatusRevoked  = "revoked"
 
+	RouteStrategyJev              = "jev"
 	RouteStrategyBalanced         = "balanced"
 	RouteStrategyAdaptive         = "adaptive"
 	RouteStrategyCost             = "cost"
@@ -36,6 +37,7 @@ const (
 	ProviderAnthropic        = "anthropic"
 	ProviderGemini           = "gemini"
 	ProviderKronk            = "kronk"
+	ProviderDify             = "dify"
 
 	ProviderResourceAPIKey             = "api_key"
 	ProviderResourceOpenAISubscription = "openai_subscription"
@@ -428,8 +430,9 @@ type ModelRoutePolicyRoute struct {
 }
 
 type ModelRoutePolicy struct {
-	Strategy string                  `json:"strategy"`
-	Routes   []ModelRoutePolicyRoute `json:"routes"`
+	SemanticRouting *SemanticRoutingPolicy  `json:"semantic_routing,omitempty"`
+	Strategy        string                  `json:"strategy"`
+	Routes          []ModelRoutePolicyRoute `json:"routes"`
 }
 
 type Usage struct {
@@ -1280,14 +1283,17 @@ type RoutedCall struct {
 }
 
 type CallContext struct {
-	RouteProtocol         string
-	RequestID             string
-	Project               Project
-	Key                   APIKey
-	Model                 Model
-	RoutingPolicyID       string
-	RoutingPolicyScope    string
-	RoutingPolicyPriority int
+	JevResponseBound        bool
+	jevResponseBinding      *pendingJevResponseBinding
+	RoutingStrategyOverride string
+	RouteProtocol           string
+	RequestID               string
+	Project                 Project
+	Key                     APIKey
+	Model                   Model
+	RoutingPolicyID         string
+	RoutingPolicyScope      string
+	RoutingPolicyPriority   int
 	// StartedAt is the database clock reading taken when the call was admitted:
 	// StartCall derives the quota buckets and the lease expiry from that reading
 	// so every replica agrees on them, and reports it here for callers that want

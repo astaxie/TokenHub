@@ -573,6 +573,11 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, routed.Call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 		return
 	}
+	if err := s.applyJevResponsesRouting(ctx, &routed, &request, envelope.Headers); err != nil {
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+		return
+	}
 	if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 		return
 	}
@@ -585,6 +590,11 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		return
 	}
 	response, route, usage, attempts, invokeErr := s.executeRoutedResponsesContext(ctx, envelope.Headers, routed, request)
+	if invokeErr == nil {
+		// Persist this binding only with a successful, ownership-fenced completion.
+		// Capture the upstream ID before output hooks can rewrite the response.
+		routed.Call.jevResponseBinding, invokeErr = s.pendingJevResponseBinding(routed.Call, route, response, job.ID)
+	}
 	if invokeErr == nil {
 		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response, providerRouteProtocolResponses)
 		if invokeErr != nil {

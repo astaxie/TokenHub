@@ -9,6 +9,9 @@ import (
 )
 
 func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContext, payload any) (any, Usage, bool, error) {
+	if responsesNeedRouteBinding(call, payload) {
+		return nil, Usage{}, false, nil
+	}
 	if !s.hasGatewayHookStage(pluginmeta.StageCacheLookup) {
 		return nil, Usage{}, false, nil
 	}
@@ -53,6 +56,9 @@ func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContex
 }
 
 func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext, route RouteSelection, payload any, response any, usage Usage, protocol string) {
+	if responsesNeedRouteBinding(call, payload) {
+		return
+	}
 	hooks := s.gatewayRouteHooksForRoute(pluginmeta.StageCacheWrite, route, protocol, true)
 	if len(hooks) == 0 {
 		return

@@ -28,7 +28,7 @@
       "name": "add-metering-evidence",
       "phase": "expand",
       "dialect": "",
-      "checksum": "tokenhub-schema-metering-evidence-v2",
+      "checksum": "4d282c33fb83adcf772a560ddb2b772116e9f6bbd3ecee0a68bda70fc447e50c",
       "lock_timeout_seconds": 30,
       "statement_budget": 10
     },
@@ -38,6 +38,15 @@
       "phase": "expand",
       "dialect": "",
       "checksum": "tokenhub-schema-audit-event-correlation-v1",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 10
+    },
+    {
+      "version": 6,
+      "name": "add-jev-response-bindings",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "d4fffe9ce0a02dcf7bf27d5d44541f121f8ffd76384b8e1168365d8c26199a80",
       "lock_timeout_seconds": 30,
       "statement_budget": 10
     }

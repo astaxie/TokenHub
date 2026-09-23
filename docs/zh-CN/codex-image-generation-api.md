@@ -6,14 +6,15 @@
 
 `codex-gpt-image-2` 是 TokenHub 对外暴露的 Codex 订阅虚拟模型。管理员可在 OpenAI Codex Provider 的“模型”页签勾选“Codex 订阅生图”，选择真实账号完成一次低质量生图测试；测试通过后，TokenHub 会自动创建或启用上游模型为 `gpt-image-2` 的线路。服务器随后从该线路覆盖的账号资源中选择已确认支持生图的 Codex 订阅账号，直接调用 Codex 订阅 Images 接口。服务器不需要安装或启动 Codex CLI。
 
-`gpt-image-2` 通常是独立的 OpenAI API 模型，必须配置 `openai` 类型 Provider、API Key 和模型路由。它调用 Provider 的标准 `/v1/images/generations` 与 `/v1/images/edits`，不会选择 Codex 订阅账号或消耗 Codex 额度。唯一例外是带 Codex `originator` 或 `x-codex-image-turn-id` 请求头的 `/v1/images/generations` 请求：TokenHub 会将其映射为 `codex-gpt-image-2` 并返回 `b64_json`，API Key 必须允许 `codex-gpt-image-2`。
+`gpt-image-2` 通常是独立的 OpenAI API 模型，必须配置 `openai` 类型 Provider、API Key 和模型路由。它调用 Provider 的标准 `/v1/images/generations` 与 `/v1/images/edits`，不会选择 Codex 订阅账号或消耗 Codex 额度。唯一例外是带 Codex `originator` 或 `x-codex-image-turn-id` 请求头的生图和 JSON 图片编辑请求：TokenHub 会将其映射为 `codex-gpt-image-2` 并返回 `b64_json`，API Key 必须允许 `codex-gpt-image-2`。
 
 ## 1. 协议概览
 
 | 场景 | 方法 | Endpoint | Content-Type |
 | --- | --- | --- | --- |
 | 文生图 | `POST` | `/v1/images/generations` | `application/json` |
-| 参考图编辑 | `POST` | `/v1/images/edits` | `multipart/form-data` |
+| 常规参考图编辑 | `POST` | `/v1/images/edits` | `multipart/form-data` |
+| 原生 Codex 参考图编辑 | `POST` | `/v1/images/edits` | `application/json` |
 | 查询异步任务 | `GET` | `/v1/image-jobs/{job_id}` | 无请求体 |
 | 下载生成图片 | `GET` | 响应中返回的签名 URL | 无请求体 |
 | 查询可用模型 | `GET` | `/v1/models` | 无请求体 |
@@ -36,7 +37,8 @@ TokenHub 保留了 OpenAI Image API 的主要调用形态：
 - 文生图使用 `/v1/images/generations`
 - 图片编辑使用 `/v1/images/edits`
 - 使用 `model`、`prompt`、`n`、`quality`、`size` 和 `response_format`
-- 编辑请求使用 multipart 上传一个或多个 `image` / `image[]`
+- 常规编辑请求使用 multipart 上传一个或多个 `image` / `image[]`
+- 原生 Codex 编辑请求可使用 JSON 的 `images[].image_url` Base64 Data URL
 - 同步响应使用 `data[].url` 或 `data[].b64_json`
 
 TokenHub 当前扩展和限制如下：
@@ -53,6 +55,8 @@ TokenHub 当前扩展和限制如下：
 | 遮罩编辑 | `gpt-image-2` 支持；`codex-gpt-image-2` 上传 `mask` 返回 `501 image_mask_not_supported` |
 | 流式局部图片 | 暂不支持 |
 | 输出格式参数 | 对外暂不支持 `output_format`；OpenAI API 路由请求 PNG，Codex 路由保留上游返回的 PNG、JPEG 或 WebP |
+| 原生 Codex JSON 编辑 | 带非空 `x-codex-image-turn-id`，或以 `codex` 开头的 `originator` 请求头时可使用；`gpt-image-2` 映射为 `codex-gpt-image-2`，响应固定为 `b64_json` |
+| 图片编辑输入限制 | multipart 和原生 Codex JSON 都最多 16 张输入图；解码后单图最多 50 MB；整个请求最多 128 MB；`mask` 不计入 16 张输入图 |
 | 幂等键 | 暂不支持；每次 `POST` 都会创建新任务 |
 
 OpenAI 官方 Image API 还支持更多参数和模式。本文只描述 TokenHub 已实现并经过测试的协议。
@@ -326,7 +330,7 @@ curl -fL "${IMAGE_URL}" -o /tmp/tokenhub-async-result.png
 
 ## 7. 参考图编辑
 
-图片编辑请求必须使用 `multipart/form-data`。
+常规客户端的图片编辑请求必须使用 `multipart/form-data`。原生 Codex 客户端例外：带非空 `x-codex-image-turn-id` 请求头，或带以 `codex` 开头的 `originator` 请求头时，可以发送 JSON。该 JSON 请求在 `images[].image_url` 中携带 Base64 Data URL（例如 `data:image/png;base64,...`），将 `gpt-image-2` 映射为 `codex-gpt-image-2`，并固定返回 `b64_json`。普通 JSON 客户端不属于此例外，仍会收到 `415 invalid_content_type`。
 
 支持的输入图片：
 
@@ -334,9 +338,31 @@ curl -fL "${IMAGE_URL}" -o /tmp/tokenhub-async-result.png
 - JPEG
 - WebP
 - 单张不超过 50 MB
-- 整个 multipart 请求不超过 128 MB
+- multipart 和原生 Codex JSON 都最多 16 张输入图，`mask` 不计入
+- 整个请求不超过 128 MB
 
-### 7.1 单张参考图
+### 7.1 原生 Codex JSON 参考图
+
+原生 Codex 请求使用 `application/json`，而不是 multipart：
+
+```json
+{
+  "model": "gpt-image-2",
+  "prompt": "保持主体不变，只替换为下雪的夜晚城市街道",
+  "images": [
+    {
+      "image_url": "data:image/png;base64,..."
+    }
+  ],
+  "n": 1,
+  "quality": "low",
+  "size": "1024x1024"
+}
+```
+
+请求必须包含非空 `x-codex-image-turn-id`，或将 `originator` 设置为以 `codex` 开头的值。`response_format` 会被忽略，返回中固定使用 `data[].b64_json`。
+
+### 7.2 单张 multipart 参考图
 
 ```bash
 curl -sS \
@@ -353,7 +379,7 @@ curl -sS \
   | jq
 ```
 
-### 7.2 多张参考图
+### 7.3 多张 multipart 参考图
 
 ```bash
 curl -sS \
@@ -370,7 +396,7 @@ curl -sS \
   | jq
 ```
 
-### 7.3 异步编辑
+### 7.4 异步编辑
 
 在编辑请求中增加异步请求头：
 
@@ -380,7 +406,7 @@ curl -sS \
 
 随后使用同一个 `/v1/image-jobs/{job_id}` 轮询流程。
 
-### 7.4 mask 的模型差异
+### 7.5 mask 的模型差异
 
 `codex-gpt-image-2` 不要发送：
 
@@ -463,13 +489,15 @@ TokenHub 使用统一错误结构：
 | 400 | `invalid_response_format` | 响应格式不合法 | 使用 `url` 或 `b64_json` |
 | 400 | `missing_image` | 编辑请求没有图片 | 上传 `image` 或 `image[]` |
 | 400 | `invalid_input_image` | 图片格式或内容不合法 | 使用 PNG、JPEG 或 WebP |
+| 400 | `too_many_images` | 编辑请求超过 16 张输入图 | 减少输入图数量；`mask` 不计入 |
 | 401 | `invalid_api_key` | API Key 无效 | 检查 Authorization |
 | 401 | `codex_account_auth_failed` | Codex 账号凭据不可用 | 重新授权对应账号 |
 | 403 | `model_not_allowed` | Key 白名单不允许该模型 | 给 Key 增加 `codex-gpt-image-2` |
 | 403 | `codex_image_forbidden` | 命中的账号没有 ImageGen 权限 | 检查账号能力状态 |
 | 403 | `image_url_expired` | 图片签名 URL 已过期 | 重新查询任务获取新 URL |
 | 413 | `input_image_too_large` | 单张输入图超过 50 MB | 压缩输入图 |
-| 415 | `invalid_content_type` | 编辑请求不是 multipart | 使用 `multipart/form-data` |
+| 413 | `image_edit_request_too_large` | 图片编辑请求超过 128 MB | 缩小请求体或减少输入图 |
+| 415 | `invalid_content_type` | 非原生 Codex 编辑请求不是 multipart | 使用 `multipart/form-data` |
 | 429 | `codex_rate_limited` | Codex 账号限流 | 延迟后重试 |
 | 429 | `codex_quota_exhausted` | Codex 账号额度不足 | 切换账号或等待额度恢复 |
 | 501 | `image_mask_not_supported` | Codex 订阅模型不支持 mask | 改用无 mask 编辑，或使用配置了 OpenAI API Provider 的 `gpt-image-2` |

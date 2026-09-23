@@ -66,3 +66,10 @@ test("isolation requires an explicit query contract", async ({ context, page }) 
   expect(status).toBe(500);
   expect(() => api.assertClean()).toThrow("Unexpected query for GET /api/admin/auth/identity-providers");
 });
+
+test("isolation only replaces declared fixture responses", () => {
+  const api = new MockAPI();
+  expect(() => api.replaceResponse("GET", "/api/admin/missing", {})).toThrow("Cannot replace undeclared UI fixture");
+  api.respond("GET", "/api/admin/example", { data: [] });
+  expect(() => api.replaceResponse("GET", "/api/admin/example", { data: ["updated"] })).not.toThrow();
+});

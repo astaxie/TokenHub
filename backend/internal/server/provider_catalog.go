@@ -485,6 +485,7 @@ func catalogModelCapabilities(raw map[string]any, model ProviderCatalogModel) []
 func catalogModelParameters(raw map[string]any, model ProviderCatalogModel) []string {
 	parameters := catalogStringSliceField(raw, "supported_parameters")
 	parameters = append(parameters, catalogStringSliceField(raw, "parameters")...)
+	parameters = catalogBudgetParameters(parameters, catalogStringField(raw, "endpoints"))
 	if catalogBoolField(raw, "temperature") {
 		parameters = append(parameters, "temperature")
 	}

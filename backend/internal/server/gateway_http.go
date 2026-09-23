@@ -143,6 +143,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 	}
 
+	if err := s.applySemanticRouting(r.Context(), &routed, req, r.Header); err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+
 	if req.Stream {
 		tracker := &streamWriteTracker{writer: w}
 		allowEffortFallback := normalizedReasoningEffort(req.ReasoningEffort) != nil
@@ -392,6 +398,11 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 			routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 		}
 	}
+	if err := s.applyJevResponsesRouting(r.Context(), &routed, &req, r.Header); err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
 	if req.Stream {
 		s.handleStreamingResponses(w, r, routed, req, auditPayload)
 		return
@@ -402,6 +413,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	upstreamResponseID := jevResponseID(resp)
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
 	resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp, providerRouteProtocolResponses)
@@ -418,6 +430,11 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage, providerRouteProtocolResponses)
 	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	if err := s.bindJevResponse(r.Context(), routed.Call, route, map[string]string{"id": upstreamResponseID}, jevResponseID(resp)); err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return

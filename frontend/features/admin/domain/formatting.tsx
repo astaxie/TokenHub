@@ -1,4 +1,4 @@
-import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, type PlaygroundChatPayload, type ProviderCatalogModel, routeViews, type ViewKey } from "../core/types";
+import { type ApiExampleLanguage, type AppData, type Model, type ModelRoute, type PlaygroundChatPayload, type Project, type ProviderCatalogModel, routeViews, type ViewKey } from "../core/types";
 import { modelCategory } from "./catalog";
 import { configuredPriceFormValue } from "./configured-pricing";
 import { modelDisplayName } from "./model-display-name";
@@ -271,15 +271,24 @@ function imageCapabilityRouteHasHealthyTarget(route: ModelRoute, data: AppData, 
   const group = stringifyValue(route.resource_group);
   return capableResources.some((resource) => !group || resource.group === group);
 }
-export function keyWizardModelOptions(data: AppData) {
+export function keyWizardModelOptions(data: AppData, project?: Pick<Project, "model_access_mode" | "allowed_models"> | null) {
   const activeChatModels = playgroundModels(data, data.routes.length > 0);
   const routed = activeChatModels.filter((model) => data.routes.length === 0 || activeRouteCount(model.name, data) > 0);
   const imageCapabilityModels = data.models.filter((model) =>
     model.status === "active" && modelHasImageCapability(data, model) && activeRouteCount(model.name, data) > 0,
   );
-  return [...(routed.length > 0 ? routed : activeChatModels), ...imageCapabilityModels].sort((left, right) =>
+  const options = [...(routed.length > 0 ? routed : activeChatModels), ...imageCapabilityModels].sort((left, right) =>
     modelCategoryRank(left, data) - modelCategoryRank(right, data) || left.name.localeCompare(right.name),
   );
+  // A restricted project is the outer model boundary: the key wizard must not
+  // offer models the project itself cannot call, otherwise the key would store
+  // an allowlist entry that can never be used (and suggests a wider scope than
+  // the project actually grants).
+  if (project?.model_access_mode === "restricted") {
+    const allowed = new Set(project.allowed_models ?? []);
+    return options.filter((model) => allowed.has(model.name));
+  }
+  return options;
 }
 
 export function modelCategoryRank(model: Model, data?: Pick<AppData, "plugins" | "providerAdapters">) {

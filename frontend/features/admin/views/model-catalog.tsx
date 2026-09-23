@@ -301,7 +301,7 @@ export function RouteModelCard({
         <div className="empty route-empty">{tx("该统一模型还没有 Provider 线路")}</div>
       ) : (
         <ModelRoutingPolicyEditor
-          key={modelRoutePolicySignature(routes)}
+          key={`${modelRoutePolicySignature(routes)}:${model.metadata?.tokenhub_semantic_routing ?? ""}`}
           model={model}
           routes={routes}
           data={data}

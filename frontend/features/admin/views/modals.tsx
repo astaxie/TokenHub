@@ -1,5 +1,5 @@
 import { BookOpen, Boxes, Check, ExternalLink, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
-import { type Dispatch, type FormEvent, type SetStateAction, useMemo, useState } from "react";
+import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useState } from "react";
 import { type AdminResource, type AdminUser, type AppData, type FieldConfig, type ModalState } from "../core/types";
 import { findProject, ownerUserLabel, projectOwnerLabel, projectSelectOptions, projectTeamLabel } from "../domain/entities";
 import { keyWizardModelOptions, modelAvailabilitySummary } from "../domain/formatting";
@@ -354,8 +354,21 @@ export function APIKeyWizardModal({
   }));
   const projectOptions = projectSelectOptions(data, currentUser);
   const selectedProject = findProject(data, values.project_id);
-  const selectableModels = keyWizardModelOptions(data);
+  const selectableModels = keyWizardModelOptions(data, selectedProject);
   const selectedModels = splitList(values.allowed_models);
+  // Keep the key allowlist inside the selected project's model scope: when the
+  // operator switches projects, drop selections the new project cannot call.
+  useEffect(() => {
+    const project = findProject(data, values.project_id);
+    if (!project || project.model_access_mode !== "restricted") return;
+    const allowed = new Set(project.allowed_models ?? []);
+    setValues((current) => {
+      const currentModels = splitList(current.allowed_models);
+      const pruned = currentModels.filter((model) => allowed.has(model));
+      if (pruned.length === currentModels.length) return current;
+      return { ...current, allowed_models: pruned.join(", ") };
+    });
+  }, [data, values.project_id]);
   const steps = [
     { title: "选择项目", icon: Boxes },
     { title: "填写用途", icon: KeyRound },

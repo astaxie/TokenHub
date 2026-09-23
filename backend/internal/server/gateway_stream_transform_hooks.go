@@ -99,6 +99,16 @@ func (w *gatewayStreamTransformWriter) handleEvent(event serverSentEvent) error 
 	if !emit {
 		return nil
 	}
+	if w.protocol == providerRouteProtocolResponses && (routeStrategy(w.route.Route) == RouteStrategyJev || w.call.JevResponseBound) {
+		var upstream, public struct {
+			Response json.RawMessage `json:"response"`
+		}
+		if json.Unmarshal([]byte(event.Data), &upstream) == nil && json.Unmarshal([]byte(transformed.Data), &public) == nil && len(upstream.Response) > 0 {
+			if err := w.server.bindJevResponse(w.ctx, w.call, w.route, upstream.Response, jevResponseID(public.Response)); err != nil {
+				return err
+			}
+		}
+	}
 	_, err = w.sink.Write(renderSSEEvent(transformed))
 	return err
 }

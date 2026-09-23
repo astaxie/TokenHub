@@ -35,6 +35,7 @@ tokenhub db contract --backup-reference <ref> --maintenance
 
 ## 运维要点
 
+- 历史上的计量迁移校验值回归可能导致启动时报 `checksum_mismatch (version 4)`。请使用包含兼容性修复的版本，依次运行 `tokenhub db prepare` 和 `tokenhub db verify` 后正常重启。修复同时识别原始 SQL 校验值和中间版本的确切值 `tokenhub-schema-metering-evidence-v2`，保留已有账本记录，审计关联字段仍由迁移 5 添加。其他校验值不匹配仍会阻止启动；请勿删除数据库或修改账本来绕过校验。`db repair` 用于修复脏迁移，不能解决这种干净账本的校验值不匹配。
 - 对没有采纳基线的数据库执行 `tokenhub db migrate` 会提示先正常启动一次服务：采纳在服务的串行结构流程中完成。
 - 被拒绝的 contract 会说明失败的前置条件；此时没有执行任何操作。
 - 回退到旧版本后，旧版本可在当前数据库上继续工作；新版本回归时重新校验 ledger 并继续演进。

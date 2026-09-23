@@ -6,6 +6,7 @@
   "models": [
     {
       "id": "gpt-6-astra",
+      "supported_parameters": ["max_tokens", "max_completion_tokens", "max_output_tokens"],
       "name": "GPT-6 Astra",
       "display_name": "GPT-6 Astra",
       "family": "gpt",

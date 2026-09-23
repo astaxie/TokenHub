@@ -33,6 +33,7 @@ const (
 	maxGeneratedImageBytes   = 64 << 20
 	maxImageEditRequestBytes = 128 << 20
 	maxInputImageBytes       = 50 << 20
+	maxImageEditInputCount   = 16
 	maxImageTextFieldBytes   = 1 << 20
 	openAIImageModelName     = "gpt-image-2"
 )
@@ -178,70 +179,25 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	if !strings.HasPrefix(strings.ToLower(r.Header.Get("content-type")), "multipart/form-data") {
-		writeError(w, r, NewHTTPError(http.StatusUnsupportedMediaType, "invalid_content_type", "Image edits require multipart/form-data"))
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxImageEditRequestBytes)
-	multipartReader, err := r.MultipartReader()
-	if err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", err.Error()))
-		return
-	}
-	fields := make(map[string]string)
-	inputs := make([]uploadedImage, 0, 1)
+	var request imageGenerationRequest
+	var inputs []uploadedImage
 	var mask *uploadedImage
-	for {
-		part, partErr := multipartReader.NextPart()
-		if partErr == io.EOF {
-			break
-		}
-		if partErr != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", partErr.Error()))
-			return
-		}
-		name := part.FormName()
-		switch name {
-		case "image", "image[]":
-			data, readErr := readUploadedImagePart(part)
-			_ = part.Close()
-			if readErr != nil {
-				writeError(w, r, readErr)
-				return
-			}
-			inputs = append(inputs, uploadedImage{role: "input", data: data})
-		case "mask":
-			data, readErr := readUploadedImagePart(part)
-			_ = part.Close()
-			if readErr != nil {
-				writeError(w, r, readErr)
-				return
-			}
-			if mask != nil {
-				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", "Only one mask is supported"))
-				return
-			}
-			mask = &uploadedImage{role: "mask", data: data}
-		default:
-			data, readErr := io.ReadAll(io.LimitReader(part, maxImageTextFieldBytes+1))
-			_ = part.Close()
-			if readErr != nil || len(data) > maxImageTextFieldBytes {
-				writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_edit", "Multipart text field is too large or unreadable"))
-				return
-			}
-			fields[name] = string(data)
-		}
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("content-type")))
+	r.Body = http.MaxBytesReader(w, r.Body, maxImageEditRequestBytes)
+	switch {
+	case strings.HasPrefix(contentType, "multipart/form-data"):
+		request, inputs, mask, err = decodeMultipartImageEdit(r)
+	case strings.HasPrefix(contentType, "application/json") && s.isNativeImageEditRequest(r):
+		request, inputs, err = decodeNativeCodexImageEdit(r)
+		s.applyImageGenerationRequestAliases(r, &request)
+		request.ResponseFormat = "b64_json"
+	default:
+		writeError(w, r, NewHTTPError(http.StatusUnsupportedMediaType, "invalid_content_type", "Image edits require multipart/form-data or a recognized native client JSON request"))
+		return
 	}
-	request := imageGenerationRequest{
-		Model: fields["model"], Prompt: fields["prompt"], Quality: fields["quality"],
-		Size: fields["size"], ResponseFormat: fields["response_format"],
-	}
-	if rawN := strings.TrimSpace(fields["n"]); rawN != "" {
-		request.N, err = strconv.Atoi(rawN)
-		if err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_image_count", "n must be an integer"))
-			return
-		}
+	if err != nil {
+		writeError(w, r, err)
+		return
 	}
 	if err := s.normalizeImageGenerationRequest(&request); err != nil {
 		writeError(w, r, err)
@@ -249,6 +205,10 @@ func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(inputs) == 0 {
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "missing_image", "At least one image is required"))
+		return
+	}
+	if len(inputs) > maxImageEditInputCount {
+		writeError(w, r, NewHTTPError(http.StatusBadRequest, "too_many_images", "Image edits support at most 16 input images"))
 		return
 	}
 	if mask != nil && !s.imageModelSupportsMask(request.Model) {

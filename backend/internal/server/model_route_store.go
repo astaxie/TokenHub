@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -47,15 +48,6 @@ func createModelRecord(db *gorm.DB, model Model) (Model, error) {
 		return Model{}, err
 	}
 	normalizeModelCacheWriteConfiguration(&model)
-	var existing Model
-	if err := db.First(&existing, "name = ?", model.Name).Error; err == nil &&
-		existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal &&
-		model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal {
-		model = withExternalModelRole(model)
-		model.Status = existing.Status
-		model.CreatedAt = existing.CreatedAt
-	}
-
 	if model.Modality == "embedding" {
 		model.CacheReadPriceUSDPer1M = 0
 		model.CacheWritePriceUSDPer1M = 0
@@ -74,7 +66,33 @@ func createModelRecord(db *gorm.DB, model Model) (Model, error) {
 	if model.CreatedAt.IsZero() {
 		model.CreatedAt = time.Now().UTC()
 	}
-	return model, db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var existing Model
+		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&existing, "name = ?", model.Name)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// A concurrent creator can win after the lookup. Do not overwrite its
+			// managed policy in that case; acquire its row lock before updating it.
+			inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model)
+			if inserted.Error != nil {
+				return inserted.Error
+			}
+			if inserted.RowsAffected == 1 {
+				return nil
+			}
+			result = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("name = ? OR id = ?", model.Name, model.ID).First(&existing)
+		}
+		if result.Error != nil {
+			return result.Error
+		}
+		if existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal && model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal {
+			model = withExternalModelRole(model)
+			model.Status = existing.Status
+			model.CreatedAt = existing.CreatedAt
+		}
+		model.Metadata = preserveSemanticRoutingMetadata(existing.Metadata, model.Metadata)
+		return tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
+	})
+	return model, err
 }
 
 func (s *GormStore) AddRoute(route ModelRoute) ModelRoute {

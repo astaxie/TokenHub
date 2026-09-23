@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"os"
 	"sort"
@@ -522,7 +523,13 @@ func (s *GormStore) Ping(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return sqlDB.PingContext(ctx)
+	if err := sqlDB.PingContext(ctx); err != nil {
+		stats := sqlDB.Stats()
+		log.Printf("[tokenhub] database ping failed: in_use=%d idle=%d wait_count=%d wait_duration=%s error=%v",
+			stats.InUse, stats.Idle, stats.WaitCount, stats.WaitDuration, err)
+		return err
+	}
+	return nil
 }
 
 // SetGatewayMetrics attaches the metrics collectors. It is called once during server

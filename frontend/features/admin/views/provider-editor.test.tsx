@@ -76,7 +76,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -146,7 +145,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -154,6 +152,59 @@ describe("ProviderUpsertModal", () => {
     await user.click(screen.getByRole("tab", { name: "模型" }));
 
     expect(await screen.findByText("2/3 个可引入模型")).toBeInTheDocument();
+  });
+
+  it("lists every catalog model in the provider model directory without truncation", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    // 100 catalog models also guards against a render cap below the full list length.
+    const catalogModels = Array.from({ length: 100 }, (_, index) => ({
+      id: `upstream-model-${String(index + 1).padStart(2, "0")}`,
+      name: `upstream-model-${String(index + 1).padStart(2, "0")}`,
+      display_name: `Upstream Model ${index + 1}`,
+    }));
+    const detail: ProviderCatalogEntry = {
+      ...catalogEntry,
+      models_count: catalogModels.length,
+      models: catalogModels,
+    };
+    const provider: Provider = {
+      id: "prv_quality",
+      name: "Quality Provider",
+      type: "openai_compatible",
+      base_url: "https://provider.example/v1",
+      status: "active",
+      healthy: true,
+      priority: 10,
+      options: { catalog_id: "quality-provider" },
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: detail }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[detail]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        provider={provider}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "模型" }));
+
+    expect(await screen.findByText("100/100 个可引入模型")).toBeInTheDocument();
+    expect(result.container.querySelectorAll(".model-option")).toHaveLength(100);
   });
 
   it("submits provider advanced fields from declarative plugin form sections", async () => {
@@ -217,7 +268,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -296,7 +346,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -324,7 +373,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -367,7 +415,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -416,7 +463,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -481,7 +527,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -618,7 +663,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 
@@ -700,7 +744,6 @@ describe("ProviderUpsertModal", () => {
         setError={vi.fn()}
         setLoading={vi.fn()}
         setNotice={vi.fn()}
-        standardModels={[]}
       />,
     );
 

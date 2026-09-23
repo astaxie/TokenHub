@@ -9,30 +9,32 @@ const {
   providerModelSelectionValue,
 } = await importTypeScript(new URL("./provider-model-selection.ts", import.meta.url));
 
-test("provider model preview plugins bypass category and standard-catalog filters", () => {
+test("provider catalog lists all models and only applies category filtering", () => {
   const discovered = [
     { id: "meta/llama-3:Q4_K_M.gguf", category: "llama" },
     { id: "qwen/Qwen3-8B:Q5_K_M.gguf", category: "qwen" },
   ];
   const selectable = discovered.filter((model) => providerCatalogModelIsSelectable({
-    catalogID: "plugin-local",
     supportsModelPreview: true,
-    usesAccountCatalog: false,
     quickAPIFlow: false,
     selectedCategory: "custom",
     discoveredCategory: model.category,
-    matchesStandardModel: false,
   }));
 
   assert.deepEqual(selectable.map((model) => model.id), discovered.map((model) => model.id));
+  // A model without a matching standard/external model stays importable.
   assert.equal(providerCatalogModelIsSelectable({
-    catalogID: "openai",
     supportsModelPreview: false,
-    usesAccountCatalog: false,
+    quickAPIFlow: false,
+    selectedCategory: "all",
+    discoveredCategory: "llama",
+  }), true);
+  // Category tabs still narrow the list.
+  assert.equal(providerCatalogModelIsSelectable({
+    supportsModelPreview: false,
     quickAPIFlow: false,
     selectedCategory: "custom",
     discoveredCategory: "llama",
-    matchesStandardModel: true,
   }), false);
 });
 

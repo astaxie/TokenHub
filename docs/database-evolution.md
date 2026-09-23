@@ -35,6 +35,7 @@ The database is resolved from `TOKENHUB_DATABASE_URL` (or the default SQLite pat
 
 ## Operational notes
 
+- A startup error `checksum_mismatch (version 4)` can result from the historical metering migration checksum regression. Use a release containing the compatibility fix, then run `tokenhub db prepare` and `tokenhub db verify` before restarting normally. It recognizes both the original SQL checksum and the exact intermediate `tokenhub-schema-metering-evidence-v2` value, preserves existing ledger rows, and leaves audit correlation changes in migration 5. Other checksum mismatches still refuse startup; do not delete the database or edit its ledger to bypass verification. `db repair` is for dirty migrations and does not resolve this clean-ledger mismatch.
 - `tokenhub db migrate` on a database without an adoption baseline points you at a normal server start: adoption happens there, inside the serialized schema section.
 - A refused contract tells you which precondition failed; nothing was executed.
 - After a rollback to a previous release, the previous release keeps working on the current database; when the newer release returns, it re-verifies the ledger and continues.

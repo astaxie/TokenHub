@@ -103,7 +103,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [themeOverridesLoaded, setThemeOverridesLoaded] = useState(false);
 
   const api = useMemo(() => ({ baseURL, adminToken }), [baseURL, adminToken]);
-  const providerTypeOptions = useMemo(() => providerTypeOptionsFromData(data), [data]);
   const activeConfig = resourceConfigFor(activeView);
   const activeMeta = activeConfig ?? standaloneViewMeta[activeView] ?? standaloneViewMeta.overview!;
   const simRegistry = useMemo(() => simRegistryFromPlugins(data.plugins), [data.plugins]);
@@ -112,6 +111,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     [data, simSelectionPreference, theme, themeOverrides],
   );
   setActiveLanguage(language);
+  const providerTypeOptions = providerTypeOptionsFromData(data);
 
   useEffect(() => {
     setSIMSelectionPreference(readAdminConsoleSIMSelectionPreference());
@@ -1209,7 +1209,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           mode="create"
           api={api}
           catalog={data.providerCatalog}
-          standardModels={data.models}
           providerModels={data.providerModels}
           resources={data.providerResources}
           providerAdapters={data.providerAdapters}
@@ -1235,7 +1234,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           provider={providerEditItem}
           api={api}
           catalog={data.providerCatalog}
-          standardModels={data.models}
           providerModels={data.providerModels}
           routes={data.routes}
           resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}

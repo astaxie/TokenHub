@@ -180,7 +180,7 @@ export function providerDisplayType(provider: Provider, _resources: ProviderReso
 }
 
 export function providerDisplayBaseURL(provider: Provider, _resources: ProviderResource[]) {
-  return provider.base_url || "local mock";
+  return provider.base_url || tx("本地服务");
 }
 
 export function roleSelectOptions(data: AppData) {

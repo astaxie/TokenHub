@@ -39,10 +39,18 @@ func TestPostgresMeteringSchemaVerification(t *testing.T) {
 			}
 		})
 	}
-	t.Run("audit_correlation_upgrade", testPostgresMeteringMigrationUpgradesAuditCorrelation)
+	for _, tc := range []struct{ name, checksum string }{
+		{"original_checksum_upgrade", "4d282c33fb83adcf772a560ddb2b772116e9f6bbd3ecee0a68bda70fc447e50c"},
+		{"intermediate_checksum_upgrade", "tokenhub-schema-metering-evidence-v2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testPostgresMeteringMigrationUpgradesAuditCorrelation(t, tc.checksum)
+		})
+	}
 }
 
-func testPostgresMeteringMigrationUpgradesAuditCorrelation(t *testing.T) {
+func testPostgresMeteringMigrationUpgradesAuditCorrelation(t *testing.T, historicalChecksum string) {
+	t.Helper()
 	admin, pgURL := openPostgresAdmin(t)
 	schema := createPostgresSchema(t, admin, "tokenhub_pg_audit_upgrade_")
 	dsn, err := withSearchPath(pgURL, schema)
@@ -55,6 +63,10 @@ func testPostgresMeteringMigrationUpgradesAuditCorrelation(t *testing.T) {
 	}
 	sqlDB, err := store.db.DB()
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Preserve independently pinned ledger values from both historical definitions.
+	if _, err := sqlDB.Exec(`UPDATE schema_migrations SET checksum = $1 WHERE version = 4`, historicalChecksum); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sqlDB.Exec(`DROP INDEX idx_audit_events_correlation_id`); err != nil {
@@ -78,6 +90,16 @@ func testPostgresMeteringMigrationUpgradesAuditCorrelation(t *testing.T) {
 		t.Fatalf("open N-1 PostgreSQL database: %v", err)
 	}
 	t.Cleanup(func() { _ = upgraded.Close() })
+	if err := VerifySchemaSemantics(context.Background(), dsn); err != nil {
+		t.Fatalf("upgraded historical database schema: %v", err)
+	}
+	var checksum string
+	if err := upgraded.db.Raw(`SELECT checksum FROM schema_migrations WHERE version = 4`).Scan(&checksum).Error; err != nil {
+		t.Fatal(err)
+	}
+	if checksum != historicalChecksum {
+		t.Fatalf("historical ledger checksum changed: got %q, want %q", checksum, historicalChecksum)
+	}
 	events := upgraded.ListAuditEvents()
 	if len(events) != 1 || events[0].ID != "legacy-audit" {
 		t.Fatalf("legacy audit events after upgrade = %+v", events)
