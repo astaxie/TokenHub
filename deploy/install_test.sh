@@ -197,6 +197,7 @@ EOF
 placeholder_environment=$(cat <<'EOF'
 TOKENHUB_ENV=prod
 TOKENHUB_ADMIN_TOKEN=change-me-tokenhub-admin-token
+TOKENHUB_INTEGRATION_TOKEN=iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 TOKENHUB_SECRET_KEY=change-me-tokenhub-secret-key
 TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=change-me-tokenhub-admin-password
 EOF
@@ -212,6 +213,7 @@ assert_not_contains "$(<"$CALL_LOG")" " build"
 postgres_placeholder_environment=$(cat <<'EOF'
 TOKENHUB_ENV=prod
 TOKENHUB_ADMIN_TOKEN=change-me-tokenhub-admin-token
+TOKENHUB_INTEGRATION_TOKEN=iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 TOKENHUB_DATABASE_URL=postgresql://tokenhub@example.test/tokenhub
 TOKENHUB_SECRET_KEY=change-me-tokenhub-secret-key
 TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=change-me-tokenhub-admin-password
@@ -301,6 +303,7 @@ assert_contains "$output" "deployment configuration is valid for prod"
 optional_placeholder_environment=$(cat <<'EOF'
 TOKENHUB_ENV=prod
 TOKENHUB_ADMIN_TOKEN=change-me-tokenhub-admin-token
+TOKENHUB_INTEGRATION_TOKEN=iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 TOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss
 TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=change-me-tokenhub-admin-password
 EOF

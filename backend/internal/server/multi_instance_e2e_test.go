@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gorm.io/gorm"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,8 +19,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type multiInstanceBlockingAdapter struct {

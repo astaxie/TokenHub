@@ -22,6 +22,7 @@ func TestPrintInitialAdminPassword(t *testing.T) {
 	t.Setenv("TOKENHUB_DATABASE_URL", "sqlite://"+databasePath)
 	t.Setenv("TOKENHUB_SECRET_KEY", strings.Repeat("s", 32))
 	t.Setenv("TOKENHUB_ADMIN_TOKEN", "")
+	t.Setenv("TOKENHUB_INTEGRATION_TOKEN", strings.Repeat("i", 32))
 	t.Setenv("TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD", "")
 	t.Setenv("TOKENHUB_MODEL_CATALOG_FILE", catalogPath)
 

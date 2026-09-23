@@ -721,9 +721,6 @@ func (s *GormStore) DeleteAPIKey(id string) error {
 		if err := rejectGatewayManagedAPIKeyMutation(key); err != nil {
 			return err
 		}
-		if err := tx.Where("key_id = ?", id).Delete(&QuotaBucket{}).Error; err != nil {
-			return err
-		}
 		if err := tx.Where("scope_type = ? AND scope_id = ?", "api_key", id).Delete(&InFlightLease{}).Error; err != nil {
 			return err
 		}

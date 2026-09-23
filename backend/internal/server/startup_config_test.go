@@ -12,6 +12,7 @@ func TestPrepareForStartupGeneratesPersistentSecretForNewSQLite(t *testing.T) {
 	config := Config{
 		Environment:            "prod",
 		AdminToken:             "dev_admin_token",
+		IntegrationToken:       strings.Repeat("i", 32),
 		BootstrapAdminPassword: "admin123456",
 		SecretKey:              "change-me-tokenhub-secret-key",
 		DatabaseURL:            "sqlite://" + databasePath,
@@ -118,6 +119,7 @@ func TestPrepareForStartupKeepsPostgresSecretExplicit(t *testing.T) {
 	config := Config{
 		Environment:            "prod",
 		AdminToken:             "change-me-tokenhub-admin-token",
+		IntegrationToken:       strings.Repeat("i", 32),
 		BootstrapAdminPassword: "change-me-tokenhub-admin-password",
 		SecretKey:              "change-me-tokenhub-secret-key",
 		DatabaseURL:            "postgres://tokenhub@example.test/tokenhub",
