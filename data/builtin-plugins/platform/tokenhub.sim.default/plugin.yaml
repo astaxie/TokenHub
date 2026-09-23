@@ -1,0 +1,22 @@
+schema_version: 2
+id: "tokenhub.sim.default"
+name: "TokenHub Default Interface Template"
+version: 1.0.0
+summary: "Provide the default TokenHub admin console theme and layout."
+description: "Provide the default TokenHub admin console theme and layout."
+category: ui_template
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+settings:
+  scopes: ["browser"]
+distribution:
+  license: Apache-2.0
+kinds: ["sim"]
+placement: ["presentation"]
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

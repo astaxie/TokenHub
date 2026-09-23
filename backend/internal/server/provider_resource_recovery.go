@@ -203,6 +203,7 @@ func (s *GormStore) RecoverProviderResource(resourceID string) (ProviderResource
 	if err != nil {
 		return ProviderResource{}, err
 	}
+	s.maskProviderResourceHeaderConfig(&recovered)
 	redactProviderResourceSecrets(&recovered)
 	return recovered, nil
 }

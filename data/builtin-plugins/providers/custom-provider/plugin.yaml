@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.custom-provider"
+name: "custom provider"
+version: 1.0.0
+summary: "Connect TokenHub to custom provider."
+description: "Connect TokenHub to custom provider. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "custom-provider"
+      name: "custom provider"
+      display_name: "custom provider"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "docs/custom-provider.md"
+      categories: []
+      models_count: 30
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

@@ -500,6 +500,8 @@
 .topbar {
   height: 60px;
   flex: 0 0 60px;
+  position: relative;
+  z-index: 10;
   padding: 0 22px;
   border-bottom: 1px solid var(--border);
   justify-content: flex-start;
@@ -831,6 +833,14 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.app-shell[data-layout-density="compact"] .content-panel {
+  padding: 20px 24px 36px;
+}
+
+.app-shell[data-layout-density="spacious"] .content-panel {
+  padding: 34px 40px 54px;
 }
 
 .playground-content-panel {

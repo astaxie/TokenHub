@@ -1,0 +1,23 @@
+.semantic-routing-fields {
+  min-width: 0;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.semantic-routing-fields legend { padding: 0 6px; font-weight: 600; }
+.semantic-routing-fields .form-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(100px, 1fr); gap: 12px; }
+.semantic-routing-fields label { display: grid; gap: 6px; min-width: 0; }
+.semantic-routing-fields input, .semantic-routing-fields select { width: 100%; min-width: 0; }
+.semantic-routing-fields p { margin: 10px 0 0; color: var(--muted-strong); font-size: 12px; line-height: 1.7; }
+@media (max-width: 600px) {
+  .semantic-routing-fields .form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.semantic-routing-fields .field textarea { width: 100%; min-width: 0; resize: vertical; }
+.jev-candidates { display: grid; gap: 12px; }
+.jev-candidate { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.jev-candidate-toggle { display: flex; align-items: flex-start; gap: 8px; overflow-wrap: anywhere; }
+.jev-candidate-toggle input { flex: 0 0 auto; margin-top: 3px; }
+.semantic-routing-fields .jev-candidate-toggle { display: flex; }
+.semantic-routing-fields .jev-candidate-toggle input { width: auto; }

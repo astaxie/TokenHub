@@ -13,6 +13,7 @@ This guide is for platform administrators, security operators, and infrastructur
 | Routing Policies | Fine-tune Provider mappings, priority, weight, project scope, and failover strategy |
 | Projects and Teams | Define ownership boundaries for keys, quota, and cost attribution |
 | Identity Sources | Configure OAuth or OIDC login providers for enterprise sign-in |
+| Plugin Management | Install and inspect external packages, manage lifecycle state, and operate supported built-in or declarative capabilities |
 | Security and Audit | Review request logs, admin events, key rotation, and policy changes |
 
 ## Production Setup Order
@@ -26,6 +27,20 @@ This guide is for platform administrators, security operators, and infrastructur
 7. Validate the flow with Model Playground and request logs.
 8. Review usage attribution before issuing keys broadly.
 
+Anthropic Providers use `x-api-key` authentication by default. If an Anthropic-compatible upstream requires `Authorization: Bearer`, open the Provider's **Advanced** tab, keep **Provider Type** set to **Claude / Anthropic**, and select **Authorization Bearer** under **Anthropic Authentication**. TokenHub derives either header from the encrypted Provider API Key and sends only the selected authentication header; do not duplicate the credential in custom headers.
+
+## Plugin Management
+
+Open **Plugin Management** to browse the unified list of built-in and installed plugins by Provider Integration, Request Pipeline, UI Template, or Automation. Each detail page explains the plugin's purpose and exposes package files; settings appear only for implemented declarative settings surfaces. Marketplace and local package installs are validated by checksum, written to `TOKENHUB_PLUGIN_DIR`, and evaluated by a runtime reload. Declarative presentation packages can become active. An enabled external package with a backend command is instead shown as **Startup Failed**, remains installed and inspectable, and does not register its Provider, hook, job, or action because external execution is unavailable in this release. Built-ins can be enabled or disabled but not uninstalled; external packages can also be updated or uninstalled.
+
+Provider plugins can declare routing and credential policy in their manifest. Set `capabilities.provider.credentials_scope: resource` for subscription/account-style Providers whose upstream secrets must live on Provider Resources rather than the Provider itself. Set `capabilities.provider.route_requires_resource: true` when every route attempt must select an eligible Provider Resource; Core persists these policies on created Providers and applies the same missing, disabled, unhealthy, cooldown, and resource-group checks that built-in subscription Providers use. Set `capabilities.provider.reasoning_configurable` to show or hide the Admin reasoning-parameter controls explicitly; older plugins without that field still fall back to route-protocol inference.
+
+Provider plugins that accept Responses-shaped requests behind a compatibility bridge can list `codex/responses` in `capabilities.provider.route_protocols`. Chat Completions and Anthropic Messages routes then use the shared Chat/Anthropic-to-Responses bridge for that Provider instead of relying on a built-in Provider type.
+
+Plugins that support request session affinity can also declare `session_affinity` in `capabilities.gateway` and set `capabilities.provider.session_affinity_kind` to `provider_session` or `codex_session`. Core uses that policy when Responses, Chat, Anthropic, Gemini, or Responses Compact routes derive sticky Provider Resource bindings from session headers or request metadata.
+
+Registered in-process background jobs can be run manually from the background job manifest table. Manual runs use the same Core runner as scheduled jobs, including input schema validation, retry settings, timeout handling, concurrency limits, last-run tracking, result sanitization, and admin audit events. TokenHub redacts secret-looking fields such as access tokens, refresh tokens, API keys, passwords, cookies, and private keys before returning run results to the console. External command jobs are not registered while external execution is unavailable.
+
 ## Model Playground Diagnostics
 
 Open **Model Playground** from the console to validate a model through the same routing and Provider adapters used by gateway traffic. Every assistant turn keeps its own compact diagnostic summary: delivery mode, gateway-measured time to first token (TTFT), output throughput, total duration, full-context input tokens, output tokens, estimated cost, local completion time, and request ID. Expand **Diagnostics** to inspect millisecond timestamps plus the actual response details. Sessions remain in the current browser page unless explicitly exported.
@@ -36,11 +51,31 @@ Rerunning an assistant turn creates another candidate for that turn and removes 
 
 All permitted Playground users can see performance, usage, request ID, and their response details. Provider, resource, upstream request ID, and per-attempt routing details are visible only to roles with routing-read permission. Cost is labelled as an estimate because it uses the external model's configured price rather than an upstream invoice.
 
+## Content Security Policies
+
+Open **Security Policies > Content Security** to create policies for all Projects or selected Projects. A policy can combine keyword or regular-expression matching, sensitive-data detection, and the optional Qwen3Guard model detector. Detection items are evaluated together, and the strictest matching action wins: `block` over `mask` over `audit`. Changes take effect when saved.
+
+Deterministic detectors run inside TokenHub. Before calling a configured Qwen3Guard detector, TokenHub replaces sensitive values already matched by local `mask` rules with `[REDACTED]` in a detector-only copy, so those raw values are not sent to the model service. Text not matched by a local mask rule is still sent to the service configured by `TOKENHUB_GUARDRAIL_MODEL_URL`. Deploy that service only within an approved data boundary and review its transport, logging, and retention controls; TokenHub cannot govern copies retained by a remote service. Leaving the URL empty prevents model calls and applies each model detection item's configured unavailable behavior.
+
+Sensitive-data detection includes labelled or structurally validated examples such as Chinese identity-card numbers, mainland mobile numbers, email addresses, bank-card numbers, credentials and private keys, person names, addresses, and birth dates. Validators such as date checks, identity-card checksums, and Luhn checks reduce common numeric false positives. Use **Test Policy** with representative positive and negative samples before enabling a policy broadly.
+
+Request-side enforcement currently covers `/v1/chat/completions`, `/v1/responses`, `/v1/responses/compact`, and `/v1/messages`, including requests sent from Model Playground. TokenHub inspects ordinary user-visible text before routing to a Provider. Structured tool arguments, JSON payload values, code-specific parsing, and Provider responses are not inspected in this version. Inspection does not impose a separate text-size ceiling; the configured request-body limit still applies. Deterministic detection also applies complexity-weighted aggregate work and finding-count budgets so pathological combinations of long text, expensive expressions, or dense masking matches fail promptly with HTTP 503 `guardrail_evaluation_budget_exceeded` instead of monopolizing CPU or memory; ordinary long contexts with a moderate rule set remain supported.
+
+When a policy blocks a request, compatible APIs return HTTP 403 with `guardrail_blocked`. The error details include `categories`, `reason_codes`, and `policy_matches`; each policy match identifies the policy, detection item, detector type, category, and reason code. The response also includes `request_id` for audit correlation. Original matched text is not included in the error details. Model Playground presents the same policy and reason information so administrators can report a reproducible finding instead of only seeing “Request blocked by a content security policy.”
+
 ## API Key Ownership and Usage Attribution
 
 When issuing an API Key, select the actual user in **Owner User**. The issuer remains in audit metadata, but the Key's usage is attributed to its owner. Platform administrators may select any active user; team leaders may select an active user in their own team; ordinary users can only assign Keys to themselves.
 
-Each new usage record snapshots the attributed user, so later ownership changes or Key deletion do not rewrite that recorded history. Records created before this field existed fall back to the Key's current owner, then its legacy issuer, then the project owner, and finally `unknown`. The individual ranking shows distinct used Keys and currently owned non-revoked Keys separately.
+Each new usage record snapshots the attributed user, so later ownership changes or Key deletion do not rewrite that recorded history. Records created before this field existed use only attribution that can be proven from their immutable usage record or request history; otherwise they remain `unknown`. Legacy quota buckets are retained as unattributed canonical history and are never silently assigned to the current owner during upgrade. The individual ranking shows distinct used Keys and currently owned non-revoked Keys separately.
+
+The per-Key **Usage** page uses the saved Key ID as an exact boundary for trends, model and error breakdowns, and request details. Rotation links are informational and do not combine predecessor and successor usage. Its current day and month Key quota cards use UTC buckets and resolve the same global, project, team, and Key limits used for the gateway's per-Key admission checks. Aggregate user quotas are enforced separately and are not included in this per-Key view. Platform administrators additionally receive Provider and Resource performance breakdowns; other roles retain the existing scoped request-detail visibility, and Provider cost remains restricted to platform administrators.
+
+## Daily Usage Dashboard
+
+Open **Usage** to see the current day's usage above the longer-range executive report. The daily section shows today's tokens, requests, estimated cost, cache reads, and tables for token type, model, project, and API Key. Platform administrators also see Provider and Provider Resource tables; other roles receive only the remaining scoped dimensions. Team leaders also see member usage for their team, and governance roles see cost-center attribution.
+
+The day boundary comes from **System Settings > Gateway Base Settings > Dashboard Timezone**. Use an IANA timezone such as `UTC`, `Asia/Shanghai`, or `America/New_York`. TokenHub stores this setting centrally, so all administrators see the same daily window and the dashboard resets at that timezone's local midnight. The usage view refreshes the daily section every 30 seconds while it is open.
 
 ## Read-only Cost Access for Local Agents
 
@@ -52,11 +87,54 @@ Each API Key can have optional requests-per-minute (RPM) and tokens-per-minute (
 
 RPM is consumed before a Provider is invoked. TPM is reserved at the same point from the request's estimated input and maximum output; text requests without an explicit maximum reserve 4,096 output tokens. After the request finishes, the reservation is settled to the Provider's reported total tokens, or to prompt plus completion tokens when a total is unavailable. Cached and reasoning tokens are already included in those totals and are not added again. Failed or interrupted requests return the unused reservation.
 
-An exceeded limit returns HTTP 429 with `api_key_rpm_exceeded` or `api_key_tpm_exceeded`, plus `Retry-After` and the relevant `X-RateLimit-Limit-*`, `X-RateLimit-Remaining-*`, and `X-RateLimit-Reset-*` headers. Minute buckets are database-backed and shared across TokenHub instances on both SQLite and PostgreSQL. Metrics expose only a short hashed Key reference, never the complete API Key.
+An exceeded limit returns HTTP 429 with `api_key_rpm_exceeded` or `api_key_tpm_exceeded`, plus `Retry-After` and the relevant `X-RateLimit-Limit-*`, `X-RateLimit-Remaining-*`, and `X-RateLimit-Reset-*` headers. Minute buckets are database-backed. PostgreSQL shares enforcement across TokenHub instances; SQLite retains its supported single-backend behavior. Metrics expose only a short hashed Key reference, never the complete API Key.
+
+For high-concurrency deployments, operators may configure `TOKENHUB_BILLING_REDIS_URL`. When set, TokenHub uses Redis for the high-write admission path: per-minute API Key and user RPM/TPM reservations plus API Key and user concurrency leases. The database remains the durable billing ledger for day and month counters, usage records, request logs, audit trails, and settlement idempotency. A configured Redis endpoint is required at startup; leave the variable empty to keep the database-backed admission path. Docker Compose deployments can add `deploy/docker-compose.redis.yml` to run an optional Redis component managed by the same Compose project.
+
+## Aggregate User Quotas
+
+Platform administrators and team leaders configure aggregate user limits under **Cost Governance > Quota Policies** by selecting `user` as the scope and an active user ID as `scope_id`. A team leader may manage policies only for users in the leader's own teams; platform administrators may manage any active user. The user selector lists the users available to the current administrator, and the policy table shows current daily and monthly consumption. User policies support the complete quota surface: RPM, TPM, daily and monthly requests, tokens and cost, plus maximum concurrency.
+
+TokenHub resolves the attributed user with the same order used for usage accounting: API Key `owner_user_id`, then legacy Key metadata `created_by`, then Project `owner_user_id`. Every Key attributed to that user consumes the same user buckets, including Keys in different Projects. Rotating, revoking, deleting, or replacing a Key does not reset those counters because the buckets are owned by the user rather than the Key.
+
+User limits are enforced alongside the applicable API Key, Project, Team, and global limits. Positive limits keep the existing strictest-value behavior, while user counters remain aggregate rather than becoming a per-Key allowance. User maximum concurrency is held in addition to the effective Key-scoped concurrency lease, so neither constraint can bypass the other.
+
+Admission reserves user requests and estimated tokens before any Provider call. The shared settlement transaction reconciles the reservation to actual metered usage and uses the request ID as its durable idempotency marker for buffered, streaming, image, and background Responses calls. Background jobs persist their reservation state so cancellation, restart recovery, and stale workers cannot settle it twice. PostgreSQL uses transaction-scoped advisory locks and row locks across replicas; SQLite uses its single-backend transaction serialization. A blocked request returns HTTP 429 before Provider invocation with `details.scope` set to `user`. Audit payloads, alerts, and metrics retain that bounded scope without exposing the user ID or any API Key secret.
+
+## Self-hosted compatible APIs
+
+For a self-hosted service using the OpenAI-compatible adapter, leave the credential empty if the service does not require authentication. Connection testing, model discovery, and inference support this mode; no placeholder API Key is needed. If the service requires authentication, provide its real credential. When editing an existing Provider, leaving the field blank retains the saved credential; use the explicit remove-credential option to switch to unauthenticated access. Other adapters retain their declared authentication requirements.
+
+Literal RFC1918/ULA HTTP endpoints such as `http://192.168.1.10:8000/v1` work by default. Loopback is allowed automatically only in auto mode with an empty private allowlist; otherwise it requires `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`. Internal DNS names such as `host.docker.internal` require `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto`. Existing nonempty private allowlists remain restrictive; see the deployment guide for strict mode and proxy policy.
 
 ## Provider Catalog Availability
 
-TokenHub stores the last known-good provider catalog in the database. On every backend startup, it validates and loads the configured local `provider-catalog.json`, then atomically replaces the database snapshot. Ordinary **Provider Channels** requests only read the database snapshot, and administrators can manually refresh the same local catalog. If local catalog reading, parsing, or completeness validation fails, TokenHub keeps using the last known-good snapshot.
+TokenHub stores the last known-good provider catalog in the database. On every backend startup, it validates and loads the configured local `provider-catalog.json`, then atomically replaces the database snapshot. Ordinary **Provider Channels** requests only read the database snapshot. An explicit administrator refresh downloads the latest `PublicProviderConf` catalog, applies the same completeness checks, and atomically replaces the snapshot only when validation succeeds. If the upstream request or validation fails, TokenHub falls back to the configured local catalog. If that fallback also fails, the refresh returns an error and TokenHub keeps using the last known-good snapshot. Refresh responses identify the selected source as `upstream-provider-catalog` or `local-provider-catalog`.
+
+## Codex OAuth Token Renewal
+
+For active OpenAI Codex Subscription accounts that have a saved refresh token, TokenHub checks credentials when the backend starts and then every minute. It renews an access token only when it expires within five minutes. The database-backed credential lease ensures that a clustered deployment performs only one renewal for the account. In **Provider Channels > Advanced > Subscription quota**, **Renew Token** lets an administrator renew one account on demand. Use it for recovery rather than repeated clicks: a refresh response can rotate the refresh token, and TokenHub saves the returned replacement automatically. If OpenAI reports an invalidated refresh token, TokenHub marks the account as requiring reauthorization, stops scheduled renewal attempts, and shows the administrator a reauthorization prompt.
+
+### Kronk local inference
+
+Choose **Kronk** in **Provider Channels** to connect an independently running Kronk Model Server. The default Base URL is `http://127.0.0.1:11435/v1`, which is allowed automatically only in auto mode with an empty private allowlist; otherwise it requires `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`. When Kronk runs on another host, use a reachable private IP; that works in the default strict mode. Leave the application token empty when Kronk authentication is disabled; otherwise TokenHub sends the saved secret only as `Authorization: Bearer <token>`. Connection testing checks `/v1/liveness`, `/v1/readiness`, and `/v1/models` separately so a reachable process, a ready service, and usable local models remain distinct states.
+
+The model picker discovers the live inventory from `GET /v1/models` and preserves each complete Kronk model ID, including `/`, `:`, and quantization suffixes. Import the selected inventory, then create the external standard name in **Model Directory** and map it to the Kronk ID under **Routing Policies**. Repeated imports are idempotent. A successful later discovery marks missing Kronk models unavailable without deleting their inventory or routes; a failed discovery leaves existing configuration unchanged.
+
+Kronk routes support OpenAI-compatible Chat Completions, Responses, and Embeddings, including SSE streaming. TokenHub continues to enforce its client authentication, project isolation, quota, audit, routing, and failover policies. It never forwards the caller's `Authorization` header to Kronk and does not expose the saved Kronk token in management responses, audit payloads, logs, or upstream error responses.
+## System Prompt Transform Handling
+
+Claude Code can place an attribution text block at the start of an Anthropic Messages `system` array. The block contains client metadata that can vary between requests and prevent a third-party upstream from reusing an otherwise stable prompt prefix.
+
+Each Provider has a `system_prompt_transform_policy` setting. Provider plugins declare their default with the `system_prompt_transform_default` provider policy capability. New third-party Providers default to `strip` for better upstream prefix-cache reuse unless their plugin declares another default. Existing Providers without this setting continue to preserve the block. The legacy `claude_code_attribution_policy` option and `claude_code_attribution_default` capability are still accepted as upgrade aliases. `strip` removes a block only when the first top-level `system` item has `type: "text"` and its text begins exactly with `x-anthropic-billing-header:`. String-valued `system` prompts, later blocks, leading whitespace, and other block types are never removed.
+
+Provider Resources inherit the Provider policy by default and can override it with `options.system_prompt_transform_policy` set to `preserve` or `strip`. Omitting that Resource option restores inheritance. TokenHub applies the effective policy separately for every route attempt, so a failover Resource receives the original request and applies its own setting. Audit payloads also retain the original request. `POST /v1/messages/count_tokens` continues to count the original request because it does not select a concrete Provider Resource.
+
+## Codex Fingerprint Convergence
+
+OpenAI Codex Subscription resources can converge client device and session identifiers before a Responses or Compact request is sent upstream. Configure **Codex fingerprint convergence** on the account resource. The default `session` mode derives stable account-level installation and session IDs, while deriving a stable thread ID from the original client session. `device` changes only the installation ID, `full` also converges all clients onto one thread, and `off` passes client identifiers through unchanged.
+
+The policy rewrites matching fields in the Codex protocol headers and `client_metadata`, including embedded `x-codex-turn-metadata`, from one precomputed ID set so a request stays internally consistent across retries. In `session` and `full` modes, original parent, fork, and parent-turn lineage identifiers are removed because they belong to the pre-rewrite thread namespace. Stable values are derived from the Provider Resource ID and do not expose saved OAuth credentials. The setting is stored as `options.codex_fingerprint_mode`; the default `session` value is represented by an absent option. Set the mode to `off` to roll back to passthrough behavior.
 
 ## Codex Usage Reset Credits
 
@@ -76,11 +154,30 @@ TokenHub separates the model lifecycle into three control areas:
 
 The responsibilities remain separate: add a Provider and import inventory first; then choose one of the built-in reference models, create its external contract, select at least one initial Provider route, and set its unified external price. The selected template pre-fills the name, capabilities, context, and suggested prices, all of which can be adjusted before saving. After creation, add, change, or remove mappings only under Routing Policies. Model Directory keeps a read-only upstream summary and opens Routing Policies filtered to the selected external model; the Provider list's Configure Routes action opens the complete Routing Policies workspace so new mappings can be added. For example, an administrator can expose the external model `DeepSeek` while routing it to `OpenAI Production / gpt-4.5`. The same Provider model may back several external aliases, and one external model may route to several Providers.
 
+The built-in StepFun entries keep direct API and Step Plan credentials separate. `StepFun (China)` and `StepFun (Global)` use the pay-as-you-go `/v1` endpoints; `StepFun Step Plan (China)` and `StepFun Step Plan (Global)` use the subscription-only `/step_plan/v1` endpoints. Select the entry that matches the API Key environment because direct API and Step Plan keys and Base URLs are not interchangeable.
+
 Provider-model prices represent actual upstream cost and are used for internal audit. Model Directory prices represent the unified external charge used for client billing estimates, quota accounting, metrics, and usage reports. A route selects the upstream implementation but does not change the external price.
 
-When Provider Channels, Model Directory, or Routing Policies has no configured data, the console shows the same three-step setup guide: import Provider inventory, create an external model from the built-in 165-model catalog, then configure routing. The primary action always points to the earliest incomplete prerequisite, so administrators are not sent into a form that cannot yet be completed.
+When Provider Channels, Model Directory, or Routing Policies has no configured data, the console shows the same three-step setup guide: import Provider inventory, create an external model from the built-in model catalog, then configure routing. The primary action always points to the earliest incomplete prerequisite, so administrators are not sent into a form that cannot yet be completed.
 
 Publication and runtime health are different states. Membership in `GET /v1/models` requires an active external `Model`, at least one active `ModelRoute`, and API-key access when a model allowlist is configured. It does not change when a Provider or Provider Resource is temporarily unhealthy. Health affects whether a request can be served and is shown separately in the directory and routing diagnostics. Disabling the external model removes it from `GET /v1/models` while retaining its mappings for later re-publication.
+
+### GPT-6 Astra
+
+The standard model directory and built-in OpenAI Provider inventory include `gpt-6-astra`. Select it when creating a model and configure an authorized upstream route; catalog inclusion does not grant upstream access. Codex subscription inventory remains account-discovered. Supported reasoning efforts are `low`, `medium`, `high`, `xhigh`, and `max`; Codex probes and Anthropic-to-Codex conversion preserve `max`.
+
+The template uses OpenAI Standard prices per million tokens: $10 input, $1 cached input, $12.50 cache writes, and $50 output. Above 272,000 input tokens, OpenAI doubles input/cache rates and multiplies output rates by 1.5 for the full request. Provider tier metadata records this distinction; the standard template's fixed prices do not automatically apply context tiers or Batch/Flex/Fast discounts and surcharges. Configure applicable pricing separately. See [OpenAI model specifications](https://developers.openai.com/api/docs/models/gpt-6-astra).
+
+
+## Custom Upstream Request Headers
+
+In **Provider Channels**, add fixed custom request headers under a Provider's connection settings or under a Provider Resource's advanced settings. Provider headers are defaults; a Resource header with the same case-insensitive name overrides the Provider value for that actual routing attempt. This makes per-account failover safe: TokenHub recomputes the effective headers for every selected Resource. For example, set `User-Agent: TokenHub-Custom-Client/1.0` at Provider scope and override `X-Tenant` on individual Resources.
+
+The effective headers are applied consistently to connection tests, custom model discovery, OpenAI-compatible Chat Completions, Responses, Embeddings and Images (including streaming and image edits), native Anthropic Messages, and Gemini requests. Azure OpenAI and OpenAI Codex adapters do not support custom headers because they manage their own protocol identity.
+
+Mark credentials or tenant tokens as sensitive. TokenHub encrypts sensitive values at rest, masks them in management responses and previews, and excludes header values from audit snapshots. When editing a saved sensitive row, leave its masked value unchanged or blank to retain the secret; delete the row to clear it. Non-sensitive values remain visible to administrators.
+
+TokenHub rejects authentication headers, API-key and cookie credentials, forwarding identity headers, protocol-owned headers such as `Content-Type`, `Content-Length`, `Host`, `Anthropic-Version`, `Anthropic-Beta`, `OpenAI-Organization`, and `OpenAI-Project`, plus hop-by-hop and transport headers. Header names must be valid and unique ignoring case; values must be non-empty and contain no control characters rejected by the HTTP transport. The final merged configuration may contain at most 32 headers, with names up to 128 bytes, each value up to 4 KiB, and 16 KiB total. Legacy data that violates these rules is reported with `header_validation_errors` and is not applied to upstream requests until corrected.
 
 ## Model Routing Policies
 
@@ -167,6 +264,8 @@ TokenHub can expose Prometheus metrics at `GET /metrics`. Collection is off by d
 | `tokenhub_gateway_attempt_duration_seconds` | histogram | Duration of one invoked routed attempt, measured around the whole attempt: upstream transport, stream translation, and writing to the client. Streaming calls therefore include slow-client backpressure; gateway overhead is reported separately in `overhead_seconds`. Excludes candidates skipped for capacity. |
 | `tokenhub_gateway_routed_requests_total` | counter | Logical requests that made at least one candidate attempt — the attempt-bearing denominator for the failover-depth ratio. Its `provider_type` label is the last candidate attempted, so when a request fails over across providers, aggregate the depth ratio by `model` rather than by `provider_type`. |
 | `tokenhub_gateway_overhead_seconds` | histogram | Approximate gateway overhead: elapsed end-to-end time minus the sum of invoked attempt durations. Clamped at zero. A request admitted for routing that fails before any attempt contributes its full elapsed time. For image jobs the elapsed time includes queue wait, so overhead there is an upper bound. |
+| `tokenhub_gateway_time_to_first_byte_seconds` | histogram | Client-perceived time to first byte for streamed requests, measured from local admission so failover retry time is included. Empty-body 200 responses record first byte at stream end. |
+| `tokenhub_gateway_stream_interruptions_total` | counter | Streamed requests that failed after the first byte was written. `error_code` carries the final classified error code: HTTP-level upstream failures keep their code, while transport-level failures and client disconnects both collapse to `internal_error`. |
 | `tokenhub_gateway_requests_in_flight` | gauge | Model API requests currently being served. Admin traffic and scrapes are excluded. |
 | `tokenhub_gateway_tokens_total` | counter | Tokens by kind: `prompt`, `completion`, `cached`, `cache_write`, `reasoning`. |
 | `tokenhub_gateway_cost_usd_total` | counter | Unified external billing estimate from Model Directory prices. Provider actual cost remains in privileged request audit rather than this metric. |
@@ -233,7 +332,11 @@ Export never delays a request. Completions are queued and turned into spans on a
 
 ## Prompt Cache Pricing
 
-The model catalog accepts an optional cache read price in USD per 1 million tokens. When it is configured, cached input tokens use that price in estimated costs. When it is left blank, TokenHub estimates the cache read price at about 0.83% of the standard input price for DeepSeek V4 Pro, 2% for other DeepSeek models, and 10% for other non-embedding models. The model pricing table marks estimated values and explains the applied ratio on hover.
+The model catalog accepts optional cache-read and cache-write prices in USD per 1 million tokens. When cache-write pricing is not configured, TokenHub bills cache-write tokens at the normal input price to preserve legacy estimates. Providers that distinguish cache creation duration can also use `cache_write_5m_price_usd_per_1m` and `cache_write_1h_price_usd_per_1m`; remaining cache-write tokens use the generic cache-write price. When cache-read pricing is left blank, TokenHub estimates it at about 0.83% of the standard input price for DeepSeek V4 Pro, 2% for other DeepSeek models, and 10% for other non-embedding models. The model pricing table marks estimated values and explains the applied ratio on hover.
+
+Usage records expose `input_cost_usd`, `cache_read_cost_usd`, `cache_write_cost_usd`, and `output_cost_usd` alongside the total `estimated_cost_usd`, so reports can audit how the final charge was assembled from provider usage.
+
+Model records and Provider model inventory also accept `pricing_periods`: a JSON array of time-based price overrides. Each period may include an IANA `timezone`, local `start_time` and `end_time` in `HH:MM`, optional RFC 3339 `effective_from` and `effective_until`, and input or output price fields. Pricing is selected from the request start time and the first matching period wins; windows may cross midnight.
 
 ## Catalog Metadata Recovery
 
@@ -259,6 +362,8 @@ Each result stores the complete rule snapshot, rule version and hash, input hash
 
 The relevant endpoints are `GET/POST /api/admin/billing/reconciliation-rules`, `GET/PATCH /api/admin/billing/reconciliation-rules/{id}`, `POST /api/admin/billing/reconciliation-rules/{id}/run`, `GET /api/admin/billing/reconciliations`, `GET /api/admin/billing/reconciliations/{id}`, and the `{id}/lock`, `{id}/recalculate`, and `{id}/export` actions. These endpoints are restricted to platform administrators.
 
+The `audit_retention` gateway setting accepts only `Nd` values from `1d` through `3650d`. Once per UTC hour, the cluster deletes request and response payload bodies older than the configured period in bounded batches. Request log metadata, usage analytics, administrator audit events, and alert events are not deleted by this setting.
+
 ## Security Checklist
 
 | Control | Requirement |
@@ -277,6 +382,12 @@ Creating an identity source uses three required steps: choose the source, enter 
 
 Use the public TokenHub backend URL with the callback path `/api/admin/auth/oauth/callback`. You may leave Callback URL blank to derive it from the incoming backend host; when setting it explicitly, the complete URL must exactly match the redirect URL registered with the identity provider.
 
+Completing an administrator OAuth login never puts the administrator session token in a redirect URL. TokenHub returns a short-lived, single-use code to the console, which exchanges it once and keeps the resulting session only in the current browser tab. Reloading that tab preserves the session; closing it requires signing in again.
+
+Identity-source client secrets and notification-channel credentials, including webhook URLs, SMTP passwords, bot tokens, signing secrets, and access tokens, are masked in management API responses and CSV exports and redacted from audit snapshots. Alert-delivery output never exposes a complete credential-bearing URL: URL targets retain only the scheme and host, while paths, queries, and matching credentials in error text are masked. This protection also applies to alert-delivery CSV exports and delivery audit snapshots.
+
+When updating an identity source or notification channel, the following values mean "keep the stored secret": an empty string, the masks `********` and `••••••••`, and `[redacted]`. Send JSON `null` to clear a secret explicitly. Clearing a notification-channel secret also removes related aliases, such as `url` / `webhook_url`, `smtp_password` / `password`, and the channel-specific token or secret aliases. Only platform administrators can create, update, or delete identity sources; security administrators have read-only access to the masked configuration.
+
 | Provider | Required application configuration | TokenHub behavior |
 | --- | --- | --- |
 | DingTalk | Create a web application, enable user authorization, register the callback URL, and copy its App Key and App Secret | Uses the DingTalk v1.0 JSON token API and user access-token header. If the authorized profile has no email, TokenHub derives a stable internal email from `unionId`. |
@@ -284,6 +395,24 @@ Use the public TokenHub backend URL with the callback path `/api/admin/auth/oaut
 | WeCom | Create a custom application and configure its trusted web authorization domain. Copy the Corp ID, application Secret, and Agent ID, and grant the application permission to read the required directory members. | Uses WeCom CorpApp login, exchanges the application token, resolves the callback code to `UserId`, and then reads the member profile. `biz_mail` is preferred; a stable internal email is derived from `userid` when needed. |
 
 The derived addresses end in `<provider>.tokenhub.local`. They are internal account identifiers, not deliverable mailboxes. Keep a controlled password administrator until the new login has been tested end to end.
+
+## Email Notification Channels
+
+Notification channels of type `email` are delivered over SMTP. By default
+TokenHub connects in plaintext and upgrades to STARTTLS on the server's
+advertised capabilities (typically port 587). For mail servers that only expose
+SMTP over an implicit-TLS port such as 465, set the channel field
+`smtp_encryption` to `ssl`, `tls`, `smtps`, or `implicit` to open the connection
+with TLS from the first byte. The channel keeps the other standard fields
+(`smtp_host`, `smtp_port`, `smtp_username`, `smtp_password`, `smtp_from`,
+`email_to`).
+
+In the admin console's email channel form, the **SMTP encryption** selector
+offers `auto` (opportunistic STARTTLS, legacy default), `starttls` (require
+STARTTLS, refuse to send when unsupported, port 587), and `ssl` (implicit TLS
+from the first byte, port 465); new channels default to `starttls`. Selecting
+`auto` leaves `smtp_encryption` unset so the legacy opportunistic STARTTLS
+behavior is preserved; only `starttls` and `ssl` write the field.
 
 ## Screenshot
 

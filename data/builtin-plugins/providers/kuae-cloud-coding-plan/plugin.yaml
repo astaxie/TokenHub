@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.kuae-cloud-coding-plan"
+name: "KUAE Cloud Coding Plan"
+version: 1.0.0
+summary: "Connect TokenHub to KUAE Cloud Coding Plan."
+description: "Connect TokenHub to KUAE Cloud Coding Plan. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://coding-plan-endpoint.kuaecloud.net/v1"
+    catalog:
+      id: "kuae-cloud-coding-plan"
+      name: "KUAE Cloud Coding Plan"
+      display_name: "KUAE Cloud Coding Plan"
+      type: "openai_compatible"
+      base_url: "https://coding-plan-endpoint.kuaecloud.net/v1"
+      doc_url: "https://docs.mthreads.com/kuaecloud/kuaecloud-doc-online/coding_plan/"
+      categories: []
+      models_count: 1
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

@@ -2,17 +2,47 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 const codexCompatibilityRouteModel = "gpt-5.5"
 
+type codexBridgeTestAdapter struct {
+	*CodexSubscriptionAdapter
+	providerType string
+}
+
+func (a *codexBridgeTestAdapter) ProviderResourceCredentialRefreshHandlers() []providerResourceCredentialRefreshRegistration {
+	if a == nil || a.CodexSubscriptionAdapter == nil {
+		return nil
+	}
+	return []providerResourceCredentialRefreshRegistration{{
+		ProviderType:        a.providerType,
+		Profile:             openAIAccountOAuthRefreshProfile,
+		RefreshLead:         openAIAccountOAuthRefreshLead,
+		AuthenticationEqual: openAIAccountAuthenticationEqual,
+		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return refreshOpenAIAccountOAuthCredentials(ctx, current, a.CredentialRefreshClient)
+		},
+	}}
+}
+
 func newCodexCompatibilityRouteTestServer(t *testing.T, transport http.RoundTripper) (*Server, *GormStore, string) {
+	t.Helper()
+	return newCodexCompatibilityRouteTestServerForProvider(t, ProviderOpenAICodex, transport)
+}
+
+func newCodexCompatibilityRouteTestServerForProvider(t *testing.T, providerType string, transport http.RoundTripper) (*Server, *GormStore, string) {
 	t.Helper()
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{Name: "Codex Bridge Route Test", Status: StatusActive})
@@ -22,9 +52,15 @@ func newCodexCompatibilityRouteTestServer(t *testing.T, transport http.RoundTrip
 	if err != nil {
 		t.Fatal(err)
 	}
+	providerOptions := map[string]string{}
+	if providerType != ProviderOpenAICodex {
+		providerOptions[providerRouteRequiresResourceOption] = "true"
+		providerOptions[providerCredentialsScopeOption] = providerCredentialsScopeResource
+		providerOptions[providerCredentialRefreshProfileOption] = openAIAccountOAuthRefreshProfile
+	}
 	provider := store.AddProvider(Provider{
-		ID: "prv_codex_bridge_route", Name: "Codex Bridge", Type: ProviderOpenAICodex,
-		Status: StatusActive, Healthy: true,
+		ID: "prv_codex_bridge_route", Name: "Codex Bridge", Type: providerType,
+		Status: StatusActive, Healthy: true, Options: providerOptions,
 	})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID: "rsrc_codex_bridge_route", ProviderID: provider.ID, Name: "Codex Bridge Account",
@@ -44,9 +80,121 @@ func newCodexCompatibilityRouteTestServer(t *testing.T, transport http.RoundTrip
 		Priority: 1, Weight: 100, Status: StatusActive, Strategy: RouteStrategyPriorityOnly,
 	})
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "codex-bridge-route-secret"})
-	server.codexSubscription.Client = &http.Client{Transport: transport}
-	server.codexSubscription.MaxRequestRetries = 1
+	if transport != nil {
+		mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: transport}
+	}
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
+	if providerType != ProviderOpenAICodex {
+		adapter := &codexBridgeTestAdapter{
+			CodexSubscriptionAdapter: mustCodexSubscriptionAdapterForTest(t, server),
+			providerType:             providerType,
+		}
+		descriptor := providerPluginDescriptorWithRouteProtocol(
+			"tokenhub.provider.codex-bridge-test",
+			"Codex Bridge Test Provider",
+			providerType,
+			AdapterCapabilityResponses,
+			providerRouteProtocolCodexResponses,
+		)
+		descriptor.Capabilities = append(descriptor.Capabilities,
+			pluginmeta.CapabilityDescriptor{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerRouteRequiresResourceOption, Subject: providerType, Value: "true"},
+			pluginmeta.CapabilityDescriptor{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialsScopeOption, Subject: providerType, Value: providerCredentialsScopeResource},
+			pluginmeta.CapabilityDescriptor{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: providerCredentialRefreshProfileOption, Subject: providerType, Value: openAIAccountOAuthRefreshProfile},
+			pluginmeta.CapabilityDescriptor{Kind: "provider_resource_type", Name: ProviderResourceOpenAISubscription, Subject: providerType, Value: pluginmeta.ManifestProviderResourceType{
+				Type:      ProviderResourceOpenAISubscription,
+				AuthModes: []string{"oauth"},
+				Default:   true,
+			}.CapabilityValue()},
+		)
+		descriptor = pluginmeta.NormalizeDescriptor(descriptor)
+		if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
+			Type:         providerType,
+			Adapter:      adapter,
+			Capabilities: []AdapterCapability{AdapterCapabilityResponses},
+		}); err != nil {
+			t.Fatalf("register plugin Codex bridge provider: %v", err)
+		}
+		configureProviderResourceTypeDefaults(store, server.adapterRegistry)
+		if err := configureProviderCredentialRefreshHandlers(store, server.adapterRegistry); err != nil {
+			t.Fatalf("configure plugin Codex bridge credential refresh handlers: %v", err)
+		}
+	}
 	return server, store, secret
+}
+
+func TestCodexResponsesDistinguishesUnavailableResourceState(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		mutate     func(*testing.T, *GormStore)
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name: "missing",
+			mutate: func(t *testing.T, store *GormStore) {
+				if err := store.db.Delete(&ProviderResource{}, "id = ?", "rsrc_codex_bridge_route").Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "provider_resource_missing",
+		},
+		{
+			name: "disabled",
+			mutate: func(t *testing.T, store *GormStore) {
+				if err := store.db.Model(&ProviderResource{}).Where("id = ?", "rsrc_codex_bridge_route").Update("status", StatusDisabled).Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "provider_resource_disabled",
+		},
+		{
+			name: "unhealthy",
+			mutate: func(t *testing.T, store *GormStore) {
+				if err := store.db.Model(&ProviderResource{}).Where("id = ?", "rsrc_codex_bridge_route").Updates(map[string]any{
+					"healthy": false, "cooldown_until": nil,
+				}).Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "provider_resource_unhealthy",
+		},
+		{
+			name: "cooling down",
+			mutate: func(t *testing.T, store *GormStore) {
+				if err := store.db.Model(&ProviderResource{}).Where("id = ?", "rsrc_codex_bridge_route").Updates(map[string]any{
+					"healthy": false, "cooldown_until": time.Now().UTC().Add(time.Minute),
+				}).Error; err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: http.StatusTooManyRequests,
+			wantCode:   "provider_resource_cooling_down",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var upstreamRequests atomic.Int32
+			server, store, secret := newCodexCompatibilityRouteTestServer(t, roundTripperFunc(func(*http.Request) (*http.Response, error) {
+				upstreamRequests.Add(1)
+				return nil, NewHTTPError(http.StatusBadGateway, "unexpected_upstream_request", "Unexpected upstream request")
+			}))
+			t.Cleanup(func() { _ = server.Shutdown(t.Context()) })
+			test.mutate(t, store)
+
+			response := doCodexCompatibilityRouteJSON(t, server.Handler(), "/v1/responses", map[string]any{
+				"model": codexCompatibilityRouteModel,
+				"input": "report the unavailable resource state",
+			}, secret, "resource-state-regression")
+			if response.Code != test.wantStatus || !strings.Contains(response.Body.String(), `"code":"`+test.wantCode+`"`) {
+				t.Fatalf("resource state response=%d %s want=%d %s", response.Code, response.Body.String(), test.wantStatus, test.wantCode)
+			}
+			if upstreamRequests.Load() != 0 {
+				t.Fatalf("unavailable resource reached upstream: requests=%d", upstreamRequests.Load())
+			}
+		})
+	}
 }
 
 func codexCompatibilityRouteResponse(t *testing.T, request *http.Request) (*http.Response, error) {
@@ -182,7 +330,7 @@ func TestCodexCompatibilityRoutesBridgeChatAndAnthropicNonStreaming(t *testing.T
 		payload map[string]any
 		markers []string
 	}{
-		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(false), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_signature":"codex:`}},
+		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(false), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_signature":"codex:`, `"reasoning_details":[{"data":"codex:`}},
 		{name: "anthropic", path: "/v1/messages", payload: codexCompatibilityAnthropicPayload(false), markers: []string{"bridge text", `"type":"tool_use"`, `"type":"thinking"`, `"signature":"codex:`}},
 	}
 	for _, test := range cases {
@@ -200,6 +348,21 @@ func TestCodexCompatibilityRoutesBridgeChatAndAnthropicNonStreaming(t *testing.T
 	}
 }
 
+func TestPluginDeclaredCodexResponsesProtocolBridgesChatRoute(t *testing.T) {
+	const providerType = "plugin_declared_codex_bridge"
+	server, _, secret := newCodexCompatibilityRouteTestServerForProvider(t, providerType, roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		return codexCompatibilityRouteResponse(t, request)
+	}))
+	t.Cleanup(func() { _ = server.Shutdown(t.Context()) })
+
+	response := doCodexCompatibilityRouteJSON(t, server.Handler(), "/v1/chat/completions", codexCompatibilityChatPayload(false), secret, "plugin-bridge-session")
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK || !strings.Contains(body, `"tool_calls"`) || !strings.Contains(body, `"bridge text"`) {
+		t.Fatalf("plugin-declared Codex bridge route failed: %d %s", response.Code, response.Body)
+	}
+}
+
 func TestCodexCompatibilityRoutesBridgeChatAndAnthropicStreaming(t *testing.T) {
 	server, _, secret := newCodexCompatibilityRouteTestServer(t, roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		return codexCompatibilityRouteResponse(t, request)
@@ -210,7 +373,7 @@ func TestCodexCompatibilityRoutesBridgeChatAndAnthropicStreaming(t *testing.T) {
 		payload map[string]any
 		markers []string
 	}{
-		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(true), markers: []string{"bridge text", `"tool_calls"`, "[DONE]"}},
+		{name: "chat", path: "/v1/chat/completions", payload: codexCompatibilityChatPayload(true), markers: []string{"bridge text", `"tool_calls"`, `"reasoning_details":[{"data":"codex:`, "[DONE]"}},
 		{name: "anthropic", path: "/v1/messages", payload: codexCompatibilityAnthropicPayload(true), markers: []string{"bridge text", "content_block_delta", "input_json_delta", "message_stop"}},
 	}
 	for _, test := range cases {
@@ -268,8 +431,8 @@ func TestCodexCompatibilityChatFailsOverAndKeepsSessionAffinity(t *testing.T) {
 	badCalls := 0
 	goodCalls := 0
 	server := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "codex-affinity-route-secret"})
-	server.codexSubscription.MaxRequestRetries = 1
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Header.Get("authorization") == "Bearer access_bad" {
 			badCalls++
 			return &http.Response{StatusCode: http.StatusInternalServerError, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":{"code":"server_error"}}`)), Request: request}, nil

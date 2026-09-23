@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.lmstudio"
+name: "LMStudio"
+version: 1.0.0
+summary: "Connect TokenHub to LMStudio."
+description: "Connect TokenHub to LMStudio. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "http://127.0.0.1:1234/v1"
+    catalog:
+      id: "lmstudio"
+      name: "LMStudio"
+      display_name: "LMStudio"
+      type: "openai_compatible"
+      base_url: "http://127.0.0.1:1234/v1"
+      doc_url: "https://lmstudio.ai/models"
+      categories: []
+      models_count: 3
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

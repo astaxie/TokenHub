@@ -122,7 +122,7 @@ export function RouteStrategyView({
     const description = emptyStage === "providers"
       ? "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。"
       : emptyStage === "models"
-        ? "从内置的 165 个模型中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。"
+        ? "从内置模型目录中挑选对外模型，选择已引入的 Provider 模型，并设置统一对外价格。"
         : "为对外模型添加 Provider 线路，并设置优先级、权重与流量策略。路由不会改变统一对外价格。";
     const actionLabel = emptyStage === "providers" ? "前往 Provider 渠道" : emptyStage === "models" ? "前往模型目录" : "为模型添加路由";
     const onAction: () => void = emptyStage === "providers"
@@ -270,15 +270,16 @@ export function RouteModelCard({
 }) {
   const routes = modelRoutesFor(model, data);
   const activeRoutes = routes.filter((route) => route.status === "active");
-  const category = modelCategory(model);
+  const category = modelCategory(model, data);
+  const label = modelCategoryLabel(category, data);
   return (
     <article className="route-model-card">
       <div className="route-model-head">
         <div>
           <div className="model-card-brand compact">
-            <span>{modelCategoryInitial(category, modelCategoryLabel(category))}</span>
+            <span>{modelCategoryInitial(category, label)}</span>
             <div>
-              <em>{modelCategoryLabel(category)}</em>
+              <em>{label}</em>
               <strong>{model.modality || "chat"}</strong>
             </div>
           </div>
@@ -300,7 +301,7 @@ export function RouteModelCard({
         <div className="empty route-empty">{tx("该统一模型还没有 Provider 线路")}</div>
       ) : (
         <ModelRoutingPolicyEditor
-          key={modelRoutePolicySignature(routes)}
+          key={`${modelRoutePolicySignature(routes)}:${model.metadata?.tokenhub_semantic_routing ?? ""}`}
           model={model}
           routes={routes}
           data={data}
@@ -318,8 +319,8 @@ export function RouteModelCard({
   );
 }
 
-export function ModelBrandIcon({ category, label, compact = false }: { category: string; label: string; compact?: boolean }) {
-  const source = modelBrandIconSource(category);
+export function ModelBrandIcon({ category, label, compact = false, data }: { category: string; label: string; compact?: boolean; data?: Pick<AppData, "plugins" | "providerAdapters"> }) {
+  const source = modelBrandIconSource(category, data);
   const className = `model-brand-icon${compact ? " compact" : ""}${source ? "" : " fallback"}`;
   if (source) {
     return (

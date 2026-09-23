@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"math"
@@ -11,37 +12,97 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"tokenhub/backend/internal/admin"
+	"tokenhub/backend/internal/billing"
+	billingadapters "tokenhub/backend/internal/billing/adapters"
+	"tokenhub/backend/internal/guardrails"
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type Server struct {
-	store             Store
-	adapterRegistry   *AdapterRegistry
-	integrations      *IntegrationService
-	codexSubscription *CodexSubscriptionAdapter
-	providerCatalog   *providerCatalogService
-	billing           *BillingService
-	reconciliation    *ReconciliationService
-	mux               *http.ServeMux
-	config            Config
-	metrics           *GatewayMetrics
-	traceEmitter      TraceEmitter
-	imageStorageDir   string
-	imageRunner       func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
-	imageContext      context.Context
-	imageCancel       context.CancelFunc
-	imageQueue        chan imageJobWork
-	imageWorkerStart  sync.Once
-	imageWorkerStop   sync.Once
-	imageWorkerGroup  sync.WaitGroup
-	imageAccountMu    sync.Mutex
-	imageAccountSlots map[string]chan struct{}
-	versions          *versionService
+	semanticRouter          semanticEvaluator
+	pluginRuntimeMu         sync.RWMutex
+	pluginLifecycleMu       sync.Mutex
+	store                   Store
+	pluginRegistry          *pluginmeta.Registry
+	gatewayChain            *pluginmeta.GatewayChainRegistry
+	gatewayHooks            *pluginmeta.GatewayHookRunner
+	adminUI                 *pluginmeta.AdminUIRegistry
+	pluginActions           *pluginmeta.ActionBroker
+	pluginBackgroundJobs    *pluginmeta.BackgroundJobBroker
+	pluginBackgroundRunner  *pluginmeta.BackgroundJobRunner
+	adapterRegistry         *AdapterRegistry
+	builtinProviderAdapters map[string]any
+	integrations            *IntegrationService
+	providerCatalog         *providerCatalogService
+	billing                 *billing.Service
+	billingAdmin            *admin.BillingHandler
+	billingAvailable        bool
+	reconciliation          *ReconciliationService
+	credentialRefresh       *ProviderCredentialRefreshService
+	payloadRetention        *requestPayloadRetentionService
+	mux                     *http.ServeMux
+	publicGatewayOperations map[gatewayOperation]bool
+	config                  Config
+	metrics                 *GatewayMetrics
+	traceEmitter            TraceEmitter
+	imageStorageDir         string
+	imageRunner             func(context.Context, RouteSelection, ImageJob) ([]byte, string, Usage, error)
+	imageContext            context.Context
+	imageCancel             context.CancelFunc
+	imageQueue              chan imageJobWork
+	imageWorkerStart        sync.Once
+	imageWorkerStop         sync.Once
+	imageWorkerGroup        sync.WaitGroup
+	imageAccountMu          sync.Mutex
+	imageAccountSlots       map[string]chan struct{}
+	responseContext         context.Context
+	responseCancel          context.CancelFunc
+	responseWorkerStart     sync.Once
+	responseWorkerStop      sync.Once
+	responseWorkerGroup     sync.WaitGroup
+	responseInstanceID      string
+	stopHeartbeat           func()
+	versions                *versionService
+	guardrailEngine         *guardrails.Engine
+	upstreamClient          *http.Client
+	pluginInstallClient     *http.Client
+	pluginMarketplaceClient *http.Client
+	syntheticDNSPolicy      *providerSyntheticDNSPolicy
+	providerProxyPolicy     *providerProxyPolicy
+	syntheticDNSSetting     sync.Mutex
+	// smtpRootCAs is a test seam for implicit-TLS SMTP delivery. When nil the
+	// production dial validates the server certificate against the platform
+	// roots; tests inject the in-process fake server's certificate here.
+	smtpRootCAs *x509.CertPool
 }
 
 func New(store Store) *Server {
 	return NewWithConfig(store, Config{AdminToken: "dev_admin_token", IntegrationToken: "dev_integration_token"})
 }
+
 func NewWithConfig(store Store, config Config) *Server {
+	return newWithConfig(store, config, billingDependenciesFromStore(store))
+}
+
+// BillingDependencies are composition-only billing capabilities. They allow a
+// Store decorator to preserve billing behavior without widening Store itself.
+type BillingDependencies struct {
+	Repository           billing.Repository
+	ReconciliationReader ReconciliationBillingReader
+}
+
+// NewWithConfigAndBillingDependencies constructs a server with explicitly
+// supplied billing dependencies. It is intended for Store decorators that do
+// not expose the private composition hooks implemented by GormStore.
+func NewWithConfigAndBillingDependencies(store Store, config Config, dependencies BillingDependencies) *Server {
+	return newWithConfig(store, config, dependencies)
+}
+
+func newWithConfig(store Store, config Config, billingDependencies BillingDependencies) *Server {
+	billingAvailable := billingDependencies.Repository != nil && billingDependencies.ReconciliationReader != nil
+	billingDependencies = normalizeBillingDependencies(billingDependencies)
 	if strings.TrimSpace(config.ImageStorageDir) == "" {
 		config.ImageStorageDir = defaultImageStorageDir()
 	}
@@ -57,60 +118,138 @@ func NewWithConfig(store Store, config Config) *Server {
 	if config.ImageCapabilityRetrySecs <= 0 {
 		config.ImageCapabilityRetrySecs = 86400
 	}
+	if config.ResponseWorkerConcurrency <= 0 {
+		config.ResponseWorkerConcurrency = 2
+	}
+	if config.ResponsePollIntervalMillis <= 0 {
+		config.ResponsePollIntervalMillis = 250
+	}
+	if config.ResponseJobTimeoutSeconds <= 0 {
+		config.ResponseJobTimeoutSeconds = 300
+	}
+	if config.ResponseLeaseTTLSeconds <= 0 {
+		config.ResponseLeaseTTLSeconds = 30
+	}
+	if config.ResponseResultTTLSeconds <= 0 {
+		config.ResponseResultTTLSeconds = 3600
+	}
+	if config.ResponseMaxQueuedJobs <= 0 {
+		config.ResponseMaxQueuedJobs = 1000
+	}
+	if config.MaxJSONRequestBytes <= 0 {
+		config.MaxJSONRequestBytes = defaultMaxJSONRequestBytes
+	}
+	if config.MaxMultimodalRequestBytes <= 0 {
+		config.MaxMultimodalRequestBytes = defaultMaxMultimodalRequestBytes
+	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
-	client, streamClient, streamIdleTimeout := newUpstreamClients(config)
-	openai := OpenAICompatibleAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout}
-	codexSubscription := &CodexSubscriptionAdapter{
-		Client:             &http.Client{},
-		StreamIdleTimeout:  streamIdleTimeout,
-		RefreshCredentials: store.RefreshProviderResourceCredentials,
+	responseContext, responseCancel := context.WithCancel(context.Background())
+	syntheticDNSPolicy := newProviderSyntheticDNSPolicy(store)
+	providerProxyPolicy := newProviderProxyPolicy(store)
+	client, streamClient, streamIdleTimeout := newUpstreamClientsWithPolicies(config, syntheticDNSPolicy, providerProxyPolicy)
+	catalogClient := &http.Client{
+		Transport:     client.Transport,
+		CheckRedirect: strictProviderUpstreamRedirect,
+		Timeout:       providerCatalogUpstreamTimeout,
 	}
-	adapters := map[string]ProviderAdapter{
-		ProviderMock:             MockAdapter{},
-		ProviderOpenAI:           openai,
-		ProviderOpenAICompatible: openai,
-		"deepseek":               openai,
-		"qwen":                   openai,
-		"local":                  openai,
-		ProviderAzureOpenAI:      AzureOpenAIAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-		ProviderAnthropic:        AnthropicAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
-		ProviderGemini:           GeminiAdapter{Client: client, StreamClient: streamClient, StreamIdleTimeout: streamIdleTimeout},
+	if gormStore, ok := store.(*GormStore); ok {
+		gormStore.providerProxyPolicy = providerProxyPolicy
 	}
-	registry := NewAdapterRegistry()
-	registry.Register(ProviderMock, adapters[ProviderMock], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityEmbeddings)
-	registry.Register(ProviderOpenAI, adapters[ProviderOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityImageGenerate)
-	registry.Register(ProviderOpenAICompatible, adapters[ProviderOpenAICompatible], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	registry.Register(ProviderOpenAICodex, codexSubscription, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityQuota, AdapterCapabilityOAuth, AdapterCapabilityAffinity, AdapterCapabilityCompact, AdapterCapabilityImageGenerate)
-	registry.Register(ProviderAzureOpenAI, adapters[ProviderAzureOpenAI], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	registry.Register(ProviderAnthropic, adapters[ProviderAnthropic], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe)
-	registry.Register(ProviderGemini, adapters[ProviderGemini], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
-	for _, adapterType := range []string{"deepseek", "qwen", "local"} {
-		registry.Register(adapterType, adapters[adapterType], AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityProbe)
+	providerRuntime := newBuiltinProviderRuntime(builtinProviderRuntimeDependencies{
+		Store:               store,
+		Client:              client,
+		StreamClient:        streamClient,
+		StreamIdleTimeout:   streamIdleTimeout,
+		SyntheticDNSPolicy:  syntheticDNSPolicy,
+		ProviderProxyPolicy: providerProxyPolicy,
+	})
+	pluginBootstrap, err := bootstrapServerPlugins(config, providerRuntime.adapters)
+	if err != nil {
+		panic(err)
 	}
+	providerCatalog := newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient)
+	providerCatalog.UsePluginCatalogTypes(pluginBootstrap.adapterRegistry)
 	s := &Server{
-		store:             store,
-		adapterRegistry:   registry,
-		integrations:      NewIntegrationService(store, registry),
-		codexSubscription: codexSubscription,
-		providerCatalog:   newProviderCatalogService(store, config.ProviderCatalogFile),
-		billing:           newBillingService(store),
-		reconciliation:    newReconciliationService(store),
-		mux:               http.NewServeMux(),
-		config:            config,
-		imageStorageDir:   config.ImageStorageDir,
-		imageContext:      imageContext,
-		imageCancel:       imageCancel,
-		imageQueue:        make(chan imageJobWork, config.ImageQueueCapacity),
-		imageAccountSlots: make(map[string]chan struct{}),
-		versions:          newVersionService(config),
+		store:                   store,
+		pluginRegistry:          pluginBootstrap.pluginRegistry,
+		gatewayChain:            pluginBootstrap.gatewayChain,
+		gatewayHooks:            pluginBootstrap.gatewayHooks,
+		adminUI:                 pluginBootstrap.adminUI,
+		pluginActions:           pluginBootstrap.pluginActions,
+		pluginBackgroundJobs:    pluginBootstrap.pluginBackgroundJobs,
+		pluginBackgroundRunner:  pluginBootstrap.pluginBackgroundRunner,
+		adapterRegistry:         pluginBootstrap.adapterRegistry,
+		builtinProviderAdapters: providerRuntime.adapters,
+		integrations:            NewIntegrationService(store, pluginBootstrap.adapterRegistry, client),
+		providerCatalog:         providerCatalog,
+		billing:                 billing.NewService(billingDependencies.Repository, billingadapters.NewRegistry(&http.Client{Timeout: 30 * time.Second})),
+		billingAvailable:        billingAvailable,
+		reconciliation:          newReconciliationService(store, billingDependencies.ReconciliationReader),
+		credentialRefresh:       newProviderCredentialRefreshService(store),
+		payloadRetention:        newRequestPayloadRetentionService(store),
+		mux:                     http.NewServeMux(),
+		publicGatewayOperations: make(map[gatewayOperation]bool),
+		config:                  config,
+		imageStorageDir:         config.ImageStorageDir,
+		imageContext:            imageContext,
+		imageCancel:             imageCancel,
+		imageQueue:              make(chan imageJobWork, config.ImageQueueCapacity),
+		imageAccountSlots:       make(map[string]chan struct{}),
+		responseContext:         responseContext,
+		responseCancel:          responseCancel,
+		responseInstanceID:      NewID("response-worker"),
+		versions:                newVersionService(config),
+		guardrailEngine: guardrails.NewEngine(guardrails.NewQwenDetector(guardrails.QwenDetectorConfig{
+			URL:     config.GuardrailModelURL,
+			APIKey:  config.GuardrailModelAPIKey,
+			Model:   config.GuardrailModelName,
+			Timeout: time.Duration(config.GuardrailModelTimeoutSeconds) * time.Second,
+		})),
+		semanticRouter:      newJevRoutingClient(config),
+		upstreamClient:      client,
+		pluginInstallClient: newPluginDownloadClient(nil),
+		pluginMarketplaceClient: &http.Client{
+			Transport:     client.Transport,
+			CheckRedirect: strictProviderUpstreamRedirect,
+			Timeout:       30 * time.Second,
+		},
+		syntheticDNSPolicy:  syntheticDNSPolicy,
+		providerProxyPolicy: providerProxyPolicy,
 	}
+	s.pluginBackgroundRunner.SetSchedulerSnapshotLocker(s.pluginRuntimeMu.RLocker())
+	s.installServerPluginHandlers(&pluginBootstrap)
+	if err := pluginmeta.NewRuntime(config.PluginDir).CompleteRuntimeRestart(); err != nil {
+		panic(fmt.Errorf("complete TokenHub plugin runtime restart: %w", err))
+	}
+	if err := s.publishServerPluginStoreConfiguration(&pluginBootstrap); err != nil {
+		panic(fmt.Errorf("publish TokenHub plugin store configuration: %w", err))
+	}
+	s.billingAdmin = admin.NewBillingHandler(billingDependencies.Repository, s.billing, admin.BillingTransport{
+		DecodeJSON:         s.decodeJSON,
+		DecodeJSONOptional: s.decodeJSONOptional,
+		IsPayloadTooLarge:  isPayloadTooLarge,
+		NewError: func(status int, code, message string) error {
+			return NewHTTPError(status, code, message)
+		},
+		MapError:   func(err error) error { return billingHTTPError(err) },
+		WriteJSON:  writeJSON,
+		WriteError: writeError,
+		Audit: func(r *http.Request, actor admin.BillingActor, event admin.BillingAudit) {
+			s.recordAdminAuditWithStatus(r, AdminUser{ID: actor.ID, Name: actor.Name, Role: actor.Role},
+				event.Action, "billing_connector", event.ResourceID, event.Status, event.Message, event.Before, event.After)
+		},
+	})
 	if jobs, err := store.FailUnfinishedImageJobs("image_worker_restarted", "Image generation stopped because the server restarted"); err != nil {
 		log.Printf("[tokenhub] failed to mark unfinished image jobs after startup: %v", err)
 	} else if len(jobs) > 0 {
 		log.Printf("[tokenhub] marked %d unfinished image jobs as failed after startup", len(jobs))
 	}
+	if gormStore, ok := store.(*GormStore); ok {
+		s.stopHeartbeat = gormStore.StartInstanceHeartbeat(config.AppVersion)
+	}
 	backfillProviderModelsFromRoutes(store)
 	backfillExternalModelRolesFromRoutes(store)
+	backfillCodexImageRoutes(store)
 	if config.MetricsEnabled {
 		s.metrics = NewGatewayMetrics(config.MetricsProjectLabel)
 		// Assert against the narrow MetricsSink interface rather than *GormStore, and
@@ -124,54 +263,136 @@ func NewWithConfig(store Store, config Config) *Server {
 	}
 	s.installTraceEmitter(config)
 	s.routes()
+	if config.ResponseWorkerStartupEnabled {
+		// Every replica must poll the durable queue even when it was empty at startup.
+		// Otherwise a replica that never handled a submission cannot take over after
+		// the submitting replica fails.
+		s.startResponseWorkers()
+	}
 	return s
 }
 func (s *Server) Handler() http.Handler {
-	return s.cors(s.mux)
+	return s.withPluginRuntimeSnapshot(s.cors(s.mux))
+}
+
+func (s *Server) withPluginRuntimeSnapshot(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if pluginRuntimeMutationRequest(r) {
+			s.pluginLifecycleMu.Lock()
+			defer s.pluginLifecycleMu.Unlock()
+			next.ServeHTTP(w, r)
+			return
+		}
+		s.pluginRuntimeMu.RLock()
+		defer s.pluginRuntimeMu.RUnlock()
+		next.ServeHTTP(w, r)
+	})
+}
+
+func pluginRuntimeMutationRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	path := strings.TrimSuffix(r.URL.Path, "/")
+	if r.Method == http.MethodPost && path == "/api/admin/plugins/install" {
+		return true
+	}
+	if r.Method == http.MethodDelete && strings.HasPrefix(path, "/api/admin/plugin-packages/") {
+		return true
+	}
+	if !strings.HasPrefix(path, "/api/admin/plugins/") {
+		return false
+	}
+	return r.Method == http.MethodDelete ||
+		r.Method == http.MethodPatch && strings.HasSuffix(path, "/state") ||
+		r.Method == http.MethodPost && (strings.HasSuffix(path, "/update") || strings.HasSuffix(path, "/rollback"))
 }
 func (s *Server) handleAdminProviderAdapters(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.adapterRegistry.List()})
 }
 
-func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+func (s *Server) handleAdminPlugins(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
 		return
 	}
+	plugins, err := s.adminPluginDescriptors()
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusInternalServerError, "plugin_discovery_failed", "Plugin packages could not be inspected"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": plugins})
+}
+
+func (s *Server) handleAdminPluginChain(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.gatewayChain.Plan()})
+}
+
+func (s *Server) handleAdminPluginUIManifest(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": s.adminUI.List()})
+}
+
+func (s *Server) handleAdminPluginActions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": adminPluginActionDescriptors(s.pluginActions.List())})
+}
+
+func (s *Server) handleAdminPluginBackgroundJobs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireAdmin(w, r, "providers", r.Method); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": s.pluginBackgroundJobs.List(),
+		"runs": sanitizePluginBackgroundJobRunRecords(s.pluginBackgroundRunner.LastRuns()),
+	})
+}
+
+func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "tokenhub-backend"})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 	if err := s.store.Ping(ctx); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "unavailable", "service": "tokenhub-backend"})
 		return
 	}
+	// Readiness reflects the database evolution state: a dirty or unverifiable
+	// migration ledger and incomplete blocking backfills keep the instance out
+	// of rotation; pending online backfills do not.
+	if evolution, ok := s.store.(interface {
+		DatabaseEvolutionStatus(ctx context.Context) DatabaseEvolutionStatus
+	}); ok {
+		if state := evolution.DatabaseEvolutionStatus(ctx); !state.Ready {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"status":  "unavailable",
+				"service": "tokenhub-backend",
+				"reason":  state.Reason,
+			})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "tokenhub-backend"})
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	_, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
+	s.syncProviderImageCapabilityRouteProfiles()
 	models := s.store.AccessibleModels(key)
 	data := make([]modelListItem, 0, len(models))
 	for _, model := range models {
@@ -192,9 +413,14 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleModel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
 	}
+	s.handleModelGet(w, r)
+}
+
+func (s *Server) handleModelGet(w http.ResponseWriter, r *http.Request) {
 	_, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -205,6 +431,7 @@ func (s *Server) handleModel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	s.syncProviderImageCapabilityRouteProfiles()
 	for _, model := range s.store.AccessibleModels(key) {
 		if model.Name == modelID || model.ID == modelID {
 			writeJSON(w, http.StatusOK, buildModelListItem(model))

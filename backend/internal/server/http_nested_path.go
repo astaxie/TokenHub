@@ -32,7 +32,7 @@ func splitEscapedAdminPath(escapedPath string, prefix string) []string {
 // naively on "/": the trailing segment is treated as an action only when it
 // appears in the route's table. Actions must not contain "/" themselves.
 var (
-	providerResourceActions = []string{"quota/reset-credits", "quota/reset", "health", "test", "refresh-token", "quota"}
+	providerResourceActions = []string{"quota/reset-credits", "quota/reset", "image-capability", "health", "test", "refresh-token", "quota"}
 	routingRuleActions      = []string{"explain"}
 )
 

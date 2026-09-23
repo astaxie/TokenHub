@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.tencent-tokenhub"
+name: "Tencent TokenHub"
+version: 1.0.0
+summary: "Connect TokenHub to Tencent TokenHub."
+description: "Connect TokenHub to Tencent TokenHub. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://tokenhub.tencentmaas.com/v1"
+    catalog:
+      id: "tencent-tokenhub"
+      name: "Tencent TokenHub"
+      display_name: "Tencent TokenHub"
+      type: "openai_compatible"
+      base_url: "https://tokenhub.tencentmaas.com/v1"
+      doc_url: "https://cloud.tencent.com/document/product/1823/130050"
+      categories: []
+      models_count: 1
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

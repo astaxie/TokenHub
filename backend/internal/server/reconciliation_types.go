@@ -1,31 +1,36 @@
 package server
 
-import "time"
+import (
+	"time"
 
-const (
-	ReconciliationGranularityDetail = "detail"
-	ReconciliationGranularityHour   = "hour"
-	ReconciliationGranularityDay    = "day"
-	ReconciliationGranularityMonth  = "month"
-
-	ReconciliationMatched        = "matched"
-	ReconciliationProviderOnly   = "provider_only"
-	ReconciliationTokenHubOnly   = "tokenhub_only"
-	ReconciliationAmountMismatch = "amount_mismatch"
-
-	ReconciliationRunRunning   = "running"
-	ReconciliationRunSucceeded = "succeeded"
-	ReconciliationRunFailed    = "failed"
+	"tokenhub/backend/internal/billing"
+	"tokenhub/backend/internal/reconciliation"
 )
 
-var reconciliationDimensions = map[string]struct{}{
-	"request_id":       {},
-	"provider":         {},
-	"resource_account": {},
-	"model":            {},
-	"project":          {},
-	"currency":         {},
-}
+type BillingConnector = billing.Connector
+type BillingRecord = billing.Record
+
+const (
+	BillingConnectorAliyun = billing.ConnectorAliyun
+	BillingConnectorNewAPI = billing.ConnectorNewAPI
+	BillingConnectorOneAPI = billing.ConnectorOneAPI
+)
+
+const (
+	ReconciliationGranularityDetail = reconciliation.GranularityDetail
+	ReconciliationGranularityHour   = reconciliation.GranularityHour
+	ReconciliationGranularityDay    = reconciliation.GranularityDay
+	ReconciliationGranularityMonth  = reconciliation.GranularityMonth
+
+	ReconciliationMatched        = reconciliation.Matched
+	ReconciliationProviderOnly   = reconciliation.ProviderOnly
+	ReconciliationTokenHubOnly   = reconciliation.TokenHubOnly
+	ReconciliationAmountMismatch = reconciliation.AmountMismatch
+
+	ReconciliationRunRunning   = reconciliation.RunRunning
+	ReconciliationRunSucceeded = reconciliation.RunSucceeded
+	ReconciliationRunFailed    = reconciliation.RunFailed
+)
 
 // ReconciliationRule is the mutable, scheduled configuration used to compare
 // one external billing source with TokenHub usage. Every run copies the rule
@@ -182,9 +187,9 @@ type ReconciliationStore interface {
 	ListReconciliationRules() []ReconciliationRule
 	GetReconciliationRule(id string) (ReconciliationRule, error)
 	UpdateReconciliationRule(rule ReconciliationRule) (ReconciliationRule, error)
-	BackfillReconciliationRuleConnectorSnapshot(id string, connectorType string, providerID string, providerResourceID string) (ReconciliationRule, error)
+	BackfillReconciliationRuleConnectorSnapshot(rule ReconciliationRule) (ReconciliationRule, error)
 	ListDueReconciliationRules(now time.Time, limit int) []ReconciliationRule
-	LoadReconciliationInputs(connectorID string, from time.Time, to time.Time, window time.Duration) ([]BillingRecord, []UsageRecord, error)
+	ListReconciliationUsages(from time.Time, to time.Time, window time.Duration) ([]UsageRecord, error)
 	SaveReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)
 	ReplaceReconciliationRun(run ReconciliationRun, items []ReconciliationItem) (ReconciliationRun, error)
 	ListReconciliationRuns(ruleID string, limit int) []ReconciliationRun
@@ -193,4 +198,12 @@ type ReconciliationStore interface {
 	ListReconciliationItemBatch(runID string, status string, afterID string, excludeMatched bool, limit int) []ReconciliationItem
 	LockReconciliationRun(id string, actor string) (ReconciliationRun, error)
 	RecordScheduledReconciliationAudit(run ReconciliationRun)
+}
+
+// ReconciliationBillingReader is owned by the reconciliation consumer. It
+// exposes only the billing projections required to snapshot a connector and
+// calculate a run.
+type ReconciliationBillingReader interface {
+	GetBillingConnector(id string, includeCredentials bool) (BillingConnector, error)
+	ListBillingRecordsInRange(connectorID string, from, to time.Time) ([]BillingRecord, error)
 }

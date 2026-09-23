@@ -48,10 +48,11 @@ services:
     environment:
       TOKENHUB_ADMIN_TOKEN: admin-token
       TOKENHUB_DATABASE_URL: sqlite://data/tokenhub.db
+      TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE: auto
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 5s
       timeout: 5s
       retries: 20

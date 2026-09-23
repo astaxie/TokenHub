@@ -5,8 +5,38 @@ import { importTypeScript } from "./typescript-test-loader.mjs";
 const {
   availableProviderModelSelectOptions,
   initialModelRoutes,
+  providerCatalogModelIsSelectable,
   providerModelSelectionValue,
 } = await importTypeScript(new URL("./provider-model-selection.ts", import.meta.url));
+
+test("provider catalog lists all models and only applies category filtering", () => {
+  const discovered = [
+    { id: "meta/llama-3:Q4_K_M.gguf", category: "llama" },
+    { id: "qwen/Qwen3-8B:Q5_K_M.gguf", category: "qwen" },
+  ];
+  const selectable = discovered.filter((model) => providerCatalogModelIsSelectable({
+    supportsModelPreview: true,
+    quickAPIFlow: false,
+    selectedCategory: "custom",
+    discoveredCategory: model.category,
+  }));
+
+  assert.deepEqual(selectable.map((model) => model.id), discovered.map((model) => model.id));
+  // A model without a matching standard/external model stays importable.
+  assert.equal(providerCatalogModelIsSelectable({
+    supportsModelPreview: false,
+    quickAPIFlow: false,
+    selectedCategory: "all",
+    discoveredCategory: "llama",
+  }), true);
+  // Category tabs still narrow the list.
+  assert.equal(providerCatalogModelIsSelectable({
+    supportsModelPreview: false,
+    quickAPIFlow: false,
+    selectedCategory: "custom",
+    discoveredCategory: "llama",
+  }), false);
+});
 
 test("available Provider model options only include active inventory on active Providers", () => {
   const data = {

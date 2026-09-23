@@ -1,4 +1,5 @@
-> PR title format: `<type>[optional scope][!]: <short summary>` in English, max 72 characters.
+> Write the PR title and every body section in English.
+> PR title format: `<type>[optional scope][!]: <short summary>`, max 72 characters.
 > Common types include `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, and `revert`. Use a lowercase imperative summary without a trailing period.
 
 ## Summary
@@ -37,6 +38,7 @@ None.
 
 ## Checklist
 
+- [ ] The PR title and body are written in English.
 - [ ] Tests were added or updated for behavior changes, or the reason they are unnecessary is documented.
 - [ ] No credentials, local `.env` files, databases, backups, or runtime logs are included.
 - [ ] Environment variable changes are synchronized across examples, Compose, `start.sh`, and deployment documentation where applicable.

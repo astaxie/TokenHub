@@ -1,0 +1,21 @@
+schema_version: 2
+id: "tokenhub.provider.azure-openai"
+name: "Azure OpenAI"
+version: 1.0.0
+summary: "Connect TokenHub to an Azure OpenAI deployment."
+description: "Connect TokenHub to an Azure OpenAI deployment."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "azure_openai"
+distribution:
+  license: Apache-2.0
+kinds: ["provider"]
+placement: []
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

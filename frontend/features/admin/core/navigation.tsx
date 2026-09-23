@@ -1,4 +1,4 @@
-import { Activity, AlertCircle, BarChart3, Bell, Boxes, Database, FileText, Gauge, KeyRound, LayoutDashboard, Send, Server, Settings, ShieldCheck, Sparkles, Users, WalletCards } from "lucide-react";
+import { Activity, AlertCircle, BarChart3, Bell, Boxes, Database, FileText, Gauge, KeyRound, LayoutDashboard, Puzzle, Send, Server, Settings, ShieldCheck, Sparkles, Users, WalletCards } from "lucide-react";
 import { type AdminUser, type AppData, type AppRole, type NavItem, type NavLeafItem, type NavParentItem, recentViewsStorageKey, type TopSearchItem, type ViewKey, viewRoutes } from "./types";
 import { modelCapabilitySummary } from "../domain/entities";
 import { tx } from "../i18n/runtime";
@@ -96,6 +96,7 @@ export const adminNavGroups: NavGroup[] = [
     title: "成本治理",
     items: [
       { view: "billing", label: "成本账单", icon: WalletCards },
+      { view: "quota-policies", label: "额度策略", icon: Gauge },
       { view: "cost-centers", label: "成本中心", icon: Database },
     ],
   },
@@ -113,11 +114,11 @@ export const adminNavGroups: NavGroup[] = [
     title: "安全运维",
     items: [
       { view: "security-policies", label: "安全策略", icon: ShieldCheck },
-      { view: "proxies", label: "代理出口", icon: Server },
       { view: "sqlite-backups", label: "数据备份", icon: Database },
       { view: "database-status", label: "数据库状态", icon: Database },
       { view: "announcements", label: "公告通知", icon: Bell },
       { view: "settings", label: "系统设置", icon: Settings },
+      { view: "plugins", label: "插件管理", icon: Puzzle },
     ],
   },
 ];
@@ -204,14 +205,22 @@ export const standaloneViewMeta: Partial<Record<ViewKey, { title: string; descri
     title: "作用域路由策略",
     description: "按 API Key、项目和全局优先级限制 Provider、资源、模型、标签与部署边界。",
   },
+  plugins: {
+    title: "插件管理",
+    description: "查看当前已注册的内置与外部插件能力，为 Provider、链路注入和界面模板化扩展提供基础。",
+  },
+  "plugin-pages": {
+    title: "插件扩展",
+    description: "打开插件贡献的管理页面和操作面板。",
+  },
 };
 
 export const roleViewAccess: Record<AppRole, ViewKey[]> = {
   admin: (Object.keys(viewRoutes) as ViewKey[]).filter(
-    (view) => view !== "project-members" && view !== "quota-policies" && view !== "approval-flows",
+    (view) => view !== "project-members" && view !== "approval-flows",
   ),
   security: ["overview", "gateway", "usage", "audit", "alerts", "alert-events", "notification-channels", "alert-deliveries", "security-policies", "approvals"],
-  team_leader: ["overview", "gateway", "playground", "models", "projects", "api-keys", "teams", "users", "usage", "billing", "audit", "approvals"],
+  team_leader: ["overview", "gateway", "playground", "models", "projects", "api-keys", "teams", "users", "usage", "billing", "quota-policies", "audit", "approvals"],
   user: ["overview", "gateway", "playground", "models", "api-keys", "usage", "audit"],
 };
 

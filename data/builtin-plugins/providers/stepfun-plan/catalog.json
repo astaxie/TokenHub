@@ -1,0 +1,276 @@
+{
+  "id": "stepfun-plan",
+  "api": "https://api.stepfun.com/step_plan/v1",
+  "name": "StepFun Step Plan (China)",
+  "doc": "https://platform.stepfun.com/docs/zh/step-plan/overview",
+  "display_name": "StepFun Step Plan (China)",
+  "models": [
+    {
+      "id": "step-3.7-flash",
+      "name": "Step 3.7 Flash",
+      "description": "StepFun flagship multimodal reasoning model for agents, coding, image understanding, and video understanding",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "temperature": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "input": 256000,
+        "output": 256000
+      },
+      "display_name": "Step 3.7 Flash",
+      "type": "chat",
+      "endpoints": "chat/completions,anthropic",
+      "billing_mode": "subscription"
+    },
+    {
+      "id": "step-3.5-flash",
+      "name": "Step 3.5 Flash",
+      "description": "StepFun high-speed reasoning model for agents, coding, and reliable tool use",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "input": 256000,
+        "output": 256000
+      },
+      "display_name": "Step 3.5 Flash",
+      "type": "chat",
+      "endpoints": "chat/completions,anthropic",
+      "billing_mode": "subscription"
+    },
+    {
+      "id": "step-3.5-flash-2603",
+      "name": "Step 3.5 Flash 2603",
+      "description": "StepFun agent-optimized reasoning model for high-frequency coding workflows",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "temperature": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 256000,
+        "input": 256000,
+        "output": 256000
+      },
+      "display_name": "Step 3.5 Flash 2603",
+      "type": "chat",
+      "endpoints": "chat/completions,anthropic",
+      "billing_mode": "subscription"
+    },
+    {
+      "id": "stepaudio-2.5-realtime",
+      "name": "StepAudio 2.5 Realtime",
+      "description": "Realtime speech-to-speech model with text and audio interaction over WebSocket",
+      "family": "step",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": false,
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "display_name": "StepAudio 2.5 Realtime",
+      "type": "audio",
+      "endpoints": "realtime",
+      "billing_mode": "subscription"
+    },
+    {
+      "id": "stepaudio-2.5-chat",
+      "name": "StepAudio 2.5 Chat",
+      "description": "Turn-based speech conversation model with audio input and streaming text output",
+      "family": "step",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": true,
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "display_name": "StepAudio 2.5 Chat",
+      "type": "audio",
+      "endpoints": "chat/completions",
+      "billing_mode": "subscription"
+    },
+    {
+      "id": "stepaudio-2.5-tts",
+      "name": "StepAudio 2.5 TTS",
+      "description": "Contextual text-to-speech model with instruction-controlled voice delivery",
+      "family": "step",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "audio"
+        ]
+      },
+      "supported_parameters": [
+        "instruction"
+      ],
+      "display_name": "StepAudio 2.5 TTS",
+      "type": "audio",
+      "endpoints": "audio/speech,realtime/audio",
+      "billing_mode": "subscription",
+      "pricing_unit": "credit"
+    },
+    {
+      "id": "stepaudio-2.5-asr",
+      "name": "StepAudio 2.5 ASR",
+      "description": "Automatic speech recognition model for audio transcription",
+      "family": "step",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "display_name": "StepAudio 2.5 ASR",
+      "type": "audio",
+      "endpoints": "audio/transcriptions",
+      "billing_mode": "subscription",
+      "pricing_unit": "credit"
+    },
+    {
+      "id": "step-router-v1",
+      "name": "Step Router V1",
+      "description": "Step Plan smart router that selects an underlying model based on task complexity",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 384000,
+        "input": 384000,
+        "output": 384000
+      },
+      "display_name": "Step Router V1",
+      "type": "chat",
+      "endpoints": "chat/completions,anthropic",
+      "billing_mode": "subscription"
+    },
+    {
+      "id": "step-image-edit-2",
+      "name": "Step Image Edit 2",
+      "description": "Lightweight text-to-image and image editing model",
+      "family": "step",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "display_name": "Step Image Edit 2",
+      "type": "image-generation",
+      "endpoints": "images/generations,images/edits",
+      "billing_mode": "subscription",
+      "pricing_unit": "credit"
+    }
+  ]
+}

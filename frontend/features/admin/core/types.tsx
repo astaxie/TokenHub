@@ -1,4 +1,7 @@
+import type { SemanticRoutingPolicy } from "./semantic-routing-types";
+export type { SemanticRoutingPolicy, SemanticRoutingCandidate } from "./semantic-routing-types";
 import { Activity } from "lucide-react";
+import type { ResourceAction } from "./resource-action";
 
 export type Summary = {
   request_count: number;
@@ -60,6 +63,7 @@ export type APIKey = {
   expires_at?: string;
   rotated_from_id?: string;
   grace_until?: string;
+  created_at?: string;
   last_used_at?: string;
   metadata?: Record<string, string>;
 };
@@ -72,6 +76,27 @@ export type DatabaseStatus = {
   database_url?: string;
 };
 
+// Read-only database evolution state served by /api/admin/system/schema-status.
+// reason_code is the stable machine identifier for localized rendering;
+// reason is the English diagnostic for logs and API clients, never localized UI.
+export type SchemaEvolutionStatus = {
+  ready: boolean;
+  reason?: string;
+  reason_code?: string;
+  schema_version: number;
+  dirty_version?: number;
+  pending_expand?: Array<{ version: number; name: string }>;
+  pending_contract?: Array<{ version: number; name: string }>;
+  blocking_backfills_pending?: string[];
+  backfills?: Array<{ id: string; mode: string; state: string; remaining: number }>;
+  instances?: Array<{ instance_id: string; release: string; last_seen: string }>;
+  compatibility?: {
+    target: number;
+    min_compatible: number;
+    max_compatible: number;
+  };
+};
+
 export type Provider = {
   id: string;
   name: string;
@@ -80,6 +105,9 @@ export type Provider = {
   status: string;
   healthy: boolean;
   priority: number;
+  headers?: Record<string, string>;
+  sensitive_headers?: string[];
+  header_validation_errors?: string[];
   options?: Record<string, string>;
 };
 
@@ -242,6 +270,283 @@ export type ReconciliationDetail = {
 export type AdapterDescriptor = {
   type: string;
   capabilities: string[];
+  plugin_id?: string;
+  resource_types?: AdapterProviderResourceType[];
+  provider_policy?: {
+    route_protocols?: string[];
+    auth_modes?: string[];
+    auth_mode_legacy_option?: string;
+    auth_mode_invalid_error_code?: string;
+    auth_mode_invalid_error_message?: string;
+    managed_headers?: string[];
+    supports_custom_headers: boolean;
+    api_key_required?: boolean;
+    route_requires_resource?: boolean;
+    credentials_scope?: string;
+    session_affinity_kind?: string;
+    system_prompt_transform_default?: string;
+    claude_code_attribution_default?: string;
+    reasoning_configurable?: boolean;
+    preserve_reasoning_content?: boolean;
+    responses_model_allowlist?: string[];
+    default_base_url?: string;
+    default_catalog_provider_type?: boolean;
+    error_profile?: string;
+    model_discovery?: AdapterModelDiscoveryPolicy;
+    model_categories?: AdapterModelCategory[];
+  };
+};
+
+export type AdapterModelCategory = {
+  key: string;
+  label?: string;
+  order?: number;
+  aliases?: string[];
+  family_prefixes?: string[];
+  canonical_prefixes?: string[];
+  icon_src?: string;
+};
+
+export type AdapterModelDiscoveryPolicy = {
+  path?: string;
+  auth?: string;
+  api_key_query_param?: string;
+  headers?: Record<string, string>;
+};
+
+export type AdapterProviderResourceType = {
+  type: string;
+  display_name?: string;
+  auth_modes?: string[];
+  defaults?: Record<string, string>;
+  credential_identity_profile?: string;
+  credential_input_optional?: boolean;
+  default?: boolean;
+};
+
+export type PluginCapabilityDescriptor = {
+  kind: string;
+  name: string;
+  subject?: string;
+  value?: string;
+};
+
+export type PluginDistribution = {
+  marketplace_url?: string;
+  repository_url?: string;
+  download_url?: string;
+  checksum_sha256?: string;
+  signature_url?: string;
+  signature_algorithm?: string;
+  signature_key_id?: string;
+  homepage_url?: string;
+  license?: string;
+};
+
+export type PluginMarketplaceScreenshot = {
+  url?: string;
+  thumbnail_url?: string;
+  alt?: string;
+  caption?: string;
+  locale?: string;
+  width?: number;
+  height?: number;
+};
+
+export type PluginMarketplaceLocalization = { name?: string; title?: string; summary?: string; description?: string; release_notes?: string };
+
+export type PluginLocalization = PluginMarketplaceLocalization;
+
+export type PluginMarketplaceCompatibilityBadge = {
+  id?: string;
+  label?: string;
+  tone?: string;
+  url?: string;
+};
+
+export type PluginMarketplaceCompatibility = {
+  verdict?: "compatible" | "needs_review" | "incompatible" | "unknown" | string;
+  badges?: PluginMarketplaceCompatibilityBadge[];
+};
+
+export type PluginMarketplacePublisher = {
+  id?: string;
+  name?: string;
+  url?: string;
+  support_url?: string;
+  contact_url?: string;
+  verified?: boolean;
+};
+
+export type PluginMarketplaceAdvisory = {
+  id?: string;
+  severity?: string;
+  title?: string;
+  url?: string;
+  published_at?: string;
+  updated_at?: string;
+};
+
+export type PluginMarketplaceReleaseNote = {
+  version?: string;
+  date?: string;
+  title?: string;
+  notes?: string;
+  url?: string;
+  items?: string[];
+};
+
+export type PluginMarketplaceMetadata = {
+  summary?: string;
+  categories?: string[];
+  screenshots?: PluginMarketplaceScreenshot[];
+  localizations?: Record<string, PluginMarketplaceLocalization>;
+  compatibility?: PluginMarketplaceCompatibility | null;
+  publisher?: PluginMarketplacePublisher | null;
+  advisories?: PluginMarketplaceAdvisory[];
+  release_notes?: PluginMarketplaceReleaseNote[];
+};
+
+export type PluginLifecycle = {
+  status: "enabled" | "disabled" | "pending_restart" | "failed_validation" | "failed_startup" | "rollback_available" | "mandatory" | string;
+  available?: boolean; installed?: boolean; enabled?: boolean; configured?: boolean; in_use?: boolean; setup_required?: boolean; desired_version?: string; active_version?: string; desired_enabled?: boolean; active_enabled?: boolean;
+  reason?: string;
+  restart_required: boolean;
+  health: "healthy" | "unhealthy" | "unknown" | string;
+  mandatory: boolean;
+  rollback_available: boolean;
+  rollback_version?: string;
+  rollback_target?: "previous_package" | "built_in" | string;
+  last_error_code?: string;
+  audit_event?: string;
+  loadable: boolean;
+};
+
+export type PluginCompatibility = {
+  plugin_api: string;
+  manifest_schema_version: number;
+  core_version: string;
+  min_core?: string;
+  max_core?: string;
+  verdict: "compatible" | "incompatible" | string;
+  reason_code?: string;
+};
+
+export type PluginTrustSummary = {
+  source: "built_in" | "marketplace" | "local_file" | string;
+  verdict: "trusted" | "unverified" | "rejected" | string;
+  checksum_present: boolean;
+  signature_present: boolean;
+  signature_algorithm?: string;
+  signature_key_id?: string;
+  reason_code?: string;
+};
+
+export type PluginDescriptor = {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  summary?: string; category?: "provider_integration" | "request_pipeline" | "ui_template" | "automation" | string; host_adapter?: string; dependencies?: Array<{ id: string; version?: string }>; settings?: { scopes?: string[] }; permissions?: Array<{ kind: string; name: string; access: string; sensitivity: string }>; has_settings?: boolean; legacy?: boolean; available?: boolean; installed?: boolean; enabled?: boolean; configured?: boolean; in_use?: boolean; setup_required?: boolean; desired_version?: string; active_version?: string; desired_enabled?: boolean; active_enabled?: boolean; active_kinds?: string[]; active_capabilities?: PluginCapabilityDescriptor[];
+  localizations?: Record<string, PluginLocalization>;
+  source: "built_in" | "marketplace" | "local_file" | string;
+  status?: "enabled" | "disabled" | string;
+  distribution?: PluginDistribution;
+  marketplace?: PluginMarketplaceMetadata | null;
+  kinds: string[];
+  placements: string[];
+  capabilities: PluginCapabilityDescriptor[];
+  reason?: string;
+  restart_required?: boolean;
+  health?: "healthy" | "unhealthy" | "unknown" | string;
+  mandatory?: boolean;
+  rollback_available?: boolean;
+  rollback_version?: string;
+  rollback_target?: "previous_package" | "built_in" | string;
+  last_error_code?: string;
+  audit_event?: string;
+  loadable?: boolean;
+  lifecycle?: PluginLifecycle;
+  compatibility?: PluginCompatibility;
+  trust?: PluginTrustSummary;
+};
+export type PluginMarketplacePlugin = {
+  plugin: PluginDescriptor;
+  installed: boolean;
+  installed_version?: string;
+  update_available?: boolean;
+};
+export type GatewayHookDescriptor = {
+  plugin_id: string;
+  hook_id: string;
+  stage: string;
+  priority: number;
+  subject?: string;
+  metadata?: Record<string, string>;
+  reads?: string[];
+  writes?: string[];
+  failure_policy: string;
+  timeout_millis: number;
+  mandatory: boolean;
+};
+
+export type GatewayChainPlan = {
+  hooks: GatewayHookDescriptor[];
+};
+
+export type AdminUIContribution = {
+  plugin_id: string;
+  id: string;
+  slot: string;
+  title?: string;
+  localizations?: Record<string, PluginLocalization>;
+  provider_types?: string[];
+  resource_types?: string[];
+  action?: string;
+  schema?: Record<string, unknown>;
+};
+
+export type PluginActionDescriptor = {
+  plugin_id: string;
+  action_id: string;
+  kind: "read" | "test" | "mutate" | "external_redirect" | "import_export" | string;
+  title?: string;
+  localizations?: Record<string, PluginLocalization>;
+  capability?: string;
+  subject?: string;
+  metadata?: Record<string, string>;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+};
+
+export type PluginBackgroundJobDescriptor = {
+  plugin_id: string;
+  job_id: string;
+  title?: string;
+  localizations?: Record<string, PluginLocalization>;
+  capability?: string;
+  subject?: string;
+  schedule: string;
+  timeout_millis?: number;
+  max_concurrency: number;
+  retry?: {
+    max_attempts?: number;
+    backoff_millis?: number;
+  };
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+};
+
+export type PluginBackgroundJobRunRecord = {
+  plugin_id: string;
+  job_id: string;
+  trigger: string;
+  status: "succeeded" | "failed" | "skipped" | string;
+  attempts: number;
+  started_at: string;
+  completed_at: string;
+  error?: string;
+  result?: unknown;
 };
 
 export type ProviderMonitoringSignal = {
@@ -255,21 +560,40 @@ export type ProviderMonitoringSignal = {
   observed_at?: string;
 };
 
-export type OpenAIQuotaWindow = {
-  used_percent: number;
-  reset_after_seconds: number;
-  reset_at: number;
+export type ProviderQuotaWindow = {
+  key?: string;
+  label?: string;
+  used_percent?: number;
+  reset_after_seconds?: number;
+  reset_at?: number;
 };
 
-export type OpenAIAccountQuota = {
+export type ProviderQuotaMetric = {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "warning" | "danger";
+};
+
+export type ProviderQuotaRateLimit = { allowed: boolean; limit_reached: boolean; primary_window?: ProviderQuotaWindow; secondary_window?: ProviderQuotaWindow };
+
+export type ProviderAccountQuota = {
+  account_id?: string;
+  email?: string;
   plan_type?: string;
+  status?: string;
+  status_label?: string;
+  allowed?: boolean;
+  limit_reached?: boolean;
+  remaining_percent?: number;
+  used_percent?: number;
+  primary_window?: ProviderQuotaWindow;
+  secondary_window?: ProviderQuotaWindow;
+  windows?: ProviderQuotaWindow[];
+  metrics?: ProviderQuotaMetric[];
   fetched_at?: number;
-  rate_limit?: {
-    allowed: boolean;
-    limit_reached: boolean;
-    primary_window?: OpenAIQuotaWindow;
-    secondary_window?: OpenAIQuotaWindow;
-  };
+  rate_limit?: ProviderQuotaRateLimit;
+  additional_rate_limits?: Array<{ limit_name?: string; metered_feature?: string; rate_limit?: ProviderQuotaRateLimit }>;
+  rate_limit_reset_credits?: { available_count: number };
 };
 
 export type ProviderQuotaSummary = {
@@ -284,7 +608,7 @@ export type ProviderQuotaSummary = {
   accounts?: Array<{
     resource_id: string;
     resource_name: string;
-    quota?: OpenAIAccountQuota;
+    quota?: ProviderAccountQuota;
     error_code?: string;
   }>;
 };
@@ -321,7 +645,14 @@ export type ProviderCatalogModel = {
   max_output_tokens?: number;
   input_price_usd_per_1m?: number;
   cache_read_price_usd_per_1m?: number;
+  cache_write_price_usd_per_1m?: number;
+  cache_write_price_configured?: boolean;
+  cache_write_5m_price_usd_per_1m?: number;
+  cache_write_5m_price_configured?: boolean;
+  cache_write_1h_price_usd_per_1m?: number;
+  cache_write_1h_price_configured?: boolean;
   output_price_usd_per_1m?: number;
+  pricing_periods?: ModelPricingPeriod[];
   input_modalities?: string[];
   output_modalities?: string[];
   capabilities?: string[];
@@ -356,7 +687,14 @@ export type ProviderModel = {
   context_window?: number;
   input_price_usd_per_1m?: number;
   cache_read_price_usd_per_1m?: number;
+  cache_write_price_usd_per_1m?: number;
+  cache_write_price_configured?: boolean;
+  cache_write_5m_price_usd_per_1m?: number;
+  cache_write_5m_price_configured?: boolean;
+  cache_write_1h_price_usd_per_1m?: number;
+  cache_write_1h_price_configured?: boolean;
   output_price_usd_per_1m?: number;
+  pricing_periods?: ModelPricingPeriod[];
   input_modalities?: string[];
   output_modalities?: string[];
   capabilities?: string[];
@@ -385,6 +723,9 @@ export type ProviderResource = {
   rate_limit_rpm?: number;
   token_limit_tpm?: number;
   max_concurrency?: number;
+  headers?: Record<string, string>;
+  sensitive_headers?: string[];
+  header_validation_errors?: string[];
   options?: Record<string, string>;
   credential_summary?: Record<string, string>;
   failure_count?: number;
@@ -393,6 +734,17 @@ export type ProviderResource = {
   last_checked_at?: string;
   created_at?: string;
   updated_at?: string;
+};
+
+export type ModelPricingPeriod = {
+  name?: string;
+  timezone?: string;
+  start_time?: string;
+  end_time?: string;
+  effective_from?: string;
+  effective_until?: string;
+  input_price_usd_per_1m?: number;
+  output_price_usd_per_1m?: number;
 };
 
 export type Model = {
@@ -405,8 +757,15 @@ export type Model = {
   status: string;
   input_price_usd_per_1m?: number;
   cache_read_price_usd_per_1m?: number;
+  cache_write_price_usd_per_1m?: number;
+  cache_write_price_configured?: boolean;
+  cache_write_5m_price_usd_per_1m?: number;
+  cache_write_5m_price_configured?: boolean;
+  cache_write_1h_price_usd_per_1m?: number;
+  cache_write_1h_price_configured?: boolean;
   output_price_usd_per_1m?: number;
   embedding_price_usd_per_1m?: number;
+  pricing_periods?: ModelPricingPeriod[];
   input_modalities?: string[];
   output_modalities?: string[];
   capabilities?: string[];
@@ -434,7 +793,7 @@ export type ModelRoute = {
   last_used_at?: string;
 };
 
-export type ModelRouteStrategy = "priority_weighted" | "adaptive" | "quality" | "cost" | "priority_only" | "balanced";
+export type ModelRouteStrategy = "jev" | "priority_weighted" | "adaptive" | "quality" | "cost" | "priority_only" | "balanced";
 
 export type ModelRoutePolicyRoute = {
   route_id: string;
@@ -444,6 +803,7 @@ export type ModelRoutePolicyRoute = {
 };
 
 export type ModelRoutePolicy = {
+  semantic_routing?: SemanticRoutingPolicy;
   strategy: ModelRouteStrategy;
   routes: ModelRoutePolicyRoute[];
 };
@@ -516,6 +876,7 @@ export type PlaygroundTiming = {
 };
 
 export type PlaygroundChatPayload = {
+  error_details?: { blocked_ips?: string[] };
   type?: "completed" | "failed" | "cancelled";
   status?: "completed" | "failed" | "cancelled";
   response?: {
@@ -563,6 +924,10 @@ export type AdminResource = {
   description?: string;
   status: string;
   fields?: Record<string, unknown>;
+  current_usage?: {
+    daily: { requests: number; total_tokens: number; cost_usd: number };
+    monthly: { requests: number; total_tokens: number; cost_usd: number };
+  };
   created_at?: string;
   updated_at?: string;
 };
@@ -680,6 +1045,10 @@ export type RequestLog = {
   accepted_prediction_tokens?: number;
   rejected_prediction_tokens?: number;
   total_tokens?: number;
+  input_cost_usd?: number;
+  cache_read_cost_usd?: number;
+  cache_write_cost_usd?: number;
+  output_cost_usd?: number;
   estimated_cost_usd?: number;
   provider_cost_usd?: number;
   usage_record_count?: number;
@@ -724,6 +1093,10 @@ export type UsageRecord = {
   accepted_prediction_tokens?: number;
   rejected_prediction_tokens?: number;
   total_tokens: number;
+  input_cost_usd?: number;
+  cache_read_cost_usd?: number;
+  cache_write_cost_usd?: number;
+  output_cost_usd?: number;
   estimated_cost_usd: number;
   provider_cost_usd?: number;
   created_at: string;
@@ -798,6 +1171,7 @@ export type UsageBreakdown = {
   providers: UsageBreakdownRow[];
   provider_resources: UsageBreakdownRow[];
   cost_centers: UsageBreakdownRow[];
+  api_keys?: UsageBreakdownRow[];
 };
 
 export type UsagePoint = {
@@ -810,11 +1184,85 @@ export type UsagePoint = {
   estimated_cost_usd: number;
 };
 
+export type UsageDaily = {
+  timezone: string;
+  date: string;
+  window_start: string;
+  window_end: string;
+  summary: Summary;
+  breakdown: UsageBreakdown;
+};
+
+export type APIKeyUsageMetrics = {
+  request_count: number;
+  error_count: number;
+  average_latency_ms: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  cache_write_input_tokens: number;
+  input_audio_tokens: number;
+  output_tokens: number;
+  reasoning_output_tokens: number;
+  output_audio_tokens: number;
+  accepted_prediction_tokens: number;
+  rejected_prediction_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+};
+
+export type APIKeyUsagePoint = APIKeyUsageMetrics & { date: string };
+
+export type APIKeyUsageBreakdownRow = APIKeyUsageMetrics & {
+  id: string;
+  resource_id?: string;
+  status_code?: number;
+  error_code?: string;
+  last_occurred_at?: string;
+};
+
+export type APIKeyQuotaLimits = {
+  rate_limit_rpm: number;
+  token_limit_tpm: number;
+  daily_requests: number;
+  monthly_requests: number;
+  daily_tokens: number;
+  monthly_tokens: number;
+  daily_cost_usd: number;
+  monthly_cost_usd: number;
+  max_concurrency: number;
+};
+
+export type APIKeyQuotaCounter = {
+  requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+};
+
+export type APIKeyUsageResponse = {
+  key: APIKey;
+  range: { from: string; to: string };
+  generated_at: string;
+  summary: APIKeyUsageMetrics;
+  quota: {
+    effective_limits: APIKeyQuotaLimits;
+    day: { bucket: string; usage: APIKeyQuotaCounter };
+    month: { bucket: string; usage: APIKeyQuotaCounter };
+  };
+  timeseries: APIKeyUsagePoint[];
+  models: APIKeyUsageBreakdownRow[];
+  errors: APIKeyUsageBreakdownRow[];
+  providers?: APIKeyUsageBreakdownRow[];
+};
+
 export type ViewKey =
   | "overview"
   | "playground"
   | "gateway"
   | "providers"
+  | "plugins"
+  | "plugin-pages"
   | "models"
   | "routes"
   | "routing-policies"
@@ -837,7 +1285,6 @@ export type ViewKey =
   | "notification-channels"
   | "alert-deliveries"
   | "security-policies"
-  | "proxies"
   | "sqlite-backups"
   | "database-status"
   | "announcements"
@@ -849,6 +1296,8 @@ export const viewRoutes: Record<ViewKey, string> = {
   playground: "/playground",
   gateway: "/gateway",
   providers: "/providers",
+  plugins: "/plugins",
+  "plugin-pages": "/plugin-pages",
   models: "/models",
   routes: "/routes",
   "routing-policies": "/routing-policies",
@@ -871,7 +1320,6 @@ export const viewRoutes: Record<ViewKey, string> = {
   "notification-channels": "/notification-channels",
   "alert-deliveries": "/alert-deliveries",
   "security-policies": "/security-policies",
-  proxies: "/proxies",
   "sqlite-backups": "/sqlite-backups",
   "database-status": "/database-status",
   announcements: "/announcements",
@@ -883,7 +1331,7 @@ export const routeViews = Object.fromEntries(
   Object.entries(viewRoutes).map(([view, route]) => [route.replace(/^\//, ""), view]),
 ) as Record<string, ViewKey>;
 
-export const notificationChannelTypes = ["webhook", "slack", "discord", "telegram", "whatsapp", "feishu", "dingtalk", "wecom", "email"];
+export { notificationChannelDefaultType, notificationChannelTemplates, notificationChannelTypes, type NotificationChannelTemplate, type NotificationChannelTemplateOwner } from "./notification-channel-templates";
 
 export type NavLeafItem = {
   view: ViewKey;
@@ -912,7 +1360,7 @@ export type TopSearchItem = {
   keywords: string;
 };
 
-export type FieldType = "text" | "number" | "password" | "textarea" | "select" | "multi-select" | "tags" | "boolean";
+export type FieldType = "text" | "number" | "password" | "textarea" | "select" | "multi-select" | "tag-select" | "tags" | "boolean";
 
 export type FieldConfig = {
   key: string;
@@ -929,7 +1377,7 @@ export type FieldConfig = {
   createOnly?: boolean;
   emptyOptionsText?: string;
   emptySelectionText?: string;
-  visible?: (values: Record<string, string>) => boolean;
+  visible?: (values: Record<string, string>, data?: AppData, currentUser?: AdminUser | null) => boolean;
 };
 
 export type ProviderCredentialMode = "provider_api_key" | "account_integration";
@@ -950,23 +1398,16 @@ export type ResourceConfig<T> = {
   fields: FieldConfig[];
   list: (ctx: AppData) => T[];
   create?: (ctx: ApiContext, values: Record<string, string>, data?: AppData) => Promise<void>;
-  update?: (ctx: ApiContext, item: T, values: Record<string, string>) => Promise<void>;
+  update?: (ctx: ApiContext, item: T, values: Record<string, string>, data?: AppData) => Promise<void>;
   remove?: (ctx: ApiContext, item: T) => Promise<void>;
-  canRemove?: (item: T, currentUser: AdminUser | null) => boolean;
+  canUpdate?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
+  canRemove?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
   actions?: ResourceAction<T>[];
   toolbarActions?: ToolbarAction[];
   toForm?: (item: T) => Record<string, string>;
 };
 
-export type ResourceAction<T> = {
-  label: string;
-  title?: string;
-  visible?: (item: T) => boolean;
-  navigate?: (item: T) => ViewKey;
-  run?: (ctx: ApiContext, item: T) => Promise<void>;
-  modal?: (item: T, data: AppData) => ModalState<any>;
-  doneMessage?: (item: T) => string;
-};
+export type { ResourceAction } from "./resource-action";
 
 export type ToolbarAction = {
   label: string;
@@ -1000,10 +1441,22 @@ export type AppData = {
   sqliteBackups: SQLiteBackup[];
   users: AdminUser[];
   breakdown: UsageBreakdown;
+  dailyUsage: UsageDaily;
   timeseries: UsagePoint[];
   resources: Record<string, AdminResource[]>;
   providerCatalog: ProviderCatalogEntry[];
+  providerAdapters: AdapterDescriptor[];
   providerMonitoring: ProviderMonitoringSnapshot[];
+  plugins: PluginDescriptor[];
+  pluginMarketplace: PluginMarketplacePlugin[];
+  pluginMarketplaceSourceURL?: string;
+  pluginMarketplaceAvailable?: boolean;
+  pluginMarketplaceError?: string;
+  pluginChain: GatewayChainPlan;
+  pluginUI: AdminUIContribution[];
+  pluginActions: PluginActionDescriptor[];
+  pluginBackgroundJobs: PluginBackgroundJobDescriptor[];
+  pluginBackgroundRuns: PluginBackgroundJobRunRecord[];
 	billingConnectors: BillingConnector[];
 	billingRecords: BillingRecord[];
 	billingSyncRuns: BillingSyncRun[];

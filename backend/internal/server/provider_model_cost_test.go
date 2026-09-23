@@ -98,30 +98,32 @@ func TestCustomProviderCreationRequiresDiscoveredModelSelection(t *testing.T) {
 func TestUsageRecordsExternalChargeAndProviderCostSeparately(t *testing.T) {
 	store := NewMemoryStore()
 	external := store.AddModel(Model{
-		Name:                   "public-model",
-		Modality:               "chat",
-		InputPriceUSDPer1M:     10,
-		CacheReadPriceUSDPer1M: 2,
-		OutputPriceUSDPer1M:    30,
-		Status:                 StatusActive,
+		Name:                    "public-model",
+		Modality:                "chat",
+		InputPriceUSDPer1M:      10,
+		CacheReadPriceUSDPer1M:  2,
+		CacheWritePriceUSDPer1M: 12,
+		OutputPriceUSDPer1M:     30,
+		Status:                  StatusActive,
 	})
 	provider := store.AddProvider(Provider{
 		ID: "prv_cost_audit", Name: "Cost Audit", Type: ProviderMock, Status: StatusActive, Healthy: true,
 	})
 	store.AddProviderModel(ProviderModel{
-		ProviderID:             provider.ID,
-		UpstreamModel:          "upstream-model",
-		Modality:               "chat",
-		InputPriceUSDPer1M:     1,
-		CacheReadPriceUSDPer1M: 0.2,
-		OutputPriceUSDPer1M:    3,
-		Status:                 StatusActive,
+		ProviderID:              provider.ID,
+		UpstreamModel:           "upstream-model",
+		Modality:                "chat",
+		InputPriceUSDPer1M:      1,
+		CacheReadPriceUSDPer1M:  0.2,
+		CacheWritePriceUSDPer1M: 1.2,
+		OutputPriceUSDPer1M:     3,
+		Status:                  StatusActive,
 	})
 
 	store.FinishCall(
 		CallContext{RequestID: "req_dual_price", Model: external, StartedAt: time.Now()},
 		RouteSelection{Provider: provider, ProviderModel: "upstream-model"},
-		Usage{PromptTokens: 1_000_000, CachedInputTokens: 250_000, CompletionTokens: 1_000_000},
+		Usage{PromptTokens: 1_000_000, CachedInputTokens: 250_000, CacheWriteInputTokens: 100_000, CompletionTokens: 1_000_000},
 		http.StatusOK,
 		"",
 		"127.0.0.1",
@@ -132,11 +134,44 @@ func TestUsageRecordsExternalChargeAndProviderCostSeparately(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("expected one usage record, got %d", len(records))
 	}
-	if math.Abs(records[0].CostUSD-38) > 1e-12 {
-		t.Fatalf("external charge = %.12f, want 38", records[0].CostUSD)
+	if math.Abs(records[0].CostUSD-38.2) > 1e-12 {
+		t.Fatalf("external charge = %.12f, want 38.2", records[0].CostUSD)
 	}
-	if math.Abs(records[0].ProviderCostUSD-3.8) > 1e-12 {
-		t.Fatalf("provider cost = %.12f, want 3.8", records[0].ProviderCostUSD)
+	if math.Abs(records[0].InputCostUSD-6.5) > 1e-12 ||
+		math.Abs(records[0].CacheReadCostUSD-0.5) > 1e-12 ||
+		math.Abs(records[0].CacheWriteCostUSD-1.2) > 1e-12 ||
+		math.Abs(records[0].OutputCostUSD-30) > 1e-12 {
+		t.Fatalf("external charge components = input %.12f cache-read %.12f cache-write %.12f output %.12f",
+			records[0].InputCostUSD, records[0].CacheReadCostUSD, records[0].CacheWriteCostUSD, records[0].OutputCostUSD)
+	}
+	if math.Abs(records[0].ProviderCostUSD-3.82) > 1e-12 {
+		t.Fatalf("provider cost = %.12f, want 3.82", records[0].ProviderCostUSD)
+	}
+}
+
+func TestProviderCostUsesPricingPeriodAtRequestStart(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_period_cost", Name: "Period Cost", Type: ProviderMock, Status: StatusActive})
+	peakInput, peakOutput := 4.0, 10.0
+	store.AddProviderModel(ProviderModel{
+		ProviderID: provider.ID, UpstreamModel: "period-model", Modality: "chat", Status: StatusActive,
+		InputPriceUSDPer1M: 2, OutputPriceUSDPer1M: 8,
+		PricingPeriods: []ModelPricingPeriod{{
+			Timezone:            "UTC",
+			StartTime:           "01:00",
+			EndTime:             "04:00",
+			InputPriceUSDPer1M:  &peakInput,
+			OutputPriceUSDPer1M: &peakOutput,
+		}},
+	})
+
+	cost := store.providerCostUSDAt(
+		RouteSelection{Provider: provider, ProviderModel: "period-model"},
+		Usage{PromptTokens: 1_000_000, CompletionTokens: 1_000_000},
+		time.Date(2026, 8, 22, 2, 0, 0, 0, time.UTC),
+	)
+	if math.Abs(cost-14) > 1e-12 {
+		t.Fatalf("provider period cost = %.12f, want 14", cost)
 	}
 }
 
@@ -156,12 +191,28 @@ func TestProviderCostDoesNotEstimateAnUnconfiguredCachePrice(t *testing.T) {
 	}
 }
 
+func TestProviderCostAllowsConfiguredFreeCacheWrites(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_free_cache_write", Name: "Free Cache Write", Type: ProviderMock, Status: StatusActive})
+	store.AddProviderModel(ProviderModel{
+		ProviderID: provider.ID, UpstreamModel: "free-cache-write-model", Modality: "chat", Status: StatusActive,
+		InputPriceUSDPer1M: 1, CacheWritePriceConfiguration: CacheWritePriceConfiguration{CacheWritePriceConfigured: true}, OutputPriceUSDPer1M: 2,
+	})
+	cost := store.providerCostUSD(
+		RouteSelection{Provider: provider, ProviderModel: "free-cache-write-model"},
+		Usage{PromptTokens: 1_000_000, CacheWriteInputTokens: 250_000, CompletionTokens: 1_000_000},
+	)
+	if math.Abs(cost-2.75) > 1e-12 {
+		t.Fatalf("provider cost = %.12f, want 2.75", cost)
+	}
+}
+
 func TestProviderModelCostPatchCanClearPrices(t *testing.T) {
 	store := NewMemoryStore()
 	provider := store.AddProvider(Provider{ID: "prv_clear_cost", Name: "Clear Cost", Type: ProviderMock, Status: StatusActive})
 	model := store.AddProviderModel(ProviderModel{
 		ProviderID: provider.ID, UpstreamModel: "priced-model", Status: StatusActive,
-		InputPriceUSDPer1M: 1, CacheReadPriceUSDPer1M: 0.5, OutputPriceUSDPer1M: 2,
+		InputPriceUSDPer1M: 1, CacheReadPriceUSDPer1M: 0.5, CacheWritePriceUSDPer1M: 1.1, OutputPriceUSDPer1M: 2,
 	})
 
 	resp := doJSON(t, New(store).Handler(), http.MethodPatch, "/api/admin/provider-models/"+model.ID, map[string]any{
@@ -175,6 +226,17 @@ func TestProviderModelCostPatchCanClearPrices(t *testing.T) {
 	updated := store.ListProviderModels()[0]
 	if updated.InputPriceUSDPer1M != 0 || updated.CacheReadPriceUSDPer1M != 0 || updated.OutputPriceUSDPer1M != 0 {
 		t.Fatalf("provider prices were not cleared: %+v", updated)
+	}
+
+	resp = doJSON(t, New(store).Handler(), http.MethodPatch, "/api/admin/provider-models/"+model.ID, map[string]any{
+		"cache_write_price_configured": false,
+	}, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected cache write configuration clear 200, got %d: %s", resp.Code, resp.Body)
+	}
+	updated = store.ListProviderModels()[0]
+	if updated.CacheWritePriceConfigured || updated.CacheWritePriceUSDPer1M != 0 {
+		t.Fatalf("provider cache write configuration was not cleared: %+v", updated)
 	}
 }
 

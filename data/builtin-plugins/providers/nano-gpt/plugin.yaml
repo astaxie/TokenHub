@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.nano-gpt"
+name: "NanoGPT"
+version: 1.0.0
+summary: "Connect TokenHub to NanoGPT."
+description: "Connect TokenHub to NanoGPT. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://nano-gpt.com/api/v1"
+    catalog:
+      id: "nano-gpt"
+      name: "NanoGPT"
+      display_name: "NanoGPT"
+      type: "openai_compatible"
+      base_url: "https://nano-gpt.com/api/v1"
+      doc_url: "https://docs.nano-gpt.com"
+      categories: []
+      models_count: 617
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

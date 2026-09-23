@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -11,6 +12,10 @@ func (s *GormStore) AddModel(model Model) Model {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	model, _ = createModelRecord(s.db, model)
+	// createModelRecord reports no error here, so the snapshot is dropped either
+	// way: an unnecessary invalidation costs one reload, a missed one leaves a new
+	// model reported as unknown for a full TTL.
+	s.modelLabels.invalidate()
 	return model
 }
 
@@ -32,21 +37,25 @@ func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute) (Mod
 		}
 		return nil
 	})
+	if err == nil {
+		s.modelLabels.invalidate()
+	}
 	return created, err
 }
 
 func createModelRecord(db *gorm.DB, model Model) (Model, error) {
-	var existing Model
-	if err := db.First(&existing, "name = ?", model.Name).Error; err == nil &&
-		existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal &&
-		model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal {
-		model = withExternalModelRole(model)
-		model.Status = existing.Status
-		model.CreatedAt = existing.CreatedAt
+	if err := validateModelPricingPeriods(model.PricingPeriods); err != nil {
+		return Model{}, err
 	}
-
+	normalizeModelCacheWriteConfiguration(&model)
 	if model.Modality == "embedding" {
 		model.CacheReadPriceUSDPer1M = 0
+		model.CacheWritePriceUSDPer1M = 0
+		model.CacheWritePriceConfigured = false
+		model.CacheWrite5mPriceUSDPer1M = 0
+		model.CacheWrite5mPriceConfigured = false
+		model.CacheWrite1hPriceUSDPer1M = 0
+		model.CacheWrite1hPriceConfigured = false
 	}
 	if model.ID == "" {
 		model.ID = model.Name
@@ -57,7 +66,33 @@ func createModelRecord(db *gorm.DB, model Model) (Model, error) {
 	if model.CreatedAt.IsZero() {
 		model.CreatedAt = time.Now().UTC()
 	}
-	return model, db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var existing Model
+		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&existing, "name = ?", model.Name)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// A concurrent creator can win after the lookup. Do not overwrite its
+			// managed policy in that case; acquire its row lock before updating it.
+			inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model)
+			if inserted.Error != nil {
+				return inserted.Error
+			}
+			if inserted.RowsAffected == 1 {
+				return nil
+			}
+			result = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("name = ? OR id = ?", model.Name, model.ID).First(&existing)
+		}
+		if result.Error != nil {
+			return result.Error
+		}
+		if existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal && model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal {
+			model = withExternalModelRole(model)
+			model.Status = existing.Status
+			model.CreatedAt = existing.CreatedAt
+		}
+		model.Metadata = preserveSemanticRoutingMetadata(existing.Metadata, model.Metadata)
+		return tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
+	})
+	return model, err
 }
 
 func (s *GormStore) AddRoute(route ModelRoute) ModelRoute {
@@ -65,6 +100,16 @@ func (s *GormStore) AddRoute(route ModelRoute) ModelRoute {
 	defer s.mu.Unlock()
 	route, _ = createRouteRecord(s.db, route)
 	return route
+}
+
+// CreateRoute persists a route and reports the database error. AddRoute
+// discards it for callers that treat the write as best-effort, but admin
+// route creation needs the error so a failed write is not mistaken for a
+// successful route followed by a partial catalog update.
+func (s *GormStore) CreateRoute(route ModelRoute) (ModelRoute, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return createRouteRecord(s.db, route)
 }
 
 func createRouteRecord(db *gorm.DB, route ModelRoute) (ModelRoute, error) {

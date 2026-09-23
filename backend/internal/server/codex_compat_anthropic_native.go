@@ -51,7 +51,7 @@ func nativeAnthropicPayload(raw map[string]any) map[string]any {
 }
 
 func foreignProviderSignature(signature string) bool {
-	for _, provider := range []string{codexSignatureProvider, geminiSignatureProvider} {
+	for _, provider := range []string{codexSignatureProvider, geminiSignatureProvider, reasoningSignatureProvider} {
 		if _, tagged := decodeProviderSignature(provider, signature); tagged {
 			return true
 		}

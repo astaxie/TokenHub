@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 loadDotEnv(resolve(__dirname, ".env"));
 
 const baseURL = normalizeBaseURL(process.env.TOKENHUB_BASE_URL || "http://localhost:8080/v1");
-const apiKey = process.env.TOKENHUB_API_KEY || "thk_live_tt2V9Jk0wGAoKNcY";
+const apiKey = process.env.TOKENHUB_API_KEY || "";
 const model = process.env.TOKENHUB_MODEL || "deepseek-chat";
 const prompt = process.env.TOKENHUB_PROMPT || "请用三句话说明 TokenHub 网关链路已经打通。";
 

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "protocol": "stdio-json-v1",
+  "kind": "provider",
+  "provider_type": "external_mock",
+  "required_gateway_capabilities": [
+    "chat",
+    "chat_stream",
+    "responses",
+    "responses_stream",
+    "embeddings",
+    "models",
+    "probe"
+  ],
+  "cases": [
+    {
+      "name": "chat",
+      "operation": "chat",
+      "provider_model": "external-upstream-chat",
+      "request": {
+        "model": "gateway-model",
+        "messages": [{ "role": "user", "content": "hello" }]
+      },
+      "expect": { "response_id": "chatcmpl_external_mock", "total_tokens": 5 }
+    },
+    {
+      "name": "chat_stream",
+      "operation": "chat_stream",
+      "provider_model": "external-upstream-chat-stream",
+      "request": {
+        "model": "gateway-model",
+        "messages": [{ "role": "user", "content": "hello" }],
+        "stream": true
+      },
+      "expect": { "events": 2, "total_tokens": 7 }
+    },
+    {
+      "name": "responses",
+      "operation": "responses",
+      "provider_model": "external-upstream-responses",
+      "request": { "model": "gateway-model", "input": "hello" },
+      "expect": { "response_id": "resp_external_mock", "total_tokens": 9 }
+    },
+    {
+      "name": "responses_stream",
+      "operation": "responses_stream",
+      "provider_model": "external-upstream-responses-stream",
+      "request": { "model": "gateway-model", "input": "hello", "stream": true },
+      "expect": { "events": 2 }
+    },
+    {
+      "name": "embeddings",
+      "operation": "embeddings",
+      "provider_model": "external-upstream-embeddings",
+      "request": { "model": "gateway-model", "input": "hello" },
+      "expect": { "response_object": "list", "total_tokens": 6 }
+    },
+    {
+      "name": "models",
+      "operation": "models",
+      "provider_model": "external-upstream-chat",
+      "resource": { "id": "rsrc_external_mock", "provider_id": "prv_external_mock" },
+      "request": {},
+      "expect": { "status": 200, "catalog_type": "external_mock", "catalog_etag": "mock-etag" }
+    },
+    {
+      "name": "probe",
+      "operation": "probe",
+      "provider_model": "external-upstream-chat",
+      "resource": { "id": "rsrc_external_mock", "provider_id": "prv_external_mock" },
+      "request": { "model": "gateway-model", "input": "hello" },
+      "expect": { "probe_resource_id": "rsrc_external_mock", "probe_text": "external mock provider is reachable" }
+    }
+  ]
+}

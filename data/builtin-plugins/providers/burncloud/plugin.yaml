@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.burncloud"
+name: "burncloud"
+version: 1.0.0
+summary: "Connect TokenHub to burncloud."
+description: "Connect TokenHub to burncloud. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "burncloud"
+      name: "burncloud"
+      display_name: "burncloud"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: ""
+      categories: []
+      models_count: 34
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

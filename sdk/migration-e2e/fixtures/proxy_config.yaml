@@ -4,7 +4,7 @@ model_list:
   - model_name: gpt-4o-mini
     litellm_params:
       model: openai/gpt-4o-mini
-      api_base: http://localhost:8081/v1
+      api_base: http://mock-upstream/v1
       api_key: os.environ/OPENAI_API_KEY
     model_info:
       mode: chat

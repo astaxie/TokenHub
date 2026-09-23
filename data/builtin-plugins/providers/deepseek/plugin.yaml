@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider.deepseek"
+name: "DeepSeek"
+version: 1.0.0
+summary: "Connect TokenHub to DeepSeek."
+description: "Connect TokenHub to DeepSeek. Connection behavior is provided by the host-managed deepseek adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "deepseek"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "deepseek"
+  provider:
+    default_base_url: "https://api.deepseek.com"
+    catalog:
+      id: "deepseek"
+      name: "DeepSeek"
+      display_name: "DeepSeek"
+      type: "deepseek"
+      base_url: "https://api.deepseek.com"
+      doc_url: "https://api-docs.deepseek.com/quick_start/pricing"
+      categories: []
+      models_count: 4
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

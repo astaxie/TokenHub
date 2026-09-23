@@ -1,0 +1,21 @@
+schema_version: 2
+id: "tokenhub.provider.local"
+name: "Local Model Service"
+version: 1.0.0
+summary: "Connect TokenHub to a model service on the local network."
+description: "Connect TokenHub to a model service on the local network."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "local"
+distribution:
+  license: Apache-2.0
+kinds: ["provider"]
+placement: []
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

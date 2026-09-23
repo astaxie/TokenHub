@@ -72,6 +72,7 @@ flowchart TB
 多实例模式下：
 
 - Nginx 将管理后台、API 和健康检查流量负载均衡到健康副本。
+- Nginx 会把 `/docs`、`/openapi.json` 和 `/openapi.yaml` 转发到后端，因此自托管的公开网关 API 参考与模型 API 使用同一个公开 origin。
 - 后端副本将持久化配置、OAuth 会话、配额计数、审计数据、集群锁和请求并发租约统一存储在 PostgreSQL 中。
 - 租约过期和归属判断使用 PostgreSQL 时钟，避免不同宿主机的时钟偏差导致租约被提前接管；失去租约后，心跳会取消对应任务或请求。
 - 每个后端启动时都会同步当前配置目录中的候选模型元数据，并通过集群租约串行执行幂等同步。
@@ -169,12 +170,12 @@ sudo env TOKENHUB_RELEASE_REPOSITORY=your-account/TokenHub \
 cp deploy/.env.example deploy/.env
 ```
 
-启动前请编辑 `deploy/.env`：
+启动前检查 `deploy/.env`：
 
-- `TOKENHUB_ADMIN_TOKEN`：Admin API 启动 Token，请使用至少 32 字节的随机值。
+- `TOKENHUB_ADMIN_TOKEN`：可选的 Admin API 静态 Token。运维自动化需要使用时，设置至少 32 字节的随机值；否则保留占位值以禁用该 Token。
 - `TOKENHUB_INTEGRATION_TOKEN`：外部平台集成事件和模型访问凭证控制接口的专用凭证，请使用与 Admin Token 不同且至少 32 字节的随机值。
-- `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`：仅用于创建初始 `admin` 用户，请设置至少 12 字节的密码。
-- `TOKENHUB_SECRET_KEY`：后端密钥，请使用至少 32 字节的随机值并保持稳定。
+- `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`：可选的初始 `admin` 密码。可以设置至少 12 字节的密码，也可以保留占位值，由 TokenHub 自动生成。
+- `TOKENHUB_SECRET_KEY`：后端加密根密钥。PostgreSQL 和已有 SQLite 数据库必须配置至少 32 字节的稳定值。全新文件型 SQLite 部署可以保留占位值，TokenHub 会在数据库旁生成权限为 `0600` 的密钥文件。
 - `TOKENHUB_IMAGE_TAG`：托管 TokenHub 镜像标签，默认 `latest`。
 - `TOKENHUB_PUBLIC_BASE_URL`：展示给用户的后端访问地址。
 - `TOKENHUB_API_BASE_URL`：浏览器管理后台访问后端的地址，由前端服务在运行时读取。旧变量 `NEXT_PUBLIC_API_BASE_URL` 保留一个兼容周期，作为回退配置。
@@ -182,6 +183,10 @@ cp deploy/.env.example deploy/.env
 - `TOKENHUB_FRONTEND_PORT`：管理后台宿主机端口，默认 `3000`。
 - `TOKENHUB_BACKEND_REPLICAS`：远端 PostgreSQL Compose 的后端副本数，默认 `2`。
 - `TOKENHUB_FRONTEND_REPLICAS`：远端 PostgreSQL Compose 的前端副本数，默认 `2`。
+
+后端会在 `/docs` 提供公开网关 API 参考，并在 `/openapi.json` 和 `/openapi.yaml` 提供机器可读的 OpenAPI 3.1 合约。文档中的 server URL 优先来自 `TOKENHUB_PUBLIC_BASE_URL`，未配置时使用当前请求 origin。服务位于反向代理后方时，请让 `TOKENHUB_PUBLIC_BASE_URL` 与浏览器可访问的后端 origin 保持一致。
+
+浏览器客户端（包括 `/docs` 的 **Try it out** 流程）只有在文档页与后端网关同源时才无需额外 CORS 配置。如果管理后台或文档页与 `TOKENHUB_PUBLIC_BASE_URL` 不同源，请将该浏览器 origin 精确加入 `TOKENHUB_CORS_ALLOWED_ORIGINS`。不要为了让浏览器调用可用而在生产环境放宽为通配 CORS。
 
 在仓库根目录启动：
 
@@ -282,9 +287,18 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
 首次登录后台：
 
 - 用户名：`admin`
-- 密码：配置的 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`
+- 密码：配置的 `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`，或通过以下命令获取自动生成的密码：
 
-在 `prod`、`production`、预发布等非开发环境中，服务会拒绝占位值、少于 32 字节的 Admin Token 或后端密钥，以及少于 12 字节的初始密码。
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml \
+  exec tokenhub-backend /opt/tokenhub/current/bin/tokenhub initial-admin-password
+```
+
+自动生成的密码仅以密文保存。首次成功登录或重置密码后，该密码不再可查询。登录后应立即修改密码。Kubernetes 部署可以通过 `kubectl exec <pod> -- ...` 执行同一命令。
+
+在 `prod`、`production`、预发布等非开发环境中，已知的 Admin Token 和初始密码占位值会按未配置处理，其他非空弱值仍会被拒绝。除全新文件型 SQLite 数据库外，加密根密钥始终为必填项；SQLite 首次启动时生成的密钥会持久化在数据库旁，已有数据库不会自动生成替代密钥。
+
+如果配置无法安全加载，进程会继续响应 `/livez`，但 `/readyz`、`/healthz` 和业务接口会返回 `503`。该状态可避免编排系统因进程退出而持续重启 Pod，同时不会把实例加入服务。修正配置后需要重启 TokenHub；存活探针应使用 `/livez`，就绪探针应使用 `/readyz`。
 
 手动查看或持续跟踪日志：
 
@@ -357,12 +371,19 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_DEPLOYMENT_TYPE` | 编译期取值 | 覆盖二进制中编译的部署类型：`source`、`container` 或 `native`。Compose 文件设置为 `container` |
 | `TOKENHUB_MANAGED_UPDATES` | `false` | 允许容器部署执行在线更新与回退；原生部署始终允许 |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | 托管 Release 在线更新与回退使用的安装根目录 |
-| `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | 允许提供 `X-Forwarded-For` 的代理 IP 或 CIDR，逗号分隔 |
-| `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公网地址 | 允许调用后端的浏览器 Origin，逗号分隔 |
-| `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Admin API 启动访问 Token |
+| `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | 允许提供 `X-Forwarded-For`、`X-Forwarded-Host` 和 `X-Forwarded-Proto` 的代理 IP 或 CIDR，逗号分隔；可信代理必须覆盖这些请求头，不得透传客户端值 |
+| `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE` | `strict` | `strict` 在 CIDR 清单为空时允许 RFC1918/ULA 字面量。回环地址仍需 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`。设置为 `auto` 后才允许管理员配置的内网域名。未知值按严格模式处理 |
+| `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL` | `false` | 本地上游默认绕过所选代理。设为 `true` 后本地目标也遵循所选代理策略；继承环境模式仍遵循 `NO_PROXY`。若需强制走代理，应同时选择“使用统一代理” |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` | 空 | 可选的限制性私网 CIDR 清单。空清单在两种模式下都允许 RFC1918/ULA 字面量；自动模式下这些范围也适用于内网域名解析结果。非空时限制私网字面量，自动模式还会同时限制内网域名解析结果。非空但无效的配置不会退回全部放行；特殊危险地址不能通过清单放行 |
+| `TOKENHUB_PROVIDER_UPSTREAM_NAT64_PREFIX` | 空 | 可选的 RFC 6052 DNS64/NAT64 前缀，用于识别其中嵌入的 IPv4 目标。支持 32、40、48、56、64、96 位前缀；使用 `64:ff9b:1::/48` 等网络专用前缀时需要配置，标准 `64:ff9b::/96` 前缀无需配置 |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false` | 仅严格模式或配置了非空私网清单时生效，此时 `true` 允许 localhost/127.0.0.1/::1。自动模式且清单为空时忽略此值并允许回环 |
+| `HTTP_PROXY` / `HTTPS_PROXY` | 空 | 所有 HTTP Provider 通道使用的标准出站 forward proxy。代理选择由运维配置负责；未走代理的请求继续接受 TokenHub 的 DNS/IP 出站校验 |
+| `NO_PROXY` | 空 | 标准代理绕过列表，以逗号分隔；匹配的 Provider 请求使用带防护的直连路径 |
+| `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公网地址 | 允许调用后端的精确浏览器 Origin，逗号分隔；设置后，同一列表也是 OAuth 控制台回跳 Origin 的精确白名单。每项只能包含 scheme、host 和可选端口，不得包含路径 |
+| `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | 可选的 Admin API 静态 Token；已知占位值表示禁用 |
 | `TOKENHUB_INTEGRATION_TOKEN` | `change-me-tokenhub-integration-token` | 外部平台集成事件和模型访问凭证控制接口专用 Token |
-| `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 初始 `admin` 用户密码；生产启动前必须修改 |
-| `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | 后端密钥 |
+| `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 可选的初始 `admin` 密码；已知占位值表示首次启动时随机生成 |
+| `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | 稳定的加密根密钥；仅全新文件型 SQLite 数据库可以自动生成 |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | 容器内 SQLite 数据库路径 |
 | `TOKENHUB_DB_HOST` | 空 | PostgreSQL 主机。设置后改用 `TOKENHUB_DB_*` 各字段拼装 DSN，而不是 `TOKENHUB_DATABASE_URL`，可避免密码含 `#`、`?`、`/`、`%` 时的 URL 编码问题。两者同时设置时仍以 `TOKENHUB_DATABASE_URL` 优先 |
 | `TOKENHUB_DB_PORT` | `5432` | PostgreSQL 端口；仅在设置了 `TOKENHUB_DB_HOST` 时生效 |
@@ -373,6 +394,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | 备份目录 |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | 托管部署中的标准模型目录文件 |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | 托管部署中的 Provider 模板与候选模型目录文件 |
+| `TOKENHUB_PLUGIN_DIR` | `/app/plugins` | 持久化插件包目录，后端启动时扫描，并在插件生命周期操作后热加载；多实例部署必须协调所有副本使用相同插件版本 |
+| `TOKENHUB_PLUGIN_MARKETPLACE_URL` | 空 | HTTPS 插件市场索引 URL，供管理后台浏览插件列表；在线索引在完成验证前仅用于发现 |
 | `TOKENHUB_SEED_DEMO` | `false` | 是否写入演示数据 |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider 资源进入冷却前的失败阈值 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | Provider 资源进入冷却后获得半开重试前的基础等待秒数 |
@@ -389,19 +412,59 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | 等待转换成 span 的完成事件数；队列满时丢弃链路而不是拖慢请求 |
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 单个非流式上游请求的整体超时 |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | 流式请求没有整体超时；该值限制等待响应头的时长，以及流开始后允许的静默时长。每收到一个字节即重新计时 |
+| `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `8388608`（8 MiB） | `/v1` 接口的 JSON 请求体上限。可填原始字节数或二进制单位（`8m`、`8mib`、`512k`）。超过 512 MiB 会被截断到上限 |
+| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | 多模态对话接口（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）的更高请求体上限。请将反向代理的 `client_max_body_size` 至少设置为该值 |
+| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 仅内置的多实例 nginx 负载均衡器读取该值。它使用 nginx 尺寸语法（`32m`、`512k`），不是后端的字节格式，且应不小于 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | 集群并发租约的过期时间及续租周期基准 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | 集群协调锁的过期时间及续租周期基准 |
+| `TOKENHUB_BILLING_REDIS_URL` | 空 | 可选 Redis URL，用于高并发计费准入。设置后，Redis 处理每分钟 RPM/TPM 预留以及 API Key/用户并发租约；数据库仍是持久计费账本 |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停机时等待在途请求完成的最长秒数 |
 | `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Docker 强制停止后端前的 Compose 宽限时间 |
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | 对 Chat Completions、Anthropic Messages 和 Responses，将同一会话固定到同一个上游账号，使上游 prompt cache 持续命中。默认关闭，因为它会改变路由行为 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 逗号分隔的模型灰度名单；留空表示对全部模型生效 |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | 是否接受 Chat/Responses 的 `user` 和 Anthropic 的 `metadata.user_id` 作为亲和键。默认关闭，因为同一用户的并发会话会共享取值、全部落到同一个账号 |
+| `TOKENHUB_GUARDRAIL_MODEL_URL` | 空 | 专用 Qwen3Guard 服务的完整 OpenAI-compatible chat-completions URL。每次调用前，本地 `mask` 规则命中的值会替换为 `[REDACTED]`，未命中的待检测文本仍会发送到该服务；留空时不调用模型，并按各策略配置的不可用行为处理 |
+| `TOKENHUB_GUARDRAIL_MODEL_API_KEY` | 空 | 专用安全模型服务的可选 Bearer 凭据 |
+| `TOKENHUB_GUARDRAIL_MODEL_NAME` | `Qwen/Qwen3Guard-Gen-0.6B` | 发送给安全模型服务的模型标识 |
+| `TOKENHUB_GUARDRAIL_MODEL_TIMEOUT_SECONDS` | `10` | 单次安全模型分类的超时时间 |
 | `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | 生成图片资产的存放目录 |
 | `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | 消费图片生成队列的工作协程数量 |
 | `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | 队列中允许排队的图片任务上限 |
 | `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | 单个图片生成任务的超时时间，超时判定为失败 |
 | `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | 被标记为不支持图片生成的供应商资源，隔多久重新探测一次 |
+| `TOKENHUB_RESPONSE_WORKER_CONCURRENCY` | `2` | 领取持久化后台 Responses 任务的 Worker 数量 |
+| `TOKENHUB_RESPONSE_POLL_INTERVAL_MILLIS` | `250` | 后台 Responses 任务与取消状态的数据库轮询间隔 |
+| `TOKENHUB_RESPONSE_JOB_TIMEOUT_SECONDS` | `300` | 单个后台 Responses 任务的执行超时 |
+| `TOKENHUB_RESPONSE_LEASE_TTL_SECONDS` | `30` | 多实例间隔离后台 Responses Worker 的租约时长 |
+| `TOKENHUB_RESPONSE_RESULT_TTL_SECONDS` | `3600` | 任务完成后加密请求与结果载荷的保留时长 |
+| `TOKENHUB_RESPONSE_MAX_QUEUED_JOBS` | `1000` | 单个部署接受的后台 Responses 排队和运行任务上限 |
 | `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI 的目标 Admin API 地址。仅由该 CLI 读取，后端服务不会读取；可被 `--to` 覆盖 |
+
+如需通过 Compose 运行可选 Redis 计费组件，请在常规命令中追加 overlay 文件：
+
+```bash
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.redis.yml up -d --remove-orphans
+```
+
+### 本机与内网模型服务
+
+管理员可以直接填写 `http://192.168.1.10:8000/v1` 等 HTTP 私网字面量，无需更改访问模式。设置为 `auto` 后，还可在不配置 CIDR 清单的情况下填写回环地址和内网域名，例如 `http://127.0.0.1:8000/v1`、`host.docker.internal`、Docker 服务名或企业内网域名。地址须从后端所在环境可达；容器的回环地址指向容器自身。TokenHub 不会自动创建 DNS 记录、加入 Docker 网络或配置宿主机别名。
+
+保存时校验 URL 语法和字面量地址，不查询 DNS，因此离线服务也可配置，且不会阻塞存储操作。发送请求前，HTTP 域名必须全部解析为获准的本地地址；公网或混合公网／私网结果会在发送凭据和请求体前被拒绝。实际直连使用已校验地址，不再次解析；代理请求保留原始 Host 与 TLS 服务名。metadata、link-local、multicast 等特殊危险目标继续禁止。同协议、同地址及端口的重定向可以继续，包括内网同源跳转；跨源跳转仍被拒绝。
+
+HTTP 域名走代理时，TokenHub 使用 CONNECT 连接已验证 IP，并在隧道内保留原始 Host。代理须允许 CONNECT 到模型服务端口；拒绝时不会回退为直连。
+
+严格模式是默认值。它允许 RFC1918/ULA 字面量，localhost 仍需 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`。运维人员必须设置 `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto`，才会放行内网域名。两种模式下，非空私网清单都会继续限制访问范围，包括用来禁止全部私网字面量。如本地流量也必须遵循所选代理，需另外设置 `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL=true`。这些部署配置需重启后端或重建容器生效。
+
+无需重启也可以在「系统设置 → 基础设置 → Provider 出口模式」切换出口。升级默认使用「继承环境变量代理」，读取进程启动时捕获的 `HTTP_PROXY`、`HTTPS_PROXY` 和 `NO_PROXY`；「直接连接」忽略这些变量；「使用统一代理」把一个 HTTP 或 HTTPS forward proxy 用于全部 Provider 上游通道，包括推理、流式、图片、模型发现、Provider catalog 刷新、额度查询和 Provider 凭据刷新。身份登录、通知、Tracing 和版本更新不受这项设置影响。
+
+统一代理支持可选的 Basic 认证，密码会加密保存，API 与控制台只显示掩码。保存代理配置时只校验其语法；「测试代理连接」使用当前未保存表单和已有 Provider，仅验证代理 TCP/TLS、认证、CONNECT 与目标 TLS（使用系统 CA），不会发送 Provider 凭据或模型请求。无论选择哪种代理模式，Provider 与 Provider Resource 的 Base URL 都保留原有的入库协议和字面量地址校验：metadata 等始终禁止的目标仍会被拒绝，本地目标遵循上文的自动／严格访问策略。每次代理请求前，TokenHub 都会在本地解析原始 Provider 域名，执行已配置的本地地址与特殊用途地址策略，并把代理请求或 CONNECT 隧道固定到已校验的 IP，同时保留原始 HTTP Host 和 TLS 服务名。直连及 `NO_PROXY` 命中的请求也会在受保护的拨号路径执行相同地址策略。代理配置、认证、连接、超时和 HTTPS CONNECT 失败按平台出口故障处理，不会惩罚 Provider 资源，也不会触发路由故障转移。对于明文 HTTP 代理请求，HTTP 错误响应可能来自代理或 Provider，因此保留常规上游错误处理。多实例会在五秒内加载共享配置，数据库临时读取失败时继续使用上一份有效配置。
+
+后端使用 Fake-IP DNS 时，在「系统设置 → 基础设置 → Synthetic DNS / Fake-IP 网段」配置代理实际地址池。这项独立例外默认关闭，只作用于域名解析结果，不放行字面量 Provider IP。不要假定所有代理都使用 `198.18.0.0/15`，该网段为基准测试保留，并非 Fake-IP 专属。私网 synthetic 地址池仍需单独开启私网信任。命中已启用 synthetic 地址池的域名继续要求 HTTPS，且不享受本地默认绕过代理，即使其 Fake-IP 位于 RFC1918/ULA。真实本地服务独立遵循上文的自动／严格策略。Synthetic 例外不能放行 loopback、link-local、metadata、multicast 或受保护的 NAT64 目标。
+
+模型目录连接失败现在区分 DNS 地址被安全策略拒绝（`provider_models_address_blocked`）、域名解析失败（`provider_models_dns_failed`）、超时（`provider_models_timeout`）和 TLS 证书验证失败（`provider_models_tls_failed`）。若 Fake-IP 解析结果被拒绝，应核实代理实际地址池后配置现有兼容例外。错误响应使用固定文案，不暴露原始传输错误或凭据。 地址被拒绝的错误在 `error.details.blocked_ips` 中提供规范化的实际 IP；演练场失败事件通过 `error_details.blocked_ips` 提供相同信息。控制台同时显示被拒绝地址和配置入口。配置前应核实代理实际地址池，系统不会自动信任被拒绝的地址。
 
 ## 前端环境变量
 
@@ -429,7 +492,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 ## 目录文件
 
-发布的托管镜像和原生安装包都包含对应版本的 `data/model-catalog.yaml` 与 `data/provider-catalog.json`。它们会随其余 Release 一起激活到 `/opt/tokenhub/current/catalog/`，确保后端程序和两类目录来自同一版本。Provider 目录由 PublicProviderConf 数据迁入并随仓库维护，TokenHub 运行时不会拉取远端目录数据。
+发布的托管镜像和原生安装包都包含对应版本的 `data/model-catalog.yaml` 与 `data/provider-catalog.json`。它们会随其余 Release 一起激活到 `/opt/tokenhub/current/catalog/`，确保后端程序和两类目录来自同一版本。后端启动时只读取随版本提供的本地 Provider 目录，不依赖网络。管理员显式刷新 Provider 目录时，系统会从 `https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json` 拉取完整的 `PublicProviderConf` 目录；若响应失败或内容不完整，则回退到配置的本地 `provider-catalog.json`。
 
 需要使用自定义模型目录时，显式指定挂载文件：
 
@@ -441,15 +504,33 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 更新当前配置的目录文件后，可以重启后端，也可以在「系统设置 → 基础设置」中点击「同步模型参考目录」。两种方式都会同步参考元数据、保留自定义对外模型，但不会发布任何模型。
 
-`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。如需使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
+`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。`TOKENHUB_PLUGIN_DIR` 指向后端启动时扫描的持久化插件包目录。Docker Compose 部署中该目录由 `tokenhub-plugins` volume 承载，所以插件包状态会在镜像升级后保留。 容器入口脚本会校验 `TOKENHUB_PLUGIN_DIR` 为非根目录的绝对路径，并在降低 root 权限前创建目录、将其所有者设为运行时的 `node` 用户，首次使用新卷时也会执行。`TOKENHUB_PLUGIN_MARKETPLACE_URL` 可以指向一个 HTTPS JSON 索引，用于在管理后台浏览插件列表；在线索引在完成分离签名和吊销源验证前仅用于发现，离线镜像可作为安装来源。如需为启动加载和刷新回退使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
+
+### 连接 Kronk
+
+TokenHub 只连接外部 Kronk Model Server，不安装 Kronk、不下载 GGUF 文件，也不在进程内嵌 llama.cpp。TokenHub 容器内的 `127.0.0.1` 指向容器自身，而不是 Docker 宿主机。Kronk 运行在宿主机时，应使用宿主机可达的私网 IP 或环境支持的 `host.docker.internal`；运行在其他容器时，应加入共享 Docker 网络并使用 Kronk 服务名。私网字面量在默认严格模式下即可使用。`host.docker.internal` 等域名需要 `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto`。只有 TokenHub 与 Kronk 共享同一网络命名空间时才应使用回环地址；严格模式需要 `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK`。
+
+Kronk 默认监听明文 HTTP。远程部署时应使用可信私网或 TLS 反向代理，并启用合适的 Kronk authorization mode。TokenHub 只访问推理、模型发现、存活和就绪端点，不代理模型下载、目录、安全管理、调试、pprof 或管理 UI 端点。
 
 ## 反向代理
 
 生产环境建议使用 HTTPS，并转发：
 
 - 管理后台流量到前端服务。
-- `/v1/*` 和 `/api/admin/*` 流量到后端服务。
+- `/api/*`、`/v1/*`、`/v1beta/*`、`/docs`、`/openapi.json`、`/openapi.yaml`、`/livez`、`/readyz` 和 `/healthz` 流量到后端服务。
 
 长文本生成和流式响应可能耗时较长，请合理设置请求体大小和超时时间。
 
-存活探针使用 `/livez`，就绪探针使用 `/readyz`。数据库不可用时，`/readyz` 和向后兼容的 `/healthz` 会返回 `503`。
+存活探针使用 `/livez`，就绪探针使用 `/readyz`。数据库不可用，或数据库演进状态不可服务（迁移处于脏状态、账本校验失败，或阻塞型数据回填未完成）时，`/readyz` 和向后兼容的 `/healthz` 会返回 `503`。待执行的在线数据回填不影响就绪状态。
+
+## 可选的 Jev 智能路由
+
+灰度启用、请求范围、文本外发、审计和回滚见 [Jev 智能路由](semantic-routing.md)。下列服务端配置还需配合模型级「观察」或「启用」模式。
+
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `TOKENHUB_SEMANTIC_ROUTING_ENABLED` | `false` | 开启独立的 Jev 决策客户端。 |
+| `TOKENHUB_SEMANTIC_ROUTING_PROJECTS` | 空 | 允许外发用户文本的精确项目 ID，以逗号分隔；空名单全部拒绝。 |
+| `TOKENHUB_TYPESAFE_API_KEY` | 空 | 仅供服务端使用的 TypeSafe 凭据。 |
+| `TOKENHUB_TYPESAFE_MODEL` | `jev-1.13.0` | 明确的评估模型版本。 |
+| `TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS` | `1000` | 目录查询与评估超时，范围为 1–10000 ms。 |

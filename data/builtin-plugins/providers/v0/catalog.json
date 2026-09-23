@@ -1,0 +1,113 @@
+{
+  "id": "v0",
+  "name": "v0",
+  "doc": "https://sdk.vercel.ai/providers/ai-sdk-providers/vercel",
+  "display_name": "v0",
+  "models": [
+    {
+      "id": "v0-1.0-md",
+      "name": "v0-1.0-md",
+      "family": "v0",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [],
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-05-22",
+      "last_updated": "2025-05-22",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 32000
+      },
+      "cost": {
+        "input": 3,
+        "output": 15
+      },
+      "display_name": "v0-1.0-md",
+      "type": "chat"
+    },
+    {
+      "id": "v0-1.5-lg",
+      "name": "v0-1.5-lg",
+      "family": "v0",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [],
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-06-09",
+      "last_updated": "2025-06-09",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 512000,
+        "output": 32000
+      },
+      "cost": {
+        "input": 15,
+        "output": 75
+      },
+      "display_name": "v0-1.5-lg",
+      "type": "chat"
+    },
+    {
+      "id": "v0-1.5-md",
+      "name": "v0-1.5-md",
+      "family": "v0",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [],
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-06-09",
+      "last_updated": "2025-06-09",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 32000
+      },
+      "cost": {
+        "input": 3,
+        "output": 15
+      },
+      "display_name": "v0-1.5-md",
+      "type": "chat"
+    }
+  ]
+}

@@ -15,3 +15,5 @@ backend/tokenhub
 data/*
 !data/model-catalog.yaml
 !data/provider-catalog.json
+!data/builtin-plugins
+!data/builtin-plugins/**

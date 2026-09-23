@@ -160,16 +160,17 @@ func (d *sseDecoder) Next() (serverSentEvent, error) {
 	}
 }
 
-// Pending returns the bytes of the frame in progress, which no completed event
-// has carried yet. A pass-through flushes them when the stream fails mid-frame:
-// the upstream already put them on the wire, and dropping them would truncate
-// the client's copy further than the failure itself did. An event abandoned for
-// exceeding the size limit reports nothing.
-//
-// Reading it does not consume it, so it is only meaningful once the caller has
-// stopped: resuming Next would hand the same bytes back inside a later event.
-func (d *sseDecoder) Pending() []byte {
-	return d.assembler.raw
+// PendingEvent returns the parsed fields and raw framing accumulated before a
+// mid-frame read failure. A pass-through flushes it because the upstream already
+// put those bytes on the wire; dropping them would truncate the client's copy
+// further than the failure itself did. An event abandoned for exceeding the
+// size limit reports no raw bytes. Reading it does not consume or reset the
+// assembler, so it is only meaningful after the caller has stopped.
+func (d *sseDecoder) PendingEvent() serverSentEvent {
+	event := d.assembler.event
+	event.Data = strings.Join(d.assembler.data, "\n")
+	event.Raw = d.assembler.raw
+	return event
 }
 
 // readLine reads one line while charging its bytes against the event budget.

@@ -1,10 +1,13 @@
 "use client";
 
+import { StatementLauncher } from "./billing-statements";
 import { AlertTriangle, Boxes, CircleCheck, CircleDashed, Link2, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { type ApiContext, type AppData, type Model, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryLabel, priceMetric } from "../domain/catalog";
 import { findProvider, modelRoutesFor } from "../domain/entities";
+import { modelDirectorySubtitle, modelDisplayName } from "../domain/model-display-name";
+import { modelMetadataFacts } from "../domain/model-endpoints";
 import { externalModels, filterExternalModels, isCustomModelAlias, modelPublicationState, modelRuntimeState, type ModelPublicationState } from "../domain/model-directory";
 import { compactNumber } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
@@ -89,7 +92,7 @@ export function ModelDirectoryView({
           stage={hasImportedProviderModels ? "models" : "providers"}
           title={hasImportedProviderModels ? "还没有对外模型" : "先引入可用的 Provider 模型"}
           description={hasImportedProviderModels
-            ? "从内置的 165 个模型中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。"
+            ? "从内置模型目录中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。"
             : "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。"}
           actionLabel={hasImportedProviderModels ? "新建对外模型" : "前往 Provider 渠道"}
           onAction={hasImportedProviderModels ? onCreateModel : onOpenProviders}
@@ -149,6 +152,7 @@ export function ModelDirectoryView({
         </div>
 
         <ExternalModelsTable
+          api={api}
           data={data}
           models={filteredExternal}
           readOnly={readOnly}
@@ -183,7 +187,8 @@ function ModelDirectoryStats({ stats }: { stats: ReturnType<typeof modelDirector
   );
 }
 
-function ExternalModelsTable({ data, models, readOnly, busy, onOpenRoutes, onEdit, onDelete, onPublish }: {
+function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, onEdit, onDelete, onPublish }: {
+  api: ApiContext;
   data: AppData;
   models: Model[];
   readOnly: boolean;
@@ -215,15 +220,22 @@ function ExternalModelsTable({ data, models, readOnly, busy, onOpenRoutes, onEdi
             const publication = modelPublicationState(model, data);
             const runtime = modelRuntimeState(model, data);
             const customAlias = isCustomModelAlias(model, routes);
+            const title = modelDisplayName(model.metadata, model.name);
+            const subtitle = modelDirectorySubtitle(model.name, title, !readOnly ? tx(customAlias ? "自定义别名" : "同名 1:1") : "");
+            const category = modelCategory(model, data);
+            const categoryLabel = modelCategoryLabel(category, data);
+            const capabilities = model.capabilities ?? [];
+            const supportedParameters = model.supported_parameters ?? [];
+            const facts = modelMetadataFacts(model.metadata, capabilities, supportedParameters);
             return (
               <tr key={model.name}>
                 <td>
                   <div className="directory-model-name">
-                    <ModelBrandIcon category={modelCategory(model)} label={modelCategoryLabel(modelCategory(model))} />
-                    <div><strong>{model.name}</strong>{!readOnly ? <span>{customAlias ? tx("自定义别名") : tx("同名 1:1")}</span> : null}</div>
+                    <ModelBrandIcon category={category} label={categoryLabel} data={data} />
+                    <div><strong>{title}</strong>{subtitle ? <span>{subtitle}</span> : null}</div>
                   </div>
                 </td>
-                <td><strong>{model.modality || "chat"}</strong><span>{compactNumber(model.context_window || 0)} ctx · {(model.capabilities ?? []).slice(0, 2).join(" / ") || model.family || "-"}</span></td>
+                <td><strong>{model.modality || "chat"}</strong><span>{compactNumber(model.context_window || 0)} ctx · {capabilities.slice(0, 2).join(" / ") || model.family || "-"}</span>{facts.map((fact) => <div key={fact.kind}><small>{tx({ protocols: "支持接口协议", parameters: "支持参数", capabilities: "模型能力" }[fact.kind])}: {fact.values.join(" / ")}</small></div>)}</td>
                 {!readOnly ? <>
                   <td>
                     {primary ? <div className="mapping-summary"><span>{provider?.name || primary.provider_id}</span><strong>{primary.provider_model}</strong>{routes.length > 1 ? <em>+{routes.length - 1}</em> : null}</div> : <span className="muted">{tx("尚未映射 Provider")}</span>}
@@ -233,7 +245,7 @@ function ExternalModelsTable({ data, models, readOnly, busy, onOpenRoutes, onEdi
                 </> : <td><StatusPill status="active" label={tx("当前账号可用")} /></td>}
                 <td><strong>{priceMetric(model.input_price_usd_per_1m)}</strong><span>{tx("输入")} · {priceMetric(model.output_price_usd_per_1m)} {tx("输出")}</span></td>
                 {!readOnly ? (
-                  <td><div className="directory-row-actions"><button aria-label={`${tx("路由策略")}: ${model.name}`} className="text-button" onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button><button className="text-button" onClick={() => onEdit(model)} type="button">{tx("编辑")}</button><button className="text-button" disabled={busy || (publication !== "published" && activeRoutes.length === 0)} onClick={() => onPublish(model, publication !== "published")} type="button">{tx(publication === "published" ? "下线" : "发布")}</button><button className="danger-button" onClick={() => onDelete(model)} type="button">{tx("删除")}</button></div></td>
+                  <td><div className="directory-row-actions"><StatementLauncher api={api} side="tenant" model={model.name} /><button aria-label={`${tx("路由策略")}: ${model.name}`} className="text-button" onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button><button className="text-button" onClick={() => onEdit(model)} type="button">{tx("编辑")}</button><button className="text-button" disabled={busy || (publication !== "published" && activeRoutes.length === 0)} onClick={() => onPublish(model, publication !== "published")} type="button">{tx(publication === "published" ? "下线" : "发布")}</button><button className="danger-button" onClick={() => onDelete(model)} type="button">{tx("删除")}</button></div></td>
                 ) : null}
               </tr>
             );

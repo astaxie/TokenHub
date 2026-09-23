@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.berget"
+name: "Berget.AI"
+version: 1.0.0
+summary: "Connect TokenHub to Berget.AI."
+description: "Connect TokenHub to Berget.AI. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.berget.ai/v1"
+    catalog:
+      id: "berget"
+      name: "Berget.AI"
+      display_name: "Berget.AI"
+      type: "openai_compatible"
+      base_url: "https://api.berget.ai/v1"
+      doc_url: "https://api.berget.ai"
+      categories: []
+      models_count: 7
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

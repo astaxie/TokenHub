@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.v0"
+name: "v0"
+version: 1.0.0
+summary: "Connect TokenHub to v0."
+description: "Connect TokenHub to v0. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "v0"
+      name: "v0"
+      display_name: "v0"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://sdk.vercel.ai/providers/ai-sdk-providers/vercel"
+      categories: []
+      models_count: 3
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

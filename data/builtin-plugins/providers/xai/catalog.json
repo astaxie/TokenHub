@@ -1,0 +1,599 @@
+{
+  "id": "xai",
+  "name": "xai",
+  "doc": "https://docs.x.ai/docs/models",
+  "display_name": "xai",
+  "models": [
+    {
+      "id": "grok-4.20-multi-agent-0309",
+      "name": "Grok 4.20 Multi-Agent",
+      "family": "grok",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "tool_call": false,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-03-09",
+      "last_updated": "2026-03-09",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1000000,
+        "output": 30000
+      },
+      "cost": {
+        "input": 1.25,
+        "output": 2.5,
+        "cache_read": 0.2,
+        "tiers": [
+          {
+            "input": 2.5,
+            "output": 5,
+            "cache_read": 0.4,
+            "tier": {
+              "type": "context",
+              "size": 200000
+            }
+          }
+        ],
+        "context_over_200k": {
+          "input": 2.5,
+          "output": 5,
+          "cache_read": 0.4
+        }
+      },
+      "display_name": "Grok 4.20 Multi-Agent",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-4.20-0309-non-reasoning",
+      "name": "Grok 4.20 (Non-Reasoning)",
+      "family": "grok",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-03-09",
+      "last_updated": "2026-03-09",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1000000,
+        "output": 30000
+      },
+      "cost": {
+        "input": 1.25,
+        "output": 2.5,
+        "cache_read": 0.2,
+        "tiers": [
+          {
+            "input": 2.5,
+            "output": 5,
+            "cache_read": 0.4,
+            "tier": {
+              "type": "context",
+              "size": 200000
+            }
+          }
+        ],
+        "context_over_200k": {
+          "input": 2.5,
+          "output": 5,
+          "cache_read": 0.4
+        }
+      },
+      "display_name": "Grok 4.20 (Non-Reasoning)",
+      "type": "chat"
+    },
+    {
+      "id": "grok-4.3",
+      "name": "Grok 4.3",
+      "family": "grok",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-04-17",
+      "last_updated": "2026-04-17",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1000000,
+        "output": 30000
+      },
+      "cost": {
+        "input": 1.25,
+        "output": 2.5,
+        "cache_read": 0.2,
+        "tiers": [
+          {
+            "input": 2.5,
+            "output": 5,
+            "cache_read": 0.4,
+            "tier": {
+              "type": "context",
+              "size": 200000
+            }
+          }
+        ],
+        "context_over_200k": {
+          "input": 2.5,
+          "output": 5,
+          "cache_read": 0.4
+        }
+      },
+      "display_name": "Grok 4.3",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-imagine-image-quality",
+      "name": "Grok Imagine Image Quality",
+      "family": "grok",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "release_date": "2026-04-03",
+      "last_updated": "2026-04-03",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "image",
+          "pdf"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 8000,
+        "output": 8192
+      },
+      "display_name": "Grok Imagine Image Quality",
+      "type": "chat"
+    },
+    {
+      "id": "grok-imagine-video",
+      "name": "Grok Imagine Video",
+      "family": "grok",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "release_date": "2026-01-28",
+      "last_updated": "2026-01-28",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "pdf"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1024,
+        "output": 8192
+      },
+      "display_name": "Grok Imagine Video",
+      "type": "chat"
+    },
+    {
+      "id": "grok-4.20-0309-reasoning",
+      "name": "Grok 4.20 (Reasoning)",
+      "family": "grok",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-03-09",
+      "last_updated": "2026-03-09",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1000000,
+        "output": 30000
+      },
+      "cost": {
+        "input": 1.25,
+        "output": 2.5,
+        "cache_read": 0.2,
+        "tiers": [
+          {
+            "input": 2.5,
+            "output": 5,
+            "cache_read": 0.4,
+            "tier": {
+              "type": "context",
+              "size": 200000
+            }
+          }
+        ],
+        "context_over_200k": {
+          "input": 2.5,
+          "output": 5,
+          "cache_read": 0.4
+        }
+      },
+      "display_name": "Grok 4.20 (Reasoning)",
+      "type": "chat"
+    },
+    {
+      "id": "grok-imagine-image",
+      "name": "Grok Imagine Image",
+      "family": "grok",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "release_date": "2026-01-28",
+      "last_updated": "2026-01-28",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "image",
+          "pdf"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 8000,
+        "output": 8192
+      },
+      "display_name": "Grok Imagine Image",
+      "type": "chat"
+    },
+    {
+      "id": "grok-build-0.1",
+      "name": "Grok Build 0.1",
+      "family": "grok-build",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2026-04-16",
+      "last_updated": "2026-04-16",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 256000
+      },
+      "cost": {
+        "input": 1,
+        "output": 2,
+        "cache_read": 0.2,
+        "tiers": [
+          {
+            "input": 2,
+            "output": 4,
+            "cache_read": 0.4,
+            "tier": {
+              "type": "context",
+              "size": 200000
+            }
+          }
+        ],
+        "context_over_200k": {
+          "input": 2,
+          "output": 4,
+          "cache_read": 0.4
+        }
+      },
+      "display_name": "Grok Build 0.1",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-3-mini-fast-beta",
+      "name": "Grok 3 Mini Fast Beta",
+      "display_name": "Grok 3 Mini Fast Beta",
+      "temperature": true,
+      "attachment": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 120000,
+        "output": 100000
+      },
+      "reasoning": {
+        "supported": true,
+        "effort": "low",
+        "default": true
+      },
+      "search": {
+        "supported": false
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-3-mini-beta",
+      "name": "Grok 3 Mini Beta",
+      "display_name": "Grok 3 Mini Beta",
+      "temperature": true,
+      "attachment": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 120000,
+        "output": 100000
+      },
+      "reasoning": {
+        "supported": true,
+        "effort": "low",
+        "default": true
+      },
+      "search": {
+        "supported": false
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-3-fast-beta",
+      "name": "Grok 3 Fast Beta",
+      "display_name": "Grok 3 Fast Beta",
+      "temperature": true,
+      "attachment": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 120000,
+        "output": 100000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "search": {
+        "supported": false
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-2-vision-1212",
+      "name": "Grok 2 Vision 1212",
+      "display_name": "Grok 2 Vision 1212",
+      "temperature": true,
+      "attachment": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 32000,
+        "output": 32000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "search": {
+        "supported": false
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-2-image-1212",
+      "name": "Grok 2 Image 1212",
+      "display_name": "Grok 2 Image 1212",
+      "temperature": true,
+      "attachment": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 130000,
+        "output": 100000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "search": {
+        "supported": false
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-3-beta",
+      "name": "Grok 3 Beta",
+      "display_name": "Grok 3 Beta",
+      "temperature": true,
+      "attachment": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 120000,
+        "output": 100000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "search": {
+        "supported": false
+      },
+      "type": "chat"
+    },
+    {
+      "id": "grok-2-1212",
+      "name": "Grok 2 1212",
+      "display_name": "Grok 2 1212",
+      "temperature": true,
+      "attachment": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 120000,
+        "output": 100000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "search": {
+        "supported": false
+      },
+      "type": "chat"
+    }
+  ]
+}

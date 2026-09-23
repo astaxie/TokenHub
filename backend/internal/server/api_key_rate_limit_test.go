@@ -755,7 +755,7 @@ func TestAPIKeyTPMReturnsCodexReservationWhenStreamHasNoBody(t *testing.T) {
 		ProviderModel: "gpt-codex-empty", Status: StatusActive,
 	})
 	server := New(store)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK, Header: make(http.Header),
 			Body: io.NopCloser(strings.NewReader("")), Request: req,
@@ -844,6 +844,13 @@ func TestTokenReservationUsesExplicitMaximumOrSafeDefault(t *testing.T) {
 	}
 	if got := requestTokenReservation(compatible); got != 23 {
 		t.Fatalf("compatible maximum reservation = %d, want 23", got)
+	}
+	var overlapping ChatCompletionRequest
+	if err := json.Unmarshal([]byte(`{"max_tokens":17,"max_completion_tokens":23}`), &overlapping); err != nil {
+		t.Fatal(err)
+	}
+	if got := chatMaximumOutputTokens(overlapping); got != 23 {
+		t.Fatalf("overlapping maximum = %d, want 23", got)
 	}
 }
 

@@ -1,0 +1,309 @@
+{
+  "id": "inference",
+  "api": "https://inference.net/v1",
+  "name": "Inference",
+  "doc": "https://inference.net/models",
+  "display_name": "Inference",
+  "models": [
+    {
+      "id": "mistral/mistral-nemo-12b-instruct",
+      "name": "Mistral Nemo 12B Instruct",
+      "family": "mistral-nemo",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.038,
+        "output": 0.1
+      },
+      "display_name": "Mistral Nemo 12B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "google/gemma-3",
+      "name": "Google Gemma 3",
+      "family": "gemma",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 125000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.15,
+        "output": 0.3
+      },
+      "display_name": "Google Gemma 3",
+      "type": "chat"
+    },
+    {
+      "id": "osmosis/osmosis-structure-0.6b",
+      "name": "Osmosis Structure 0.6B",
+      "family": "osmosis",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 4000,
+        "output": 2048
+      },
+      "cost": {
+        "input": 0.1,
+        "output": 0.5
+      },
+      "display_name": "Osmosis Structure 0.6B",
+      "type": "chat"
+    },
+    {
+      "id": "qwen/qwen3-embedding-4b",
+      "name": "Qwen 3 Embedding 4B",
+      "family": "qwen",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "knowledge": "2024-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32000,
+        "output": 2048
+      },
+      "cost": {
+        "input": 0.01,
+        "output": 0
+      },
+      "display_name": "Qwen 3 Embedding 4B",
+      "type": "embedding"
+    },
+    {
+      "id": "qwen/qwen-2.5-7b-vision-instruct",
+      "name": "Qwen 2.5 7B Vision Instruct",
+      "family": "qwen",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 125000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.2,
+        "output": 0.2
+      },
+      "display_name": "Qwen 2.5 7B Vision Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-3.1-8b-instruct",
+      "name": "Llama 3.1 8B Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.025,
+        "output": 0.025
+      },
+      "display_name": "Llama 3.1 8B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-3.2-1b-instruct",
+      "name": "Llama 3.2 1B Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.01,
+        "output": 0.01
+      },
+      "display_name": "Llama 3.2 1B Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-3.2-11b-vision-instruct",
+      "name": "Llama 3.2 11B Vision Instruct",
+      "family": "llama",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.055,
+        "output": 0.055
+      },
+      "display_name": "Llama 3.2 11B Vision Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-3.2-3b-instruct",
+      "name": "Llama 3.2 3B Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.02,
+        "output": 0.02
+      },
+      "display_name": "Llama 3.2 3B Instruct",
+      "type": "chat"
+    }
+  ]
+}

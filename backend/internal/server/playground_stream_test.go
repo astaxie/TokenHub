@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 type playgroundSSEEvent struct {
@@ -96,7 +98,8 @@ func TestPlaygroundDeltaSinkRejectsMalformedJSONFrame(t *testing.T) {
 func TestAdminPlaygroundStreamEmitsDeltasAndDiagnostics(t *testing.T) {
 	server, _ := newPlaygroundTestServer(t)
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat/stream", map[string]any{
-		"model": "gpt-4.1-mini",
+		"project_id": "prj_demo",
+		"model":      "gpt-4.1-mini",
 		"messages": []map[string]any{
 			{"role": "system", "content": "Be concise."},
 			{"role": "user", "content": "stream diagnostics"},
@@ -153,9 +156,114 @@ func TestAdminPlaygroundStreamEmitsDeltasAndDiagnostics(t *testing.T) {
 	}
 }
 
+func TestAdminPlaygroundResponsesStreamAppliesStreamTransformHook(t *testing.T) {
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Playground Responses Stream", Status: StatusActive})
+	provider := store.AddProvider(Provider{
+		ID: "prv_playground_responses_stream_transform", Name: "Playground Responses Stream",
+		Type: "playground_responses_stream_transform", Status: StatusActive, Healthy: true,
+	})
+	store.AddModel(Model{Name: "gpt-playground-responses-stream-transform", Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{
+		ID: "route_playground_responses_stream_transform", ModelName: "gpt-playground-responses-stream-transform",
+		ProviderID: provider.ID, ProviderModel: "upstream-responses", Status: StatusActive, Priority: 1, Weight: 100,
+	})
+	server := New(store)
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.playground-responses-stream-transform",
+		Name:    "Playground Responses Stream Transform",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: pluginmeta.CapabilityKindProviderType, Name: "playground_responses_stream_transform"},
+			{Kind: pluginmeta.CapabilityKindProviderPolicy, Name: "route_protocol", Subject: "playground_responses_stream_transform", Value: providerRouteProtocolCodexResponses},
+		},
+	}, AdapterRegistration{
+		Type:         "playground_responses_stream_transform",
+		Adapter:      responsesStreamTransformAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses, AdapterCapabilityResponseStream},
+	}); err != nil {
+		t.Fatalf("register playground Responses plugin: %v", err)
+	}
+	hook := streamTransformHook(pluginmeta.FailurePolicyFailClosed)
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register stream transform hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		var event gatewayStreamEventView
+		if err := json.Unmarshal(input.Data[pluginmeta.DataStreamEvents], &event); err != nil {
+			t.Fatalf("decode stream event: %v", err)
+		}
+		if input.Envelope.Operation != "stream_transform" {
+			t.Fatalf("stream transform operation = %q, want stream_transform", input.Envelope.Operation)
+		}
+		if !strings.Contains(event.Data, "Echo responses") {
+			return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
+		}
+		return streamEventPatchResult(t, map[string]any{
+			"data": strings.Replace(event.Data, "Echo responses", "Playground responses plugin", 1),
+		}), nil
+	})); err != nil {
+		t.Fatalf("register stream transform handler: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat/stream", map[string]any{
+		"project_id": project.ID,
+		"model":      "gpt-playground-responses-stream-transform",
+		"messages": []map[string]any{
+			{"role": "user", "content": "hello"},
+		},
+	}, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
+	}
+	var output strings.Builder
+	for _, event := range parsePlaygroundSSE(t, response.Body) {
+		if event.Name == "playground.delta" {
+			delta, _ := event.Data["delta"].(string)
+			output.WriteString(delta)
+		}
+	}
+	if !strings.Contains(output.String(), "Playground responses plugin") || strings.Contains(output.String(), "Echo responses") {
+		t.Fatalf("playground responses stream output was not transformed: %q\nbody=%s", output.String(), response.Body)
+	}
+}
+
 type playgroundCaptureAdapter struct {
 	MockAdapter
 	request ChatCompletionRequest
+}
+
+func TestAdminPlaygroundNeverForwardsCaseInsensitiveProjectContext(t *testing.T) {
+	for _, path := range []string{"/api/admin/playground/chat", "/api/admin/playground/chat/stream"} {
+		t.Run(path, func(t *testing.T) {
+			server, _ := newPlaygroundTestServer(t)
+			adapter := &playgroundCaptureAdapter{}
+			server.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityChat)
+			response := doJSON(t, server.Handler(), http.MethodPost, path, map[string]any{
+				"PROJECT_ID": "prj_demo",
+				"model":      "gpt-4.1-mini",
+				"messages":   []map[string]any{{"role": "user", "content": "do not leak context"}},
+			}, "")
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
+			}
+			forwarded, err := json.Marshal(adapter.request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(forwarded, &fields); err != nil {
+				t.Fatal(err)
+			}
+			for key := range fields {
+				if strings.EqualFold(key, "project_id") {
+					t.Fatalf("playground project context leaked to the provider as %q: %s", key, forwarded)
+				}
+			}
+		})
+	}
 }
 
 func (a *playgroundCaptureAdapter) Chat(_ context.Context, _ Provider, _ string, req ChatCompletionRequest) (any, Usage, error) {
@@ -172,6 +280,7 @@ func TestAdminPlaygroundStreamFallsBackToBufferedWithoutFakeTTFT(t *testing.T) {
 	adapter := &playgroundCaptureAdapter{}
 	server.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityChat)
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat/stream", map[string]any{
+		"project_id":        "prj_demo",
 		"model":             "gpt-4.1-mini",
 		"messages":          []map[string]any{{"role": "user", "content": "buffer me"}},
 		"presence_penalty":  0.4,
@@ -205,6 +314,40 @@ func TestAdminPlaygroundStreamFallsBackToBufferedWithoutFakeTTFT(t *testing.T) {
 	if adapter.request.Stream || adapter.request.StreamOptions != nil {
 		t.Fatalf("buffered fallback must disable the upstream stream contract: %+v", adapter.request)
 	}
+	forwarded, err := json.Marshal(adapter.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(forwarded), "project_id") {
+		t.Fatalf("playground project context leaked to the provider: %s", forwarded)
+	}
+}
+
+func TestAdminPlaygroundStreamForwardsMultimodalContent(t *testing.T) {
+	server, store := newPlaygroundTestServer(t)
+	project := store.CreateProject(Project{Name: "Multimodal Playground Project"})
+	adapter := &playgroundCaptureAdapter{}
+	server.adapterRegistry.Register(ProviderMock, adapter, AdapterCapabilityChat)
+	dataURI := "data:image/png;base64,YWJj"
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat/stream", map[string]any{
+		"project_id": project.ID,
+		"model":      "gpt-4.1-mini",
+		"messages": []map[string]any{{"role": "user", "content": []any{
+			map[string]any{"type": "text", "text": "describe"},
+			playgroundImagePart(dataURI),
+		}}},
+	}, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
+	}
+	parts, ok := adapter.request.Messages[0].Content.([]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("multimodal content was not forwarded: %#v", adapter.request.Messages[0].Content)
+	}
+	image, _ := parts[1].(map[string]any)
+	if got, _ := normalizePlaygroundImageURL(image["image_url"]); got != dataURI {
+		t.Fatalf("image URL = %q, want %q", got, dataURI)
+	}
 }
 
 func TestUserPlaygroundStreamRedactsRouteInternals(t *testing.T) {
@@ -220,9 +363,14 @@ func TestUserPlaygroundStreamRedactsRouteInternals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	store.CreateResource("project-members", AdminResource{
+		Name: "Playground Project Member", Status: StatusActive,
+		Fields: map[string]any{"project_id": "prj_demo", "user_id": user.ID, "role": "developer"},
+	})
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat/stream", map[string]any{
-		"model":    "gpt-4.1-mini",
-		"messages": []map[string]any{{"role": "user", "content": "redact route"}},
+		"project_id": "prj_demo",
+		"model":      "gpt-4.1-mini",
+		"messages":   []map[string]any{{"role": "user", "content": "redact route"}},
 	}, session.Token)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body)
@@ -246,8 +394,9 @@ func TestUserPlaygroundStreamRedactsRouteInternals(t *testing.T) {
 	}
 
 	legacy := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat", map[string]any{
-		"model":    "gpt-4.1-mini",
-		"messages": []map[string]any{{"role": "user", "content": "legacy redaction"}},
+		"project_id": "prj_demo",
+		"model":      "gpt-4.1-mini",
+		"messages":   []map[string]any{{"role": "user", "content": "legacy redaction"}},
 	}, session.Token)
 	if legacy.Code != http.StatusOK {
 		t.Fatalf("expected legacy endpoint 200, got %d: %s", legacy.Code, legacy.Body)

@@ -129,6 +129,47 @@ func TestAdminRequestLogsFiltersStatusBeforePagination(t *testing.T) {
 	}
 }
 
+func TestAdminRequestLogsFiltersExactModelAndInclusiveTimeRange(t *testing.T) {
+	store := NewMemoryStore()
+	base := time.Date(2026, time.August, 16, 1, 0, 0, 0, time.UTC)
+	logs := []RequestLog{
+		{ID: "log_before", RequestID: "req_before", ModelName: "gpt-4", StatusCode: http.StatusOK, LatencyMS: 100, CreatedAt: base.Add(-time.Second)},
+		{ID: "log_since", RequestID: "req_since", ModelName: "gpt-4", StatusCode: http.StatusBadGateway, LatencyMS: 200, CreatedAt: base},
+		{ID: "log_similar", RequestID: "req_similar", ModelName: "gpt-4o", StatusCode: http.StatusOK, LatencyMS: 300, CreatedAt: base.Add(30 * time.Minute)},
+		{ID: "log_until", RequestID: "req_until", ModelName: "gpt-4", StatusCode: http.StatusOK, LatencyMS: 400, CreatedAt: base.Add(time.Hour)},
+	}
+	for index := range logs {
+		if err := store.db.Create(&logs[index]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	path := "/api/admin/audit/requests?model=gpt-4&since=" + url.QueryEscape(base.Format(time.RFC3339Nano)) + "&until=" + url.QueryEscape(base.Add(time.Hour).Format(time.RFC3339Nano))
+	response := doJSON(t, New(store).Handler(), http.MethodGet, path, nil, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected filtered request logs 200, got %d: %s", response.Code, response.Body)
+	}
+	var payload RequestLogPage
+	if err := json.Unmarshal([]byte(response.Body), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Data) != 2 || payload.Data[0].ID != "log_until" || payload.Data[1].ID != "log_since" {
+		t.Fatalf("expected inclusive exact-model results, got %+v", payload.Data)
+	}
+	if payload.Pagination.Total != 2 || payload.Summary.All != 2 || payload.Summary.OK != 1 || payload.Summary.Error != 1 || payload.Summary.AverageLatencyMS != 300 {
+		t.Fatalf("filters must apply to page, pagination, and summary: pagination=%+v summary=%+v", payload.Pagination, payload.Summary)
+	}
+	for _, invalidPath := range []string{
+		"/api/admin/audit/requests?since=not-a-timestamp",
+		"/api/admin/audit/requests?since=2026-08-16T02:00:00Z&until=2026-08-16T01:00:00Z",
+	} {
+		invalid := doJSON(t, New(store).Handler(), http.MethodGet, invalidPath, nil, "")
+		if invalid.Code != http.StatusBadRequest {
+			t.Fatalf("expected invalid range %q to return 400, got %d: %s", invalidPath, invalid.Code, invalid.Body)
+		}
+	}
+}
+
 func TestAdminRequestLogsSearchesExistingAuditFields(t *testing.T) {
 	store := NewMemoryStore()
 	project := store.CreateProject(Project{ID: "project_search", Name: "Alpha Finance"})

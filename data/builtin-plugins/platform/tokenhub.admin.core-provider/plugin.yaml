@@ -1,0 +1,20 @@
+schema_version: 2
+id: "tokenhub.admin.core-provider"
+name: "TokenHub Core Provider Settings"
+version: 1.0.0
+summary: "Add host-managed Provider settings to the admin console."
+description: "Add host-managed Provider settings to the admin console."
+category: ui_template
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+distribution:
+  license: Apache-2.0
+kinds: ["admin_ui"]
+placement: ["presentation"]
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

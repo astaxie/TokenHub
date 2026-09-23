@@ -72,6 +72,7 @@ flowchart TB
 マルチインスタンスモードでは：
 
 - Nginx が管理コンソール、API、ヘルスチェックのトラフィックを正常なレプリカへ分散します。
+- Nginx は `/docs`、`/openapi.json`、`/openapi.yaml` をバックエンドへ転送するため、セルフホストの公開ゲートウェイ API リファレンスはモデル API と同じ公開 origin を使用します。
 - バックエンドレプリカは、永続設定、OAuth セッション、クォータカウンター、監査データ、クラスターロック、実行中リクエストの並行数リースを PostgreSQL で共有します。
 - リースの期限と所有権は PostgreSQL のクロックで判定し、ホスト間の時刻ずれによる早期引き継ぎを防ぎます。所有権を失った処理はハートビートによってキャンセルされます。
 - 設定されたモデルカタログの候補モデルメタデータはバックエンドの起動ごとに同期され、冪等な同期処理はクラスターロックによって直列化されます。
@@ -169,12 +170,12 @@ sudo env TOKENHUB_RELEASE_REPOSITORY=your-account/TokenHub \
 cp deploy/.env.example deploy/.env
 ```
 
-起動前に `deploy/.env` を編集してください。
+起動前に `deploy/.env` を確認してください。
 
-- `TOKENHUB_ADMIN_TOKEN`: Admin API の初期 Token。32 バイト以上のランダム値を使用してください。
+- `TOKENHUB_ADMIN_TOKEN`: 任意の Admin API 静的 Token。運用自動化で必要な場合は 32 バイト以上のランダム値を設定し、不要な場合はプレースホルダーのままにして無効化します。
 - `TOKENHUB_INTEGRATION_TOKEN`: 外部プラットフォーム連携イベントおよびモデルアクセスキー制御 API 専用の認証情報。Admin Token とは異なる 32 バイト以上のランダム値を使用してください。
-- `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: 初期 `admin` ユーザーの作成時にのみ使用するパスワード。12 バイト以上にしてください。
-- `TOKENHUB_SECRET_KEY`: バックエンド秘密鍵。32 バイト以上のランダム値を使用し、安定して保持してください。
+- `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`: 任意の初期 `admin` パスワード。12 バイト以上の値を設定するか、プレースホルダーのままにして TokenHub に生成させます。
+- `TOKENHUB_SECRET_KEY`: バックエンド暗号化ルートキー。PostgreSQL と既存の SQLite データベースでは、32 バイト以上の安定した値が必須です。新規のファイル型 SQLite デプロイでは、プレースホルダーのままにするとデータベースの隣に権限 `0600` のキーファイルを生成します。
 - `TOKENHUB_IMAGE_TAG`: 管理対象 TokenHub イメージのタグ。デフォルトは `latest`。
 - `TOKENHUB_PUBLIC_BASE_URL`: ユーザーに表示するバックエンド URL。
 - `TOKENHUB_API_BASE_URL`: ブラウザの管理コンソールが使用するバックエンド URL。フロントエンドサーバーが実行時に読み取ります。非推奨の `NEXT_PUBLIC_API_BASE_URL` は、1 回の互換期間に限りフォールバックとして残します。
@@ -182,6 +183,10 @@ cp deploy/.env.example deploy/.env
 - `TOKENHUB_FRONTEND_PORT`: 管理コンソールのホスト側ポート。デフォルトは `3000`。
 - `TOKENHUB_BACKEND_REPLICAS`: リモート PostgreSQL Compose のバックエンドレプリカ数。デフォルトは `2`。
 - `TOKENHUB_FRONTEND_REPLICAS`: リモート PostgreSQL Compose のフロントエンドレプリカ数。デフォルトは `2`。
+
+バックエンドは `/docs` で公開ゲートウェイ API リファレンスを提供し、`/openapi.json` と `/openapi.yaml` で機械可読の OpenAPI 3.1 契約を提供します。ドキュメント内の server URL は `TOKENHUB_PUBLIC_BASE_URL` が設定されていればそれを使用し、未設定の場合は現在のリクエスト origin を使用します。リバースプロキシ配下では、`TOKENHUB_PUBLIC_BASE_URL` をブラウザから到達できるバックエンド origin と一致させてください。
+
+ブラウザクライアント（`/docs` の **Try it out** フローを含む）は、ドキュメントページとバックエンドゲートウェイが同一 origin の場合だけ追加の CORS 設定なしで呼び出せます。管理コンソールまたはドキュメントが `TOKENHUB_PUBLIC_BASE_URL` と異なる origin で提供される場合は、その正確なブラウザ origin を `TOKENHUB_CORS_ALLOWED_ORIGINS` に追加してください。ブラウザ呼び出しを動かすためだけに、本番環境の CORS をワイルドカードで緩めないでください。
 
 リポジトリルートから起動します。
 
@@ -282,9 +287,18 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
 初回管理者ログイン:
 
 - ユーザー名: `admin`
-- パスワード: 設定した `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`
+- パスワード: 設定した `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD`、または次のコマンドで取得する自動生成値:
 
-`prod`、`production`、ステージングなどの非開発環境では、プレースホルダー値、32 バイト未満の Admin Token または秘密鍵、12 バイト未満の初期パスワードを拒否します。
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml \
+  exec tokenhub-backend /opt/tokenhub/current/bin/tokenhub initial-admin-password
+```
+
+自動生成パスワードは暗号文としてのみ保存され、初回ログイン成功後またはパスワードリセット後は取得できません。ログイン後に変更してください。Kubernetes では `kubectl exec <pod> -- ...` から同じコマンドを実行できます。
+
+`prod`、`production`、ステージングなどの非開発環境では、既知の Admin Token と初期パスワードのプレースホルダーを未設定として扱い、それ以外の空でない弱い値は拒否します。暗号化ルートキーは、新規のファイル型 SQLite データベースで一度だけ生成する場合を除いて必須です。既存データベースに対して代替キーを自動生成することはありません。
+
+安全に起動できない構成では、プロセスは `/livez` に応答し続けますが、`/readyz`、`/healthz`、アプリケーションルートは `503` を返します。これによりオーケストレーターの liveness 再起動ループを防ぎながら、Pod をサービス対象から外します。構成を修正して TokenHub を再起動してください。liveness probe には `/livez`、readiness probe には `/readyz` を使用します。
 
 ログを手動で確認または追跡します。
 
@@ -357,12 +371,19 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_DEPLOYMENT_TYPE` | ビルド時の値 | バイナリに埋め込まれたデプロイ種別を上書きします: `source`、`container`、`native`。Compose ファイルは `container` を設定します |
 | `TOKENHUB_MANAGED_UPDATES` | `false` | コンテナデプロイでオンライン更新とロールバックを許可します。ネイティブデプロイでは常に許可されます |
 | `TOKENHUB_INSTALL_ROOT` | `/opt/tokenhub` | 管理対象 Release のオンライン更新とロールバックで使用するインストールルート |
-| `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | `X-Forwarded-For` を提供できるプロキシ IP または CIDR（カンマ区切り） |
-| `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公開 URL | バックエンドを呼び出せるブラウザー Origin（カンマ区切り） |
-| `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | Admin API 用の初期 Token |
+| `TOKENHUB_TRUSTED_PROXY_CIDRS` | 空 | `X-Forwarded-For`、`X-Forwarded-Host`、`X-Forwarded-Proto` を提供できるプロキシ IP または CIDR（カンマ区切り）。信頼済みプロキシはクライアント値を転送せず、これらのヘッダーを上書きする必要があります |
+| `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE` | `strict` | `strict` は CIDR リストが空のとき RFC1918/ULA リテラルを許可します。ループバックには引き続き `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` が必要です。`auto` を設定すると、管理者が設定した内部 DNS 名を許可します。不明な値は厳格モードとして扱います |
+| `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL` | `false` | ローカル上流は既定で選択済みプロキシを迂回します。`true` でローカル対象にも選択済みポリシーを適用しますが、環境継承モードは引き続き `NO_PROXY` に従います。強制する場合は統一プロキシも選択してください |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOWED_CIDRS` | 空 | 任意の制限用プライベート CIDR リスト。空のリストはどちらのモードでも RFC1918/ULA リテラルを許可します。auto ではこれらの範囲が内部 DNS 結果にも適用されます。非空ならプライベートリテラルを制限し、auto では内部 DNS 結果も制限します。無効な非空設定で制限が解除されることはなく、特殊な危険アドレスは許可できません |
+| `TOKENHUB_PROVIDER_UPSTREAM_NAT64_PREFIX` | 空 | 埋め込まれた IPv4 宛先を分類するための任意の RFC 6052 DNS64/NAT64 プレフィックス。32、40、48、56、64、96 ビット長をサポートします。`64:ff9b:1::/48` などのネットワーク固有プレフィックスを使用する場合に設定します。標準の `64:ff9b::/96` は設定不要です |
+| `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` | `false` | strict または非空のプライベートリストで有効です。その場合 `true` で localhost/127.0.0.1/::1 を許可します。auto かつリストが空ならこの値にかかわらずループバックを許可します |
+| `HTTP_PROXY` / `HTTPS_PROXY` | 空 | すべての HTTP Provider チャネルが使用する標準の送信 forward proxy。プロキシ選択は運用者が管理し、プロキシを使用しないリクエストには TokenHub の DNS/IP 送信先検証が引き続き適用されます |
+| `NO_PROXY` | 空 | 標準のカンマ区切りプロキシ除外リスト。一致した Provider リクエストは保護された直接接続経路を使用します |
+| `TOKENHUB_CORS_ALLOWED_ORIGINS` | 公開 URL | バックエンドを呼び出せる正確なブラウザー Origin（カンマ区切り）。設定時は同じ一覧が OAuth コンソールの戻り先 Origin の完全一致 allowlist にもなります。各値には scheme、host、任意の port だけを含め、path は含めません |
+| `TOKENHUB_ADMIN_TOKEN` | `change-me-tokenhub-admin-token` | 任意の Admin API 静的 Token。既知のプレースホルダーは無効化を意味します |
 | `TOKENHUB_INTEGRATION_TOKEN` | `change-me-tokenhub-integration-token` | 外部プラットフォーム連携イベントおよびモデルアクセスキー制御 API 専用 Token |
-| `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 初期 `admin` ユーザーのパスワード。本番起動前に変更が必要 |
-| `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | バックエンド秘密鍵 |
+| `TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-tokenhub-admin-password` | 任意の初期 `admin` パスワード。既知のプレースホルダーは初回起動時のランダム生成を意味します |
+| `TOKENHUB_SECRET_KEY` | `change-me-tokenhub-secret-key` | 安定した暗号化ルートキー。新規のファイル型 SQLite データベースでのみ自動生成できます |
 | `TOKENHUB_DATABASE_URL` | `sqlite:///app/data/tokenhub.db` | コンテナ内 SQLite データベースパス |
 | `TOKENHUB_DB_HOST` | 空 | PostgreSQL ホスト。設定すると `TOKENHUB_DATABASE_URL` ではなく `TOKENHUB_DB_*` の各フィールドから DSN を組み立てるため、パスワードに `#`、`?`、`/`、`%` が含まれる場合の URL エンコードを回避できます。両方設定した場合は `TOKENHUB_DATABASE_URL` が優先されます |
 | `TOKENHUB_DB_PORT` | `5432` | PostgreSQL ポート。`TOKENHUB_DB_HOST` を設定した場合にのみ使用されます |
@@ -373,6 +394,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | バックアップ出力ディレクトリ |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | 管理対象デプロイの標準モデルカタログファイル |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | 管理対象デプロイの Provider テンプレートと候補モデルのカタログファイル |
+| `TOKENHUB_PLUGIN_DIR` | `/app/plugins` | 起動時にスキャンされ、プラグインのライフサイクル操作後にホットリロードされる永続的なパッケージディレクトリ。複数インスタンス構成では全レプリカで同じプラグインバージョンを調整する必要があります |
+| `TOKENHUB_PLUGIN_MARKETPLACE_URL` | 空 | 管理画面がプラグイン一覧を閲覧するための HTTPS プラグイン市場インデックス URL（オンライン索引は検証まで探索専用） |
 | `TOKENHUB_SEED_DEMO` | `false` | デモデータを投入するか |
 | `TOKENHUB_RESOURCE_FAILURE_THRESHOLD` | `3` | Provider リソースをクールダウンするまでの失敗しきい値 |
 | `TOKENHUB_RESOURCE_COOLDOWN_SECONDS` | `300` | クールダウンした Provider リソースがハーフオープン再試行を得るまでの基本待機秒数 |
@@ -389,19 +412,59 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 | `TOKENHUB_TRACING_QUEUE_SIZE` | `2048` | span 化を待つ完了イベント数。満杯時はリクエストを遅らせずトレースを破棄 |
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 非ストリーミングの上流リクエスト 1 件あたりの全体タイムアウト |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | ストリーミング呼び出しに全体タイムアウトはありません。この値はレスポンスヘッダーの待機時間と、その後ストリームが無音でいられる時間を制限します。1 バイト受信するたびに計測し直します |
+| `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `8388608`（8 MiB） | `/v1` エンドポイントの JSON リクエストボディ上限。生のバイト数または二進接尾辞（`8m`、`8mib`、`512k`）を指定できます。512 MiB を超える値は上限に丸められます |
+| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | マルチモーダルのチャットエンドポイント（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）向けの上限。リバースプロキシの `client_max_body_size` をこの値以上に設定してください |
+| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 同梱のマルチインスタンス nginx ロードバランサーのみが読み取ります。バックエンドのバイト形式ではなく nginx のサイズ構文（`32m`、`512k`）を使用し、`TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 以上に設定してください |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | クラスター全体の同時実行リースの期限と更新間隔の基準 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | クラスター調整ロックの期限と更新間隔の基準 |
+| `TOKENHUB_BILLING_REDIS_URL` | 空 | 高同時実行の課金 admission 用の任意 Redis URL。設定すると、分単位 RPM/TPM 予約と API Key/ユーザー同時実行リースを Redis が処理し、データベースは永続的な課金台帳として残ります |
 | `TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS` | `150` | 停止時に処理中リクエストを待機する最大秒数 |
 | `TOKENHUB_STOP_GRACE_PERIOD` | `180s` | Docker がバックエンドを強制停止するまでの Compose 猶予時間 |
 | `TOKENHUB_CACHE_AFFINITY_ENABLED` | `false` | Chat Completions、Anthropic Messages、Responses で同一セッションを同一の上流アカウントに固定し、上流の prompt cache が継続的にヒットするようにします。ルーティング挙動を変えるため既定では無効 |
 | `TOKENHUB_CACHE_AFFINITY_MODELS` | 空 | 段階的ロールアウト用のモデル許可リスト（カンマ区切り）。空の場合は全モデルが対象 |
 | `TOKENHUB_CACHE_AFFINITY_ALLOW_USER_SCOPE` | `false` | Chat/Responses の `user` と Anthropic の `metadata.user_id` もアフィニティキーとして受け入れるか。同一ユーザーの並行セッションが同じ値を共有し単一アカウントに集中するため既定では無効 |
+| `TOKENHUB_GUARDRAIL_MODEL_URL` | 空 | 専用 Qwen3Guard サービスの完全な OpenAI-compatible chat-completions URL。呼び出し前にローカルの `mask` ルールで一致した値を `[REDACTED]` に置き換え、一致しなかった検査対象テキストはそのサービスへ送信する。空の場合はモデルを呼び出さず、各ポリシーの利用不可時設定を適用 |
+| `TOKENHUB_GUARDRAIL_MODEL_API_KEY` | 空 | 専用ガードレールモデルサービス用の任意 Bearer 資格情報 |
+| `TOKENHUB_GUARDRAIL_MODEL_NAME` | `Qwen/Qwen3Guard-Gen-0.6B` | ガードレールサービスへ送信するモデル識別子 |
+| `TOKENHUB_GUARDRAIL_MODEL_TIMEOUT_SECONDS` | `10` | 1 回のガードレールモデル分類の制限時間 |
 | `TOKENHUB_IMAGE_STORAGE_DIR` | `data/images` | 生成された画像アセットを保存するディレクトリ |
 | `TOKENHUB_IMAGE_WORKER_CONCURRENCY` | `2` | 画像生成キューを処理するワーカー数 |
 | `TOKENHUB_IMAGE_QUEUE_CAPACITY` | `64` | キューで待機できる画像ジョブの上限 |
 | `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` | `300` | 単一の画像生成ジョブのタイムアウト。超過すると失敗として扱われます |
 | `TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` | `86400` | 画像生成非対応と記録されたプロバイダーリソースを再検査するまでの待機時間 |
+| `TOKENHUB_RESPONSE_WORKER_CONCURRENCY` | `2` | 永続化されたバックグラウンド Responses ジョブを取得する Worker 数 |
+| `TOKENHUB_RESPONSE_POLL_INTERVAL_MILLIS` | `250` | バックグラウンド Responses ジョブとキャンセル状態を確認するデータベースのポーリング間隔 |
+| `TOKENHUB_RESPONSE_JOB_TIMEOUT_SECONDS` | `300` | 1 件のバックグラウンド Responses ジョブの実行タイムアウト |
+| `TOKENHUB_RESPONSE_LEASE_TTL_SECONDS` | `30` | 複数レプリカ間でバックグラウンド Responses Worker を保護するリース期間 |
+| `TOKENHUB_RESPONSE_RESULT_TTL_SECONDS` | `3600` | 完了後に暗号化されたリクエストと結果 payload を保持する期間 |
+| `TOKENHUB_RESPONSE_MAX_QUEUED_JOBS` | `1000` | 1 つのデプロイで受け付ける待機中および実行中のバックグラウンド Responses ジョブの上限 |
 | `TOKENHUB_API` | 空 | `tokenhub-migrate` CLI が対象とする Admin API の URL。この CLI のみが読み取り、バックエンドサーバーは読み取りません。`--to` で上書きされます |
+
+Compose で任意の Redis 課金コンポーネントを実行する場合は、通常のコマンドに overlay ファイルを追加します。
+
+```bash
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.redis.yml up -d --remove-orphans
+```
+
+### ローカルおよび内部モデルサービス
+
+管理者はアクセスモードを変えずに `http://192.168.1.10:8000/v1` のような HTTP プライベートリテラルを入力できます。`auto` を設定すると、追加の CIDR 設定なしでループバックと内部 DNS 名も許可され、`http://127.0.0.1:8000/v1`、`host.docker.internal`、Docker サービス名、企業の内部 DNS 名を入力できます。アドレスはバックエンドから到達可能である必要があります。コンテナーのループバックはコンテナー自身を指します。TokenHub が DNS レコード、Docker ネットワーク接続、ホスト別名を自動作成することはありません。
+
+保存時は URL 構文とリテラルアドレスを検証し、DNS 問い合わせは行いません。オフラインのサービスも設定でき、ストレージ操作をブロックしません。送信前に HTTP ホスト名が許可済みローカルアドレスだけへ解決される必要があります。公開アドレスや公開／内部の混合結果は認証情報と本文の送信前に拒否します。直接接続は再度名前解決せず検証済みアドレスを使い、プロキシは元の Host と TLS サーバー名を維持します。metadata、link-local、multicast など危険な特殊用途アドレスは引き続き拒否します。同じスキームと authority へのリダイレクトは内部サービスでも許可し、クロスオリジンのリダイレクトは拒否します。
+
+HTTP ホスト名をプロキシ経由で接続する場合、検証済み IP への CONNECT を使用し、トンネル内で元の Host を維持します。プロキシはモデルサービスのポートへの CONNECT を許可する必要があります。拒否時に直接接続へフォールバックしません。
+
+strict モードが既定値です。RFC1918/ULA リテラルは許可され、localhost には引き続き `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` が必要です。内部 DNS 名を許可するには、運用者が `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto` を設定する必要があります。どちらのモードでも非空のプライベートリストは制限を維持し、すべてのプライベートリテラルを拒否する場合も同様です。ローカル通信も選択済みプロキシに従わせる場合は、別途 `TOKENHUB_PROVIDER_UPSTREAM_PROXY_LOCAL=true` を指定します。これらの設定にはバックエンドの再起動またはコンテナーの再作成が必要です。
+
+再起動せずに **システム設定 → 基本設定 → Provider エグレスモード** で送信経路を変更できます。アップグレード時の既定値である「環境変数のプロキシを継承」は、プロセス起動時に取得した `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` を使用します。「直接接続」はこれらを無視し、「統一プロキシを使用」は 1 つの HTTP または HTTPS forward proxy を推論、ストリーミング、画像、モデル検出、Provider catalog 更新、Quota、Provider 資格情報更新を含むすべての Provider 上流チャネルに適用します。ID ログイン、通知、Tracing、バージョン更新には適用されません。
+
+統一プロキシは任意の Basic 認証に対応し、パスワードは暗号化して保存され、API とコンソールではマスクされます。プロキシ設定の保存時はその構文だけを検証します。**プロキシ接続をテスト** は現在の未保存フォームと既存 Provider を使い、Provider 資格情報やモデルリクエストを送信せず、プロキシ TCP/TLS、認証、CONNECT、システム CA による対象 TLS だけを検証します。どのプロキシモードでも Provider と Provider Resource の Base URL には従来の保存時スキームおよびリテラルアドレス検証が適用されます。metadata など常に拒否される対象は引き続き拒否され、ローカル対象は上記の auto/strict ポリシーに従います。プロキシ経由の各リクエストの前に、TokenHub は元の Provider ホスト名をローカルで解決し、設定済みのローカルアドレスおよび特殊用途アドレスのポリシーを適用します。そのうえで元の HTTP Host と TLS サーバー名を維持したまま、プロキシリクエストまたは CONNECT トンネルを検証済み IP に固定します。直接接続と `NO_PROXY` に一致するリクエストも、保護されたダイヤル経路で同じアドレスポリシーを適用します。プロキシ設定、認証、接続、タイムアウト、HTTPS CONNECT の失敗はプラットフォームの送信障害として扱われ、Provider リソースへのペナルティやルート failover は発生しません。平文 HTTP プロキシリクエストの場合、HTTP エラー応答はプロキシまたは Provider のどちらから返される可能性があるため、通常の上流エラー処理を維持します。レプリカは共有設定を 5 秒以内に再読み込みし、データベースの一時的な読み取り失敗時は直前の有効設定を保持します。
+
+バックエンドが Fake-IP DNS を使用する場合は、**システム設定 → 基本設定 → Synthetic DNS / Fake-IP 範囲** に実際のプールを設定します。この独立した例外は既定で無効で、DNS 結果だけに適用され、Provider の IP リテラルには適用されません。`198.18.0.0/15` はベンチマーク用であり、すべてのプロキシが使用する Fake-IP 専用範囲ではありません。プライベート synthetic プールには別途明示的な信頼設定が必要です。有効な synthetic プールに一致するホスト名は、その IP が RFC1918/ULA でも HTTPS が必須で、ローカル通信の自動プロキシ迂回を受けません。実際のローカルサービスは上記の auto/strict ポリシーに独立して従います。Synthetic 例外で loopback、link-local、metadata、multicast、保護された NAT64 対象を許可することはできません。
+
+モデルカタログの接続失敗は、DNS アドレスの拒否（`provider_models_address_blocked`）、名前解決の失敗（`provider_models_dns_failed`）、タイムアウト（`provider_models_timeout`）、TLS 証明書検証の失敗（`provider_models_tls_failed`）を区別します。Fake-IP の解決結果が拒否された場合は、実際のプロキシアドレスプールを確認してから既存の例外を設定してください。エラー応答は固定メッセージを使用し、生の通信エラーや認証情報を公開しません。 アドレス拒否エラーは `error.details.blocked_ips` に正規化された拒否 IP を含め、プレイグラウンドの失敗イベントは `error_details.blocked_ips` に同じ情報を含めます。コンソールには拒否アドレスと設定場所が表示されます。設定前に実際のプロキシプールを確認してください。拒否アドレスが自動的に信頼されることはありません。
 
 ## フロントエンド環境変数
 
@@ -429,7 +492,7 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 
 ## カタログファイル
 
-公開される管理対象イメージとネイティブアーカイブには、対応するバージョンの `data/model-catalog.yaml` と `data/provider-catalog.json` が含まれます。これらは Release の残りのファイルとともに `/opt/tokenhub/current/catalog/` で有効化されるため、バックエンドプログラムと両方のカタログが常に同じバージョンになります。Provider カタログは PublicProviderConf のデータをリポジトリへ取り込んで管理しており、TokenHub は実行時にリモートカタログを取得しません。
+公開される管理対象イメージとネイティブアーカイブには、対応するバージョンの `data/model-catalog.yaml` と `data/provider-catalog.json` が含まれます。これらは Release の残りのファイルとともに `/opt/tokenhub/current/catalog/` で有効化されるため、バックエンドプログラムと両方のカタログが常に同じバージョンになります。バックエンドの起動時は同梱されたローカル Provider カタログだけを読み込み、ネットワークに依存しません。管理者が Provider カタログを明示的に更新すると、`https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json` から完全な `PublicProviderConf` カタログを取得します。レスポンスの取得に失敗した場合や内容が不完全な場合は、設定済みのローカル `provider-catalog.json` へフォールバックします。
 
 カスタムモデルカタログを使用する場合は、マウントするファイルを明示します。
 
@@ -441,15 +504,33 @@ SQLite は、プロジェクト、Key、Provider、ルート、ユーザー、�
 
 設定済みカタログファイルを更新した後は、バックエンドを再起動するか、**システム設定 → 基本設定** で **モデル参照カタログを同期** を実行します。どちらも参照メタデータを同期し、カスタム外部モデルを保持しますが、モデルは公開しません。
 
-`data/model-catalog.yaml` は追跡対象カタログの参照メタデータを提供します。ルートの許可リストではなく、モデルを公開するものでもありません。`data/provider-catalog.json` は Provider テンプレートと、Provider 設定時に選択できる上流モデルを提供します。選択項目の取り込みでは永続化された Provider モデルインベントリだけが作成されます。外部モデルと統一された顧客向け価格は Model Directory で個別に作成し、Routing Policies で取り込み済みの Provider モデルへマッピングします。`GET /v1/models` は有効かつ 1 つ以上の有効なルートを持つ外部モデルだけを返し、API Key のモデル許可リストが設定されている場合はさらに絞り込みます。カスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
+`data/model-catalog.yaml` は追跡対象カタログの参照メタデータを提供します。ルートの許可リストではなく、モデルを公開するものでもありません。`data/provider-catalog.json` は Provider テンプレートと、Provider 設定時に選択できる上流モデルを提供します。選択項目の取り込みでは永続化された Provider モデルインベントリだけが作成されます。外部モデルと統一された顧客向け価格は Model Directory で個別に作成し、Routing Policies で取り込み済みの Provider モデルへマッピングします。`GET /v1/models` は有効かつ 1 つ以上の有効なルートを持つ外部モデルだけを返し、API Key のモデル許可リストが設定されている場合はさらに絞り込みます。`TOKENHUB_PLUGIN_DIR` は、バックエンド起動時にスキャンされる永続的なプラグインパッケージディレクトリを指します。Docker Compose デプロイではこのディレクトリは `tokenhub-plugins` volume で保持されるため、パッケージ状態はイメージ更新後も残ります。 コンテナのエントリーポイントは `TOKENHUB_PLUGIN_DIR` がルートディレクトリ以外の絶対パスであることを検証し、root 権限を落とす前にディレクトリを作成して実行ユーザー `node` に所有権を設定します。新しいボリュームでも同様です。`TOKENHUB_PLUGIN_MARKETPLACE_URL` は、管理画面でプラグイン一覧を閲覧するための HTTPS JSON インデックスを指せます。オンライン索引は分離署名と失効フィードを検証するまで探索専用で、オフラインミラーはインストール元として利用できます。起動時の読み込みと更新時のフォールバックにカスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
+
+### Kronk への接続
+
+TokenHub は外部の Kronk Model Server に接続するだけで、Kronk のインストール、GGUF ファイルのダウンロード、llama.cpp の組み込みは行いません。TokenHub コンテナ内の `127.0.0.1` は Docker ホストではなく、そのコンテナ自身を指します。Kronk をホストで実行する場合は、ホスト到達可能なプライベート IP または環境で利用可能な `host.docker.internal` を使用してください。別コンテナで実行する場合は、共有 Docker ネットワークと Kronk のサービス名を使用します。プライベートリテラルは既定の strict モードで利用できます。`host.docker.internal` などの DNS 名には `TOKENHUB_PROVIDER_UPSTREAM_ACCESS_MODE=auto` が必要です。ループバックは TokenHub と Kronk が同じネットワーク名前空間を共有する場合に使用し、strict モードでは `TOKENHUB_PROVIDER_UPSTREAM_ALLOW_LOOPBACK` が必要です。
+
+Kronk は既定で平文 HTTP を待ち受けます。リモート配置では、信頼済みプライベートネットワークまたは TLS リバースプロキシを使用し、適切な Kronk authorization mode を有効にしてください。TokenHub は推論、モデル検出、liveness、readiness エンドポイントだけを使用し、モデルダウンロード、ディレクトリ、セキュリティ管理、debug、pprof、管理 UI の各エンドポイントはプロキシしません。
 
 ## リバースプロキシ
 
 本番環境では HTTPS の背後に置き、次のように転送してください。
 
 - 管理コンソールのトラフィックはフロントエンドサービスへ。
-- `/v1/*` と `/api/admin/*` はバックエンドサービスへ。
+- `/api/*`、`/v1/*`、`/v1beta/*`、`/docs`、`/openapi.json`、`/openapi.yaml`、`/livez`、`/readyz`、`/healthz` はバックエンドサービスへ。
 
 長いモデル応答に備えて、リクエストボディサイズとストリーミングタイムアウトを十分に設定してください。
 
-Liveness には `/livez`、Readiness には `/readyz` を使用します。データベースが利用できない場合、`/readyz` と後方互換の `/healthz` は `503` を返します。
+Liveness には `/livez`、Readiness には `/readyz` を使用します。データベースが利用できない場合、またはデータベース進化状態がサービス提供可能でない場合（不完全なマイグレーション、台帳検証の失敗、未完了のブロッキングデータバックフィル）、`/readyz` と後方互換の `/healthz` は `503` を返します。保留中のオンラインデータバックフィルは準備状態に影響しません。
+
+## 任意の Jev セマンティックルーティング
+
+段階的な有効化、リクエスト範囲、テキスト送信、監査、ロールバックは [Jev セマンティックルーティング](semantic-routing.md) を参照してください。サーバー設定に加え、モデル単位で観察または有効モードを指定します。
+
+| 変数 | 初期値 | 用途 |
+| --- | --- | --- |
+| `TOKENHUB_SEMANTIC_ROUTING_ENABLED` | `false` | 独立した Jev 判断クライアントを有効化。 |
+| `TOKENHUB_SEMANTIC_ROUTING_PROJECTS` | 空 | テキスト送信を許可する正確なプロジェクト ID のカンマ区切り。空ならすべて拒否。 |
+| `TOKENHUB_TYPESAFE_API_KEY` | 空 | サーバー専用の TypeSafe 認証情報。 |
+| `TOKENHUB_TYPESAFE_MODEL` | `jev-1.13.0` | 具体的な評価モデルのバージョン。 |
+| `TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS` | `1000` | カタログ検索と評価のタイムアウト、1〜10000 ms。 |

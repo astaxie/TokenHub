@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "protocol": "stdio-json-v1",
+  "kind": "management_action",
+  "plugin_id": "tokenhub.action.echo-go",
+  "action_id": "echo.run",
+  "cases": [
+    {
+      "name": "echo",
+      "actor": { "id": "admin_1", "name": "Admin One", "role": "owner" },
+      "payload": { "resource_id": "rsrc_1", "message": "hello", "dry_run": true },
+      "expect": {
+        "resource_id": "rsrc_1",
+        "message": "hello",
+        "dry_run": true,
+        "actor_id": "admin_1",
+        "metadata_status": "ok"
+      }
+    },
+    {
+      "name": "default message",
+      "actor": { "id": "admin_2", "role": "auditor" },
+      "payload": { "resource_id": "rsrc_2" },
+      "expect": {
+        "resource_id": "rsrc_2",
+        "message": "pong",
+        "dry_run": false,
+        "actor_id": "admin_2",
+        "metadata_status": "ok"
+      }
+    }
+  ]
+}

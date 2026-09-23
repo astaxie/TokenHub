@@ -427,6 +427,21 @@
   color: #b42318;
 }
 
+.settings-proxy-test .field {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.settings-proxy-test .secondary-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.settings-proxy-test > small {
+  flex-basis: 100%;
+}
+
 .template-card-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

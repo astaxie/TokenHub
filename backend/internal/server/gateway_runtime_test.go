@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -200,9 +201,23 @@ func TestDefaultAlertRulesAreAutoDiscovered(t *testing.T) {
 
 func TestProviderResourceCooldownAfterFailures(t *testing.T) {
 	store, secret, resourceID := newResourceRoutedStore(t, "failing_resource")
+	var upstreamCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		upstreamCalls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"resource-ops-chat"}]}`))
+	}))
+	defer upstream.Close()
+	if _, err := store.UpdateProviderResource(resourceID, ProviderResource{BaseURL: upstream.URL, Healthy: true}); err != nil {
+		t.Fatal(err)
+	}
 	store.failureThreshold = 2
 	server := New(store)
-	registerTestAdapter(server, "failing_resource", failingAdapter{})
+	server.adapterRegistry.Register("failing_resource", failingAdapter{}, AdapterCapabilityChat)
 	app := server.Handler()
 
 	for i := 0; i < 2; i++ {
@@ -224,6 +239,9 @@ func TestProviderResourceCooldownAfterFailures(t *testing.T) {
 	resp := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/"+resourceID+"/test", nil, "")
 	if resp.Code != http.StatusOK {
 		t.Fatalf("resource test should clear cooldown, got %d: %s", resp.Code, resp.Body)
+	}
+	if upstreamCalls.Load() != 1 {
+		t.Fatalf("expected one upstream probe, got %d", upstreamCalls.Load())
 	}
 	resource = findResource(t, store, resourceID)
 	if resource.FailureCount != 0 || resource.CooldownUntil != nil || !resource.Healthy {
@@ -366,7 +384,7 @@ func TestGatewayFailoverUsesBackupRoute(t *testing.T) {
 	store.AddRoute(ModelRoute{ID: "route_backup", ModelName: "gpt-4.1-mini", ProviderID: backup.ID, ProviderModel: "backup-chat", Priority: 2, Weight: 100, Status: StatusActive, Strategy: "priority_only"})
 
 	server := New(store)
-	registerTestAdapter(server, "failing_mock", failingAdapter{})
+	server.adapterRegistry.Register("failing_mock", failingAdapter{}, AdapterCapabilityChat)
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{

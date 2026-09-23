@@ -1,0 +1,38 @@
+.api-key-access-modal {
+  width: min(720px, 100%);
+  max-height: calc(100dvh - 36px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 22%);
+  overflow: hidden;
+}
+.api-key-access-header, .api-key-access-footer { padding: 20px 24px; flex-shrink: 0; }
+.api-key-access-header { border-bottom: 1px solid var(--border); }
+.api-key-access-header h2 { margin: 0; font-size: 20px; }
+.api-key-access-header p { margin: 8px 0 0; color: var(--muted-strong); overflow-wrap: anywhere; }
+.api-key-access-body { display: grid; gap: 16px; padding: 20px 24px; overflow: auto; min-height: 0; }
+.api-key-access-body p { margin: 0; line-height: 1.6; }
+.api-key-access-notice { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.api-key-access-warning { color: var(--red); }
+.api-key-access-hint { color: var(--muted-strong); overflow-wrap: anywhere; }
+.api-key-access-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.api-key-access-field .field { min-width: 0; }
+.api-key-access-modal .field { margin: 0; }
+.api-key-access-field input, .api-key-access-field textarea { font-family: ui-monospace, monospace; }
+.api-key-access-modal input, .api-key-access-modal select, .api-key-access-modal textarea { font-size: 16px; width: 100%; }
+.api-key-access-modal button, .api-key-access-modal select, .api-key-access-example summary { min-height: 44px; }
+.api-key-access-copy-status { grid-column: 1 / -1; color: var(--muted-strong); }
+.api-key-access-example { border-top: 1px solid var(--border); padding-top: 8px; }
+.api-key-access-example summary { cursor: pointer; display: list-item; align-content: center; }
+.api-key-access-example > :not(summary) { margin-top: 12px; }
+.api-key-access-example p { color: var(--muted-strong); }
+.api-key-access-footer { display: flex; justify-content: flex-end; border-top: 1px solid var(--border); }
+.api-key-access-modal :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .api-key-access-header, .api-key-access-body, .api-key-access-footer { padding: 16px; }
+  .api-key-access-field { grid-template-columns: minmax(0, 1fr); }
+  .api-key-access-field button { justify-self: start; }
+}

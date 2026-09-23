@@ -326,7 +326,7 @@ func TestProviderCredentialsAreEncryptedAndUsable(t *testing.T) {
 	})
 	adapter := &captureAdapter{}
 	server := New(store)
-	registerTestAdapter(server, "capture", adapter)
+	server.adapterRegistry.Register("capture", adapter, AdapterCapabilityChat)
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
@@ -388,7 +388,7 @@ func TestOpenAISubscriptionResourceSuppliesRouteCredentials(t *testing.T) {
 	})
 	adapter := &captureAdapter{}
 	server := New(store)
-	registerTestAdapter(server, "capture", adapter)
+	server.adapterRegistry.Register("capture", adapter, AdapterCapabilityChat)
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
@@ -407,6 +407,108 @@ func TestOpenAISubscriptionResourceSuppliesRouteCredentials(t *testing.T) {
 		adapter.seenOptions["account_email"] != "owner@example.com" ||
 		adapter.seenOptions["organization_id"] != "org_capture" {
 		t.Fatalf("expected OpenAI account options, got %+v", adapter.seenOptions)
+	}
+}
+
+func TestPluginAccountResourceStoresCredentialEnvelope(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_kimi_plugin", Name: "Kimi Plugin", Type: "kimi_subscription", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_account",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Account",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Credentials: &ProviderResourceCredentials{
+			AuthType:     "personal_access_token",
+			AccessToken:  "kimi-access-token",
+			RefreshToken: "kimi-refresh-token",
+			AccountID:    "kimi-account",
+			Email:        "owner@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted ProviderResource
+	if err := store.db.First(&persisted, "id = ?", resource.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if persisted.APIKey == "kimi-access-token" || !strings.HasPrefix(persisted.APIKey, "enc:v1:") {
+		t.Fatalf("plugin account access token should be stored encrypted, got %q", persisted.APIKey)
+	}
+	if persisted.CredentialBlob == "" || !strings.HasPrefix(persisted.CredentialBlob, "enc:v1:") {
+		t.Fatalf("plugin account credential blob should be stored encrypted, got %q", persisted.CredentialBlob)
+	}
+	credentials := store.providerResourceCredentialsForRuntime(persisted)
+	if credentials.AccessToken != "kimi-access-token" || credentials.RefreshToken != "kimi-refresh-token" || credentials.AuthType != "personal_access_token" {
+		t.Fatalf("plugin account credentials = %+v", credentials)
+	}
+	listed, ok := store.GetProviderResource(resource.ID)
+	if !ok {
+		t.Fatal("stored plugin account resource was not found")
+	}
+	if listed.CredentialSummary["credential_source"] != "kimi_oauth_account" ||
+		listed.CredentialSummary["has_refresh_token"] != "true" ||
+		listed.CredentialSummary["account_email"] != "owner@example.com" {
+		t.Fatalf("plugin account credential summary = %+v", listed.CredentialSummary)
+	}
+}
+
+func TestPluginAccountResourceUpdatePreservesCredentialSummary(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{ID: "prv_kimi_update", Name: "Kimi Plugin", Type: "kimi_subscription", Status: StatusActive, Healthy: true})
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID:           "rsrc_kimi_update",
+		ProviderID:   provider.ID,
+		Name:         "Kimi Account",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Options:      map[string]string{"operator_note": "before"},
+		Credentials: &ProviderResourceCredentials{
+			AuthType:       "oauth",
+			AccessToken:    "kimi-access-token",
+			RefreshToken:   "kimi-refresh-token",
+			AccountID:      "kimi-account",
+			Email:          "owner@example.com",
+			OrganizationID: "kimi-org",
+			ExpiresAt:      "2099-01-01T00:00:00Z",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.UpdateProviderResource(resource.ID, ProviderResource{
+		ProviderID:   provider.ID,
+		Name:         "Kimi Account Updated",
+		ResourceType: "kimi_oauth_account",
+		Status:       StatusActive,
+		Healthy:      true,
+		Weight:       100,
+		Options:      map[string]string{"operator_note": "after"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Options["operator_note"] != "after" ||
+		updated.CredentialSummary["credential_source"] != "kimi_oauth_account" ||
+		updated.CredentialSummary["auth_type"] != "oauth" ||
+		updated.CredentialSummary["account_email"] != "owner@example.com" ||
+		updated.CredentialSummary["account_id"] != "kimi-account" ||
+		updated.CredentialSummary["organization_id"] != "kimi-org" ||
+		updated.CredentialSummary["token_expires_at"] != "2099-01-01T00:00:00Z" ||
+		updated.CredentialSummary["has_refresh_token"] != "true" {
+		t.Fatalf("plugin account update lost credential summary: options=%+v summary=%+v", updated.Options, updated.CredentialSummary)
+	}
+	var persisted ProviderResource
+	if err := store.db.First(&persisted, "id = ?", resource.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	credentials := store.providerResourceCredentialsForRuntime(persisted)
+	if credentials.AccessToken != "kimi-access-token" || credentials.RefreshToken != "kimi-refresh-token" {
+		t.Fatalf("plugin account update lost encrypted credentials: %+v", credentials)
 	}
 }
 
@@ -452,7 +554,10 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := store.AddProvider(Provider{ID: "prv_refreshing", Name: "Refreshing Provider", Type: "capture", Status: StatusActive, Healthy: true})
+	provider := store.AddProvider(Provider{
+		ID: "prv_refreshing", Name: "Refreshing Provider", Type: "capture", Status: StatusActive, Healthy: true,
+		Options: map[string]string{providerCredentialRefreshProfileOption: "capture_oauth"},
+	})
 	resource, err := store.AddProviderResource(ProviderResource{
 		ID:           "rsrc_refreshing",
 		ProviderID:   provider.ID,
@@ -482,7 +587,17 @@ func TestOpenAISubscriptionResourceRefreshesBeforeGatewayCall(t *testing.T) {
 	})
 	adapter := &captureAdapter{}
 	server := New(store)
-	registerTestAdapter(server, "capture", adapter)
+	server.adapterRegistry.Register("capture", adapter, AdapterCapabilityChat)
+	store.ConfigureProviderResourceTypePolicy(map[string][]string{"capture": {ProviderResourceOpenAISubscription}})
+	store.ConfigureProviderCredentialRefreshHandlers([]providerResourceCredentialRefreshRegistration{{
+		ProviderType:        "capture",
+		Profile:             "capture_oauth",
+		RefreshLead:         openAIAccountOAuthRefreshLead,
+		AuthenticationEqual: openAIAccountAuthenticationEqual,
+		Refresh: func(ctx context.Context, current ProviderResourceCredentials) (ProviderResourceCredentials, error) {
+			return refreshOpenAIAccountOAuthCredentials(ctx, current)
+		},
+	}})
 	app := server.Handler()
 
 	resp := doJSON(t, app, http.MethodPost, "/v1/chat/completions", map[string]any{
@@ -584,7 +699,7 @@ func TestOpenAIProviderAccountOAuthCallbackSurfacesDatabaseFailure(t *testing.T)
 }
 
 type oauthRestoreFailureStore struct {
-	Store
+	*GormStore
 	saveCalls int
 }
 
@@ -593,7 +708,7 @@ func (s *oauthRestoreFailureStore) SaveProviderAccountOAuthSession(session provi
 	if s.saveCalls > 1 {
 		return errors.New("restore failed")
 	}
-	return s.Store.SaveProviderAccountOAuthSession(session)
+	return s.GormStore.SaveProviderAccountOAuthSession(session)
 }
 
 func TestOpenAIProviderAccountOAuthExchangeSurfacesSessionRestoreFailure(t *testing.T) {
@@ -606,7 +721,7 @@ func TestOpenAIProviderAccountOAuthExchangeSurfacesSessionRestoreFailure(t *test
 	defer func() { openAIAccountOAuthTokenEndpoint = previousEndpoint }()
 
 	baseStore := NewMemoryStore()
-	store := &oauthRestoreFailureStore{Store: baseStore}
+	store := &oauthRestoreFailureStore{GormStore: baseStore}
 	app := New(store).Handler()
 	generated := doJSON(t, app, http.MethodPost, "/api/admin/provider-account-oauth/openai/generate-auth-url", map[string]any{
 		"return_url": "http://localhost:3001/providers",
@@ -723,6 +838,65 @@ func TestProviderAndResourceTestEndpoints(t *testing.T) {
 	}
 }
 
+func TestProviderTestPerformsUpstreamProbeWithoutResourceHeaders(t *testing.T) {
+	requests := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Header.Get("Authorization") != "Bearer provider-secret" {
+			t.Errorf("authorization = %q", r.Header.Get("Authorization"))
+			http.Error(w, "missing credentials", http.StatusUnauthorized)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": []map[string]string{{"id": "upstream-model"}}})
+	}))
+	defer upstream.Close()
+
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_real_probe", Name: "Real probe", Type: ProviderOpenAICompatible, BaseURL: upstream.URL,
+		APIKey: "provider-secret", Status: StatusActive, Healthy: false,
+	})
+	response := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/providers/"+provider.ID+"/test", nil, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("provider test = %d: %s", response.Code, response.Body)
+	}
+	if requests != 1 {
+		t.Fatalf("upstream requests = %d, want 1", requests)
+	}
+	updated, ok := store.GetProvider(provider.ID)
+	if !ok || !updated.Healthy {
+		t.Fatalf("successful upstream probe did not restore Provider health: %+v", updated)
+	}
+}
+
+func TestProviderTestMarksProviderUnhealthyWhenAllResourceProbesFail(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "revoked credentials", http.StatusUnauthorized)
+	}))
+	defer upstream.Close()
+
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_failed_resource_probe", Name: "Failed resource probe", Type: ProviderOpenAICompatible,
+		BaseURL: upstream.URL, Status: StatusActive, Healthy: true,
+	})
+	if _, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_failed_resource_probe", ProviderID: provider.ID, Name: "Revoked", ResourceType: ProviderResourceAPIKey,
+		APIKey: "revoked-secret", Status: StatusActive, Healthy: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	response := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/providers/"+provider.ID+"/test", nil, "")
+	if response.Code == http.StatusOK {
+		t.Fatalf("provider test unexpectedly succeeded: %s", response.Body)
+	}
+	updated, ok := store.GetProvider(provider.ID)
+	if !ok || updated.Healthy {
+		t.Fatalf("failed upstream probes did not mark Provider unhealthy: %+v", updated)
+	}
+}
+
 func TestProviderResourceBulkOperations(t *testing.T) {
 	store := NewMemoryStore()
 	if err := SeedDemoData(store); err != nil {
@@ -769,9 +943,19 @@ func TestProviderResourceBulkOperations(t *testing.T) {
 	if cleared.Code != http.StatusOK || !strings.Contains(cleared.Body, `"success":1`) {
 		t.Fatalf("clear error failed: %d %s", cleared.Code, cleared.Body)
 	}
+	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_disabled" {
+		t.Fatalf("clear_error must not reactivate a disabled resource, got %v", err)
+	}
+	enabled := doJSON(t, app, http.MethodPost, "/api/admin/provider-resources/bulk", map[string]any{
+		"action": "enable",
+		"ids":    []string{resource.ID},
+	}, "")
+	if enabled.Code != http.StatusOK || !strings.Contains(enabled.Body, `"success":1`) {
+		t.Fatalf("enable failed: %d %s", enabled.Code, enabled.Body)
+	}
 	leaseID, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID)
 	if err != nil {
-		t.Fatalf("capacity should be available after clear_error: %v", err)
+		t.Fatalf("capacity should be available after enable: %v", err)
 	}
 	store.FinishProviderResourceAttempt(context.Background(), resource.ID, leaseID, AttemptSucceeded, Usage{TotalTokens: 5})
 	if _, _, err := store.CheckProviderResourceCapacity(context.Background(), resource.ID); AsHTTPError(err).Code != "provider_resource_rpm_exceeded" {

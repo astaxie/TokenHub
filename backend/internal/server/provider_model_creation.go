@@ -11,6 +11,12 @@ func (s *Server) providerForCreate(ctx context.Context, req ProviderCreateReques
 		return Provider{}, ProviderCatalogEntry{}, "", err
 	}
 	provider, catalog, source, err := s.providerFromCreateRequest(ctx, req)
+	if err == nil {
+		if effectiveSystemPromptTransformPolicy(provider.Options) == "" {
+			descriptor, _ := s.adapterRegistry.Describe(provider.Type)
+			provider.Options[systemPromptTransformPolicyOption] = defaultSystemPromptTransformPolicyForDescriptor(descriptor)
+		}
+	}
 	if err == nil && provider.Name != "" && provider.Type != "" {
 		err = validateProviderModelSelection(catalog, req.SelectedModels)
 	}

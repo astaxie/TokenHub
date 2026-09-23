@@ -9,7 +9,7 @@ import (
 // SchemaVersion is the current version of the CanonicalMigrationBundle
 // schema shipped by this package. Follow semver: bump the major on any
 // breaking change to the on-disk JSON layout.
-const SchemaVersion = "1.1.0"
+const SchemaVersion = "2.0.0"
 
 // SemVer describes a parsed schema version.
 type SemVer struct {
@@ -34,6 +34,9 @@ func ParseSchemaVersion(v string) (SemVer, error) {
 	}
 	if sv.Patch, err = strconv.Atoi(parts[2]); err != nil {
 		return SemVer{}, fmt.Errorf("bundle: invalid patch in %q: %w", v, err)
+	}
+	if sv.Major < 0 || sv.Minor < 0 || sv.Patch < 0 {
+		return SemVer{}, fmt.Errorf("bundle: invalid schema_version %q, version components must be non-negative", v)
 	}
 	return sv, nil
 }

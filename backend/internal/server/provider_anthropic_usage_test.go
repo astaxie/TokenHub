@@ -12,15 +12,21 @@ func TestAnthropicUsageFromRawMap(t *testing.T) {
 	usage := anthropicUsageFromRawMap(map[string]any{
 		"input_tokens":                int64(10),
 		"cache_creation_input_tokens": int64(4),
-		"cache_read_input_tokens":     int64(6),
-		"output_tokens":               int64(5),
+		"cache_creation": map[string]any{
+			"ephemeral_5m_input_tokens": int64(3),
+			"ephemeral_1h_input_tokens": int64(1),
+		},
+		"cache_read_input_tokens": int64(6),
+		"output_tokens":           int64(5),
 	})
 	want := Usage{
-		PromptTokens:          20,
-		CachedInputTokens:     6,
-		CacheWriteInputTokens: 4,
-		CompletionTokens:      5,
-		TotalTokens:           25,
+		PromptTokens:            20,
+		CachedInputTokens:       6,
+		CacheWriteInputTokens:   4,
+		CacheWrite5mInputTokens: 3,
+		CacheWrite1hInputTokens: 1,
+		CompletionTokens:        5,
+		TotalTokens:             25,
 	}
 	if !reflect.DeepEqual(usage, want) {
 		t.Fatalf("anthropicUsageFromRawMap() = %+v, want %+v", usage, want)
@@ -28,6 +34,23 @@ func TestAnthropicUsageFromRawMap(t *testing.T) {
 
 	if empty := anthropicUsageFromRawMap(nil); !reflect.DeepEqual(empty, Usage{}) {
 		t.Fatalf("anthropicUsageFromRawMap(nil) = %+v, want a zero usage", empty)
+	}
+}
+
+func TestAnthropicUsageObjectDerivesCacheWriteTotalFromDurationDetails(t *testing.T) {
+	result := anthropicUsageObject(Usage{
+		PromptTokens:            20,
+		CacheWrite5mInputTokens: 3,
+		CacheWrite1hInputTokens: 4,
+		CompletionTokens:        5,
+	})
+	if result["input_tokens"] != int64(13) ||
+		result["cache_creation_input_tokens"] != int64(7) ||
+		result["output_tokens"] != int64(5) {
+		t.Fatalf("Anthropic usage object did not derive cache-write totals: %+v", result)
+	}
+	if _, ok := result["cache_creation"]; ok {
+		t.Fatalf("Anthropic usage object should not expose duration-specific cache creation details: %+v", result)
 	}
 }
 
@@ -61,16 +84,17 @@ func TestMergeAnthropicStreamUsageOnlyPositiveValuesOverwrite(t *testing.T) {
 		t.Fatalf("zero-valued merge = %+v, want %+v", zeroed, final)
 	}
 
-	// Cache-creation tokens alone still count as an input update, and replacing
-	// the input side clears the sibling classes the frame left out. That clobbers
-	// the running totals; this pins inherited behavior, not a target semantic.
-	created := mergeAnthropicStreamUsage(final, map[string]any{"cache_creation_input_tokens": int64(7)})
+	created := mergeAnthropicStreamUsage(final, map[string]any{
+		"cache_creation_input_tokens": int64(7),
+		"cache_creation": map[string]any{
+			"ephemeral_5m_input_tokens": int64(2),
+			"ephemeral_1h_input_tokens": int64(5),
+		},
+	})
 	if created.PromptTokens != 7 || created.CachedInputTokens != 0 || created.CompletionTokens != 120 {
 		t.Fatalf("cache-creation merge = %+v", created)
 	}
-	// This path has never billed cache-creation tokens on their own field.
-	// Changing that is a behavior change, so it must not happen by accident.
-	if created.CacheWriteInputTokens != 0 {
-		t.Fatalf("stream merge started reporting cache-write tokens: %+v", created)
+	if created.CacheWriteInputTokens != 7 || created.CacheWrite5mInputTokens != 2 || created.CacheWrite1hInputTokens != 5 {
+		t.Fatalf("stream merge cache-write tokens = %+v", created)
 	}
 }

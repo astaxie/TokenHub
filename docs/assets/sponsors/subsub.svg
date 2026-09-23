@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="180" viewBox="0 0 300 90" role="img" aria-label="SubSub">
+  <title>SubSub</title>
+  <defs><linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2563EB"/><stop offset="1" stop-color="#7C3AED"/></linearGradient></defs>
+  <rect x="1" y="1" width="298" height="88" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <rect x="16" y="17" width="56" height="56" rx="14" fill="url(#brand)"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="36" cy="53" r="4" fill="#FFFFFF" stroke="none"/>
+    <path d="M36 53 54 35M46 35h8v8"/>
+  </g>
+  <text x="88" y="51" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="700" letter-spacing="-1.2" fill="#172554">SubSub</text>
+  <text x="90" y="69" font-family="Arial, Helvetica, sans-serif" font-size="12" letter-spacing="1.6" fill="#64748B">subsub.cn</text>
+</svg>

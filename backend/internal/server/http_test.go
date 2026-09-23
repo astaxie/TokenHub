@@ -301,7 +301,8 @@ func TestAdminPlaygroundChatUsesRoutesWithoutProjectBilling(t *testing.T) {
 	}
 
 	resp := doJSON(t, app, http.MethodPost, "/api/admin/playground/chat", map[string]any{
-		"model": "gpt-4.1-mini",
+		"project_id": "prj_demo",
+		"model":      "gpt-4.1-mini",
 		"messages": []map[string]any{
 			{"role": "user", "content": "playground smoke"},
 		},
@@ -358,8 +359,10 @@ func TestAdminPlaygroundChatUsesRoutesWithoutProjectBilling(t *testing.T) {
 	}
 }
 
-func TestAdminPlaygroundChatUsesResponsesForCodexSubscription(t *testing.T) {
+func TestAdminPlaygroundModesPreserveImagesForCodexSubscription(t *testing.T) {
+	dataURI := "data:image/png;base64,YWJj"
 	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Playground Codex Project"})
 	provider := store.AddProvider(Provider{
 		ID:      "prv_playground_codex",
 		Name:    "Playground Codex",
@@ -394,7 +397,7 @@ func TestAdminPlaygroundChatUsesResponsesForCodexSubscription(t *testing.T) {
 	})
 
 	server := New(store)
-	server.codexSubscription.Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+	mustCodexSubscriptionAdapterForTest(t, server).Client = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/backend-api/codex/responses" {
 			t.Fatalf("expected Codex Responses endpoint, got %s", req.URL)
 		}
@@ -430,10 +433,22 @@ func TestAdminPlaygroundChatUsesResponsesForCodexSubscription(t *testing.T) {
 		}
 		firstContent, _ := first["content"].([]any)
 		secondContent, _ := second["content"].([]any)
+		thirdContent, _ := third["content"].([]any)
 		firstPart, _ := firstContent[0].(map[string]any)
 		secondPart, _ := secondContent[0].(map[string]any)
 		if firstPart["type"] != "input_text" || firstPart["text"] != "First question" || secondPart["type"] != "output_text" || secondPart["text"] != "First answer" {
 			t.Fatalf("unexpected Responses content: %#v", input)
+		}
+		if len(thirdContent) != 2 {
+			t.Fatalf("expected text and image parts, got %#v", thirdContent)
+		}
+		thirdText, _ := thirdContent[0].(map[string]any)
+		thirdImage, _ := thirdContent[1].(map[string]any)
+		if thirdText["type"] != "input_text" || thirdText["text"] != "Describe this image" || strings.Contains(anyString(thirdText["text"]), dataURI) {
+			t.Fatalf("image data must not be flattened into text: %#v", thirdContent)
+		}
+		if thirdImage["type"] != "input_image" || thirdImage["image_url"] != dataURI {
+			t.Fatalf("expected Responses input_image part, got %#v", thirdImage)
 		}
 		stream := strings.Join([]string{
 			"event: response.output_text.delta",
@@ -451,23 +466,30 @@ func TestAdminPlaygroundChatUsesResponsesForCodexSubscription(t *testing.T) {
 		}, nil
 	})}
 
-	resp := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/playground/chat", map[string]any{
-		"model": "gpt-playground-codex",
+	payload := map[string]any{
+		"project_id": project.ID,
+		"model":      "gpt-playground-codex",
 		"messages": []map[string]any{
 			{"role": "system", "content": "Be concise."},
 			{"role": "user", "content": "First question"},
 			{"role": "assistant", "content": "First answer"},
-			{"role": "user", "content": "Second question"},
+			{"role": "user", "content": []any{
+				map[string]any{"type": "text", "text": "Describe this image"},
+				playgroundImagePart(dataURI),
+			}},
 		},
 		"max_tokens":       321,
 		"temperature":      0.2,
 		"reasoning_effort": "high",
-	}, "")
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected Codex playground request to succeed, got %d: %s", resp.Code, resp.Body)
 	}
-	if !strings.Contains(resp.Body, "Codex playground works.") || !strings.Contains(resp.Body, `"prompt_tokens":5`) || !strings.Contains(resp.Body, `"completion_tokens":4`) {
-		t.Fatalf("unexpected Codex playground response: %s", resp.Body)
+	for _, path := range []string{"/api/admin/playground/chat", "/api/admin/playground/chat/stream"} {
+		resp := doJSON(t, server.Handler(), http.MethodPost, path, payload, "")
+		if resp.Code != http.StatusOK {
+			t.Fatalf("expected Codex playground request to succeed for %s, got %d: %s", path, resp.Code, resp.Body)
+		}
+		if !strings.Contains(resp.Body, "Codex playground works.") || !strings.Contains(resp.Body, `"prompt_tokens":5`) || !strings.Contains(resp.Body, `"completion_tokens":4`) {
+			t.Fatalf("unexpected Codex playground response for %s: %s", path, resp.Body)
+		}
 	}
 }
 
@@ -585,9 +607,21 @@ version: 1
 models:
   - name: "test-chat-128k"
     category: "custom"
+    family: "test"
+    modality: "chat"
+    context_window: 128000
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat"]
+    supported_parameters: ["temperature"]
   - name: "test-embedding"
     category: "custom"
+    family: "test"
     modality: "embedding"
+    input_modalities: ["text"]
+    output_modalities: ["embedding"]
+    capabilities: ["embedding"]
+    supported_parameters: []
     embedding_price_usd_per_1m: 0.01
 `)
 	if err := os.WriteFile(catalogPath, content, 0o644); err != nil {
@@ -621,10 +655,18 @@ models:
     context_window: 128000
     input_price_usd_per_1m: 1.5
     output_price_usd_per_1m: 6
+    input_modalities: ["text"]
+    output_modalities: ["text"]
+    capabilities: ["chat"]
+    supported_parameters: ["temperature"]
   - name: factory-embedding
     category: openai
     family: factory
     modality: embedding
+    input_modalities: ["text"]
+    output_modalities: ["embedding"]
+    capabilities: ["embedding"]
+    supported_parameters: []
     embedding_price_usd_per_1m: 0.02
 `)
 	if err := os.WriteFile(catalogPath, content, 0o644); err != nil {
@@ -633,6 +675,7 @@ models:
 
 	store := NewMemoryStore()
 	store.AddModel(Model{Name: "factory-chat", Family: "customized", Modality: "chat", ContextWindow: 1000, Status: StatusDisabled})
+	store.AddModel(Model{Name: "factory-embedding", Family: "customized", Modality: "embedding", EmbeddingPriceUSDPer1M: 9, Status: StatusDisabled})
 	store.AddModel(Model{Name: "custom-only", Family: "custom", Modality: "chat", Status: StatusActive})
 	app := NewWithConfig(store, Config{AdminToken: "dev_admin_token", ModelCatalogFile: catalogPath}).Handler()
 

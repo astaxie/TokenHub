@@ -11,6 +11,12 @@ TokenHub is a private enterprise AI gateway with a Go backend, a Next.js admin c
 - `deploy/`: Docker Compose deployment and environment template.
 - `docs/`: English, Simplified Chinese, and Japanese documentation.
 
+## Repository source language
+
+- Use English for source-code identifiers, code comments, test suite and test case titles, developer-facing fixtures, logs, and configuration descriptions.
+- Localized UI copy is the exception: keep Simplified Chinese as the canonical literal passed to `tx("...")`, with matching English and Japanese catalog entries.
+- Tests may use localized selectors or assertions when they intentionally exercise translated UI, but their suite names, case titles, and diagnostics must remain in English.
+
 ## Development commands
 
 Run backend checks from `backend/`:
@@ -19,15 +25,26 @@ Run backend checks from `backend/`:
 gofmt -w <changed-go-files>
 go test ./...
 go vet ./...
+golangci-lint run ./...
 ```
+
+Use the `golangci-lint` version pinned in `.github/workflows/ci.yml`; `go test` and `go vet` do not replace its unused-code and other lint checks.
 
 Run frontend checks from `frontend/`:
 
 ```bash
 npm ci
+npm run lint
 npm run typecheck
+npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+The browser smoke suite starts an isolated Next.js frontend, Go backend, fake
+provider upstream, and temporary SQLite database. It does not require real
+credentials or an already-running TokenHub stack.
 
 Run the repository gates from the repository root. These enforce the change guidelines below, so a failure names the rule that was broken:
 
@@ -51,6 +68,10 @@ npm run test:security-policy
 ```
 
 Start the full local development stack from the repository root with `./start.sh`. Start the containerized stack with the commands documented in `docs/deployment.md`.
+
+## UI acceptance fixtures
+
+For page interactions, layouts, or UI fixture changes, read [docs/development/ui-testing.md](docs/development/ui-testing.md). Maintain the relevant named scenarios and run them with `npm run test:ui`; use `npm run capture:ui` to inspect changed screens before handoff. Keep fixtures synthetic and fail on undeclared API requests. UI fixture results establish frontend behavior only; backend contracts, authorization, billing, and persistence remain covered by their existing tests.
 
 ## Optional development workflows
 
@@ -79,9 +100,22 @@ Use a workflow only when the user explicitly names it; otherwise follow the norm
 - Next.js may rewrite `frontend/next-env.d.ts` during development or production builds. Do not commit incidental mode-dependent changes to that generated file.
 - Keep `data/model-catalog.yaml` tracked; other files under runtime data directories are intentionally ignored.
 
+## GitHub contribution language
+
+- Agents must write every GitHub issue and pull request title and body in English, regardless of whether they use the GitHub website, an API, a connector, or `gh`.
+- Keep unavoidable machine-generated output, logs, identifiers, and code in their original form, but explain them in English.
+
+## GitHub issue guidelines
+
+- Search open and closed issues before creating a new issue.
+- Read and follow the closest matching form under `.github/ISSUE_TEMPLATE/`, including every required field. Do not create a blank issue when an existing form applies.
+- When a CLI or API cannot submit an Issue Form directly, preserve the form's headings and required information in the issue body.
+- Never include API keys, provider credentials, tokens, cookies, unredacted environment files, or other secrets in an issue.
+
 ## Pull request guidelines
 
 - Use an English Conventional Commits-style PR title in the format `<type>[optional scope][!]: <short summary>`, limited to 72 characters. Common types include `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, and `revert`. Use a lowercase imperative summary without a trailing period.
+- Write every pull request body section in English.
 - Before creating a pull request, read and complete `.github/pull_request_template.md`.
 - Preserve every template section, replace all placeholders, and explain any skipped or non-applicable checks.
 - Do not use `gh pr create --fill` or an ad hoc body that bypasses the template; use the completed template as the final pull request body.
@@ -89,7 +123,9 @@ Use a workflow only when the user explicitly names it; otherwise follow the norm
 
 ## Validation expectations
 
-- Run the narrowest relevant test while iterating, then run the full applicable check set before handing off.
+- Run the narrowest relevant test while iterating, then run the full applicable check set before handing off. Use `.github/workflows/ci.yml` as the check list and `.nvmrc` for the frontend Node version.
+- For PR delivery or CI repair, verify the latest pushed head and wait for all of its CI checks to pass before reporting completion. A failure reproduced on the base branch still blocks delivery unless the user explicitly accepts that exception.
+- When the target branch changes during development, integrate it and validate the resulting code before pushing; earlier results do not validate a different merge result.
 - Run `git diff --check` before committing.
 - Report any check that could not run and distinguish new failures from failures already present on the base branch.
 - For Docker or deployment changes, validate the rendered Compose configuration with `docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config` when Docker is available.

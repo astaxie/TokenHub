@@ -99,6 +99,26 @@ func (e *openAIChatStreamEncoder) EmitReasoningSignature(provider string, signat
 	return e.emitDelta(map[string]any{"reasoning_signature": encodeProviderSignature(provider, signature)})
 }
 
+// EmitToolReasoningDetail carries an opaque reasoning continuation beside the
+// tool call it precedes. pi-ai persists this OpenRouter-compatible extension
+// on the tool call, whereas it treats a standalone reasoning_signature as a
+// display-only delta.
+func (e *openAIChatStreamEncoder) EmitToolReasoningDetail(toolCallID string, provider string, signature string) error {
+	if toolCallID == "" || signature == "" {
+		return nil
+	}
+	if err := e.EmitRole(); err != nil {
+		return err
+	}
+	return e.emitDelta(map[string]any{
+		"reasoning_details": []any{map[string]any{
+			"type": "reasoning.encrypted",
+			"id":   toolCallID,
+			"data": encodeProviderSignature(provider, signature),
+		}},
+	})
+}
+
 func (e *openAIChatStreamEncoder) EmitRedactedReasoning(data string) error {
 	if data == "" {
 		return nil
@@ -173,7 +193,7 @@ func (e *openAIChatStreamEncoder) Finalize(finishReason string, usage Usage) err
 	if e.includeUsage {
 		usageFrame := e.newFrame()
 		usageFrame["choices"] = []any{}
-		usageFrame["usage"] = usage
+		usageFrame["usage"] = openAIChatUsageObject(usage)
 		if err := e.writeFrame(usageFrame); err != nil {
 			return err
 		}

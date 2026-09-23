@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.stackit"
+name: "STACKIT"
+version: 1.0.0
+summary: "Connect TokenHub to STACKIT."
+description: "Connect TokenHub to STACKIT. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.openai-compat.model-serving.eu01.onstackit.cloud/v1"
+    catalog:
+      id: "stackit"
+      name: "STACKIT"
+      display_name: "STACKIT"
+      type: "openai_compatible"
+      base_url: "https://api.openai-compat.model-serving.eu01.onstackit.cloud/v1"
+      doc_url: "https://docs.stackit.cloud/products/data-and-ai/ai-model-serving/basics/available-shared-models"
+      categories: []
+      models_count: 8
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

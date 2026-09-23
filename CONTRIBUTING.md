@@ -28,7 +28,7 @@ Start the full local development stack from the repository root:
 To run components separately, start the backend from `backend/`:
 
 ```bash
-go run ./cmd/tokenhub
+TOKENHUB_CORS_ALLOWED_ORIGINS=http://localhost:3000 go run ./cmd/tokenhub
 ```
 
 Start the admin console from `frontend/`:
@@ -73,9 +73,15 @@ Frontend checks from `frontend/`:
 
 ```bash
 npm ci
+npm run lint
 npm run typecheck
+npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+The browser smoke suite starts an isolated Next.js frontend, Go backend, fake provider upstream, and temporary SQLite database. It does not require real credentials or an already-running TokenHub stack.
 
 For Docker or deployment changes, render the Compose configuration when Docker is available:
 
@@ -101,6 +107,7 @@ See [AGENTS.md](AGENTS.md#optional-development-workflows) for agent-specific rep
 
 ## Pull Requests
 
+- Write the title and every body section in English.
 - Use an English Conventional Commits-style title: `<type>[optional scope][!]: <short summary>`.
 - Keep the title at or below 72 characters, use a lowercase imperative summary, and omit the trailing period.
 - Complete every section of [the pull request template](.github/pull_request_template.md). Explain skipped or non-applicable checks.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,53 +23,164 @@ type anthropicMessagesRequest struct {
 const anthropicMidConversationSystemBeta = "mid-conversation-system-2026-04-07"
 
 func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeAnthropicError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeAnthropicError(w, r, err)
 		return
 	}
-	req, err := decodeAnthropicMessagesRequest(r, true)
+	req, err := s.decodeAnthropicMessagesRequest(w, r, true)
 	if err != nil {
 		writeAnthropicError(w, r, err)
 		return
 	}
-	routed, ok := s.startAnthropicRoutedCall(w, r, project, key, req)
+	admittedAt := time.Now().UTC()
+	call, err := s.admitRoutedCall(w, r, project, key, req.Model, req.Stream, anthropicTokenReservation(req))
+	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, guardrailAuditSummary{Model: req.Model})
+		w.Header().Set("x-request-id", requestID)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAuthContextHooks(r.Context(), &call, r.Header); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAnthropicDecodeNormalizeHooks(r.Context(), call, r.Header, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, req.Raw, anthropicTokenReservation(req)); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAnthropicPrivacyPreHooks(r.Context(), call, r.Header, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAnthropicGuardrailPreHooks(r.Context(), call, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAnthropicContextOptimizeHooks(r.Context(), call, &req); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: req.Model})
+		writeAnthropicError(w, r, err)
+		return
+	}
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, anthropicGuardrailTargets(&req))
+	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req.Raw)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	if !req.Stream {
+		resp, usage, hit, err := s.runGatewayCacheLookupHooks(r.Context(), call, req.Raw)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+			writeAnthropicError(w, r, err)
+			return
+		}
+		if hit {
+			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp, providerRouteProtocolAnthropic)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeAnthropicError(w, r, err)
+				return
+			}
+			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage, providerRouteProtocolAnthropic)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeAnthropicError(w, r, err)
+				return
+			}
+			body, ok := resp.(map[string]any)
+			if !ok {
+				err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeAnthropicError(w, r, err)
+				return
+			}
+			usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, body, usage, providerRouteProtocolAnthropic)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeAnthropicError(w, r, err)
+				return
+			}
+			s.finishSuccessfulRoutedCall(r, RoutedCall{Call: call}, RouteSelection{}, usage, nil, auditPayload, body)
+			w.Header().Set("x-request-id", call.RequestID)
+			w.Header().Set("x-tokenhub-cache", "hit")
+			writeJSON(w, http.StatusOK, body)
+			return
+		}
+	}
+	routed, ok := s.prepareAnthropicRoutedCall(w, r, call, key, req, auditPayload)
 	if !ok {
 		return
 	}
 	if req.Stream {
-		s.handleAnthropicMessagesStream(w, r, routed, req)
+		s.handleAnthropicMessagesStream(w, r, routed, req, auditPayload)
 		return
 	}
 	resp, route, usage, attempts, err := s.executeRoutedAnthropicMessages(r, routed, req)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, req.Raw)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, req.Raw, resp)
+	postResp, err := s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp, providerRouteProtocolAnthropic)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	resp, ok = postResp.(map[string]any)
+	if !ok {
+		err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	postResp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, resp, usage, providerRouteProtocolAnthropic)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	resp, ok = postResp.(map[string]any)
+	if !ok {
+		err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage, providerRouteProtocolAnthropic)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return
+	}
+	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, route, req.Raw, resp, usage, providerRouteProtocolAnthropic)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeAnthropicError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	_, key, err := s.authenticate(r)
 	if err != nil {
 		writeAnthropicError(w, r, err)
 		return
 	}
-	req, err := decodeAnthropicMessagesRequest(r, false)
+	req, err := s.decodeAnthropicMessagesRequest(w, r, false)
 	if err != nil {
 		writeAnthropicError(w, r, err)
 		return
@@ -82,10 +194,10 @@ func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func decodeAnthropicMessagesRequest(r *http.Request, requireMaxTokens bool) (anthropicMessagesRequest, error) {
+func (s *Server) decodeAnthropicMessagesRequest(w http.ResponseWriter, r *http.Request, requireMaxTokens bool) (anthropicMessagesRequest, error) {
 	var raw map[string]any
-	if err := decodeJSON(r, &raw); err != nil {
-		return anthropicMessagesRequest{}, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error())
+	if err := s.decodeJSONLimit(w, r, &raw, s.config.MaxMultimodalRequestBytes); err != nil {
+		return anthropicMessagesRequest{}, err
 	}
 	model, _ := raw["model"].(string)
 	model = strings.TrimSpace(model)
@@ -142,69 +254,61 @@ func keyCanAccessModel(store Store, key APIKey, model string) bool {
 	return false
 }
 
-func (s *Server) startAnthropicRoutedCall(w http.ResponseWriter, r *http.Request, project Project, key APIKey, req anthropicMessagesRequest) (RoutedCall, bool) {
-	admittedAt := time.Now().UTC()
-	call, err := s.store.StartCall(r.Context(), project, key, req.Model, anthropicTokenReservation(req))
-	call.Stream = req.Stream
-	if err != nil {
-		requestID := s.finishRejectedCall(r, admittedAt, project, key, req.Model, req.Stream, err, req.Raw)
-		w.Header().Set("x-request-id", requestID)
-		writeAnthropicError(w, r, err)
-		return RoutedCall{}, false
-	}
-	w.Header().Set("x-request-id", call.RequestID)
-	writeRateLimitHeaders(w.Header(), call.RateLimitHeaders)
-	if call.requestContext != nil {
-		*r = *r.WithContext(call.requestContext)
-	}
+func (s *Server) prepareAnthropicRoutedCall(w http.ResponseWriter, r *http.Request, call CallContext, key APIKey, req anthropicMessagesRequest, auditPayload any) (RoutedCall, bool) {
 	routes, err := s.store.SelectRouteCandidates(req.Model)
 	if err != nil {
 		err = s.annotateRoutingPolicyForCandidateError(&call, err)
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
 	routes, err = s.resolveScopedRoutingPolicyForCall(&call, routes)
 	if err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
-	routes, err = s.filterCodexRoutesByModel(r.Context(), req.Model, routes)
+	routes, err = s.filterProviderAccountRoutesByModel(req.Model, routes)
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
+		s.recordRequestPayload(call.RequestID, auditPayload, auditErrorPayload(err, call.RequestID))
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
-	compatible, err := compatibleAnthropicRoutes(RoutedCall{
+	compatible, err := s.compatibleAnthropicRoutes(RoutedCall{
 		Call:   call,
-		Routes: s.planRouteOrder(call, routes),
+		Routes: routes,
 	}, req)
 	if err != nil {
 		httpErr := AsHTTPError(err)
 		s.store.FinishCall(call, RouteSelection{}, Usage{}, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
-		s.recordRequestPayload(call.RequestID, req.Raw, auditErrorPayload(err, call.RequestID))
+		s.recordRequestPayload(call.RequestID, auditPayload, auditErrorPayload(err, call.RequestID))
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
 	routes = compatible.Routes
+	routes, err = s.runGatewayRouteCandidatesHooks(r.Context(), call, routes)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeAnthropicError(w, r, err)
+		return RoutedCall{}, false
+	}
 	affinity, err := s.anthropicGatewayAffinity(key.ID, req.Model, r.Header, req.Raw, routes)
 	if err != nil {
-		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, req.Raw)
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
 		writeAnthropicError(w, r, err)
 		return RoutedCall{}, false
 	}
 	call.Affinity = affinity
-	return RoutedCall{Call: call, Routes: s.planRouteOrder(call, routes), Affinity: affinity}, true
+	return RoutedCall{Call: call, Routes: s.planRouteOrderWithContext(r.Context(), call, routes), Affinity: affinity}, true
 }
 func (s *Server) executeRoutedAnthropicMessages(
 	r *http.Request,
 	routed RoutedCall,
 	req anthropicMessagesRequest,
 ) (map[string]any, RouteSelection, Usage, []RouteAttempt, error) {
-	compatible, compatibilityErr := compatibleAnthropicRoutes(routed, req)
+	compatible, compatibilityErr := s.compatibleAnthropicRoutes(routed, req)
 	if compatibilityErr != nil {
 		return nil, RouteSelection{}, Usage{}, nil, compatibilityErr
 	}
@@ -213,11 +317,43 @@ func (s *Server) executeRoutedAnthropicMessages(
 		if err != nil {
 			return nil, Usage{}, err
 		}
-		return s.executeAnthropicMessagesRoute(ctx, route, req, r.Header)
+		upstreamReq := anthropicRequestForRoute(req, route)
+		protocol := s.anthropicGatewayRouteProtocol(routed.Call, route)
+		if transformErr := s.runGatewayAnthropicRequestTransformHooks(ctx, routed.Call, route, &upstreamReq, protocol); transformErr != nil {
+			return nil, Usage{}, transformErr
+		}
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, route, upstreamReq.Raw, protocol); err != nil || handled {
+			if err != nil {
+				return nil, Usage{}, err
+			}
+			body, ok := resp.(map[string]any)
+			if !ok {
+				return nil, Usage{}, &ProviderInvocationError{
+					Err:         NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response"),
+					Disposition: ProviderErrorPolicy,
+				}
+			}
+			return body, usage, nil
+		}
+		return s.executeAnthropicMessagesRoute(ctx, route, upstreamReq, r.Header)
 	})
 }
 
-func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionRequest, error) {
+func (s *Server) anthropicGatewayRouteProtocol(call CallContext, route RouteSelection) string {
+	registry := s.adapterRegistry
+	if routeSupportsProviderProtocol(registry, route, providerRouteProtocolAnthropic) || s.hasGatewayProviderCallHookForRoute(call, route, providerRouteProtocolAnthropic) {
+		return providerRouteProtocolAnthropic
+	}
+	if bridge, ok := providerRouteBridgeForRoute(registry, route, anthropicRouteBridgeSupported); ok {
+		return bridge.Protocol
+	}
+	if routeSupportsProviderProtocol(registry, route, providerRouteProtocolChatCompletions) {
+		return providerRouteProtocolChatCompletions
+	}
+	return ""
+}
+
+func anthropicToOpenAIChatRequest(req anthropicMessagesRequest, provider Provider) (ChatCompletionRequest, error) {
 	messages := make([]ChatMessage, 0, len(req.Messages)+1)
 	if system, exists := req.Raw["system"]; exists {
 		text, err := anthropicSystemText(system)
@@ -230,7 +366,7 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 	}
 	for _, rawMessage := range req.Messages {
 		message := rawMessage.(map[string]any)
-		converted, err := anthropicMessageToOpenAI(message)
+		converted, err := anthropicMessageToOpenAI(message, provider)
 		if err != nil {
 			return ChatCompletionRequest{}, err
 		}
@@ -252,17 +388,6 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 	if err != nil {
 		return ChatCompletionRequest{}, err
 	}
-	var reasoningEffort *string
-	if value, ok := req.Raw["effort"].(string); ok && strings.TrimSpace(value) != "" {
-		effort := strings.TrimSpace(value)
-		reasoningEffort = &effort
-	}
-	if outputConfig, ok := req.Raw["output_config"].(map[string]any); ok {
-		if value, ok := outputConfig["effort"].(string); ok && strings.TrimSpace(value) != "" {
-			effort := strings.TrimSpace(value)
-			reasoningEffort = &effort
-		}
-	}
 	chatReq := ChatCompletionRequest{
 		Model:             req.Model,
 		Messages:          messages,
@@ -273,7 +398,9 @@ func anthropicToOpenAIChatRequest(req anthropicMessagesRequest) (ChatCompletionR
 		Tools:             tools,
 		ToolChoice:        toolChoice,
 		ParallelToolCalls: parallelToolCalls,
-		ReasoningEffort:   reasoningEffort,
+	}
+	if err := applyAnthropicReasoningOptions(req, provider, &chatReq); err != nil {
+		return ChatCompletionRequest{}, err
 	}
 	if stop, ok := req.Raw["stop_sequences"].([]any); ok {
 		values := make([]string, 0, len(stop))
@@ -330,7 +457,7 @@ func anthropicSystemText(value any) (string, error) {
 	}
 }
 
-func anthropicMessageToOpenAI(message map[string]any) ([]ChatMessage, error) {
+func anthropicMessageToOpenAI(message map[string]any, provider Provider) ([]ChatMessage, error) {
 	role, _ := message["role"].(string)
 	if role == "system" {
 		content, err := anthropicSystemText(message["content"])
@@ -344,7 +471,7 @@ func anthropicMessageToOpenAI(message map[string]any) ([]ChatMessage, error) {
 		return nil, err
 	}
 	if role == "assistant" {
-		return anthropicAssistantMessageToOpenAI(blocks)
+		return anthropicAssistantMessageToOpenAI(blocks, provider)
 	}
 	return anthropicUserMessageToOpenAI(blocks)
 }
@@ -368,9 +495,10 @@ func anthropicContentBlocks(content any) ([]map[string]any, error) {
 	}
 }
 
-func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, error) {
+func anthropicAssistantMessageToOpenAI(blocks []map[string]any, provider Provider) ([]ChatMessage, error) {
 	contentBlocks := make([]map[string]any, 0, len(blocks))
 	toolCalls := make([]map[string]any, 0)
+	reasoning := ""
 	for _, block := range blocks {
 		blockType, _ := block["type"].(string)
 		switch blockType {
@@ -402,8 +530,14 @@ func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, 
 					"arguments": string(arguments),
 				},
 			})
-		case "thinking", "redacted_thinking":
-			// OpenAI-compatible providers do not accept Anthropic thinking blocks.
+		case "thinking":
+			thinking, _ := block["thinking"].(string)
+			signature, _ := block["signature"].(string)
+			if providerPreservesReasoningContent(provider) && validGatewayReasoningSignature(provider, thinking, signature) {
+				reasoning += thinking
+			}
+		case "redacted_thinking":
+			// Redacted provider state cannot be reconstructed safely.
 		default:
 			return nil, NewHTTPError(
 				http.StatusBadRequest,
@@ -417,6 +551,7 @@ func anthropicAssistantMessageToOpenAI(blocks []map[string]any) ([]ChatMessage, 
 		content = ""
 	}
 	message := ChatMessage{Role: "assistant", Content: content}
+	message.ReasoningContent = reasoning
 	if len(toolCalls) > 0 {
 		message.ToolCalls = toolCalls
 	}
@@ -632,7 +767,7 @@ func anthropicToolChoiceToOpenAI(value any) (any, *bool, error) {
 	return converted, parallel, nil
 }
 
-func openAIResponseToAnthropic(body map[string]any, model string, usage Usage) (map[string]any, error) {
+func openAIResponseToAnthropic(body map[string]any, model string, usage Usage, provider Provider) (map[string]any, error) {
 	choices, ok := anySlice(body["choices"])
 	if !ok || len(choices) == 0 {
 		return nil, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Provider response is missing choices")
@@ -646,6 +781,13 @@ func openAIResponseToAnthropic(body map[string]any, model string, usage Usage) (
 		return nil, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Provider choice is missing message")
 	}
 	content := make([]any, 0)
+	if reasoning, _ := message["reasoning_content"].(string); reasoning != "" {
+		content = append(content, map[string]any{
+			"type":      "thinking",
+			"thinking":  reasoning,
+			"signature": gatewayReasoningSignature(provider, reasoning),
+		})
+	}
 	if text := openAIMessageText(message["content"]); text != "" {
 		content = append(content, map[string]any{"type": "text", "text": text})
 	}
@@ -751,11 +893,12 @@ func anySlice(value any) ([]any, bool) {
 }
 
 func anthropicUsageObject(usage Usage) map[string]any {
-	cachedInputTokens := minInt64(maxInt64(usage.CachedInputTokens, 0), maxInt64(usage.PromptTokens, 0))
+	usage.PromptTokens = maxInt64(usage.PromptTokens, 0)
+	usage = clampBillableInputTokens(usage)
 	return map[string]any{
-		"input_tokens":                maxInt64(usage.PromptTokens-cachedInputTokens, 0),
-		"cache_creation_input_tokens": int64(0),
-		"cache_read_input_tokens":     cachedInputTokens,
+		"input_tokens":                usage.PromptTokens - usage.CachedInputTokens - usage.CacheWriteInputTokens,
+		"cache_creation_input_tokens": usage.CacheWriteInputTokens,
+		"cache_read_input_tokens":     usage.CachedInputTokens,
 		"output_tokens":               usage.CompletionTokens,
 	}
 }
@@ -800,7 +943,7 @@ func (s *Server) doNativeAnthropicRequest(
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicEndpointURL(baseURL, endpoint), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -812,22 +955,23 @@ func (s *Server) doNativeAnthropicRequest(
 		version = "2023-06-01"
 	}
 	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-api-key", provider.APIKey)
 	req.Header.Set("anthropic-version", version)
 	if betas := strings.TrimSpace(downstreamHeaders.Get("anthropic-beta")); betas != "" {
 		req.Header.Set("anthropic-beta", betas)
 	}
-	for key, value := range provider.Headers {
-		req.Header.Set(key, value)
-	}
+	applyProviderHeaders(req.Header, provider.Headers)
+	applyAnthropicProviderAuth(req, provider)
 	// The native path builds its own request but must follow the same streaming
-	// policy as the adapter: a total deadline would truncate a live stream.
-	adapter, _ := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, ProviderAnthropic)
+	// policy as the adapter registered for the provider type serving this route.
+	adapter, ok := resolveTypedAdapter[AnthropicAdapter](s.adapterRegistry, provider.Type)
+	if !ok {
+		return nil, NewHTTPError(http.StatusServiceUnavailable, "provider_adapter_missing", "Anthropic adapter is not available")
+	}
 	resp, err := sendUpstream(adapter.Client, adapter.StreamClient, adapter.StreamIdleTimeout, req, stream)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkProviderResponse(resp); err != nil {
+	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -846,10 +990,11 @@ func (s *Server) handleAnthropicMessagesStream(
 	r *http.Request,
 	routed RoutedCall,
 	req anthropicMessagesRequest,
+	auditPayload any,
 ) {
-	compatible, compatibilityErr := compatibleAnthropicRoutes(routed, req)
+	compatible, compatibilityErr := s.compatibleAnthropicRoutes(routed, req)
 	if compatibilityErr != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, compatibilityErr, req.Raw)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, compatibilityErr, auditPayload)
 		writeAnthropicError(w, r, compatibilityErr)
 		return
 	}
@@ -862,6 +1007,11 @@ func (s *Server) handleAnthropicMessagesStream(
 			if prepareErr != nil {
 				return struct{}{}, Usage{}, prepareErr
 			}
+			attemptReq := anthropicRequestForRoute(req, prepared)
+			protocol := s.anthropicGatewayRouteProtocol(routed.Call, prepared)
+			if transformErr := s.runGatewayAnthropicRequestTransformHooks(ctx, routed.Call, prepared, &attemptReq, protocol); transformErr != nil {
+				return struct{}{}, Usage{}, transformErr
+			}
 			// Defer the response headers until the first byte is written, at which
 			// point prepared is the route that actually served the request.
 			tracker.onFirstWrite = func() {
@@ -871,21 +1021,35 @@ func (s *Server) handleAnthropicMessagesStream(
 				s.writeRouteHeaders(w, routed.Call, prepared, attempt)
 			}
 
-			var streamUsage Usage
-			var streamErr error
-			switch {
-			case prepared.Provider.Type == ProviderAnthropic:
-				streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, req, r.Header, tracker)
-			case prepared.Provider.Type == ProviderOpenAICodex:
-				streamUsage, streamErr = s.streamCodexAsAnthropic(ctx, prepared, req, r.Header, tracker)
-			case openAIMessageProvider(prepared.Provider.Type):
-				streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, req, tracker)
-			default:
-				streamErr = NewHTTPError(
-					http.StatusNotImplemented,
-					"provider_capability_not_supported",
-					"Provider does not support the Anthropic Messages gateway",
-				)
+			streamWriter := io.Writer(tracker)
+			var transformer *gatewayStreamTransformWriter
+			if s.hasGatewayStreamTransformHooksForRoute(prepared, protocol) {
+				transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, protocol, tracker)
+				streamWriter = transformer
+			}
+			_, streamUsage, handled, streamErr := s.runGatewayProviderCallHooksOutput(ctx, routed.Call, prepared, attemptReq, protocol, streamWriter)
+			if !handled && streamErr == nil {
+				switch protocol {
+				case providerRouteProtocolAnthropic:
+					streamUsage, streamErr = s.streamNativeAnthropicMessages(ctx, prepared, attemptReq, r.Header, streamWriter)
+				case providerRouteProtocolChatCompletions:
+					streamUsage, streamErr = s.streamOpenAIAsAnthropic(ctx, prepared, attemptReq, streamWriter)
+				default:
+					if bridge, ok := providerRouteBridgeByProtocol(protocol, streamAnthropicRouteBridgeSupported); ok {
+						streamUsage, streamErr = bridge.StreamAnthropic(s, ctx, prepared, attemptReq, r.Header, streamWriter)
+					} else {
+						streamErr = NewHTTPError(
+							http.StatusNotImplemented,
+							"provider_capability_not_supported",
+							"Provider does not support the Anthropic Messages gateway",
+						)
+					}
+				}
+			}
+			if transformer != nil {
+				if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {
+					streamErr = closeErr
+				}
 			}
 			return struct{}{}, streamUsage, classifyStreamError(ctx, streamErr, tracker.Wrote())
 		})
@@ -900,6 +1064,8 @@ func (s *Server) handleAnthropicMessagesStream(
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
 	routed.Call.StreamOutputCommitted = tracker.WroteData()
+	routed.Call.FirstByteAt = tracker.firstByteTime(err == nil)
+	routed.Call.StreamFailed = err != nil && tracker.Wrote()
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
 		Route:           route,
@@ -908,12 +1074,17 @@ func (s *Server) handleAnthropicMessagesStream(
 		StatusCode:      status,
 		ErrorCode:       code,
 		ErrorMessage:    errorMessageOrEmpty(err),
-		RequestPayload:  req.Raw,
+		RequestPayload:  auditPayload,
 		ResponsePayload: auditStreamPayload(status, code, err),
 	})
 	if err != nil {
 		if tracker.Wrote() {
-			_ = writeAnthropicStreamError(tracker, err)
+			// A native stream that already forwarded the upstream's terminal
+			// error frame must not append a second one.
+			var forwarded *anthropicErrorFrameForwarded
+			if !errors.As(err, &forwarded) {
+				_ = writeAnthropicStreamError(tracker, err)
+			}
 		} else {
 			// Nothing reached the client, so onFirstWrite never ran. Emit routing
 			// headers alongside the JSON error so callers can still see the attempts.
@@ -971,13 +1142,17 @@ func estimateAnthropicValueTokens(value any) int64 {
 func writeAnthropicError(w http.ResponseWriter, r *http.Request, err error) {
 	httpErr := AsHTTPError(err)
 	requestID := errorResponseHeaders(w, err)
+	errorPayload := map[string]any{
+		"type":    anthropicErrorType(httpErr.Status),
+		"message": httpErr.Message,
+		"code":    httpErr.Code,
+	}
+	if httpErr.Details != nil {
+		errorPayload["details"] = httpErr.Details
+	}
 	writeJSON(w, httpErr.Status, map[string]any{
-		"type": "error",
-		"error": map[string]any{
-			"type":    anthropicErrorType(httpErr.Status),
-			"message": httpErr.Message,
-			"code":    httpErr.Code,
-		},
+		"type":       "error",
+		"error":      errorPayload,
 		"request_id": requestID,
 	})
 }
@@ -990,6 +1165,8 @@ func anthropicErrorType(status int) string {
 		return "authentication_error"
 	case http.StatusForbidden:
 		return "permission_error"
+	case http.StatusRequestEntityTooLarge:
+		return "request_too_large"
 	case http.StatusTooManyRequests:
 		return "rate_limit_error"
 	case http.StatusServiceUnavailable:
@@ -1013,5 +1190,12 @@ func writeAnthropicStreamError(writer io.Writer, err error) error {
 		return marshalErr
 	}
 	_, writeErr := fmt.Fprintf(writer, "event: error\ndata: %s\n\n", payload)
+	if writeErr == nil {
+		// Match the streaming handlers: a terminal error frame must reach the
+		// client promptly, not wait for the connection to close.
+		if flusher, ok := writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}
 	return writeErr
 }

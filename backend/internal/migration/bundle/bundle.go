@@ -67,19 +67,21 @@ type ExternalRef struct {
 
 // ProviderRef wraps a TokenHub Provider with migration metadata.
 type ProviderRef struct {
-	ExternalRef  ExternalRef     `json:"external_ref"`
-	Spec         server.Provider `json:"spec"`
-	APIKeySecret *SecretRef      `json:"api_key_secret,omitempty"`
+	ExternalRef   ExternalRef          `json:"external_ref"`
+	Spec          server.Provider      `json:"spec"`
+	APIKeySecret  *SecretRef           `json:"api_key_secret,omitempty"`
+	HeaderSecrets map[string]SecretRef `json:"header_secrets,omitempty"`
 }
 
 // ProviderResourceRef wraps a TokenHub ProviderResource with migration
 // metadata. ProviderRef is the local ExternalRef.ID of the parent
 // ProviderRef inside the same bundle.
 type ProviderResourceRef struct {
-	ExternalRef  ExternalRef             `json:"external_ref"`
-	ProviderRef  string                  `json:"provider_ref"`
-	Spec         server.ProviderResource `json:"spec"`
-	APIKeySecret *SecretRef              `json:"api_key_secret,omitempty"`
+	ExternalRef   ExternalRef             `json:"external_ref"`
+	ProviderRef   string                  `json:"provider_ref"`
+	Spec          server.ProviderResource `json:"spec"`
+	APIKeySecret  *SecretRef              `json:"api_key_secret,omitempty"`
+	HeaderSecrets map[string]SecretRef    `json:"header_secrets,omitempty"`
 }
 
 // ModelRef wraps a TokenHub Model with migration metadata.

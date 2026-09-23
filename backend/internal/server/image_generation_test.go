@@ -18,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestImageJobErrorStatus(t *testing.T) {
@@ -63,6 +65,9 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer platform-api-key" {
 			t.Errorf("missing OpenAI API key: %#v", r.Header)
+		}
+		if r.Header.Get("User-Agent") != "TokenHub-Images/1.0" {
+			t.Errorf("missing custom image User-Agent: %#v", r.Header)
 		}
 		mu.Lock()
 		paths = append(paths, r.URL.Path)
@@ -139,12 +144,14 @@ func TestOpenAIImageUsesPlatformImagesAPI(t *testing.T) {
 			Type:    ProviderOpenAI,
 			BaseURL: upstream.URL + "/v1",
 			APIKey:  "platform-api-key",
+			Headers: map[string]string{"User-Agent": "TokenHub-Images/1.0"},
 		},
 		ProviderModel: openAIImageModelName,
 	}
-	generated, revisedPrompt, usage, err := server.executeOpenAIImage(context.Background(), route, ImageJob{
+	generationJob := ImageJob{
 		Action: "generate", Prompt: "platform generation", Quality: "low", Size: "1024x1024",
-	})
+	}
+	generated, revisedPrompt, usage, err := server.imageRunnerForRoute(generationJob, route)(context.Background(), route, generationJob)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,17 +212,21 @@ func TestImageModelsUseSeparateProviderTypes(t *testing.T) {
 		ModelName: openAIImageModelName, ProviderID: codexProvider.ID, ProviderModel: openAIImageModelName,
 		Priority: 1, Weight: 100, Status: StatusActive,
 	})
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: codexProvider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
 	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "separate-image-routes-secret"})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 
-	platformRoutes, err := server.imageRouteCandidates(openAIImageModelName)
+	platformRoutes, err := server.imageRouteCandidates(CallContext{}, openAIImageModelName)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(platformRoutes) != 1 || platformRoutes[0].Provider.Type != ProviderOpenAI {
 		t.Fatalf("gpt-image-2 must only use OpenAI Platform routes: %+v", platformRoutes)
 	}
-	subscriptionRoutes, err := server.imageRouteCandidates(codexImageModelName)
+	subscriptionRoutes, err := server.imageRouteCandidates(CallContext{}, codexImageModelName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,50 +427,8 @@ func TestStaleUnsupportedCodexImageRouteIsRetried(t *testing.T) {
 	}
 }
 
-func TestCodexImageForbiddenMarksResourceUnsupportedAndAllowsFailover(t *testing.T) {
-	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{
-		ID:      "prv_image_capability",
-		Name:    "Codex Image Capability",
-		Type:    ProviderOpenAICodex,
-		Status:  StatusActive,
-		Healthy: true,
-	})
-	resource, err := store.AddProviderResource(ProviderResource{
-		ID:           "rsrc_image_capability",
-		ProviderID:   provider.ID,
-		Name:         "Codex Image Account",
-		ResourceType: ProviderResourceOpenAISubscription,
-		Status:       StatusActive,
-		Healthy:      true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := NewWithConfig(store, Config{
-		AdminToken: "test-admin-token",
-		SecretKey:  "image-capability-test-secret",
-	})
-	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	forbidden := server.codexImageForbiddenError(resource.ID)
-	if !shouldFailoverRoutedError(forbidden, false) {
-		t.Fatal("image entitlement failure must allow failover to another account")
-	}
-	if !providerAttemptOutcome(forbidden).CountsAsHealthy() {
-		t.Fatal("image entitlement failure must not degrade account health")
-	}
-	updated, ok := server.providerResourceByID(resource.ID)
-	if !ok {
-		t.Fatal("provider resource disappeared")
-	}
-	if updated.Options[codexImageCapabilityOption] != codexImageCapabilityUnsupported ||
-		updated.Options[codexImageCapabilityCheckedAtOption] == "" {
-		t.Fatalf("image capability was not persisted: %+v", updated.Options)
-	}
-}
-
 type imageStartRejectStore struct {
-	Store
+	*GormStore
 }
 
 func (s imageStartRejectStore) StartCall(context.Context, Project, APIKey, string, int64) (CallContext, error) {
@@ -481,7 +450,7 @@ func TestImageAuthorizationHappensBeforeJobOrAssetPersistence(t *testing.T) {
 		ModelName: "gpt-5.6-luna", ProviderID: provider.ID, ProviderModel: "gpt-5.6-luna",
 		Priority: 1, Weight: 100, Status: StatusActive,
 	})
-	wrapped := imageStartRejectStore{Store: store}
+	wrapped := imageStartRejectStore{GormStore: store}
 	server := NewWithConfig(wrapped, Config{
 		AdminToken:      "test-admin-token",
 		SecretKey:       "image-preauthorization-secret",
@@ -510,6 +479,66 @@ func TestImageAuthorizationHappensBeforeJobOrAssetPersistence(t *testing.T) {
 	}
 }
 
+func TestImageRouteCandidatesHookCanSelectApprovedImageRoute(t *testing.T) {
+	imageBytes := realPNGFixture(t)
+	store := NewMemoryStore()
+	project := store.CreateProject(Project{Name: "Image Route Plugin Project", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "image-route-plugin-key", Allowed: []string{openAIImageModelName}, Status: StatusActive}, "thk_image_route_plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstProvider := store.AddProvider(Provider{ID: "prv_image_route_a", Name: "Image Route A", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	secondProvider := store.AddProvider(Provider{ID: "prv_image_route_b", Name: "Image Route B", Type: ProviderOpenAI, Status: StatusActive, Healthy: true})
+	firstResource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_route_a", ProviderID: firstProvider.ID, Name: "Image Route A Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondResource, err := store.AddProviderResource(ProviderResource{ID: "rsrc_image_route_b", ProviderID: secondProvider.ID, Name: "Image Route B Key", ResourceType: ProviderResourceAPIKey, Status: StatusActive, Healthy: true, MaxConcurrency: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: openAIImageModelName, Modality: "image", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route_image_a", ModelName: openAIImageModelName, ProviderID: firstProvider.ID, ProviderResourceID: firstResource.ID, ProviderModel: "image-upstream-a", Status: StatusActive, Priority: 1, Weight: 100})
+	store.AddRoute(ModelRoute{ID: "route_image_b", ModelName: openAIImageModelName, ProviderID: secondProvider.ID, ProviderResourceID: secondResource.ID, ProviderModel: "image-upstream-b", Status: StatusActive, Priority: 2, Weight: 100})
+	server := NewWithConfig(store, Config{AdminToken: "test-admin-token", SecretKey: "image-route-plugin-secret", ImageStorageDir: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	hook := pluginmeta.GatewayHookDescriptor{
+		PluginID:      "tokenhub.test-image-router",
+		HookID:        "select-second-image-route",
+		Stage:         pluginmeta.StageRouteCandidates,
+		Priority:      1000,
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataRouteCandidates},
+		FailurePolicy: pluginmeta.FailurePolicyFailClosed,
+	}
+	if err := server.gatewayChain.RegisterHook(hook); err != nil {
+		t.Fatalf("register route candidates hook: %v", err)
+	}
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		if len(input.Data[pluginmeta.DataRouteCandidates]) == 0 {
+			t.Fatal("image route candidates were not available to the hook")
+		}
+		return routeRankPatchResult(t, "route_image_b"), nil
+	})); err != nil {
+		t.Fatalf("register route candidates handler: %v", err)
+	}
+	var selectedRoute RouteSelection
+	server.imageRunner = func(_ context.Context, route RouteSelection, _ ImageJob) ([]byte, string, Usage, error) {
+		selectedRoute = route
+		return imageBytes, "", Usage{PromptTokens: 3, CompletionTokens: 1, TotalTokens: 4}, nil
+	}
+
+	response := doImageJSON(t, server.Handler(), http.MethodPost, "/v1/images/generations", map[string]any{
+		"model": openAIImageModelName, "prompt": "Draw route-selected image.", "response_format": "b64_json",
+	}, secret, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("image generation failed: %d %s", response.Code, response.Body)
+	}
+	if selectedRoute.Route.ID != "route_image_b" || selectedRoute.Provider.ID != "prv_image_route_b" {
+		t.Fatalf("selected route = %s/%s, want route_image_b/prv_image_route_b", selectedRoute.Route.ID, selectedRoute.Provider.ID)
+	}
+}
+
 func TestServerStartupFailsUnfinishedImageJobsWithoutRecovery(t *testing.T) {
 	store := NewMemoryStore()
 	job, err := store.CreateImageJob(ImageJob{
@@ -531,8 +560,102 @@ func TestServerStartupFailsUnfinishedImageJobsWithoutRecovery(t *testing.T) {
 	}
 }
 
+func TestFailUnfinishedImageJobsRefundsPersistedAdmission(t *testing.T) {
+	store, project, key, _ := setupUserQuotaTest(t, map[string]any{"daily_tokens": 10, "token_limit_tpm": 10})
+	if _, err := store.UpdateAPIKey(key.ID, APIKey{TokenLimitSet: true, TokenLimitTPM: int64Pointer(10)}); err != nil {
+		t.Fatal(err)
+	}
+	key, ok := store.GetAPIKey(key.ID)
+	if !ok {
+		t.Fatal("API key disappeared")
+	}
+	call, err := store.StartCall(context.Background(), project, key, "user-quota-model", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := store.CreateImageJob(imageJobWithAdmission(ImageJob{
+		ProjectID:        project.ID,
+		APIKeyID:         key.ID,
+		AttributedUserID: usageAttributionUserID(key, project),
+		RequestID:        call.RequestID,
+		Status:           imageJobStatusQueued,
+		Model:            "user-quota-model",
+		Action:           "generate",
+	}, call), "queued prompt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FailUnfinishedImageJobs("image_worker_restarted", "restart"); err != nil {
+		t.Fatal(err)
+	}
+	failed, ok := store.GetImageJob(job.ID)
+	if !ok || failed.Status != imageJobStatusFailed {
+		t.Fatalf("unfinished image job was not failed: %+v", failed)
+	}
+	assertQuotaBucket := func(bucketID string, scope string, bucket string) QuotaBucket {
+		t.Helper()
+		var counter QuotaBucket
+		if err := store.db.First(&counter, "key_id = ? AND scope = ? AND bucket = ?", bucketID, scope, bucket).Error; err != nil {
+			t.Fatal(err)
+		}
+		return counter
+	}
+	keyMinute := assertQuotaBucket(key.ID, "minute", call.TokenLimitBucket)
+	if keyMinute.TotalTokens != 0 {
+		t.Fatalf("key minute reservation = %d, want 0", keyMinute.TotalTokens)
+	}
+	userMinute := assertQuotaBucket(userQuotaBucketKey("usr_user_quota"), "minute", call.UserTokenLimitBucket)
+	if userMinute.TotalTokens != 0 {
+		t.Fatalf("user minute reservation = %d, want 0", userMinute.TotalTokens)
+	}
+	for _, period := range []struct {
+		scope  string
+		bucket string
+	}{
+		{scope: "day", bucket: dayBucket(call.StartedAt)},
+		{scope: "month", bucket: monthBucket(call.StartedAt)},
+	} {
+		keyCounter := assertQuotaBucket(key.ID, period.scope, period.bucket)
+		if keyCounter.Requests != 0 {
+			t.Fatalf("key %s requests = %d, want 0", period.scope, keyCounter.Requests)
+		}
+		userCounter := assertQuotaBucket(userQuotaBucketKey("usr_user_quota"), period.scope, period.bucket)
+		if userCounter.Requests != 0 || userCounter.TotalTokens != 0 {
+			t.Fatalf("user %s counter = %+v, want no held request or tokens", period.scope, userCounter.QuotaCounter)
+		}
+	}
+}
+
+func TestImageAdmissionAndJobCreationRollbackTogether(t *testing.T) {
+	store, project, key, _ := setupUserQuotaTest(t, map[string]any{"daily_tokens": 10, "max_concurrency": 1})
+	if _, err := store.CreateImageJob(ImageJob{ID: "img_duplicate", ProjectID: project.ID, APIKeyID: key.ID, Status: imageJobStatusQueued, Model: "user-quota-model", Action: "generate"}, "existing"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := store.CreateImageJobWithAdmission(context.Background(), project, key, "user-quota-model", 5, ImageJob{
+		ID: "img_duplicate", ProjectID: project.ID, APIKeyID: key.ID, Status: imageJobStatusQueued, Model: "user-quota-model", Action: "generate",
+	}, "duplicate")
+	if err == nil {
+		t.Fatal("duplicate image job should fail")
+	}
+	var leases int64
+	if err := store.db.Model(&InFlightLease{}).Count(&leases).Error; err != nil {
+		t.Fatal(err)
+	}
+	if leases != 0 {
+		t.Fatalf("failed image job creation leaked %d concurrency leases", leases)
+	}
+	var requests int64
+	if err := store.db.Model(&QuotaBucket{}).Where("key_id = ? AND scope IN ?", key.ID, []string{"day", "month"}).Select("COALESCE(SUM(requests), 0)").Scan(&requests).Error; err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 {
+		t.Fatalf("failed image job creation retained %d quota requests", requests)
+	}
+}
+
 func TestCodexImageVirtualModelRequiresSupportedSubscriptionAccount(t *testing.T) {
 	store := NewMemoryStore()
+	syncBuiltInImageCapabilityProfilesForTest(store)
 	project := store.CreateProject(Project{Name: "Codex Image Model Project"})
 	key, _, err := store.CreateAPIKey(project.ID, APIKey{
 		Name:    "codex-image-model-key",
@@ -572,6 +695,23 @@ func TestCodexImageVirtualModelRequiresSupportedSubscriptionAccount(t *testing.T
 		},
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateProviderResourceOptions(resource.ID, map[string]string{
+		codexImageCapabilityOption: codexImageCapabilitySupported,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if models := store.AccessibleModels(key); len(models) != 0 {
+		t.Fatalf("capable account must not expose virtual image model without a route: %+v", models)
+	}
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: provider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
+	if _, err := store.UpdateProviderResourceOptions(resource.ID, map[string]string{
+		codexImageCapabilityOption: codexImageCapabilityUnsupported,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if models := store.AccessibleModels(key); len(models) != 0 {
@@ -718,6 +858,10 @@ func TestImageGenerationTimesOutAfterConfiguredLimit(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: provider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
 	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
 	server := NewWithConfig(store, Config{
 		AdminToken: "test-admin-token", SecretKey: "timed-image-secret",
@@ -912,6 +1056,10 @@ func TestCodexImageRequestUsesSubscriptionCompatibleResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: provider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
 	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
 
 	server := NewWithConfig(store, Config{
@@ -1032,6 +1180,10 @@ func TestImageGenerationAsyncUsesCodexSubscriptionAndPersistsImage(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	store.AddRoute(ModelRoute{
+		ModelName: codexImageModelName, ProviderID: provider.ID, ProviderModel: codexImageUpstreamModel,
+		Priority: 1, Weight: 100, Status: StatusActive,
+	})
 	store.AddModel(Model{Name: codexImageModelName, Category: "codex", Family: "gpt-image", Modality: "image", Status: StatusActive})
 
 	server := NewWithConfig(store, Config{
@@ -1039,7 +1191,7 @@ func TestImageGenerationAsyncUsesCodexSubscriptionAndPersistsImage(t *testing.T)
 		SecretKey:  "image-signing-and-encryption-secret",
 	})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	server.codexSubscription.Client = upstream.Client()
+	mustCodexSubscriptionAdapterForTest(t, server).Client = upstream.Client()
 	server.imageStorageDir = t.TempDir()
 	handler := server.Handler()
 

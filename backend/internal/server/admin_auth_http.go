@@ -2,13 +2,11 @@ package server
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,16 +15,12 @@ import (
 )
 
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	var req struct {
 		Identity string `json:"identity"`
 		Password string `json:"password"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if strings.TrimSpace(req.Identity) == "" || req.Password == "" {
@@ -46,16 +40,12 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	var req struct {
 		Token    string `json:"token"`
 		Password string `json:"password"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if strings.TrimSpace(req.Token) == "" || strings.TrimSpace(req.Password) == "" {
@@ -75,10 +65,6 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	token := bearerToken(r)
 	if token != "" && token != strings.TrimSpace(s.config.AdminToken) {
 		s.store.RevokeAdminSession(token)
@@ -89,10 +75,6 @@ func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminMe(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.authorizeAdminUser(w, r)
 	if !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
@@ -107,14 +89,6 @@ type adminAuthIdentityProvider struct {
 	IconKey      string `json:"icon_key,omitempty"`
 }
 
-type oauthStatePayload struct {
-	ProviderID  string `json:"provider_id"`
-	ReturnURL   string `json:"return_url"`
-	RedirectURI string `json:"redirect_uri"`
-	ExpiresAt   int64  `json:"expires_at"`
-	Nonce       string `json:"nonce"`
-}
-
 type oauthTokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token,omitempty"`
@@ -125,10 +99,6 @@ type oauthTokenResponse struct {
 }
 
 func (s *Server) handleAdminAuthIdentityProviders(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	providers := []adminAuthIdentityProvider{}
 	for _, item := range s.activeOAuthIdentityProviders() {
 		providers = append(providers, adminAuthIdentityProvider{
@@ -144,10 +114,6 @@ func (s *Server) handleAdminAuthIdentityProviders(w http.ResponseWriter, r *http
 }
 
 func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	provider, ok := s.findActiveOAuthIdentityProvider(r.URL.Query().Get("id"))
 	if !ok {
 		writeError(w, r, NewHTTPError(404, "identity_provider_not_found", "Identity provider not found"))
@@ -159,43 +125,80 @@ func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, NewHTTPError(400, "identity_provider_incomplete", "Identity provider authorize URL and client ID are required"))
 		return
 	}
-	redirectURI, err := identityProviderRedirectURI(provider, r)
+	codeChallenge, err := validateAdminOAuthPKCE(
+		r.URL.Query().Get("code_challenge"),
+		r.URL.Query().Get("code_challenge_method"),
+	)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	returnURL := safeOAuthReturnURL(r.URL.Query().Get("return_url"), r)
-	state, err := s.signOAuthState(oauthStatePayload{
-		ProviderID:  provider.ID,
-		ReturnURL:   returnURL,
-		RedirectURI: redirectURI,
-		ExpiresAt:   time.Now().UTC().Add(10 * time.Minute).Unix(),
-		Nonce:       NewID("oauth"),
-	})
+	providerCodeVerifier, providerCodeChallenge, err := newAdminOAuthProviderPKCE()
+	if err != nil {
+		writeError(w, r, NewHTTPError(500, "oauth_start_failed", "OAuth start failed"))
+		return
+	}
+	redirectURI, err := s.identityProviderRedirectURI(provider, r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	target, err := buildIdentityProviderAuthorizeURL(provider, redirectURI, state)
+	returnURL := s.safeOAuthReturnURL(r.URL.Query().Get("return_url"), r)
+	state, err := randomHex(32)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
+	browserNonce, err := randomHex(32)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	target, err := buildIdentityProviderAuthorizeURL(provider, redirectURI, state, providerCodeChallenge)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	redirectTarget, _ := url.Parse(redirectURI)
+	cookieSecure := redirectTarget != nil && strings.EqualFold(redirectTarget.Scheme, "https")
+	if err := s.store.SaveAdminOAuthFlow(adminOAuthFlow{
+		State:                state,
+		BrowserNonce:         browserNonce,
+		Source:               s.clientIP(r),
+		ProviderID:           provider.ID,
+		ReturnURL:            returnURL,
+		RedirectURI:          redirectURI,
+		CodeChallenge:        codeChallenge,
+		ProviderCodeVerifier: providerCodeVerifier,
+		CookieSecure:         cookieSecure,
+		CreatedAt:            time.Now().UTC(),
+	}); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	setAdminOAuthBindingCookie(w, adminOAuthStateCookieName(state), browserNonce, adminOAuthStateCookiePath, cookieSecure, adminOAuthFlowTTL)
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func (s *Server) handleAdminOAuthCallback(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
-	state, err := s.verifyOAuthState(r.URL.Query().Get("state"))
-	if err != nil {
+	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	bindingCookie, err := r.Cookie(adminOAuthStateCookieName(state))
+	if err != nil || strings.TrimSpace(bindingCookie.Value) == "" {
 		writeError(w, r, NewHTTPError(400, "invalid_oauth_state", "OAuth state is invalid or expired"))
 		return
 	}
+	flow, ok, err := s.store.ConsumeAdminOAuthFlow(state, bindingCookie.Value)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if !ok {
+		writeError(w, r, NewHTTPError(400, "invalid_oauth_state", "OAuth state is invalid or expired"))
+		return
+	}
+	clearAdminOAuthBindingCookie(w, adminOAuthStateCookieName(state), adminOAuthStateCookiePath, flow.CookieSecure)
 	if providerError := strings.TrimSpace(r.URL.Query().Get("error")); providerError != "" {
-		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, "provider_error"), http.StatusFound)
+		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "provider_error"), http.StatusFound)
 		return
 	}
 	code := strings.TrimSpace(r.URL.Query().Get("code"))
@@ -203,36 +206,81 @@ func (s *Server) handleAdminOAuthCallback(w http.ResponseWriter, r *http.Request
 		code = strings.TrimSpace(r.URL.Query().Get("authCode"))
 	}
 	if code == "" {
-		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, "missing_code"), http.StatusFound)
+		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "missing_code"), http.StatusFound)
 		return
 	}
-	provider, ok := s.findActiveOAuthIdentityProvider(state.ProviderID)
+	provider, ok := s.findActiveOAuthIdentityProvider(flow.ProviderID)
 	if !ok {
-		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, "identity_provider_not_found"), http.StatusFound)
+		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "identity_provider_not_found"), http.StatusFound)
 		return
 	}
-	token, err := s.exchangeOAuthCode(r.Context(), provider, code, state.RedirectURI)
+	token, err := s.exchangeOAuthCode(r.Context(), provider, code, flow.RedirectURI, flow.ProviderCodeVerifier)
 	if err != nil {
-		log.Printf("oauth token exchange failed provider_id=%s redirect_uri=%s error=%v", provider.ID, state.RedirectURI, err)
-		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, oauthErrorCode("token_exchange_failed", err)), http.StatusFound)
+		httpErr := AsHTTPError(err)
+		log.Printf("oauth token exchange failed provider_id=%s redirect_uri=%s error_code=%s status=%d", provider.ID, flow.RedirectURI, httpErr.Code, httpErr.Status)
+		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "token_exchange_failed"), http.StatusFound)
 		return
 	}
 	claims, err := s.fetchOAuthUserInfo(r.Context(), provider, token.AccessToken, code)
 	if err != nil {
-		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, "userinfo_failed"), http.StatusFound)
+		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "userinfo_failed"), http.StatusFound)
 		return
 	}
 	user, err := s.upsertOAuthAdminUser(provider, claims)
 	if err != nil {
-		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, "user_sync_failed"), http.StatusFound)
+		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "user_sync_failed"), http.StatusFound)
 		return
 	}
-	_, session, err := s.store.CreateAdminSession(user.ID, 12*time.Hour)
+	exchangeCode, err := randomHex(32)
 	if err != nil {
-		http.Redirect(w, r, oauthRedirectWithError(state.ReturnURL, "session_failed"), http.StatusFound)
+		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "session_failed"), http.StatusFound)
 		return
 	}
-	http.Redirect(w, r, oauthRedirectWithSession(state.ReturnURL, session), http.StatusFound)
+	if err := s.store.SaveAdminOAuthExchange(adminOAuthExchange{
+		Code:          exchangeCode,
+		CodeChallenge: flow.CodeChallenge,
+		UserID:        user.ID,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "session_failed"), http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, oauthRedirectWithCode(flow.ReturnURL, exchangeCode), http.StatusFound)
+}
+
+func (s *Server) handleAdminOAuthExchange(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code         string `json:"code"`
+		CodeVerifier string `json:"code_verifier"`
+	}
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	code := strings.TrimSpace(req.Code)
+	if code == "" || strings.TrimSpace(req.CodeVerifier) == "" {
+		writeError(w, r, NewHTTPError(400, "invalid_oauth_code", "OAuth exchange code is invalid or expired"))
+		return
+	}
+	exchange, ok, err := s.store.ConsumeAdminOAuthExchange(code, req.CodeVerifier)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if !ok {
+		writeError(w, r, NewHTTPError(400, "invalid_oauth_code", "OAuth exchange code is invalid or expired"))
+		return
+	}
+	user, session, err := s.store.CreateAdminSession(exchange.UserID, 12*time.Hour)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":      session.Token,
+		"expires_at": session.ExpiresAt,
+		"user":       user,
+	})
 }
 
 func (s *Server) activeOAuthIdentityProviders() []AdminResource {
@@ -373,7 +421,7 @@ func identityProviderTypeLabel(providerType string) string {
 	}
 }
 
-func buildOAuthAuthorizeURL(authorizeURL string, clientID string, redirectURI string, scope string, state string) (string, error) {
+func buildOAuthAuthorizeURL(authorizeURL string, clientID string, redirectURI string, scope string, state string, codeChallenge string) (string, error) {
 	target, err := url.Parse(authorizeURL)
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		return "", NewHTTPError(400, "invalid_authorize_url", "Authorize URL is invalid")
@@ -386,41 +434,66 @@ func buildOAuthAuthorizeURL(authorizeURL string, clientID string, redirectURI st
 		query.Set("scope", scope)
 	}
 	query.Set("state", state)
+	if strings.TrimSpace(codeChallenge) != "" {
+		query.Set("code_challenge", codeChallenge)
+		query.Set("code_challenge_method", "S256")
+	}
 	target.RawQuery = query.Encode()
 	return target.String(), nil
 }
 
-func oauthCallbackURL(r *http.Request) string {
+func (s *Server) oauthCallbackURL(r *http.Request) (string, error) {
+	if configured := strings.TrimSpace(s.config.PublicBaseURL); configured != "" {
+		origin, ok := normalizedOAuthOrigin(configured, false)
+		if !ok {
+			return "", NewHTTPError(500, "invalid_public_base_url", "Public base URL is invalid")
+		}
+		return validateOAuthCallbackURL(origin + "/api/admin/auth/oauth/callback")
+	}
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	if forwarded := firstForwardedValue(r.Header.Get("x-forwarded-proto")); forwarded != "" {
-		scheme = forwarded
-	}
 	host := r.Host
-	if forwarded := firstForwardedValue(r.Header.Get("x-forwarded-host")); forwarded != "" {
-		host = forwarded
+	if ipMatchesTrustedProxy(requestRemoteIP(r), s.config.TrustedProxyCIDRs) {
+		if forwarded := firstForwardedValue(r.Header.Get("x-forwarded-proto")); forwarded != "" {
+			scheme = forwarded
+		}
+		if forwarded := firstForwardedValue(r.Header.Get("x-forwarded-host")); forwarded != "" {
+			host = forwarded
+		}
 	}
-	return fmt.Sprintf("%s://%s/api/admin/auth/oauth/callback", scheme, host)
+	origin, ok := normalizedOAuthOrigin(fmt.Sprintf("%s://%s", scheme, host), true)
+	if !ok {
+		return "", NewHTTPError(400, "invalid_redirect_uri", "OAuth callback URL is invalid")
+	}
+	return validateOAuthCallbackURL(origin + "/api/admin/auth/oauth/callback")
 }
 
-func identityProviderRedirectURI(provider AdminResource, r *http.Request) (string, error) {
+func (s *Server) identityProviderRedirectURI(provider AdminResource, r *http.Request) (string, error) {
 	configured := strings.TrimSpace(stringField(provider.Fields, "redirect_uri"))
 	if configured == "" {
-		return oauthCallbackURL(r), nil
+		return s.oauthCallbackURL(r)
 	}
+	return validateOAuthCallbackURL(configured)
+}
+
+func validateOAuthCallbackURL(raw string) (string, error) {
+	configured := strings.TrimSpace(raw)
 	target, err := url.Parse(configured)
-	if err != nil || target.Scheme == "" || target.Host == "" {
+	if err != nil || target.User != nil || target.Scheme == "" || target.Host == "" {
 		return "", NewHTTPError(400, "invalid_redirect_uri", "OAuth callback URL must be an absolute URL")
 	}
-	if target.Scheme != "http" && target.Scheme != "https" {
+	if !strings.EqualFold(target.Scheme, "http") && !strings.EqualFold(target.Scheme, "https") {
 		return "", NewHTTPError(400, "invalid_redirect_uri", "OAuth callback URL must use http or https")
+	}
+	if strings.EqualFold(target.Scheme, "http") && !isOAuthLoopbackHost(target.Hostname()) {
+		return "", NewHTTPError(400, "insecure_redirect_uri", "OAuth callback URL must use https unless it is loopback")
 	}
 	if target.Fragment != "" {
 		return "", NewHTTPError(400, "invalid_redirect_uri", "OAuth callback URL must not contain a fragment")
 	}
-	return configured, nil
+	return target.String(), nil
 }
 
 func firstForwardedValue(value string) string {
@@ -430,88 +503,109 @@ func firstForwardedValue(value string) string {
 	return strings.TrimSpace(strings.Split(value, ",")[0])
 }
 
-func safeOAuthReturnURL(raw string, r *http.Request) string {
-	fallback := "http://localhost:3000/overview"
-	if origin := strings.TrimSpace(r.Header.Get("origin")); origin != "" {
-		fallback = strings.TrimRight(origin, "/") + "/overview"
-	} else if referer := strings.TrimSpace(r.Header.Get("referer")); referer != "" {
-		if parsed, err := url.Parse(referer); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-			fallback = parsed.Scheme + "://" + parsed.Host + "/overview"
-		}
-	}
+func (s *Server) safeOAuthReturnURL(raw string, r *http.Request) string {
+	fallback := canonicalOAuthReturnURL(s.config, r)
 	candidate := strings.TrimSpace(raw)
 	if candidate == "" {
 		return fallback
 	}
 	parsed, err := url.Parse(candidate)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
 		return fallback
 	}
-	if isAllowedOAuthReturnHost(parsed.Hostname(), r.Host) {
+	if isAllowedOAuthReturnOrigin(parsed, s.config, r) {
+		query := parsed.Query()
+		for _, key := range []string{"oauth_token", "oauth_expires_at", "oauth_code", "oauth_error"} {
+			query.Del(key)
+		}
+		parsed.RawQuery = query.Encode()
+		parsed.Fragment = ""
 		return parsed.String()
 	}
 	return fallback
 }
 
-func isAllowedOAuthReturnHost(hostname string, requestHost string) bool {
-	hostname = strings.ToLower(strings.Trim(hostname, "[]"))
-	requestHostname := strings.ToLower(strings.Trim(strings.Split(requestHost, ":")[0], "[]"))
-	switch hostname {
-	case "localhost", "127.0.0.1", "::1":
+func canonicalOAuthReturnURL(config Config, r *http.Request) string {
+	for _, configured := range config.CORSAllowedOrigins {
+		if origin, ok := normalizedOAuthOrigin(configured, true); ok {
+			return origin + "/overview"
+		}
+	}
+	if origin, ok := normalizedOAuthOrigin(config.PublicBaseURL, false); ok {
+		return origin + "/overview"
+	}
+	if r != nil {
+		if origin, ok := requestOAuthOrigin(r); ok {
+			return origin + "/overview"
+		}
+	}
+	return "http://localhost:3000/overview"
+}
+
+func isAllowedOAuthReturnOrigin(target *url.URL, config Config, r *http.Request) bool {
+	targetOrigin, ok := normalizedOAuthOrigin(target.String(), false)
+	if !ok {
+		return false
+	}
+	for _, configured := range config.CORSAllowedOrigins {
+		if origin, valid := normalizedOAuthOrigin(configured, true); valid && targetOrigin == origin {
+			return true
+		}
+	}
+	if origin, valid := normalizedOAuthOrigin(config.PublicBaseURL, false); valid && targetOrigin == origin {
 		return true
 	}
-	return hostname != "" && hostname == requestHostname
+	if isOAuthLoopbackHost(target.Hostname()) {
+		return false
+	}
+	requestOrigin, valid := requestOAuthOrigin(r)
+	return valid && targetOrigin == requestOrigin
 }
 
-func (s *Server) signOAuthState(payload oauthStatePayload) (string, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
+func normalizedOAuthOrigin(raw string, requireOriginOnly bool) (string, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.User != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", false
 	}
-	body := base64.RawURLEncoding.EncodeToString(data)
-	mac := hmac.New(sha256.New, []byte(s.oauthStateSecret()))
-	_, _ = mac.Write([]byte(body))
-	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	return body + "." + signature, nil
+	if requireOriginOnly && ((parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "") {
+		return "", false
+	}
+	hostname := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if hostname == "" {
+		return "", false
+	}
+	port := parsed.Port()
+	if (parsed.Scheme == "http" && port == "80") || (parsed.Scheme == "https" && port == "443") {
+		port = ""
+	}
+	host := hostname
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port != "" {
+		host += ":" + port
+	}
+	return strings.ToLower(parsed.Scheme) + "://" + host, true
 }
 
-func (s *Server) verifyOAuthState(state string) (oauthStatePayload, error) {
-	parts := strings.Split(strings.TrimSpace(state), ".")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return oauthStatePayload{}, fmt.Errorf("invalid oauth state")
+func requestOAuthOrigin(r *http.Request) (string, bool) {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
 	}
-	mac := hmac.New(sha256.New, []byte(s.oauthStateSecret()))
-	_, _ = mac.Write([]byte(parts[0]))
-	expected := mac.Sum(nil)
-	got, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil || !hmac.Equal(got, expected) {
-		return oauthStatePayload{}, fmt.Errorf("invalid oauth state")
-	}
-	data, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return oauthStatePayload{}, err
-	}
-	var payload oauthStatePayload
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return oauthStatePayload{}, err
-	}
-	if payload.ProviderID == "" || payload.ReturnURL == "" || payload.RedirectURI == "" || time.Now().UTC().Unix() > payload.ExpiresAt {
-		return oauthStatePayload{}, fmt.Errorf("invalid oauth state")
-	}
-	return payload, nil
+	return normalizedOAuthOrigin(scheme+"://"+r.Host, true)
 }
 
-func (s *Server) oauthStateSecret() string {
-	if secret := strings.TrimSpace(s.config.SecretKey); secret != "" {
-		return secret
+func isOAuthLoopbackHost(host string) bool {
+	host = strings.TrimSpace(strings.Trim(host, "[]"))
+	if strings.EqualFold(host, "localhost") {
+		return true
 	}
-	if secret := strings.TrimSpace(s.config.AdminToken); secret != "" {
-		return secret
-	}
-	return "tokenhub-oauth-state"
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
-func (s *Server) exchangeOAuthCode(ctx context.Context, provider AdminResource, code string, redirectURI string) (oauthTokenResponse, error) {
+func (s *Server) exchangeOAuthCode(ctx context.Context, provider AdminResource, code string, redirectURI string, codeVerifier string) (oauthTokenResponse, error) {
 	if token, handled, err := exchangeConfiguredIdentityProviderOAuthCode(ctx, provider, code, redirectURI); handled {
 		return token, err
 	}
@@ -529,6 +623,9 @@ func (s *Server) exchangeOAuthCode(ctx context.Context, provider AdminResource, 
 	if clientSecret != "" {
 		form.Set("client_secret", clientSecret)
 	}
+	if codeVerifier != "" {
+		form.Set("code_verifier", codeVerifier)
+	}
 	token, detail, err := requestOAuthToken(ctx, tokenURL, form, "", "")
 	if err == nil {
 		if strings.TrimSpace(token.AccessToken) == "" {
@@ -544,6 +641,9 @@ func (s *Server) exchangeOAuthCode(ctx context.Context, provider AdminResource, 
 	basicForm.Set("grant_type", "authorization_code")
 	basicForm.Set("code", code)
 	basicForm.Set("redirect_uri", redirectURI)
+	if codeVerifier != "" {
+		basicForm.Set("code_verifier", codeVerifier)
+	}
 	token, _, err = requestOAuthToken(ctx, tokenURL, basicForm, clientID, clientSecret)
 	if err != nil {
 		return oauthTokenResponse{}, err
@@ -619,10 +719,11 @@ func (s *Server) upsertOAuthAdminUser(provider AdminResource, claims map[string]
 	emailClaim := strings.TrimSpace(stringField(provider.Fields, "email_claim"))
 	teamClaim := strings.TrimSpace(stringField(provider.Fields, "team_claim"))
 	email := firstOAuthClaim(claims, emailClaim, "email", "enterprise_email", "biz_mail", "public_email")
-	allowUsernameMatch := true
+	if verified, present := oauthEmailVerification(claims); email != "" && present && !verified {
+		return AdminUser{}, NewHTTPError(403, "oauth_email_unverified", "OAuth provider did not verify the account email")
+	}
 	if email == "" {
 		email = identityProviderFallbackEmail(provider, claims)
-		allowUsernameMatch = email == ""
 	}
 	if email == "" {
 		return AdminUser{}, NewHTTPError(400, "oauth_email_missing", "OAuth userinfo did not include an email")
@@ -642,7 +743,7 @@ func (s *Server) upsertOAuthAdminUser(provider AdminResource, claims map[string]
 		teamID = defaultTeamID
 	}
 	users := s.store.ListAdminUsers()
-	if existing, ok := findOAuthAdminUser(users, email, username, allowUsernameMatch); ok {
+	if existing, ok := findOAuthAdminUserByEmail(users, email); ok {
 		if existing.Status != StatusActive {
 			return AdminUser{}, NewHTTPError(403, "admin_user_disabled", "Admin user is disabled")
 		}
@@ -724,19 +825,25 @@ func oauthClaimString(claims map[string]any, key string) string {
 	}
 }
 
-func findOAuthAdminUser(users []AdminUser, email string, username string, allowUsernameMatch bool) (AdminUser, bool) {
+func oauthEmailVerification(claims map[string]any) (bool, bool) {
+	value, present := claims["email_verified"]
+	if !present {
+		return false, false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed, true
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), "true"), true
+	default:
+		return false, true
+	}
+}
+
+func findOAuthAdminUserByEmail(users []AdminUser, email string) (AdminUser, bool) {
 	email = strings.ToLower(strings.TrimSpace(email))
-	username = strings.ToLower(strings.TrimSpace(username))
 	for _, user := range users {
 		if email != "" && strings.ToLower(strings.TrimSpace(user.Email)) == email {
-			return user, true
-		}
-	}
-	if !allowUsernameMatch {
-		return AdminUser{}, false
-	}
-	for _, user := range users {
-		if username != "" && strings.ToLower(strings.TrimSpace(user.Username)) == username {
 			return user, true
 		}
 	}
@@ -871,10 +978,9 @@ func (s *Server) assignOAuthDefaultProject(provider AdminResource, user AdminUse
 	})
 }
 
-func oauthRedirectWithSession(returnURL string, session AdminSession) string {
+func oauthRedirectWithCode(returnURL string, code string) string {
 	values := url.Values{}
-	values.Set("oauth_token", session.Token)
-	values.Set("oauth_expires_at", session.ExpiresAt.Format(time.RFC3339))
+	values.Set("oauth_code", code)
 	return oauthRedirectWithFragment(returnURL, values)
 }
 
@@ -882,22 +988,6 @@ func oauthRedirectWithError(returnURL string, code string) string {
 	values := url.Values{}
 	values.Set("oauth_error", code)
 	return oauthRedirectWithFragment(returnURL, values)
-}
-
-func oauthErrorCode(code string, err error) string {
-	if err == nil {
-		return code
-	}
-	detail := strings.TrimSpace(err.Error())
-	if detail == "" {
-		return code
-	}
-	detail = strings.ReplaceAll(detail, "\n", " ")
-	detail = strings.ReplaceAll(detail, "\r", " ")
-	if len(detail) > 160 {
-		detail = detail[:160]
-	}
-	return code + ": " + detail
 }
 
 func sanitizeOAuthErrorDetail(body []byte) string {
@@ -930,14 +1020,6 @@ func oauthRedirectWithFragment(returnURL string, values url.Values) string {
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		target, _ = url.Parse("http://localhost:3000/overview")
 	}
-	query := target.Query()
-	for key, items := range values {
-		query.Del(key)
-		for _, item := range items {
-			query.Add(key, item)
-		}
-	}
-	target.RawQuery = query.Encode()
 	target.Fragment = values.Encode()
 	return target.String()
 }

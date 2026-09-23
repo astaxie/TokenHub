@@ -1,0 +1,83 @@
+{
+  "id": "nova",
+  "api": "https://api.nova.amazon.com/v1",
+  "name": "Nova",
+  "doc": "https://nova.amazon.com/dev/documentation",
+  "display_name": "Nova",
+  "models": [
+    {
+      "id": "nova-2-pro-v1",
+      "name": "Nova 2 Pro",
+      "family": "nova-pro",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-12-03",
+      "last_updated": "2026-01-03",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1000000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0
+      },
+      "display_name": "Nova 2 Pro",
+      "type": "chat"
+    },
+    {
+      "id": "nova-2-lite-v1",
+      "name": "Nova 2 Lite",
+      "family": "nova-lite",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "release_date": "2025-12-01",
+      "last_updated": "2025-12-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1000000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0
+      },
+      "display_name": "Nova 2 Lite",
+      "type": "chat"
+    }
+  ]
+}

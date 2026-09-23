@@ -221,7 +221,7 @@ func TestCacheAffinityDisabledByDefault(t *testing.T) {
 	}
 }
 
-func TestResponsesCacheAffinityUsesCodexSessionHints(t *testing.T) {
+func TestResponsesCacheAffinityUsesGenericSessionHints(t *testing.T) {
 	server := NewWithConfig(NewMemoryStore(), Config{
 		SecretKey:            "secret",
 		CacheAffinityEnabled: true,
@@ -257,12 +257,12 @@ func TestResponsesCacheAffinityUsesCodexSessionHints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err = resolveCacheLocalityAffinity("secret", "key_alpha", "metadata-session", sessionScopeSession, false)
+	want, err = resolveCacheLocalityAffinity("secret", "key_alpha", "prompt-session", sessionScopeSession, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if affinity == nil || affinity.KeyHash != want.KeyHash {
-		t.Fatalf("client_metadata.session_id must precede prompt_cache_key: got %#v want %#v", affinity, want)
+		t.Fatalf("prompt_cache_key must be the generic fallback: got %#v want %#v", affinity, want)
 	}
 }
 
@@ -422,6 +422,48 @@ func TestCodexRendezvousStillUsesFNV(t *testing.T) {
 	// The two must stay distinct, otherwise the cache-domain skew regresses.
 	if weightedRendezvousScore("k", "id", 100) == weightedCacheDomainScore("k", "id", 100) {
 		t.Fatal("cache domain scoring must not fall back to the codex hash")
+	}
+}
+
+func TestRendezvousSortPrecomputesScores(t *testing.T) {
+	group := []RouteSelection{
+		{Route: ModelRoute{ID: "route_c", Weight: 30}},
+		{Route: ModelRoute{ID: "route_a", Weight: 10}},
+		{Route: ModelRoute{ID: "route_b", Weight: 20}},
+	}
+	scores := map[string]float64{
+		"route_a": 10,
+		"route_b": 20,
+		"route_c": 20,
+	}
+	calls := map[string]int{}
+	sortRouteGroupByRendezvous("affinity-key", group, routeSortID, func(key, identity string, weight int) float64 {
+		if key != "affinity-key" {
+			t.Fatalf("routing key = %q, want affinity-key", key)
+		}
+		calls[identity]++
+		return scores[identity]
+	})
+
+	want := []string{"route_b", "route_c", "route_a"}
+	for index := range group {
+		identity := routeSortID(group[index])
+		if identity != want[index] {
+			t.Fatalf("route at %d = %q, want %q", index, identity, want[index])
+		}
+		if calls[identity] != 1 {
+			t.Fatalf("score calls for %q = %d, want 1", identity, calls[identity])
+		}
+	}
+
+	singletonCalls := 0
+	singleton := []RouteSelection{{Route: ModelRoute{ID: "route_single", Weight: 100}}}
+	sortRouteGroupByRendezvous("affinity-key", singleton, routeSortID, func(string, string, int) float64 {
+		singletonCalls++
+		return 1
+	})
+	if singletonCalls != 0 {
+		t.Fatalf("singleton score calls = %d, want 0", singletonCalls)
 	}
 }
 

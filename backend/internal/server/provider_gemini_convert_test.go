@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -12,6 +13,22 @@ func mustBuildGemini(t *testing.T, req ChatCompletionRequest) map[string]any {
 		t.Fatalf("buildGeminiRequest: %v", err)
 	}
 	return payload
+}
+
+func TestGeminiRequestUsesCompatibleMaxCompletionTokens(t *testing.T) {
+	var req ChatCompletionRequest
+	if err := json.Unmarshal([]byte(`{
+		"messages":[{"role":"user","content":"hi"}],
+		"max_completion_tokens":4096
+	}`), &req); err != nil {
+		t.Fatal(err)
+	}
+
+	payload := mustBuildGemini(t, req)
+	config, _ := payload["generationConfig"].(map[string]any)
+	if config["maxOutputTokens"] != int64(4096) {
+		t.Fatalf("max_completion_tokens must map to Gemini maxOutputTokens, got %v", config["maxOutputTokens"])
+	}
 }
 
 func TestGeminiRequestUsesSystemInstruction(t *testing.T) {

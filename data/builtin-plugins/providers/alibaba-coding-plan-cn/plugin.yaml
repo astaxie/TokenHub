@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.alibaba-coding-plan-cn"
+name: "Alibaba Coding Plan (China)"
+version: 1.0.0
+summary: "Connect TokenHub to Alibaba Coding Plan (China)."
+description: "Connect TokenHub to Alibaba Coding Plan (China). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://coding.dashscope.aliyuncs.com/v1"
+    catalog:
+      id: "alibaba-coding-plan-cn"
+      name: "Alibaba Coding Plan (China)"
+      display_name: "Alibaba Coding Plan (China)"
+      type: "openai_compatible"
+      base_url: "https://coding.dashscope.aliyuncs.com/v1"
+      doc_url: "https://help.aliyun.com/zh/model-studio/coding-plan"
+      categories: []
+      models_count: 12
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

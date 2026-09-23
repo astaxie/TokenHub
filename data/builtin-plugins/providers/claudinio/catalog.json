@@ -1,0 +1,55 @@
+{
+  "id": "claudinio",
+  "api": "https://api.claudin.io/v1",
+  "name": "Claudinio",
+  "doc": "https://claudin.io",
+  "display_name": "Claudinio",
+  "models": [
+    {
+      "id": "claudinio",
+      "name": "Claudinio",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "knowledge": "2026-05",
+      "release_date": "2026-05-12",
+      "last_updated": "2026-06-02",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 0.5,
+        "output": 2,
+        "cache_read": 0.15
+      },
+      "display_name": "Claudinio",
+      "type": "chat"
+    }
+  ]
+}

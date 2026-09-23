@@ -1,11 +1,15 @@
 import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
 import { useRef, useState } from "react";
-import { type ApiContext, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
+import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
+import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
 import { formatModelPrice } from "../domain/formatting";
-import { clearCustomValidity, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
+import { legacyProviderAuthModeField, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerConnectionTestRunAfterUpdate } from "../domain/provider-custom-upstream";
+import { clearCustomValidity, countRatioWithUnit, countWithUnit, handleRequiredFieldInvalid, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, readAdminError } from "../resources/payloads";
-import { providerTypeOptions } from "../shared/ui";
+import { providerTypeManagedHeaders, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { ProviderCustomHeaders } from "./provider-custom-headers";
+import { ProviderAuthModeField } from "./provider-editor-sections";
 
 type ProviderConnectionTestState = {
   status: "idle" | "testing" | "success" | "error";
@@ -21,6 +25,8 @@ export function ProviderAPIQuickCatalog({
   onQueryChange,
   onSelect,
   onSelectCustom,
+  pluginCatalogCards = [],
+  providerTypeOptions = [],
 }: {
   entries: ProviderCatalogEntry[];
   total: number;
@@ -29,6 +35,8 @@ export function ProviderAPIQuickCatalog({
   onQueryChange: (value: string) => void;
   onSelect: (entry: ProviderCatalogEntry) => void;
   onSelectCustom: () => void;
+  pluginCatalogCards?: AdminUIContribution[];
+  providerTypeOptions?: ProviderTypeOption[];
 }) {
   return (
     <section className="provider-catalog-pane provider-quick-catalog-pane">
@@ -44,14 +52,17 @@ export function ProviderAPIQuickCatalog({
         {entries.length === 0 ? (
           <div className="empty compact-empty">{tx("没有匹配的渠道商")}</div>
         ) : entries.map((entry) => {
+          const pluginCard = providerCatalogCardContribution(entry, pluginCatalogCards);
           const name = entry.display_name || entry.name;
+          const title = pluginCard?.title || name;
+          const description = schemaString(pluginCard?.schema?.description);
           const active = entry.id === selectedID;
           return (
             <button className={active ? "provider-quick-catalog-item active" : "provider-quick-catalog-item"} key={entry.id} onClick={() => onSelect(entry)} type="button">
-              <span className="provider-quick-catalog-avatar">{name.slice(0, 1).toUpperCase()}</span>
+              <span className="provider-quick-catalog-avatar">{title.slice(0, 1).toUpperCase()}</span>
               <span className="provider-quick-catalog-copy">
-                <strong>{name}</strong>
-                <em>{providerTypeLabel(entry.type)} · {countWithUnit(entry.models_count, "个模型", "model", "モデル")}</em>
+                <strong>{title}</strong>
+                <em>{description || `${providerCatalogTypeLabel(entry, providerTypeOptions)} · ${countWithUnit(entry.models_count, "个模型", "model", "モデル")}`}</em>
               </span>
               {active ? <Check size={15} /> : null}
             </button>
@@ -61,10 +72,30 @@ export function ProviderAPIQuickCatalog({
       <button className={selectedID === "custom" ? "custom-provider-button provider-quick-custom active" : "custom-provider-button provider-quick-custom"} onClick={onSelectCustom} type="button">
         <Plus size={14} />
         <span>{tx("自定义渠道商")}</span>
-        <em>{tx("填写名称、Base URL 和 API Key")}</em>
+        <em>{tx("填写名称和 Base URL")}</em>
       </button>
     </section>
   );
+}
+
+function providerCatalogCardContribution(entry: ProviderCatalogEntry, contributions: AdminUIContribution[]) {
+  return contributions.find((contribution) =>
+    contribution.slot === "provider.catalog.card" &&
+    (contribution.provider_types ?? []).includes(entry.type),
+  );
+}
+
+function schemaString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function providerCatalogTypeLabel(entry: ProviderCatalogEntry, providerTypeOptions: ProviderTypeOption[]) {
+  const optionLabel = providerTypeOptions.find((option) => option.value === entry.type)?.label?.trim();
+  if (optionLabel) return optionLabel;
+  const metadataLabel = String(entry.display_name || entry.name || "").trim();
+  const pluginCatalogEntry = String(entry.source || "").startsWith("plugin");
+  if (pluginCatalogEntry && metadataLabel) return metadataLabel;
+  return providerTypeLabel(entry.type);
 }
 
 export function ProviderAPIQuickConnect({
@@ -85,6 +116,8 @@ export function ProviderAPIQuickConnect({
   onReloadModels,
   onTabChange,
   onUpdate,
+  providerTypeOptions = [],
+  pluginActions = [],
 }: {
   api: ApiContext;
   catalogID: string;
@@ -103,25 +136,32 @@ export function ProviderAPIQuickConnect({
   onReloadModels: () => void;
   onTabChange: (tab: "connect" | "models" | "advanced") => void;
   onUpdate: (key: string, value: string) => void;
+  providerTypeOptions?: ProviderTypeOption[];
+  pluginActions?: PluginActionDescriptor[];
 }) {
   const [showKey, setShowKey] = useState(false);
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
   const connectionTestRun = useRef(0);
   const custom = catalogID === "custom";
+  const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
+  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions, values.type);
   const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
-  const connectionReady = Boolean(values.base_url?.trim() && values.api_key?.trim());
+  const connectionReady = Boolean(values.base_url?.trim() && (!apiKeyRequired || values.api_key?.trim()));
 
   function updateConnectionValue(key: string, value: string) {
-    if (key === "base_url" || key === "api_key") {
-      connectionTestRun.current += 1;
+    const nextRun = providerConnectionTestRunAfterUpdate(connectionTestRun.current, key);
+    if (nextRun !== connectionTestRun.current) {
+      connectionTestRun.current = nextRun;
       setConnectionTest({ status: "idle" });
     }
     onUpdate(key, value);
   }
 
   async function testConnection() {
+    const headerError = providerHeaderFormError(values.custom_headers, providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type));
+    if (headerError) { setConnectionTest({ status: "error", message: tx(headerError) }); return; }
     if (!connectionReady) {
-      setConnectionTest({ status: "error", message: tx("请填写 Base URL 和 API Key 后测试。") });
+      setConnectionTest({ status: "error", message: tx(apiKeyRequired ? "请填写 Base URL 和 API Key 后测试。" : "请填写 Base URL 后测试。") });
       return;
     }
     const run = connectionTestRun.current + 1;
@@ -129,6 +169,7 @@ export function ProviderAPIQuickConnect({
     const startedAt = performance.now();
     setConnectionTest({ status: "testing" });
     try {
+      const authMode = providerAuthMode(values, effectiveProviderTypeOptions);
       const resp = await adminFetch(api, "/api/admin/providers/test-connection", {
         method: "POST",
         body: JSON.stringify({
@@ -137,6 +178,9 @@ export function ProviderAPIQuickConnect({
           type: values.type,
           base_url: values.base_url,
           api_key: values.api_key,
+          ...providerHeadersPayload(values.custom_headers),
+          [providerAuthModeField]: authMode,
+          [legacyProviderAuthModeField]: authMode,
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试 Provider 连接")));
@@ -145,7 +189,7 @@ export function ProviderAPIQuickConnect({
       setConnectionTest({
         status: "success",
         latencyMS: Math.max(0, result.latency_ms),
-        message: tx("API Key 配置有效"),
+        message: tx(apiKeyRequired ? "API Key 配置有效" : "连接测试通过"),
       });
     } catch (err) {
       if (connectionTestRun.current !== run || isAuthExpiredError(err)) return;
@@ -165,7 +209,7 @@ export function ProviderAPIQuickConnect({
           <h3>{name}</h3>
           <p>{values.base_url || tx("填写 Base URL 后连接上游")}</p>
         </div>
-        <strong>{countWithUnit(selectedModelCount, "个待引入模型", "model to import", "件の取り込み予定モデル")}</strong>
+        <strong>{countWithUnit(selectedModelCount, "个待引入模型", "model to import", "件の取り込み予定モデル", "models to import")}</strong>
       </div>
 
       <div className="provider-editor-tabs provider-quick-tabs" role="tablist" aria-label={tx("Provider 编辑区")}>
@@ -179,8 +223,8 @@ export function ProviderAPIQuickConnect({
           <div className="provider-api-quick-intro">
             <span><KeyRound size={18} /></span>
             <div>
-              <strong>{tx(custom ? "填写连接信息" : "只需填写 API Key")}</strong>
-              <p>{tx(custom ? "自定义渠道需要填写名称、Base URL 和 API Key。" : "把上游 Key 保存到 Provider，适合单账号或兼容 API。")}</p>
+              <strong>{tx(custom ? "填写连接信息" : apiKeyRequired ? "只需填写 API Key" : "连接插件上游服务")}</strong>
+              <p>{tx(custom && apiKeyRequired ? "自定义渠道需要填写名称、Base URL 和 API Key。" : apiKeyRequired ? "把上游 Key 保存到 Provider，适合单账号或兼容 API。" : "上游未启用认证时可留空；启用认证时填写密钥。")}</p>
             </div>
           </div>
 
@@ -203,7 +247,7 @@ export function ProviderAPIQuickConnect({
           )}
 
           <label className="field provider-quick-key-field">
-            <span>API Key</span>
+            <span>{apiKeyRequired ? "API Key" : tx("认证密钥（可选）")}</span>
             <div className="provider-quick-key-input">
               <input
                 autoComplete="new-password"
@@ -215,13 +259,13 @@ export function ProviderAPIQuickConnect({
                   updateConnectionValue("api_key", event.target.value);
                 }}
                 onInvalid={handleRequiredFieldInvalid}
-                required
+                required={apiKeyRequired}
               />
               <button aria-label={tx(showKey ? "隐藏 API Key" : "显示 API Key")} onClick={() => setShowKey((current) => !current)} type="button">
                 {showKey ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
-            {entry?.doc_url ? <a href={entry.doc_url} rel="noreferrer" target="_blank">{tx("获取 API Key")}</a> : null}
+            {entry?.doc_url ? <a href={entry.doc_url} rel="noreferrer" target="_blank">{tx(apiKeyRequired ? "获取 API Key" : "查看官方配置文档")}</a> : null}
           </label>
           <div className="provider-quick-test-row">
             <button
@@ -247,12 +291,12 @@ export function ProviderAPIQuickConnect({
       {activeTab === "models" ? (
         <div className="provider-quick-tab-panel">
           {custom && !values.base_url?.trim() ? (
-            <p className="provider-quick-custom-note">{tx("先在“连接”中填写 Base URL 和 API Key，这里会加载自定义渠道的上游模型。")}</p>
+            <p className="provider-quick-custom-note">{tx("先在“连接”中填写 Base URL，这里会加载自定义渠道的上游模型。")}</p>
           ) : (
             <>
               <div className="provider-quick-model-summary">
                 <strong>{tx("模型列表")}</strong>
-                <span>{selectedModelCount}/{modelCount} {tx("待引入")}</span>
+                <span>{modelsError ? tx("加载失败") : modelsLoading ? tx("加载中") : countRatioWithUnit(selectedModelCount, modelCount, "个待引入模型", "model to import", "件の取り込み予定モデル", "models to import")}</span>
               </div>
               <div className="provider-quick-model-tools">
                 <div className="provider-template-search provider-quick-model-search">
@@ -308,17 +352,42 @@ export function ProviderAPIQuickConnect({
             ) : null}
             <label className="field">
               <span>{tx("渠道商类型")}</span>
-              <select value={values.type ?? ""} onChange={(event) => onUpdate("type", event.target.value)} required>
-                {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
+              <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
+                {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
+            <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={effectiveProviderTypeOptions} />
             <label className="field">
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
             </label>
+            <label className="field">
+              <span>{tx("系统提示词转换")}</span>
+              <select value={values.system_prompt_transform_policy ?? "preserve"} onChange={(event) => onUpdate("system_prompt_transform_policy", event.target.value)}>
+                <option value="preserve">{tx("保留系统提示词块")}</option>
+                <option value="strip">{tx("移除客户端归因块")}</option>
+              </select>
+              <small>{tx("Provider 插件可声明默认策略；未声明时默认移除客户端归因块。")}</small>
+            </label>
           </div>
+          <ProviderCustomHeaders
+            disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
+            managedHeaders={providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type)}
+            onChange={(value) => onUpdate("custom_headers", value)}
+            value={values.custom_headers ?? "[]"}
+          />
         </div>
       ) : null}
     </section>
   );
+}
+
+function providerTypeOptionsForCurrentValue(providerType: string): ProviderTypeOption[] {
+  const value = providerType.trim();
+  if (!value) return [];
+  return [{
+    value,
+    label: providerTypeLabel(value),
+    supportsCustomHeaders: providerTypeSupportsCustomHeaders([], value),
+  }];
 }

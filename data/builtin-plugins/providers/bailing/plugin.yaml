@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.bailing"
+name: "Bailing"
+version: 1.0.0
+summary: "Connect TokenHub to Bailing."
+description: "Connect TokenHub to Bailing. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.tbox.cn/api/llm/v1/chat/completions"
+    catalog:
+      id: "bailing"
+      name: "Bailing"
+      display_name: "Bailing"
+      type: "openai_compatible"
+      base_url: "https://api.tbox.cn/api/llm/v1/chat/completions"
+      doc_url: "https://alipaytbox.yuque.com/sxs0ba/ling/intro"
+      categories: []
+      models_count: 2
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
@@ -25,10 +26,6 @@ func (s *Server) handleAdminAlerts(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "alert", r.Method); !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListAlerts()})
 }
 
@@ -43,24 +40,28 @@ func (s *Server) handleAdminAlertItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
+	s.serveAdminAlertDelivery(w, r, user, parts[0])
+}
+
+func (s *Server) serveAdminAlertDelivery(w http.ResponseWriter, r *http.Request, user AdminUser, alertID string) {
 	var req struct {
 		ChannelID string `json:"channel_id"`
 	}
 	if r.Body != nil && r.ContentLength != 0 {
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 	}
-	delivery, err := s.deliverAlert(r.Context(), parts[0], req.ChannelID)
+	delivery, err := s.deliverAlert(r.Context(), alertID, req.ChannelID)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "deliver", "alert", parts[0], "", delivery)
+	s.recordAdminAudit(r, user, "deliver", "alert", alertID, "", delivery)
 	writeJSON(w, http.StatusOK, delivery)
 }
 
@@ -68,20 +69,12 @@ func (s *Server) handleAdminAlertDeliveries(w http.ResponseWriter, r *http.Reque
 	if _, ok := s.requireAdmin(w, r, "alert", r.Method); !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListAlertDeliveries()})
+	writeJSON(w, http.StatusOK, map[string]any{"data": redactAlertDeliveriesForResponse(s.store.ListAlertDeliveries())})
 }
 
 func (s *Server) handleAdminApprovals(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAdmin(w, r, "approval", r.Method)
 	if !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": s.filterApprovalRequestsForUser(user, s.store.ListApprovalRequests())})
@@ -98,23 +91,27 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(405, "method_not_allowed", "Method not allowed"))
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
+	s.serveAdminApprovalAction(w, r, user, parts[0], parts[1])
+}
+
+func (s *Server) serveAdminApprovalAction(w http.ResponseWriter, r *http.Request, user AdminUser, approvalID string, action string) {
 	var req struct {
 		Reason string `json:"reason"`
 	}
 	if r.Body != nil && r.ContentLength != 0 {
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(400, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 	}
 	status := "approved"
-	if parts[1] == "reject" {
+	if action == "reject" {
 		status = "rejected"
 	}
-	pending, err := s.store.GetApprovalRequest(parts[0])
+	pending, err := s.store.GetApprovalRequest(approvalID)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -132,7 +129,7 @@ func (s *Server) handleAdminApprovalItem(w http.ResponseWriter, r *http.Request)
 		}
 		s.recordAdminAudit(r, user, "apply_approval", pending.ResourceType, pending.ResourceID, pending, result)
 	}
-	item, err := s.store.UpdateApprovalRequestStatus(parts[0], status, user.ID, req.Reason)
+	item, err := s.store.UpdateApprovalRequestStatus(approvalID, status, user.ID, req.Reason)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -375,26 +372,26 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 	if !supportedNotificationChannel(delivery.Channel) {
 		delivery.Status = "failed"
 		delivery.Error = "unsupported notification channel"
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	if delivery.Channel == "email" {
-		if err := sendEmailAlert(ctx, channel, alert); err != nil {
+		if err := sendEmailAlert(ctx, channel, alert, s.smtpRootCAs); err != nil {
 			delivery.Status = "failed"
 			delivery.Error = err.Error()
 		}
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	target, err := notificationChannelRequestTarget(channel)
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	bodyPayload, headers, err := notificationChannelPayloadForChannel(channel, payload, alert)
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	body, _ := json.Marshal(bodyPayload)
 	if delivery.Channel == "dingtalk" {
@@ -402,7 +399,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 		if err != nil {
 			delivery.Status = "failed"
 			delivery.Error = err.Error()
-			return s.store.RecordAlertDelivery(delivery), nil
+			return s.recordAlertDelivery(channel, delivery), nil
 		}
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -411,7 +408,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	req.Header.Set("content-type", "application/json")
 	for key, value := range headers {
@@ -421,7 +418,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
-		return s.store.RecordAlertDelivery(delivery), nil
+		return s.recordAlertDelivery(channel, delivery), nil
 	}
 	defer resp.Body.Close()
 	delivery.StatusCode = resp.StatusCode
@@ -433,7 +430,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
 	}
-	return s.store.RecordAlertDelivery(delivery), nil
+	return s.recordAlertDelivery(channel, delivery), nil
 }
 
 func signedDingTalkWebhookURL(rawURL string, secret string) (string, error) {
@@ -607,7 +604,7 @@ func notificationChannelTarget(channel AdminResource) string {
 		}
 		return "whatsapp"
 	}
-	return firstStringField(channel.Fields, "webhook_url", "url")
+	return redactNotificationDeliveryURL(firstStringField(channel.Fields, "webhook_url", "url"))
 }
 
 func notificationChannelRequestTarget(channel AdminResource) (string, error) {
@@ -638,17 +635,17 @@ func notificationChannelRequestTarget(channel AdminResource) (string, error) {
 	}
 }
 
-func sendEmailAlert(ctx context.Context, channel AdminResource, alert AlertEvent) error {
+func sendEmailAlert(ctx context.Context, channel AdminResource, alert AlertEvent, rootCAs *x509.CertPool) error {
 	fields := channel.Fields
 	from := strings.TrimSpace(firstStringField(fields, "smtp_from", "from_email", "from"))
 	recipients := splitNotificationRecipients(firstStringField(fields, "email_to", "recipients", "to"))
 	if len(recipients) == 0 {
 		return fmt.Errorf("email_to is required")
 	}
-	return sendEmail(ctx, fields, recipients, emailAlertMessage(from, recipients, alert))
+	return sendEmail(ctx, fields, recipients, emailAlertMessage(from, recipients, alert), rootCAs)
 }
 
-func sendEmail(ctx context.Context, fields map[string]any, recipients []string, message []byte) error {
+func sendEmail(ctx context.Context, fields map[string]any, recipients []string, message []byte, rootCAs *x509.CertPool) error {
 	host := strings.TrimSpace(stringField(fields, "smtp_host"))
 	if host == "" {
 		return fmt.Errorf("smtp_host is required")
@@ -663,7 +660,17 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	}
 	addr := net.JoinHostPort(host, strconv.FormatInt(port, 10))
 	dialer := net.Dialer{Timeout: 5 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	directTLS := directSMTPTLSEnabled(fields)
+	var conn net.Conn
+	var err error
+	if directTLS {
+		tlsDialer := tls.Dialer{NetDialer: &dialer, Config: &tls.Config{
+			ServerName: host, MinVersion: tls.VersionTLS12, RootCAs: rootCAs,
+		}}
+		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
+	} else {
+		conn, err = dialer.DialContext(ctx, "tcp", addr)
+	}
 	if err != nil {
 		return err
 	}
@@ -677,9 +684,16 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	// The static type is *smtp.Client, so the io.Closer exemption does not apply.
 	defer client.Close() //nolint:errcheck // delivery result comes from Quit
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
-			return err
+	if !directTLS {
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+				return err
+			}
+		} else if strings.EqualFold(strings.TrimSpace(firstStringField(fields, "smtp_encryption")), "starttls") {
+			// Explicitly requested STARTTLS must not downgrade to plaintext:
+			// the server does not advertise the extension. Legacy channels
+			// without smtp_encryption keep the opportunistic STARTTLS path.
+			return fmt.Errorf("SMTP server does not advertise STARTTLS but smtp_encryption is set to starttls")
 		}
 	}
 	username := strings.TrimSpace(firstStringField(fields, "smtp_username", "username"))
@@ -709,6 +723,14 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 		return err
 	}
 	return client.Quit()
+}
+
+func directSMTPTLSEnabled(fields map[string]any) bool {
+	switch strings.ToLower(strings.TrimSpace(firstStringField(fields, "smtp_encryption"))) {
+	case "ssl", "tls", "smtps", "implicit":
+		return true
+	}
+	return false
 }
 
 func splitNotificationRecipients(value string) []string {
@@ -762,30 +784,19 @@ func (s *Server) sendAdminPasswordResetEmail(r *http.Request, channel AdminResou
 	if err != nil {
 		return err
 	}
-	resetLink := adminPasswordResetLink(r, plainToken)
-	return sendEmail(r.Context(), channel.Fields, []string{user.Email}, passwordResetEmailMessage(channel.Fields, []string{user.Email}, user, resetLink, token.ExpiresAt))
+	resetLink := s.adminPasswordResetLink(r, plainToken)
+	return sendEmail(r.Context(), channel.Fields, []string{user.Email}, passwordResetEmailMessage(channel.Fields, []string{user.Email}, user, resetLink, token.ExpiresAt), s.smtpRootCAs)
 }
 
-func adminPasswordResetLink(r *http.Request, token string) string {
-	baseURL := ""
-	if r != nil {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
-			scheme = strings.TrimSpace(strings.Split(proto, ",")[0])
-		}
-		if host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); host != "" {
-			baseURL = scheme + "://" + strings.TrimSpace(strings.Split(host, ",")[0])
-		} else if r.Host != "" {
-			baseURL = scheme + "://" + r.Host
-		}
+func (s *Server) adminPasswordResetLink(r *http.Request, token string) string {
+	returnURL := canonicalOAuthReturnURL(s.config, r)
+	origin, ok := normalizedOAuthOrigin(returnURL, false)
+	if !ok {
+		origin = "http://localhost:3000"
 	}
-	if baseURL == "" {
-		baseURL = "http://localhost:3000"
-	}
-	return strings.TrimRight(baseURL, "/") + "/?reset_token=" + token
+	values := url.Values{}
+	values.Set("reset_token", token)
+	return oauthRedirectWithFragment(origin+"/", values)
 }
 
 func passwordResetEmailMessage(fields map[string]any, recipients []string, user AdminUser, resetLink string, expiresAt time.Time) []byte {

@@ -1,23 +1,28 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Edit3, Info, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { type AdminResource, type AdminUser, type APIKey, type AppData, type ModalState, type Model, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
+import { Edit3, Info, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { type FormEvent, useMemo, useState } from "react";
+import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ModalState, type Model, type ModelRoute, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey } from "../core/types";
 import { filterRows } from "../domain/catalog";
 import { readPath, rowID, stringifyValue } from "../domain/entities";
 import { formatNumber, formatTime } from "../domain/formatting";
 import { settingsTabLabel } from "../domain/labels";
 import { LanguageSwitcher, languageOptionLabel } from "../i18n/language-switcher";
-import { activeLanguage, type AppLanguage, countWithLabel, displayText, languageOptions, translatedCell, tx } from "../i18n/runtime";
-import { defaultFormValues } from "../resources/payloads";
+import { type AppLanguage, countWithLabel, displayText, languageOptions, translatedCell, tx } from "../i18n/runtime";
+import { defaultFormValues, testProviderEgress } from "../resources/payloads";
 import { apiKeyStatusAction, APIKeyDownloadMenu, APIKeyStatusSwitch } from "../resources/project-key-config";
 import { identityProviderConfig, roleConfig, systemSettingConfig } from "../resources/settings-config";
-import { IdentityProviderEditModal } from "../shared/modals";
+import { usePagination } from "../shared/pagination";
 import { FieldInput, StatusPill } from "../shared/ui";
-import { identityProviderInitialFormValues } from "../shell/auth";
+import { identityProviderInitialFormValues, identityProviderTemplatesFromData } from "../shared/auth";
 import { CrudView } from "./crud-projects";
+import { IdentityProviderEditModal } from "./modals";
 import { ModelCreateModal } from "./model-create-modal";
+import { AdminUIRouteDetailPanels } from "./admin-ui-route-detail-panels";
+import { AdminUISettingsPanels } from "./admin-ui-settings-panels";
 
 export function SettingsView({
   data,
+  api,
   activeTab,
   language,
   onTabChange,
@@ -30,6 +35,7 @@ export function SettingsView({
   onToolbarAction,
 }: {
   data: AppData;
+  api: ApiContext;
   activeTab: SettingsTabKey;
   language: AppLanguage;
   onTabChange: (tab: SettingsTabKey) => void;
@@ -70,14 +76,17 @@ export function SettingsView({
         ))}
       </div>
       {activeConfig.view === "settings" ? (
-        <SystemSettingsPanel
-          config={activeConfig}
-          items={filteredItems as AdminResource[]}
-          language={language}
-          onLanguageChange={onLanguageChange}
-          onRestoreModelCatalog={onRestoreModelCatalog}
-          onEdit={(item) => onEdit(activeConfig, item)}
-        />
+        <>
+          <SystemSettingsPanel
+            config={activeConfig}
+            items={filteredItems as AdminResource[]}
+            language={language}
+            onLanguageChange={onLanguageChange}
+            onRestoreModelCatalog={onRestoreModelCatalog}
+            onEdit={(item) => onEdit(activeConfig, item)}
+          />
+          <AdminUISettingsPanels api={api} data={data} />
+        </>
       ) : (
         <CrudView
           config={activeConfig}
@@ -296,61 +305,66 @@ export function EntityTable<T>({
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
-            <tr
-              className={`${onRowClick ? "clickable-row" : ""} ${selectedRowID === rowID(item) ? "selected-row" : ""}`}
-              key={rowID(item)}
-              onClick={onRowClick ? () => onRowClick(item) : undefined}
-            >
-              {config.columns.map((column) => (
-                <td key={column.key}>
-                  {config.view === "api-keys" && column.key === "status" ? (
-                    <APIKeyStatusSwitch
-                      item={item as APIKey}
-                      onToggle={(nextStatus) => onAction(apiKeyStatusAction(nextStatus) as unknown as ResourceAction<T>, item)}
-                    />
-                  ) : column.render ? (
-                    translatedCell(column.render(item, data))
-                  ) : (
-                    displayCellValue(readPath(item, column.key))
-                  )}
-                </td>
-              ))}
-              <td>
-                <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                  {config.view === "api-keys" && apiBaseURL ? <APIKeyDownloadMenu baseURL={apiBaseURL} data={data} item={item as APIKey} /> : null}
-                  {onRowClick && rowOpenLabel ? (
-                    <button className="text-button" onClick={() => onRowClick(item)} type="button">
-                      {tx(rowOpenLabel)}
-                    </button>
-                  ) : null}
-                  {(config.actions ?? [])
-                    .filter((action) => action.visible?.(item) ?? true)
-                    .map((action) => (
-                      <button
-                        className="text-button"
-                        key={action.label}
-                        onClick={() => onAction(action, item)}
-                        title={tx(action.title ?? action.label)}
-                        type="button"
-                      >
-                        {tx(action.label)}
+          {items.map((item) => {
+            const canUpdate = config.canUpdate?.(item, currentUser, data) ?? true;
+            return (
+              <tr
+                className={`${onRowClick ? "clickable-row" : ""} ${selectedRowID === rowID(item) ? "selected-row" : ""}`}
+                key={rowID(item)}
+                onClick={onRowClick ? () => onRowClick(item) : undefined}
+              >
+                {config.columns.map((column) => (
+                  <td key={column.key}>
+                    {config.view === "api-keys" && column.key === "status" ? (
+                      canUpdate ? (
+                        <APIKeyStatusSwitch
+                          item={item as APIKey}
+                          onToggle={(nextStatus) => onAction(apiKeyStatusAction(nextStatus) as unknown as ResourceAction<T>, item)}
+                        />
+                      ) : (
+                        <StatusPill status={(item as APIKey).status} />
+                      )
+                    ) : column.render ? (
+                      translatedCell(column.render(item, data))
+                    ) : (
+                      displayCellValue(readPath(item, column.key))
+                    )}
+                  </td>
+                ))}
+                <td>
+                  <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+                    {config.view === "api-keys" && apiBaseURL ? <APIKeyDownloadMenu baseURL={apiBaseURL} data={data} item={item as APIKey} /> : null}
+                    {onRowClick && rowOpenLabel ? (
+                      <button className="text-button" onClick={() => onRowClick(item)} type="button">
+                        {tx(rowOpenLabel)}
                       </button>
-                    ))}
-                  {config.update ? (
-                    <button className="text-button" onClick={() => onEdit(item)} type="button">
-                      {tx("编辑")}
-                    </button>
-                  ) : null}
-                  {config.remove && (config.canRemove?.(item, currentUser) ?? true) ? (
-                    <button className="danger-button" onClick={() => onDelete(item)} type="button" title={tx("删除")}>
-                      <Trash2 size={15} />
-                    </button>
-                  ) : null}
-                </div>
-              </td>
-            </tr>
-          ))}
+                    ) : null}
+                    {(config.actions ?? [])
+                      .filter((action) => action.visible?.(item, currentUser, data) ?? true)
+                      .map((action) => action.href ? (
+                        <Link className="text-button row-action-link" href={action.href(item)} key={action.label} title={tx(action.title ?? action.label)}>
+                          {tx(action.label)}
+                        </Link>
+                      ) : (
+                        <button className="text-button" key={action.label} onClick={() => onAction(action, item)} title={tx(action.title ?? action.label)} type="button">
+                          {tx(action.label)}
+                        </button>
+                      ))}
+                    {config.update && canUpdate ? (
+                      <button className="text-button" onClick={() => onEdit(item)} type="button">
+                        {tx("编辑")}
+                      </button>
+                    ) : null}
+                    {config.remove && (config.canRemove?.(item, currentUser, data) ?? true) ? (
+                      <button className="danger-button" onClick={() => onDelete(item)} type="button" title={tx("删除")}>
+                        <Trash2 size={15} />
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -453,123 +467,10 @@ export function resultCountLabel(totalItems: number, query: string) {
   return query.trim() ? `${formatNumber(totalItems)} ${tx("条匹配")}` : `${formatNumber(totalItems)} ${tx("条记录")}`;
 }
 
-export type PaginationState = {
-  page: number;
-  pageSize: number;
-  pageCount: number;
-  startIndex: number;
-  endIndex: number;
-  setPage: (page: number) => void;
-  setPageSize: (pageSize: number) => void;
-};
-
-export const pageSizeOptions = [10, 20, 50, 100];
-
-export function usePagination(totalItems: number, resetKey: string): PaginationState {
-  const [page, setPageState] = useState(1);
-  const [pageSize, setPageSizeState] = useState(20);
-  const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
-
-  useEffect(() => {
-    setPageState(1);
-  }, [resetKey]);
-
-  useEffect(() => {
-    if (page > pageCount) {
-      setPageState(pageCount);
-    }
-  }, [page, pageCount]);
-
-  const safePage = Math.min(page, pageCount);
-  const startIndex = totalItems === 0 ? 0 : (safePage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalItems);
-
-  return {
-    page: safePage,
-    pageSize,
-    pageCount,
-    startIndex,
-    endIndex,
-    setPage: (nextPage) => setPageState(Math.min(Math.max(nextPage, 1), pageCount)),
-    setPageSize: (nextPageSize) => {
-      setPageSizeState(nextPageSize);
-      setPageState(1);
-    },
-  };
-}
-
-export function PaginationControls({
-  pagination,
-  totalItems,
-}: {
-  pagination: PaginationState;
-  totalItems: number;
-}) {
-  if (totalItems <= pageSizeOptions[0]) return null;
-  return (
-    <div className="pagination">
-      <div className="pagination-summary">
-        {activeLanguage === "zh-CN"
-          ? `第 ${pagination.startIndex + 1}-${pagination.endIndex} 条，共 ${totalItems} 条`
-          : activeLanguage === "ja"
-            ? `${pagination.startIndex + 1}-${pagination.endIndex} / ${totalItems} 件`
-            : `${pagination.startIndex + 1}-${pagination.endIndex} of ${totalItems}`}
-      </div>
-      <div className="pagination-controls">
-        <label className="page-size">
-          <span>{tx("每页")}</span>
-          <select
-            value={pagination.pageSize}
-            onChange={(event) => pagination.setPageSize(Number(event.target.value))}
-          >
-            {pageSizeOptions.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        </label>
-        <div className="page-buttons">
-          <button
-            type="button"
-            title={tx("第一页")}
-            onClick={() => pagination.setPage(1)}
-            disabled={pagination.page <= 1}
-          >
-            <ChevronsLeft size={15} />
-          </button>
-          <button
-            type="button"
-            title={tx("上一页")}
-            onClick={() => pagination.setPage(pagination.page - 1)}
-            disabled={pagination.page <= 1}
-          >
-            <ChevronLeft size={15} />
-          </button>
-          <span>{pagination.page} / {pagination.pageCount}</span>
-          <button
-            type="button"
-            title={tx("下一页")}
-            onClick={() => pagination.setPage(pagination.page + 1)}
-            disabled={pagination.page >= pagination.pageCount}
-          >
-            <ChevronRight size={15} />
-          </button>
-          <button
-            type="button"
-            title={tx("最后一页")}
-            onClick={() => pagination.setPage(pagination.pageCount)}
-            disabled={pagination.page >= pagination.pageCount}
-          >
-            <ChevronsRight size={15} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function EditModal<T>({
   state,
   data,
+  api,
   currentUser,
   loading,
   onClose,
@@ -577,6 +478,7 @@ export function EditModal<T>({
 }: {
   state: ModalState<T>;
   data: AppData;
+  api: ApiContext;
   currentUser?: AdminUser | null;
   loading: boolean;
   onClose: () => void;
@@ -587,8 +489,21 @@ export function EditModal<T>({
     ...(state.initialValues ?? {}),
   };
   const [values, setValues] = useState<Record<string, string>>(
-    state.config.view === "identity-providers" ? identityProviderInitialFormValues(initial, !state.item) : initial,
+    state.config.view === "identity-providers" ? identityProviderInitialFormValues(initial, !state.item, identityProviderTemplatesFromData(data)) : initial,
   );
+  const [proxyTestProviderID, setProxyTestProviderID] = useState(data.providers.find((provider) => provider.status === "active")?.id ?? data.providers[0]?.id ?? "");
+  const [proxyTestState, setProxyTestState] = useState<{ status: "idle" | "testing" | "success" | "error"; message?: string }>({ status: "idle" });
+
+  async function runProxyTest() {
+    if (!proxyTestProviderID) return;
+    setProxyTestState({ status: "testing" });
+    try {
+      const result = await testProviderEgress(api, proxyTestProviderID, values);
+      setProxyTestState({ status: "success", message: `${tx("代理连接测试通过")} · ${formatNumber(result.latency_ms ?? 0)} ms` });
+    } catch (error) {
+      setProxyTestState({ status: "error", message: error instanceof Error ? error.message : tx("代理连接测试失败") });
+    }
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -636,7 +551,7 @@ export function EditModal<T>({
           <button className="icon-button" onClick={onClose} type="button" title={tx("关闭")}>×</button>
         </div>
         <div className="modal-body">
-          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values) ?? true)).map((field) => (
+          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values, data, currentUser) ?? true)).map((field) => (
             <FieldInput
               key={field.key}
               field={field}
@@ -652,6 +567,25 @@ export function EditModal<T>({
               }))}
             />
           ))}
+          {state.config.view === "settings" && values.provider_egress_mode === "configured_proxy" ? (
+            <div className="inline-notice settings-proxy-test">
+              <label className="field">
+                <span>{tx("测试目标 Provider")}</span>
+                <select value={proxyTestProviderID} onChange={(event) => setProxyTestProviderID(event.target.value)}>
+                  <option value="">{tx("请选择")}</option>
+                  {data.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+                </select>
+                <small>{tx("使用当前未保存配置，只验证代理连接、认证、CONNECT 和目标 TLS；不会携带 Provider 凭据或发送模型请求。")}</small>
+              </label>
+              <button className="secondary-button" disabled={!proxyTestProviderID || proxyTestState.status === "testing"} onClick={() => void runProxyTest()} type="button">
+                {tx(proxyTestState.status === "testing" ? "正在测试代理" : "测试代理连接")}
+              </button>
+              {proxyTestState.message ? <small className={proxyTestState.status === "error" ? "error" : "success"}>{proxyTestState.message}</small> : null}
+            </div>
+          ) : null}
+          {state.config.view === "routes" && state.item ? (
+            <AdminUIRouteDetailPanels api={api} data={data} route={state.item as unknown as ModelRoute} />
+          ) : null}
         </div>
         <div className="modal-actions">
           <button className="secondary-button" onClick={onClose} type="button">{tx("取消")}</button>

@@ -99,7 +99,7 @@ func NewFileResolver(path string) (*FileResolver, error) {
 			continue
 		}
 		key := strings.TrimSpace(line[:idx])
-		val := line[idx+1:]
+		val := strings.TrimSpace(line[idx+1:])
 		entries[key] = val
 	}
 	if err := sc.Err(); err != nil {

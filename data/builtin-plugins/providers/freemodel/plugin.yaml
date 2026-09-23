@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.freemodel"
+name: "FreeModel"
+version: 1.0.0
+summary: "Connect TokenHub to FreeModel."
+description: "Connect TokenHub to FreeModel. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://cc.freemodel.dev/v1"
+    catalog:
+      id: "freemodel"
+      name: "FreeModel"
+      display_name: "FreeModel"
+      type: "openai_compatible"
+      base_url: "https://cc.freemodel.dev/v1"
+      doc_url: "https://freemodel.dev"
+      categories: []
+      models_count: 10
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

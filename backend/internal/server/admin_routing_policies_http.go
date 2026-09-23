@@ -10,17 +10,13 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 	if _, ok := s.requireAdmin(w, r, "routing", r.Method); !ok {
 		return
 	}
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	var req struct {
 		ProjectID string `json:"project_id"`
 		APIKeyID  string `json:"api_key_id"`
 		Model     string `json:"model"`
 	}
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &req); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	project, ok := s.store.GetProject(strings.TrimSpace(req.ProjectID))
@@ -55,10 +51,11 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 		})
 		return
 	}
+	call := CallContext{RequestID: NewID("sim"), Project: project, Key: key, Model: Model{Name: modelName}}
 	var routes []RouteSelection
 	var err error
 	if modelName == codexImageModelName || modelName == openAIImageModelName {
-		routes, err = s.imageRouteCandidates(modelName)
+		routes, err = s.imageRouteCandidates(call, modelName)
 	} else {
 		routes, err = s.store.SelectRouteCandidates(modelName)
 	}
@@ -66,7 +63,6 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 		writeError(w, r, err)
 		return
 	}
-	call := CallContext{RequestID: NewID("sim"), Project: project, Key: key, Model: Model{Name: modelName}}
 	if err != nil || len(routes) == 0 {
 		_, resolution, policyErr := s.resolveScopedRoutingPolicy(call, nil)
 		if policyErr != nil {
@@ -95,7 +91,7 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 		writeError(w, r, err)
 		return
 	}
-	planned := s.planRouteOrder(call, filtered)
+	planned := s.planRouteOrderWithContext(r.Context(), call, filtered)
 	if len(planned) > 0 {
 		resolution.SelectedRouteID = planned[0].Route.ID
 	}
@@ -108,11 +104,40 @@ func (s *Server) handleAdminRoutingPolicyAction(w http.ResponseWriter, r *http.R
 		return
 	}
 	parts := splitEscapedAdminPath(r.URL.EscapedPath(), "/api/admin/routing-policies/")
-	if r.Method != http.MethodPost || len(parts) != 2 || parts[0] == "" || (parts[1] != "bind" && parts[1] != "unbind") {
+	if len(parts) != 2 || parts[0] == "" || (parts[1] != "bind" && parts[1] != "unbind") {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "not_found", "Not found"))
 		return
 	}
-	policy, err := s.findResource(routingPolicyResourceKind, parts[0])
+	if r.Method != http.MethodPost {
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
+		return
+	}
+	s.serveAdminRoutingPolicyAction(w, r, user, parts[0], parts[1])
+}
+
+func (s *Server) handleAdminRoutingPolicyBindPost(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminRoutingPolicyActionRoute(w, r, "bind")
+}
+
+func (s *Server) handleAdminRoutingPolicyUnbindPost(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminRoutingPolicyActionRoute(w, r, "unbind")
+}
+
+func (s *Server) handleAdminRoutingPolicyActionRoute(w http.ResponseWriter, r *http.Request, action string) {
+	user, ok := s.requireAdmin(w, r, "routing", r.Method)
+	if !ok {
+		return
+	}
+	policyID := r.PathValue("policy_id")
+	if policyID == "" {
+		writeError(w, r, NewHTTPError(http.StatusNotFound, "not_found", "Not found"))
+		return
+	}
+	s.serveAdminRoutingPolicyAction(w, r, user, policyID, action)
+}
+
+func (s *Server) serveAdminRoutingPolicyAction(w http.ResponseWriter, r *http.Request, user AdminUser, policyID string, action string) {
+	policy, err := s.findResource(routingPolicyResourceKind, policyID)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -121,7 +146,6 @@ func (s *Server) handleAdminRoutingPolicyAction(w http.ResponseWriter, r *http.R
 	for key, value := range policy.Fields {
 		fields[key] = value
 	}
-	action := parts[1]
 	if action == "unbind" {
 		fields["scope"] = RoutingPolicyScopeUnbound
 		fields["scope_id"] = ""
@@ -130,8 +154,8 @@ func (s *Server) handleAdminRoutingPolicyAction(w http.ResponseWriter, r *http.R
 			Scope   string `json:"scope"`
 			ScopeID string `json:"scope_id"`
 		}
-		if err := decodeJSON(r, &req); err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &req); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		fields["scope"] = req.Scope

@@ -4,7 +4,7 @@
 
 本文说明如何通过 TokenHub 的 OpenAI 兼容 Image API 调用 `codex-gpt-image-2` 和 `gpt-image-2`。
 
-`codex-gpt-image-2` 是 TokenHub 对外暴露的 Codex 订阅虚拟模型。它不会请求普通 OpenAI API Provider，而是由服务器选择已确认支持生图的 Codex 订阅账号，直接调用 Codex 订阅 Images 接口。服务器不需要安装或启动 Codex CLI。
+`codex-gpt-image-2` 是 TokenHub 对外暴露的 Codex 订阅虚拟模型。管理员可在 OpenAI Codex Provider 的“模型”页签勾选“Codex 订阅生图”，选择真实账号完成一次低质量生图测试；测试通过后，TokenHub 会自动创建或启用上游模型为 `gpt-image-2` 的线路。服务器随后从该线路覆盖的账号资源中选择已确认支持生图的 Codex 订阅账号，直接调用 Codex 订阅 Images 接口。服务器不需要安装或启动 Codex CLI。
 
 `gpt-image-2` 通常是独立的 OpenAI API 模型，必须配置 `openai` 类型 Provider、API Key 和模型路由。它调用 Provider 的标准 `/v1/images/generations` 与 `/v1/images/edits`，不会选择 Codex 订阅账号或消耗 Codex 额度。唯一例外是带 Codex `originator` 或 `x-codex-image-turn-id` 请求头的 `/v1/images/generations` 请求：TokenHub 会将其映射为 `codex-gpt-image-2` 并返回 `b64_json`，API Key 必须允许 `codex-gpt-image-2`。
 
@@ -59,7 +59,17 @@ OpenAI 官方 Image API 还支持更多参数和模式。本文只描述 TokenHu
 
 ## 3. 测试前准备
 
-### 3.1 设置环境变量
+### 3.1 管理员测试并启用 Codex 生图
+
+1. 打开控制台的“Provider 渠道”，编辑目标 OpenAI Codex Provider。
+2. 进入“模型”页签，勾选“Codex 订阅生图”。
+3. 选择一个健康、已启用的真实 Codex 订阅账号，并确认额度提示。
+4. 等待“正在测试生图能力”完成。TokenHub 会发送一次 `quality: "low"`、`size: "1024x1024"` 的真实请求，这会消耗少量订阅额度。
+5. 只有收到非空且可解析的图片后，系统才会记录“支持生图”并创建或启用线路。`403` 表示账号不支持生图；认证失效需要重新授权；限流、超时或上游临时故障可在弹窗中重试。
+
+不需要先手工创建默认线路。自动创建的线路仍可在路由策略中调整优先级、权重、项目范围、指定资源和资源分组。取消勾选会停用匹配线路，但保留能力测试结果。升级已有环境时，TokenHub 只会为之前已经确认支持生图的启用账号补齐一次缺失线路，不会重新启用明确停用的线路，也不会反复创建管理员已经删除的线路。
+
+### 3.2 设置环境变量
 
 ```bash
 export TOKENHUB_BASE_URL="http://localhost:8080"
@@ -68,7 +78,7 @@ export TOKENHUB_API_KEY="你的 TokenHub API Key"
 
 不要把真实 API Key 写入脚本、Git 或日志。
 
-### 3.2 确认模型可用
+### 3.3 确认模型可用
 
 ```bash
 curl -sS \
@@ -91,11 +101,12 @@ curl -sS \
 如果没有结果，请依次检查：
 
 1. 后端是否已经重启并加载最新模型目录。
-2. API Key 的模型白名单是否包含 `codex-gpt-image-2`。
-3. 是否至少有一个健康启用的 Codex 账号标记为“支持生图”。
-4. 是否存在健康、已授权的 Codex 订阅账号。
+2. OpenAI Codex Provider 的“模型”页签中，“Codex 订阅生图”是否已测试通过并勾选。
+3. 是否存在从 `codex-gpt-image-2` 到该 Provider、上游模型为 `gpt-image-2` 的启用线路。
+4. 该线路覆盖的账号中，是否至少有一个健康、已授权且标记为“支持生图”的 Codex 账号。
+5. API Key 的模型白名单是否包含 `codex-gpt-image-2`。
 
-### 3.3 使用 OpenAI API 额度
+### 3.4 使用 OpenAI API 额度
 
 要改用普通 OpenAI API Provider，只需将下文同一协议中的模型改为：
 
@@ -492,7 +503,7 @@ running
 
 每个任务从 Worker 开始执行起最多运行 5 分钟，可通过 `TOKENHUB_IMAGE_JOB_TIMEOUT_SECONDS` 调整。超时任务会被标记为 `failed`，错误码为 `image_generation_timeout`。
 
-Codex Images 返回 403 时，账号会被标记为暂不支持生图并在默认 24 小时内跳过。`TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` 到期后，模型会重新进入可发现、可路由状态；下一次真实请求会低频复测该账号，成功后恢复为“支持生图”，再次返回 403 则重新进入冷却。该恢复机制不会为了探测能力自动生成图片或额外消耗订阅额度。
+Codex Images 返回 403 时，账号会被标记为暂不支持生图并在默认 24 小时内跳过。已有启用线路时，`TOKENHUB_IMAGE_CAPABILITY_RETRY_SECONDS` 到期后，模型会重新进入可发现、可路由状态；下一次真实请求会低频复测该账号，成功后恢复为“支持生图”，再次返回 403 则重新进入冷却。首次能力测试失败且没有创建线路时，不会有公开请求触发复测，管理员需要回到 Provider 的“模型”页签手动重试。该恢复机制不会为了探测能力自动生成图片或额外消耗订阅额度。
 
 ## 11. Node.js 调用
 

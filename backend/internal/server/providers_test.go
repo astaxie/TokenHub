@@ -6,6 +6,58 @@ import (
 	"testing"
 )
 
+func TestAnthropicEndpointURLNormalizesVersionPrefix(t *testing.T) {
+	tests := []struct{ baseURL, endpoint, want string }{
+		{"https://api.anthropic.com", "/v1/messages", "https://api.anthropic.com/v1/messages"},
+		{"https://api.anthropic.com/v1", "/v1/messages", "https://api.anthropic.com/v1/messages"},
+		{"https://api.minimaxi.com/anthropic", "/v1/models", "https://api.minimaxi.com/anthropic/v1/models"},
+		{"https://api.minimaxi.com/anthropic/v1/", "/v1/models", "https://api.minimaxi.com/anthropic/v1/models"},
+	}
+
+	for _, tt := range tests {
+		if got := anthropicEndpointURL(tt.baseURL, tt.endpoint); got != tt.want {
+			t.Errorf("anthropicEndpointURL(%q, %q) = %q, want %q", tt.baseURL, tt.endpoint, got, tt.want)
+		}
+	}
+}
+
+func TestConfigureProviderAuthModeRequiresDeclaredModes(t *testing.T) {
+	provider := Provider{Type: ProviderAnthropic, Options: map[string]string{}}
+
+	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer, AdapterProviderPolicy{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := providerConfiguredAuthMode(provider, AdapterProviderPolicy{}); got != "" {
+		t.Fatalf("auth mode without descriptor modes = %q, want empty", got)
+	}
+
+	if err := configureProviderAuthMode(&provider, anthropicAuthTypeBearer, AdapterProviderPolicy{
+		AuthModes:            []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
+		AuthModeLegacyOption: anthropicAuthTypeOption,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.Options[providerAuthModeOption]; got != anthropicAuthTypeBearer {
+		t.Fatalf("provider auth mode = %q, want bearer", got)
+	}
+	if got := provider.Options[anthropicAuthTypeOption]; got != anthropicAuthTypeBearer {
+		t.Fatalf("legacy Anthropic auth mode = %q, want bearer", got)
+	}
+	custom := Provider{Type: "custom_provider", Options: map[string]string{"legacy_auth_mode": "oauth"}}
+	if got := providerConfiguredAuthMode(custom, AdapterProviderPolicy{AuthModeLegacyOption: "legacy_auth_mode"}); got != "oauth" {
+		t.Fatalf("custom legacy auth mode = %q, want oauth", got)
+	}
+}
+
+func TestRequestedProviderAuthModePrefersGenericField(t *testing.T) {
+	if got := requestedProviderAuthMode(ProviderCreateRequest{ProviderAuthMode: "oauth", AnthropicAuthType: anthropicAuthTypeBearer}); got != "oauth" {
+		t.Fatalf("requested provider auth mode = %q, want oauth", got)
+	}
+	if got := requestedProviderAuthMode(ProviderCreateRequest{AnthropicAuthType: anthropicAuthTypeBearer}); got != anthropicAuthTypeBearer {
+		t.Fatalf("legacy requested provider auth mode = %q, want bearer", got)
+	}
+}
+
 func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 	tests := []struct {
 		name string
@@ -46,8 +98,11 @@ func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 				"output_tokens": float64(40),
 				"total_tokens":  float64(140),
 				"input_tokens_details": map[string]any{
-					"cached_tokens": float64(40),
-					"audio_tokens":  float64(5),
+					"cached_tokens":         float64(40),
+					"cache_write_tokens":    float64(7),
+					"cache_write_5m_tokens": float64(2),
+					"cache_write_1h_tokens": float64(5),
+					"audio_tokens":          float64(5),
 				},
 				"output_tokens_details": map[string]any{
 					"reasoning_tokens":           float64(10),
@@ -59,6 +114,9 @@ func TestUsageFromMapExtractsCachedInputTokens(t *testing.T) {
 			want: Usage{
 				PromptTokens:             100,
 				CachedInputTokens:        40,
+				CacheWriteInputTokens:    7,
+				CacheWrite5mInputTokens:  2,
+				CacheWrite1hInputTokens:  5,
 				InputAudioTokens:         5,
 				CompletionTokens:         40,
 				ReasoningOutputTokens:    10,
@@ -171,6 +229,12 @@ func TestAnthropicUsageRecordsCacheWriteTokens(t *testing.T) {
 	}
 	if usage.CachedInputTokens != 50 {
 		t.Fatalf("cached input tokens = %d, want 50", usage.CachedInputTokens)
+	}
+	if got := anthropicUsageObject(usage); got["input_tokens"] != int64(10) || got["cache_creation_input_tokens"] != int64(40) || got["cache_read_input_tokens"] != int64(50) {
+		t.Fatalf("Anthropic cache usage = %#v", got)
+	}
+	if got := anthropicUsageObject(Usage{PromptTokens: 10, CachedInputTokens: 9, CacheWriteInputTokens: 9}); got["input_tokens"] != int64(0) || got["cache_creation_input_tokens"] != int64(1) || got["cache_read_input_tokens"] != int64(9) {
+		t.Fatalf("Anthropic bounded cache usage = %#v", got)
 	}
 	if usage.TotalTokens != 105 {
 		t.Fatalf("total tokens = %d, want 105", usage.TotalTokens)

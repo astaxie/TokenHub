@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.xai"
+name: "xai"
+version: 1.0.0
+summary: "Connect TokenHub to xai."
+description: "Connect TokenHub to xai. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "xai"
+      name: "xai"
+      display_name: "xai"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://docs.x.ai/docs/models"
+      categories: []
+      models_count: 15
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

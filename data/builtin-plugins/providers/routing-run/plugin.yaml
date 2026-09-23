@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.routing-run"
+name: "routing.run"
+version: 1.0.0
+summary: "Connect TokenHub to routing.run."
+description: "Connect TokenHub to routing.run. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://ai.routing.sh/v1"
+    catalog:
+      id: "routing-run"
+      name: "routing.run"
+      display_name: "routing.run"
+      type: "openai_compatible"
+      base_url: "https://ai.routing.sh/v1"
+      doc_url: "https://docs.routing.run/api-reference/models"
+      categories: []
+      models_count: 26
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

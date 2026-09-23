@@ -1,0 +1,4122 @@
+{
+  "id": "tokenflux",
+  "name": "Tokenflux",
+  "display_name": "Tokenflux",
+  "updated_at": "2026-06-13T05:38:00.181Z",
+  "models": [
+    {
+      "id": "anthropic/claude-3-haiku",
+      "name": "anthropic/claude-3-haiku",
+      "display_name": "anthropic/claude-3-haiku",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "anthropic/claude-3.5-haiku",
+      "name": "anthropic/claude-3.5-haiku",
+      "display_name": "anthropic/claude-3.5-haiku",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "anthropic/claude-3.5-sonnet",
+      "name": "anthropic/claude-3.5-sonnet",
+      "display_name": "anthropic/claude-3.5-sonnet",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "anthropic/claude-3.7-sonnet",
+      "name": "anthropic/claude-3.7-sonnet",
+      "display_name": "anthropic/claude-3.7-sonnet",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": false,
+          "summaries": false,
+          "visibility": "full",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Anthropic uses thinking budget tokens"
+          ]
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-haiku-4.5",
+      "name": "anthropic/claude-haiku-4.5",
+      "display_name": "anthropic/claude-haiku-4.5",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4",
+      "name": "anthropic/claude-opus-4",
+      "display_name": "anthropic/claude-opus-4",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.1",
+      "name": "anthropic/claude-opus-4.1",
+      "display_name": "anthropic/claude-opus-4.1",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.5",
+      "name": "anthropic/claude-opus-4.5",
+      "display_name": "anthropic/claude-opus-4.5",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "mixed",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "effort": "high",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude Opus 4.5 uses manual thinking.type = \"enabled\" with budget_tokens; effort can be used alongside the thinking budget.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header."
+          ]
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.6",
+      "name": "anthropic/claude-opus-4.6",
+      "display_name": "anthropic/claude-opus-4.6",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "mixed",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "effort": "high",
+          "effort_options": [
+            "low",
+            "medium",
+            "high",
+            "max"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Anthropic recommends adaptive thinking with effort for Claude 4.6; budget_tokens remains a deprecated compatibility path.",
+            "Anthropic API defaults effort to high; lower effort levels should be chosen per workload."
+          ]
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-4",
+      "name": "anthropic/claude-sonnet-4",
+      "display_name": "anthropic/claude-sonnet-4",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.5",
+      "name": "anthropic/claude-sonnet-4.5",
+      "display_name": "anthropic/claude-sonnet-4.5",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Claude 4 manual thinking uses thinking.type = \"enabled\" with budget_tokens.",
+            "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
+          ]
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.6",
+      "name": "anthropic/claude-sonnet-4.6",
+      "display_name": "anthropic/claude-sonnet-4.6",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "mixed",
+          "budget": {
+            "min": 1024,
+            "unit": "tokens"
+          },
+          "effort": "high",
+          "effort_options": [
+            "low",
+            "medium",
+            "high",
+            "max"
+          ],
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ],
+          "notes": [
+            "Anthropic recommends adaptive thinking with effort for Claude 4.6; budget_tokens remains a deprecated compatibility path.",
+            "Anthropic API defaults effort to high; lower effort levels should be chosen per workload."
+          ]
+        }
+      }
+    },
+    {
+      "id": "deepseek/deepseek-chat",
+      "name": "deepseek/deepseek-chat",
+      "display_name": "deepseek/deepseek-chat",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "deepseek/deepseek-chat-v3-0324",
+      "name": "deepseek/deepseek-chat-v3-0324",
+      "display_name": "deepseek/deepseek-chat-v3-0324",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "deepseek/deepseek-chat-v3.1",
+      "name": "deepseek/deepseek-chat-v3.1",
+      "display_name": "deepseek/deepseek-chat-v3.1",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "deepseek/deepseek-r1",
+      "name": "deepseek/deepseek-r1",
+      "display_name": "deepseek/deepseek-r1",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "deepseek/deepseek-r1-0528",
+      "name": "deepseek/deepseek-r1-0528",
+      "display_name": "deepseek/deepseek-r1-0528",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v3.1-terminus",
+      "name": "deepseek/deepseek-v3.1-terminus",
+      "display_name": "deepseek/deepseek-v3.1-terminus",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "deepseek/deepseek-v3.2",
+      "name": "deepseek/deepseek-v3.2",
+      "display_name": "deepseek/deepseek-v3.2",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v3.2-exp",
+      "name": "deepseek/deepseek-v3.2-exp",
+      "display_name": "deepseek/deepseek-v3.2-exp",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "deepseek/deepseek-v3.2-speciale",
+      "name": "deepseek/deepseek-v3.2-speciale",
+      "display_name": "deepseek/deepseek-v3.2-speciale",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemini-2.0-flash-001",
+      "name": "google/gemini-2.0-flash-001",
+      "display_name": "google/gemini-2.0-flash-001",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemini-2.0-flash-lite-001",
+      "name": "google/gemini-2.0-flash-lite-001",
+      "display_name": "google/gemini-2.0-flash-lite-001",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemini-2.5-flash",
+      "name": "google/gemini-2.5-flash",
+      "display_name": "google/gemini-2.5-flash",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "budget",
+          "budget": {
+            "min": 0,
+            "max": 24576,
+            "default": -1,
+            "auto": -1,
+            "off": 0,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-2.5-flash-image",
+      "name": "google/gemini-2.5-flash-image",
+      "display_name": "google/gemini-2.5-flash-image",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemini-2.5-flash-lite",
+      "name": "google/gemini-2.5-flash-lite",
+      "display_name": "google/gemini-2.5-flash-lite",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 512,
+            "max": 24576,
+            "default": -1,
+            "auto": -1,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-2.5-flash-lite-preview-09-2025",
+      "name": "google/gemini-2.5-flash-lite-preview-09-2025",
+      "display_name": "google/gemini-2.5-flash-lite-preview-09-2025",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "budget",
+          "budget": {
+            "min": 512,
+            "max": 24576,
+            "default": -1,
+            "auto": -1,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-2.5-flash-preview-09-2025",
+      "name": "google/gemini-2.5-flash-preview-09-2025",
+      "display_name": "google/gemini-2.5-flash-preview-09-2025",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "budget",
+          "budget": {
+            "min": 0,
+            "max": 24576,
+            "default": -1,
+            "auto": -1,
+            "off": 0,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-2.5-pro",
+      "name": "google/gemini-2.5-pro",
+      "display_name": "google/gemini-2.5-pro",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "budget",
+          "budget": {
+            "min": 128,
+            "max": 32768,
+            "default": -1,
+            "auto": -1,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-2.5-pro-preview",
+      "name": "google/gemini-2.5-pro-preview",
+      "display_name": "google/gemini-2.5-pro-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "budget",
+          "budget": {
+            "min": 128,
+            "max": 32768,
+            "default": -1,
+            "auto": -1,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-2.5-pro-preview-05-06",
+      "name": "google/gemini-2.5-pro-preview-05-06",
+      "display_name": "google/gemini-2.5-pro-preview-05-06",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "budget",
+          "budget": {
+            "min": 128,
+            "max": 32768,
+            "default": -1,
+            "auto": -1,
+            "unit": "tokens"
+          },
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-3-flash-preview",
+      "name": "google/gemini-3-flash-preview",
+      "display_name": "google/gemini-3-flash-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "level",
+          "level": "high",
+          "level_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-3-pro-image-preview",
+      "name": "google/gemini-3-pro-image-preview",
+      "display_name": "google/gemini-3-pro-image-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "level",
+          "level": "high",
+          "level_options": [
+            "low",
+            "high"
+          ],
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemini-3-pro-preview",
+      "name": "google/gemini-3-pro-preview",
+      "display_name": "google/gemini-3-pro-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "level",
+          "level": "high",
+          "level_options": [
+            "low",
+            "high"
+          ],
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thought_signatures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "google/gemma-2-27b-it",
+      "name": "google/gemma-2-27b-it",
+      "display_name": "google/gemma-2-27b-it",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemma-2-9b-it",
+      "name": "google/gemma-2-9b-it",
+      "display_name": "google/gemma-2-9b-it",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemma-3-12b-it",
+      "name": "google/gemma-3-12b-it",
+      "display_name": "google/gemma-3-12b-it",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemma-3-27b-it",
+      "name": "google/gemma-3-27b-it",
+      "display_name": "google/gemma-3-27b-it",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemma-3-4b-it",
+      "name": "google/gemma-3-4b-it",
+      "display_name": "google/gemma-3-4b-it",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "google/gemma-3n-e4b-it",
+      "name": "google/gemma-3n-e4b-it",
+      "display_name": "google/gemma-3n-e4b-it",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "minimax/minimax-01",
+      "name": "minimax/minimax-01",
+      "display_name": "minimax/minimax-01",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "minimax/minimax-m1",
+      "name": "minimax/minimax-m1",
+      "display_name": "minimax/minimax-m1",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "minimax/minimax-m2",
+      "name": "minimax/minimax-m2",
+      "display_name": "minimax/minimax-m2",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "minimax/minimax-m2-her",
+      "name": "minimax/minimax-m2-her",
+      "display_name": "minimax/minimax-m2-her",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "minimax/minimax-m2.1",
+      "name": "minimax/minimax-m2.1",
+      "display_name": "minimax/minimax-m2.1",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "minimax/minimax-m2.5",
+      "name": "minimax/minimax-m2.5",
+      "display_name": "minimax/minimax-m2.5",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k2",
+      "name": "moonshotai/kimi-k2",
+      "display_name": "moonshotai/kimi-k2",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "moonshotai/kimi-k2-0905",
+      "name": "moonshotai/kimi-k2-0905",
+      "display_name": "moonshotai/kimi-k2-0905",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "moonshotai/kimi-k2-thinking",
+      "name": "moonshotai/kimi-k2-thinking",
+      "display_name": "moonshotai/kimi-k2-thinking",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k2.5",
+      "name": "moonshotai/kimi-k2.5",
+      "display_name": "moonshotai/kimi-k2.5",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "morph/morph-v3-fast",
+      "name": "morph/morph-v3-fast",
+      "display_name": "morph/morph-v3-fast",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "morph/morph-v3-large",
+      "name": "morph/morph-v3-large",
+      "display_name": "morph/morph-v3-large",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-3.5-turbo",
+      "name": "openai/gpt-3.5-turbo",
+      "display_name": "openai/gpt-3.5-turbo",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-3.5-turbo-0613",
+      "name": "openai/gpt-3.5-turbo-0613",
+      "display_name": "openai/gpt-3.5-turbo-0613",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-3.5-turbo-16k",
+      "name": "openai/gpt-3.5-turbo-16k",
+      "display_name": "openai/gpt-3.5-turbo-16k",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-3.5-turbo-instruct",
+      "name": "openai/gpt-3.5-turbo-instruct",
+      "display_name": "openai/gpt-3.5-turbo-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4",
+      "name": "openai/gpt-4",
+      "display_name": "openai/gpt-4",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4-0314",
+      "name": "openai/gpt-4-0314",
+      "display_name": "openai/gpt-4-0314",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4-1106-preview",
+      "name": "openai/gpt-4-1106-preview",
+      "display_name": "openai/gpt-4-1106-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4-turbo",
+      "name": "openai/gpt-4-turbo",
+      "display_name": "openai/gpt-4-turbo",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4-turbo-preview",
+      "name": "openai/gpt-4-turbo-preview",
+      "display_name": "openai/gpt-4-turbo-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4.1",
+      "name": "openai/gpt-4.1",
+      "display_name": "openai/gpt-4.1",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4.1-mini",
+      "name": "openai/gpt-4.1-mini",
+      "display_name": "openai/gpt-4.1-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4.1-nano",
+      "name": "openai/gpt-4.1-nano",
+      "display_name": "openai/gpt-4.1-nano",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o",
+      "name": "openai/gpt-4o",
+      "display_name": "openai/gpt-4o",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o-2024-05-13",
+      "name": "openai/gpt-4o-2024-05-13",
+      "display_name": "openai/gpt-4o-2024-05-13",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o-2024-08-06",
+      "name": "openai/gpt-4o-2024-08-06",
+      "display_name": "openai/gpt-4o-2024-08-06",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o-2024-11-20",
+      "name": "openai/gpt-4o-2024-11-20",
+      "display_name": "openai/gpt-4o-2024-11-20",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o-audio-preview",
+      "name": "openai/gpt-4o-audio-preview",
+      "display_name": "openai/gpt-4o-audio-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "openai/gpt-4o-mini",
+      "display_name": "openai/gpt-4o-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o-mini-2024-07-18",
+      "name": "openai/gpt-4o-mini-2024-07-18",
+      "display_name": "openai/gpt-4o-mini-2024-07-18",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o-mini-search-preview",
+      "name": "openai/gpt-4o-mini-search-preview",
+      "display_name": "openai/gpt-4o-mini-search-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-4o-search-preview",
+      "name": "openai/gpt-4o-search-preview",
+      "display_name": "openai/gpt-4o-search-preview",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-5",
+      "name": "openai/gpt-5",
+      "display_name": "openai/gpt-5",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5-chat",
+      "name": "openai/gpt-5-chat",
+      "display_name": "openai/gpt-5-chat",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-5-codex",
+      "name": "openai/gpt-5-codex",
+      "display_name": "openai/gpt-5-codex",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5-image",
+      "name": "openai/gpt-5-image",
+      "display_name": "openai/gpt-5-image",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-5-image-mini",
+      "name": "openai/gpt-5-image-mini",
+      "display_name": "openai/gpt-5-image-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-5-mini",
+      "name": "openai/gpt-5-mini",
+      "display_name": "openai/gpt-5-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5-nano",
+      "name": "openai/gpt-5-nano",
+      "display_name": "openai/gpt-5-nano",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5-pro",
+      "name": "openai/gpt-5-pro",
+      "display_name": "openai/gpt-5-pro",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "fixed",
+          "effort": "high",
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5.1",
+      "name": "openai/gpt-5.1",
+      "display_name": "openai/gpt-5.1",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-chat",
+      "name": "openai/gpt-5.1-chat",
+      "display_name": "openai/gpt-5.1-chat",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-5.1-codex",
+      "name": "openai/gpt-5.1-codex",
+      "display_name": "openai/gpt-5.1-codex",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-codex-max",
+      "name": "openai/gpt-5.1-codex-max",
+      "display_name": "openai/gpt-5.1-codex-max",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-codex-mini",
+      "name": "openai/gpt-5.1-codex-mini",
+      "display_name": "openai/gpt-5.1-codex-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5.2",
+      "name": "openai/gpt-5.2",
+      "display_name": "openai/gpt-5.2",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": false,
+          "mode": "effort",
+          "effort": "none",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5.2-chat",
+      "name": "openai/gpt-5.2-chat",
+      "display_name": "openai/gpt-5.2-chat",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-5.2-codex",
+      "name": "openai/gpt-5.2-codex",
+      "display_name": "openai/gpt-5.2-codex",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-5.2-pro",
+      "name": "openai/gpt-5.2-pro",
+      "display_name": "openai/gpt-5.2-pro",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "high",
+          "effort_options": [
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "verbosity": "medium",
+          "verbosity_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-audio",
+      "name": "openai/gpt-audio",
+      "display_name": "openai/gpt-audio",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-audio-mini",
+      "name": "openai/gpt-audio-mini",
+      "display_name": "openai/gpt-audio-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "name": "openai/gpt-oss-120b",
+      "display_name": "openai/gpt-oss-120b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-oss-20b",
+      "name": "openai/gpt-oss-20b",
+      "display_name": "openai/gpt-oss-20b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-oss-safeguard-20b",
+      "name": "openai/gpt-oss-safeguard-20b",
+      "display_name": "openai/gpt-oss-safeguard-20b",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "openai/o1",
+      "name": "openai/o1",
+      "display_name": "openai/o1",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o1-pro",
+      "name": "openai/o1-pro",
+      "display_name": "openai/o1-pro",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o3",
+      "name": "openai/o3",
+      "display_name": "openai/o3",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o3-deep-research",
+      "name": "openai/o3-deep-research",
+      "display_name": "openai/o3-deep-research",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o3-mini",
+      "name": "openai/o3-mini",
+      "display_name": "openai/o3-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o3-mini-high",
+      "name": "openai/o3-mini-high",
+      "display_name": "openai/o3-mini-high",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o3-pro",
+      "name": "openai/o3-pro",
+      "display_name": "openai/o3-pro",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o4-mini",
+      "name": "openai/o4-mini",
+      "display_name": "openai/o4-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o4-mini-deep-research",
+      "name": "openai/o4-mini-deep-research",
+      "display_name": "openai/o4-mini-deep-research",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o4-mini-high",
+      "name": "openai/o4-mini-high",
+      "display_name": "openai/o4-mini-high",
+      "type": "chat",
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen-2.5-72b-instruct",
+      "name": "qwen/qwen-2.5-72b-instruct",
+      "display_name": "qwen/qwen-2.5-72b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen-2.5-7b-instruct",
+      "name": "qwen/qwen-2.5-7b-instruct",
+      "display_name": "qwen/qwen-2.5-7b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen-2.5-coder-32b-instruct",
+      "name": "qwen/qwen-2.5-coder-32b-instruct",
+      "display_name": "qwen/qwen-2.5-coder-32b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen-2.5-vl-7b-instruct",
+      "name": "qwen/qwen-2.5-vl-7b-instruct",
+      "display_name": "qwen/qwen-2.5-vl-7b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen-max",
+      "name": "qwen/qwen-max",
+      "display_name": "qwen/qwen-max",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen-plus",
+      "name": "qwen/qwen-plus",
+      "display_name": "qwen/qwen-plus",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen-plus-2025-07-28",
+      "name": "qwen/qwen-plus-2025-07-28",
+      "display_name": "qwen/qwen-plus-2025-07-28",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen-turbo",
+      "name": "qwen/qwen-turbo",
+      "display_name": "qwen/qwen-turbo",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen-vl-max",
+      "name": "qwen/qwen-vl-max",
+      "display_name": "qwen/qwen-vl-max",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen-vl-plus",
+      "name": "qwen/qwen-vl-plus",
+      "display_name": "qwen/qwen-vl-plus",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen2.5-coder-7b-instruct",
+      "name": "qwen/qwen2.5-coder-7b-instruct",
+      "display_name": "qwen/qwen2.5-coder-7b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen2.5-vl-32b-instruct",
+      "name": "qwen/qwen2.5-vl-32b-instruct",
+      "display_name": "qwen/qwen2.5-vl-32b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen2.5-vl-72b-instruct",
+      "name": "qwen/qwen2.5-vl-72b-instruct",
+      "display_name": "qwen/qwen2.5-vl-72b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-14b",
+      "name": "qwen/qwen3-14b",
+      "display_name": "qwen/qwen3-14b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b",
+      "name": "qwen/qwen3-235b-a22b",
+      "display_name": "qwen/qwen3-235b-a22b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b-2507",
+      "name": "qwen/qwen3-235b-a22b-2507",
+      "display_name": "qwen/qwen3-235b-a22b-2507",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-235b-a22b-thinking-2507",
+      "name": "qwen/qwen3-235b-a22b-thinking-2507",
+      "display_name": "qwen/qwen3-235b-a22b-thinking-2507",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b",
+      "name": "qwen/qwen3-30b-a3b",
+      "display_name": "qwen/qwen3-30b-a3b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-instruct-2507",
+      "name": "qwen/qwen3-30b-a3b-instruct-2507",
+      "display_name": "qwen/qwen3-30b-a3b-instruct-2507",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-thinking-2507",
+      "name": "qwen/qwen3-30b-a3b-thinking-2507",
+      "display_name": "qwen/qwen3-30b-a3b-thinking-2507",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-32b",
+      "name": "qwen/qwen3-32b",
+      "display_name": "qwen/qwen3-32b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-4b",
+      "name": "qwen/qwen3-4b",
+      "display_name": "qwen/qwen3-4b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-8b",
+      "name": "qwen/qwen3-8b",
+      "display_name": "qwen/qwen3-8b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-coder",
+      "name": "qwen/qwen3-coder",
+      "display_name": "qwen/qwen3-coder",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-coder-30b-a3b-instruct",
+      "name": "qwen/qwen3-coder-30b-a3b-instruct",
+      "display_name": "qwen/qwen3-coder-30b-a3b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-coder-flash",
+      "name": "qwen/qwen3-coder-flash",
+      "display_name": "qwen/qwen3-coder-flash",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-coder-next",
+      "name": "qwen/qwen3-coder-next",
+      "display_name": "qwen/qwen3-coder-next",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-coder-plus",
+      "name": "qwen/qwen3-coder-plus",
+      "display_name": "qwen/qwen3-coder-plus",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-max",
+      "name": "qwen/qwen3-max",
+      "display_name": "qwen/qwen3-max",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-max-thinking",
+      "name": "qwen/qwen3-max-thinking",
+      "display_name": "qwen/qwen3-max-thinking",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-next-80b-a3b-instruct",
+      "name": "qwen/qwen3-next-80b-a3b-instruct",
+      "display_name": "qwen/qwen3-next-80b-a3b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-next-80b-a3b-thinking",
+      "name": "qwen/qwen3-next-80b-a3b-thinking",
+      "display_name": "qwen/qwen3-next-80b-a3b-thinking",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-vl-235b-a22b-instruct",
+      "name": "qwen/qwen3-vl-235b-a22b-instruct",
+      "display_name": "qwen/qwen3-vl-235b-a22b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-vl-235b-a22b-thinking",
+      "name": "qwen/qwen3-vl-235b-a22b-thinking",
+      "display_name": "qwen/qwen3-vl-235b-a22b-thinking",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-vl-30b-a3b-instruct",
+      "name": "qwen/qwen3-vl-30b-a3b-instruct",
+      "display_name": "qwen/qwen3-vl-30b-a3b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-vl-30b-a3b-thinking",
+      "name": "qwen/qwen3-vl-30b-a3b-thinking",
+      "display_name": "qwen/qwen3-vl-30b-a3b-thinking",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3-vl-32b-instruct",
+      "name": "qwen/qwen3-vl-32b-instruct",
+      "display_name": "qwen/qwen3-vl-32b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-vl-8b-instruct",
+      "name": "qwen/qwen3-vl-8b-instruct",
+      "display_name": "qwen/qwen3-vl-8b-instruct",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "qwen/qwen3-vl-8b-thinking",
+      "name": "qwen/qwen3-vl-8b-thinking",
+      "display_name": "qwen/qwen3-vl-8b-thinking",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3.5-397b-a17b",
+      "name": "qwen/qwen3.5-397b-a17b",
+      "display_name": "qwen/qwen3.5-397b-a17b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwen3.5-plus-02-15",
+      "name": "qwen/qwen3.5-plus-02-15",
+      "display_name": "qwen/qwen3.5-plus-02-15",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "qwen/qwq-32b",
+      "name": "qwen/qwq-32b",
+      "display_name": "qwen/qwq-32b",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "x-ai/grok-3",
+      "name": "x-ai/grok-3",
+      "display_name": "x-ai/grok-3",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "x-ai/grok-3-beta",
+      "name": "x-ai/grok-3-beta",
+      "display_name": "x-ai/grok-3-beta",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "x-ai/grok-3-mini",
+      "name": "x-ai/grok-3-mini",
+      "display_name": "x-ai/grok-3-mini",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "x-ai/grok-3-mini-beta",
+      "name": "x-ai/grok-3-mini-beta",
+      "display_name": "x-ai/grok-3-mini-beta",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "x-ai/grok-4",
+      "name": "x-ai/grok-4",
+      "display_name": "x-ai/grok-4",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "x-ai/grok-4-fast",
+      "name": "x-ai/grok-4-fast",
+      "display_name": "x-ai/grok-4-fast",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "x-ai/grok-4.1-fast",
+      "name": "x-ai/grok-4.1-fast",
+      "display_name": "x-ai/grok-4.1-fast",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "x-ai/grok-code-fast-1",
+      "name": "x-ai/grok-code-fast-1",
+      "display_name": "x-ai/grok-code-fast-1",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "z-ai/glm-4-32b",
+      "name": "z-ai/glm-4-32b",
+      "display_name": "z-ai/glm-4-32b",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "z-ai/glm-4.5",
+      "name": "z-ai/glm-4.5",
+      "display_name": "z-ai/glm-4.5",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "z-ai/glm-4.5-air",
+      "name": "z-ai/glm-4.5-air",
+      "display_name": "z-ai/glm-4.5-air",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "z-ai/glm-4.5v",
+      "name": "z-ai/glm-4.5v",
+      "display_name": "z-ai/glm-4.5v",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "z-ai/glm-4.6",
+      "name": "z-ai/glm-4.6",
+      "display_name": "z-ai/glm-4.6",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "z-ai/glm-4.6v",
+      "name": "z-ai/glm-4.6v",
+      "display_name": "z-ai/glm-4.6v",
+      "type": "chat",
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false
+    },
+    {
+      "id": "z-ai/glm-4.7",
+      "name": "z-ai/glm-4.7",
+      "display_name": "z-ai/glm-4.7",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "z-ai/glm-4.7-flash",
+      "name": "z-ai/glm-4.7-flash",
+      "display_name": "z-ai/glm-4.7-flash",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "z-ai/glm-5",
+      "name": "z-ai/glm-5",
+      "display_name": "z-ai/glm-5",
+      "type": "chat",
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": false,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "metadata": {
+        "source": "public-provider-conf"
+      },
+      "vision": false,
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "source": "public-provider-conf"
+  }
+}

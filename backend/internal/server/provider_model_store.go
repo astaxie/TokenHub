@@ -29,6 +29,7 @@ func (s *GormStore) AddProviderModel(model ProviderModel) ProviderModel {
 	if model.Status == "" {
 		model.Status = StatusActive
 	}
+	normalizeProviderModelCacheWriteConfiguration(&model)
 	now := time.Now().UTC()
 	if model.CreatedAt.IsZero() {
 		model.CreatedAt = now
@@ -87,9 +88,29 @@ func (s *GormStore) UpdateProviderModel(id string, patch ProviderModel) (Provide
 	}
 	model.InputPriceUSDPer1M = patch.InputPriceUSDPer1M
 	model.CacheReadPriceUSDPer1M = patch.CacheReadPriceUSDPer1M
+	model.CacheWritePriceUSDPer1M = patch.CacheWritePriceUSDPer1M
+	model.CacheWritePriceConfigured = patch.CacheWritePriceConfigured
+	model.CacheWrite5mPriceUSDPer1M = patch.CacheWrite5mPriceUSDPer1M
+	model.CacheWrite5mPriceConfigured = patch.CacheWrite5mPriceConfigured
+	model.CacheWrite1hPriceUSDPer1M = patch.CacheWrite1hPriceUSDPer1M
+	model.CacheWrite1hPriceConfigured = patch.CacheWrite1hPriceConfigured
 	model.OutputPriceUSDPer1M = patch.OutputPriceUSDPer1M
+	model.PricingPeriods = append([]ModelPricingPeriod(nil), patch.PricingPeriods...)
+	normalizeProviderModelCacheWriteConfiguration(&model)
 	model.UpdatedAt = time.Now().UTC()
 	return model, s.db.Save(&model).Error
+}
+
+func normalizeProviderModelCacheWriteConfiguration(model *ProviderModel) {
+	if model.CacheWritePriceUSDPer1M != 0 {
+		model.CacheWritePriceConfigured = true
+	}
+	if model.CacheWrite5mPriceUSDPer1M != 0 {
+		model.CacheWrite5mPriceConfigured = true
+	}
+	if model.CacheWrite1hPriceUSDPer1M != 0 {
+		model.CacheWrite1hPriceConfigured = true
+	}
 }
 
 func (s *GormStore) DeleteProviderModel(id string) error {

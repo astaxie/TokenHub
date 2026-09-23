@@ -1,0 +1,8 @@
+{
+  "id": "kronk",
+  "api": "http://127.0.0.1:11435/v1",
+  "name": "Kronk",
+  "display_name": "Kronk",
+  "doc": "https://github.com/ardanlabs/kronk",
+  "models": []
+}

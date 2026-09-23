@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.github-models"
+name: "GitHub Models"
+version: 1.0.0
+summary: "Connect TokenHub to GitHub Models."
+description: "Connect TokenHub to GitHub Models. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://models.github.ai/inference"
+    catalog:
+      id: "github-models"
+      name: "GitHub Models"
+      display_name: "GitHub Models"
+      type: "openai_compatible"
+      base_url: "https://models.github.ai/inference"
+      doc_url: "https://docs.github.com/en/github-models"
+      categories: []
+      models_count: 55
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

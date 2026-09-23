@@ -133,7 +133,7 @@ Invoke-WebRequest `
 
 TokenHub が `provider_capability_not_supported` を返す場合、管理者がモデルルートまたはプロバイダーリソース種別を修正する必要があります。
 
-DeepSeek 公式 Provider では、Responses と Codex の能力はモデル単位です。現在は `deepseek-v4-flash` を使用してください。DeepSeek が上流で正式に有効化するまで、TokenHub は `deepseek-v4-pro` を Responses 対応として公開しません。DeepSeek のコンテキストキャッシュは自動管理です。`TOKENHUB_CACHE_AFFINITY_ENABLED=true` を有効にすると、TokenHub は `session-id`、`client_metadata.session_id`、`prompt_cache_key` などの安定した Codex セッションヒントを使い、連続する Responses リクエストを同じ上流アカウントへ固定します。このキーはゲートウェイルーティング専用であり、TokenHub 内に別のレスポンスキャッシュを作成するものではありません。
+DeepSeek 公式 Provider では、Responses と Codex の能力はモデル単位で、`deepseek-v4-flash` と `deepseek-v4-pro` の両方で利用できます。両モデルはサーバー側の `web_search`、Codex の `apply_patch` カスタムツール、0～20 の `top_logprobs` をサポートしますが、画像やファイルの入力には対応していません。DeepSeek の Responses API はステートレスであるため、クライアントは `previous_response_id` や `conversation` に依存せず、各ターンの `input` に会話履歴全体を渡す必要があります。DeepSeek のコンテキストキャッシュは自動管理です。`TOKENHUB_CACHE_AFFINITY_ENABLED=true` を有効にすると、TokenHub は `session-id`、`client_metadata.session_id`、`prompt_cache_key` などの安定した Codex セッションヒントを使い、連続する Responses リクエストを同じ上流アカウントへ固定します。このキーはゲートウェイルーティング専用であり、TokenHub 内に別のレスポンスキャッシュを作成するものではありません。
 
 ---
 

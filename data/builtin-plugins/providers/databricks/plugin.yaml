@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.databricks"
+name: "Databricks"
+version: 1.0.0
+summary: "Connect TokenHub to Databricks."
+description: "Connect TokenHub to Databricks. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "databricks"
+      name: "Databricks"
+      display_name: "Databricks"
+      type: "openai_compatible"
+      base_url: "https://${DATABRICKS_HOST}/ai-gateway/mlflow/v1"
+      doc_url: "https://docs.databricks.com/aws/en/machine-learning/foundation-models/"
+      categories: []
+      models_count: 25
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

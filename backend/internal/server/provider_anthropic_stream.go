@@ -11,7 +11,8 @@ import (
 // OpenAI chunk frames. It owns all Anthropic-specific state; the encoder only
 // knows how to render OpenAI frames.
 type anthropicStreamDecoder struct {
-	encoder *openAIChatStreamEncoder
+	encoder  *openAIChatStreamEncoder
+	provider Provider
 
 	// toolSlots maps an Anthropic content block index to a dense OpenAI
 	// tool_calls index. The two are not interchangeable: thinking and text
@@ -45,7 +46,12 @@ func newAnthropicStreamDecoder(encoder *openAIChatStreamEncoder) *anthropicStrea
 // streamAnthropicChat consumes the upstream SSE body and writes OpenAI chunks.
 // It returns the usage reported by the provider.
 func streamAnthropicChat(body io.Reader, encoder *openAIChatStreamEncoder) (Usage, error) {
+	return streamAnthropicChatForProvider(body, encoder, Provider{})
+}
+
+func streamAnthropicChatForProvider(body io.Reader, encoder *openAIChatStreamEncoder, provider Provider) (Usage, error) {
 	decoder := newAnthropicStreamDecoder(encoder)
+	decoder.provider = provider
 	events := newSSEDecoder(body)
 	for {
 		event, err := events.Next()
@@ -133,7 +139,7 @@ func (d *anthropicStreamDecoder) consume(event serverSentEvent) (bool, error) {
 		d.sawTerminal = true
 		return true, nil
 	case "error":
-		return false, anthropicStreamError(payload)
+		return false, anthropicStreamError(payload, d.provider)
 	case "ping":
 		return false, nil
 	default:
@@ -287,12 +293,13 @@ func (d *anthropicStreamDecoder) currentUsage() Usage {
 	return anthropicUsageFromRawMap(d.usage)
 }
 
-func anthropicStreamError(payload map[string]any) error {
+func anthropicStreamError(payload map[string]any, provider Provider) error {
 	detail, _ := payload["error"].(map[string]any)
 	message, _ := detail["message"].(string)
 	if message == "" {
 		message = "provider reported a stream error"
 	}
+	message = string(redactProviderErrorSecrets([]byte(message), provider))
 	code, _ := detail["type"].(string)
 	if code == "" {
 		code = "provider_stream_error"

@@ -25,37 +25,53 @@ func (s *Server) streamNativeAnthropicMessages(
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyNativeAnthropicStream(writer, resp.Body, req.Model)
+	return copyNativeAnthropicStreamForProvider(writer, resp.Body, req.Model, route.Provider)
 }
 
 // copyNativeAnthropicStream forwards an upstream Anthropic event stream to the
 // client, rewriting only the model name each data frame reports and collecting
 // usage on the way past.
 func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (Usage, error) {
+	return copyNativeAnthropicStreamForProvider(writer, body, model, Provider{})
+}
+
+func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, model string, provider Provider) (Usage, error) {
 	events := newSSEDecoder(body)
 	var usage Usage
+	sawEvent := false
+	sawMessageStop := false
 	for {
 		event, err := events.Next()
 		if err == io.EOF {
+			// A stream that delivered events but never reached message_stop was
+			// truncated: the client saw bytes, then the stream died. An empty
+			// body stays a confirmed empty success, which the handler commits.
+			if sawEvent && !sawMessageStop {
+				return usage, NewHTTPError(http.StatusBadGateway, "provider_stream_error", "Anthropic provider stream ended before message_stop")
+			}
 			return usage, nil
 		}
 		if err != nil {
 			// A stream that fails mid-frame has already put those bytes on the
-			// wire. They are forwarded unrewritten: the model-name swap needs a
-			// whole frame, and the failure itself is what the client must see.
-			if pending := events.Pending(); len(pending) > 0 {
-				if _, writeErr := writer.Write(pending); writeErr != nil {
+			// wire. Preserve its framing, but redact the parsed data fields before
+			// forwarding so metadata cannot interfere with secret detection.
+			if pending := events.PendingEvent(); len(pending.Raw) > 0 {
+				if _, writeErr := writer.Write(redactProviderStreamEventSecrets(pending, provider)); writeErr != nil {
 					return usage, writeErr
 				}
 			}
 			return usage, err
 		}
 		output := event.Raw
+		isErrorEvent := strings.EqualFold(strings.TrimSpace(event.Event), "error")
 		payload, ok, decodeErr := decodeSSEDataNumbers(event)
 		if decodeErr != nil {
 			return usage, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Anthropic provider returned invalid stream JSON")
 		}
 		if ok {
+			if _, hasError := payload["error"]; hasError {
+				isErrorEvent = true
+			}
 			message, rewrite := payload["message"].(map[string]any)
 			if rewrite {
 				message["model"] = model
@@ -78,12 +94,86 @@ func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (
 				output = rewriteSSEEventData(event.Raw, string(encoded))
 			}
 		}
+		if isErrorEvent {
+			output = redactProviderStreamEventSecrets(event, provider)
+		}
+		// Anthropic keeps streams alive with protocol-level `event: ping` frames. They
+		// carry no semantic output, so a keepalive-only stream stays a confirmed empty
+		// success instead of a truncation. The frame is still forwarded below.
+		if !(event.Event == "ping" || (ok && payload["type"] == "ping")) && (event.Event != "" || len(event.Data) > 0) {
+			sawEvent = true
+		}
+		if isErrorEvent {
+			// The upstream's terminal error frame is redacted, forwarded once — the
+			// client must see it — then the stream is reported failed. The marker
+			// tells the handler the terminal event already reached the client, so it
+			// must not append a second one.
+			if _, err := writer.Write(output); err != nil {
+				return usage, err
+			}
+			if flusher, ok := writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			errorType, message := "api_error", "Anthropic provider stream error"
+			// Classify against the redacted payload: the message also reaches
+			// RouteAttempt.Error and the audit log, so a provider error echoing an
+			// API key or sensitive header value must not survive into either.
+			var redacted map[string]any
+			if err := json.Unmarshal(redactProviderErrorSecrets([]byte(event.Data), provider), &redacted); err == nil {
+				if errorObj, ok := redacted["error"].(map[string]any); ok {
+					if value, ok := errorObj["type"].(string); ok {
+						errorType = value
+					}
+					if value, ok := errorObj["message"].(string); ok {
+						message = value
+					}
+				}
+			}
+			return usage, &anthropicErrorFrameForwarded{err: NewHTTPError(anthropicErrorStatus(errorType), "provider_stream_error", message)}
+		}
+		if event.Event == "message_stop" || (ok && payload["type"] == "message_stop") {
+			sawMessageStop = true
+		}
 		if _, err := writer.Write(output); err != nil {
 			return usage, err
 		}
 		if flusher, ok := writer.(http.Flusher); ok {
 			flusher.Flush()
 		}
+	}
+}
+
+// anthropicErrorFrameForwarded marks a native Anthropic stream whose upstream
+// event: error frame was already forwarded to the client. The handler must
+// classify the stream as failed without appending a second terminal error
+// event.
+type anthropicErrorFrameForwarded struct {
+	err error
+}
+
+func (e *anthropicErrorFrameForwarded) Error() string { return e.err.Error() }
+
+func (e *anthropicErrorFrameForwarded) Unwrap() error { return e.err }
+
+// anthropicErrorStatus maps a native Anthropic error type to the HTTP status
+// the gateway reports for it. Unrecognized types are upstream failures, so
+// they surface as gateway errors rather than client errors.
+func anthropicErrorStatus(errorType string) int {
+	switch errorType {
+	case "rate_limit_error":
+		return http.StatusTooManyRequests
+	case "overloaded_error":
+		return http.StatusServiceUnavailable
+	case "authentication_error":
+		return http.StatusUnauthorized
+	case "permission_error":
+		return http.StatusForbidden
+	case "invalid_request_error", "request_too_large":
+		return http.StatusBadRequest
+	case "not_found_error":
+		return http.StatusNotFound
+	default:
+		return http.StatusBadGateway
 	}
 }
 
@@ -99,9 +189,9 @@ func mergeAnthropicStreamUsage(current Usage, raw map[string]any) Usage {
 	if snapshot.PromptTokens > 0 || snapshot.CachedInputTokens > 0 || snapshot.CacheWriteInputTokens > 0 {
 		current.PromptTokens = snapshot.PromptTokens
 		current.CachedInputTokens = snapshot.CachedInputTokens
-		// CacheWriteInputTokens is knowingly left unmerged here. This path has
-		// never reported it, and starting to would change billed usage, which is
-		// a behavior change rather than part of consolidating the parsing.
+		current.CacheWriteInputTokens = snapshot.CacheWriteInputTokens
+		current.CacheWrite5mInputTokens = snapshot.CacheWrite5mInputTokens
+		current.CacheWrite1hInputTokens = snapshot.CacheWrite1hInputTokens
 	}
 	if snapshot.CompletionTokens > 0 {
 		current.CompletionTokens = snapshot.CompletionTokens
@@ -116,7 +206,7 @@ func (s *Server) streamOpenAIAsAnthropic(
 	req anthropicMessagesRequest,
 	writer io.Writer,
 ) (Usage, error) {
-	chatReq, err := anthropicToOpenAIChatRequest(req)
+	chatReq, err := anthropicToOpenAIChatRequest(req, route.Provider)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -124,7 +214,7 @@ func (s *Server) streamOpenAIAsAnthropic(
 	if err != nil {
 		return Usage{}, err
 	}
-	converter := newOpenAIAnthropicStreamConverter(writer, req.Model, estimateAnthropicInputTokens(req.Raw))
+	converter := newOpenAIAnthropicStreamConverter(writer, req.Model, estimateAnthropicInputTokens(req.Raw), route.Provider)
 	usage, err := adapter.ChatStream(ctx, route.Provider, route.ProviderModel, chatReq, converter)
 	if err != nil {
 		return usage, err
@@ -141,7 +231,7 @@ func (s *Server) streamOpenAIAsAnthropic(
 		usage.PromptTokens = estimateAnthropicInputTokens(req.Raw)
 	}
 	if usage.CompletionTokens == 0 {
-		usage.CompletionTokens = EstimateTextTokens(converter.outputText.String() + converter.toolArgumentText())
+		usage.CompletionTokens = EstimateTextTokens(converter.reasoning.String() + converter.outputText.String() + converter.toolArgumentText())
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	if err := converter.Finalize(usage); err != nil {
@@ -158,28 +248,33 @@ type openAIStreamToolCall struct {
 }
 
 type openAIAnthropicStreamConverter struct {
-	writer      io.Writer
-	model       string
-	messageID   string
-	inputTokens int64
-	events      *sseStreamWriter
-	started     bool
-	textStarted bool
-	textIndex   int
-	nextIndex   int
-	finish      string
-	finalized   bool
-	tools       map[int]*openAIStreamToolCall
-	usage       Usage
-	outputText  strings.Builder
+	writer           io.Writer
+	model            string
+	provider         Provider
+	messageID        string
+	inputTokens      int64
+	events           *sseStreamWriter
+	started          bool
+	textStarted      bool
+	textIndex        int
+	reasoningStarted bool
+	reasoningIndex   int
+	nextIndex        int
+	finish           string
+	finalized        bool
+	tools            map[int]*openAIStreamToolCall
+	usage            Usage
+	outputText       strings.Builder
+	reasoning        strings.Builder
 }
 
-func newOpenAIAnthropicStreamConverter(writer io.Writer, model string, inputTokens int64) *openAIAnthropicStreamConverter {
+func newOpenAIAnthropicStreamConverter(writer io.Writer, model string, inputTokens int64, provider Provider) *openAIAnthropicStreamConverter {
 	converter := &openAIAnthropicStreamConverter{
 		writer:      writer,
 		model:       model,
 		messageID:   NewID("msg"),
 		inputTokens: inputTokens,
+		provider:    provider,
 		tools:       map[int]*openAIStreamToolCall{},
 	}
 	converter.events = newSSEStreamWriter(converter.consumeEvent)
@@ -212,6 +307,30 @@ func (c *openAIAnthropicStreamConverter) consumeEvent(frame serverSentEvent) err
 	if parsed := usageFromMap(event); parsed.TotalTokens > 0 {
 		c.usage = parsed
 	}
+	if raw, ok := event["error"]; ok && raw != nil {
+		// The upstream signaled a terminal error inside the 200 stream. Emit an
+		// Anthropic error event so the client sees the failure, then fail the
+		// stream through the forwarded marker so the handler does not append a
+		// second terminal event. Only a non-nil error object is terminal, and the
+		// message is redacted because it also reaches RouteAttempt.Error and the
+		// audit log.
+		errorType, message := "api_error", "OpenAI provider stream error"
+		if errorObj, ok := raw.(map[string]any); ok {
+			if value, ok := errorObj["type"].(string); ok && value != "" {
+				errorType = value
+			}
+			if value, ok := errorObj["message"].(string); ok && value != "" {
+				message = string(redactProviderErrorSecrets([]byte(value), c.provider))
+			}
+		}
+		if err := c.emit("error", map[string]any{
+			"type":  "error",
+			"error": map[string]any{"type": errorType, "message": message},
+		}); err != nil {
+			return err
+		}
+		return &anthropicErrorFrameForwarded{err: NewHTTPError(openAIErrorStatus(errorType), "provider_stream_error", message)}
+	}
 	choices, ok := anySlice(event["choices"])
 	if !ok || len(choices) == 0 {
 		return nil
@@ -224,7 +343,38 @@ func (c *openAIAnthropicStreamConverter) consumeEvent(frame serverSentEvent) err
 		c.finish = finish
 	}
 	delta, _ := choice["delta"].(map[string]any)
+	if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
+		if c.textStarted {
+			return NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "OpenAI provider emitted reasoning after text content")
+		}
+		if err := c.startMessage(); err != nil {
+			return err
+		}
+		if !c.reasoningStarted {
+			c.reasoningIndex = c.nextIndex
+			c.nextIndex++
+			c.reasoningStarted = true
+			if err := c.emit("content_block_start", map[string]any{
+				"type":          "content_block_start",
+				"index":         c.reasoningIndex,
+				"content_block": map[string]any{"type": "thinking", "thinking": "", "signature": ""},
+			}); err != nil {
+				return err
+			}
+		}
+		c.reasoning.WriteString(reasoning)
+		if err := c.emit("content_block_delta", map[string]any{
+			"type":  "content_block_delta",
+			"index": c.reasoningIndex,
+			"delta": map[string]any{"type": "thinking_delta", "thinking": reasoning},
+		}); err != nil {
+			return err
+		}
+	}
 	if text, ok := delta["content"].(string); ok && text != "" {
+		if err := c.closeReasoning(); err != nil {
+			return err
+		}
 		if err := c.startMessage(); err != nil {
 			return err
 		}
@@ -316,6 +466,9 @@ func (c *openAIAnthropicStreamConverter) Finalize(usage Usage) error {
 	if err := c.startMessage(); err != nil {
 		return err
 	}
+	if err := c.closeReasoning(); err != nil {
+		return err
+	}
 	if c.textStarted {
 		if err := c.emit("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
@@ -382,13 +535,35 @@ func (c *openAIAnthropicStreamConverter) Finalize(usage Usage) error {
 			"stop_reason":   stopReason,
 			"stop_sequence": nil,
 		},
-		"usage": map[string]any{
-			"output_tokens": usage.CompletionTokens,
-		},
+		"usage": anthropicUsageObject(usage),
 	}); err != nil {
 		return err
 	}
 	return c.emit("message_stop", map[string]any{"type": "message_stop"})
+}
+
+func (c *openAIAnthropicStreamConverter) closeReasoning() error {
+	if !c.reasoningStarted {
+		return nil
+	}
+	signature := gatewayReasoningSignature(c.provider, c.reasoning.String())
+	if signature != "" {
+		if err := c.emit("content_block_delta", map[string]any{
+			"type":  "content_block_delta",
+			"index": c.reasoningIndex,
+			"delta": map[string]any{"type": "signature_delta", "signature": signature},
+		}); err != nil {
+			return err
+		}
+	}
+	if err := c.emit("content_block_stop", map[string]any{
+		"type":  "content_block_stop",
+		"index": c.reasoningIndex,
+	}); err != nil {
+		return err
+	}
+	c.reasoningStarted = false
+	return nil
 }
 
 func (c *openAIAnthropicStreamConverter) emit(event string, payload map[string]any) error {

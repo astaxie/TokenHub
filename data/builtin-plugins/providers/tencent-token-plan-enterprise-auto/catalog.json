@@ -1,0 +1,42 @@
+{
+  "id": "tencent-token-plan-enterprise-auto",
+  "api": "https://tokenhub.tencentmaas.com/plan/v3",
+  "name": "腾讯云 Token Plan / Token Plan 企业版轻享套餐",
+  "display_name": "腾讯云 Token Plan / Token Plan 企业版轻享套餐",
+  "doc": "https://cloud.tencent.com/document/product/1823/130660",
+  "models": [
+    {
+      "id": "auto",
+      "name": "Auto",
+      "display_name": "Auto",
+      "family": "auto",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 196608,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "type": "chat"
+    }
+  ]
+}

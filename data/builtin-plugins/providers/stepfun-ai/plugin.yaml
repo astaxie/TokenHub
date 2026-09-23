@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.stepfun-ai"
+name: "StepFun Step Plan (Global)"
+version: 1.0.0
+summary: "Connect TokenHub to StepFun Step Plan (Global)."
+description: "Connect TokenHub to StepFun Step Plan (Global). Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.stepfun.ai/step_plan/v1"
+    catalog:
+      id: "stepfun-ai"
+      name: "StepFun Step Plan (Global)"
+      display_name: "StepFun Step Plan (Global)"
+      type: "openai_compatible"
+      base_url: "https://api.stepfun.ai/step_plan/v1"
+      doc_url: "https://platform.stepfun.ai/docs/en/step-plan/overview"
+      categories: []
+      models_count: 7
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

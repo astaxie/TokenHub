@@ -1,0 +1,35 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.perplexity"
+name: "Perplexity"
+version: 1.0.0
+summary: "Connect TokenHub to Perplexity."
+description: "Connect TokenHub to Perplexity. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    catalog:
+      id: "perplexity"
+      name: "Perplexity"
+      display_name: "Perplexity"
+      type: "openai_compatible"
+      base_url: ""
+      doc_url: "https://docs.perplexity.ai"
+      categories: []
+      models_count: 4
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

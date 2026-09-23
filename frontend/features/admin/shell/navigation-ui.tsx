@@ -12,6 +12,7 @@ export function Sidebar({
   activeView,
   onSelect,
   user,
+  data,
   onLogout,
   collapsed,
   onToggleCollapse,
@@ -21,7 +22,10 @@ export function Sidebar({
   activeView: ViewKey;
   onSelect: (view: ViewKey) => void;
   user: AdminUser;
+  data: AppData;
+  activePluginPageKey: string;
   onLogout: () => void;
+  onSelectPluginPage: (key: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   openGroups: Record<string, boolean>;
@@ -30,6 +34,7 @@ export function Sidebar({
   const visibleGroups = navGroupsForUser(user)
     .map((group) => ({ ...group, items: group.items.map((item) => filterNavItemByAccess(item, user)).filter((item): item is NavItem => Boolean(item)) }))
     .filter((group) => group.items.length > 0);
+  void data;
   return (
     <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
       <div className="brand">
@@ -154,29 +159,39 @@ export function PageHeader({
   data,
   meta,
   user,
+  onSelect,
 }: {
   activeView: ViewKey;
   data: AppData;
   meta: { title: string; description: string; eyebrow?: string };
   user: AdminUser;
+  onSelect?: (view: ViewKey) => void;
 }) {
-  const path = navPathForView(user, activeView);
   const chips = pageHeaderChips(activeView, data, user);
-  const pathGroup = path.group || pageHeaderFallbackGroup(activeView, user);
-  const pathSegments = ["TokenHub", pathGroup, path.parent, path.label || meta.title].filter(Boolean);
+  const crumbs = pageHeaderCrumbs(user, activeView, meta);
   return (
     <header className="page-header page-context-header">
       <div className="page-context-main">
-        <div className="page-breadcrumb" aria-label={tx("当前位置")}>
-          {pathSegments.map((segment, index) => (
-            <Fragment key={`${segment}-${index}`}>
-              {index > 0 ? <ChevronRight aria-hidden="true" className="page-breadcrumb-separator" size={13} /> : null}
-              <span className={index === pathSegments.length - 1 ? "current" : undefined}>
-                {tx(segment)}
-              </span>
-            </Fragment>
-          ))}
-        </div>
+        <nav className="page-breadcrumb" aria-label={tx("当前位置")}>
+          {crumbs.map((crumb, index) => {
+            const current = index === crumbs.length - 1;
+            const target = crumb.view;
+            return (
+              <Fragment key={`${crumb.label}-${index}`}>
+                {index > 0 ? <ChevronRight aria-hidden="true" className="page-breadcrumb-separator" size={13} /> : null}
+                {target && onSelect && !current ? (
+                  <button type="button" onClick={() => onSelect(target)}>
+                    {tx(crumb.label)}
+                  </button>
+                ) : (
+                  <span className={current ? "current" : undefined} aria-current={current ? "page" : undefined}>
+                    {tx(crumb.label)}
+                  </span>
+                )}
+              </Fragment>
+            );
+          })}
+        </nav>
       </div>
       <div className="page-context-side">
         <span className="scope-chip">{tx(roleScopeDescription(user))}</span>
@@ -241,6 +256,16 @@ export function navPathForView(user: AdminUser, view: ViewKey) {
     }
   }
   return { group: "", parent: "", label: standaloneViewMeta[view]?.title ?? view };
+}
+
+export function pageHeaderCrumbs(user: AdminUser, view: ViewKey, meta: { title: string }) {
+  const path = navPathForView(user, view);
+  const pathGroup = path.group || pageHeaderFallbackGroup(view, user);
+  const crumbs: { label: string; view?: ViewKey }[] = [{ label: "TokenHub", view: "overview" }];
+  if (pathGroup) crumbs.push({ label: pathGroup });
+  if (path.parent) crumbs.push({ label: path.parent });
+  crumbs.push({ label: path.label || meta.title });
+  return crumbs;
 }
 
 export function pageHeaderFallbackGroup(view: ViewKey, user: AdminUser) {
@@ -318,6 +343,7 @@ export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
 export function pageRecordCount(view: ViewKey, data: AppData) {
   const config = resourceConfigFor(view);
   if (config) return config.list(data).length;
+  if (view === "plugins") return data.plugins.length;
   if (view === "alert-events") return data.alerts.length;
   if (view === "alert-deliveries") return data.alertDeliveries.length;
   if (view === "approvals") return data.approvals.length;

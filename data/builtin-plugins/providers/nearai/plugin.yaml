@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.nearai"
+name: "NEAR AI Cloud"
+version: 1.0.0
+summary: "Connect TokenHub to NEAR AI Cloud."
+description: "Connect TokenHub to NEAR AI Cloud. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://cloud-api.near.ai/v1"
+    catalog:
+      id: "nearai"
+      name: "NEAR AI Cloud"
+      display_name: "NEAR AI Cloud"
+      type: "openai_compatible"
+      base_url: "https://cloud-api.near.ai/v1"
+      doc_url: "https://docs.near.ai/"
+      categories: []
+      models_count: 37
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

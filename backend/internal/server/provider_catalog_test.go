@@ -1,15 +1,23 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestNormalizeProviderCatalogModelUsesExplicitCanonicalName(t *testing.T) {
@@ -28,6 +36,231 @@ func TestNormalizeProviderCatalogModelUsesExplicitCanonicalName(t *testing.T) {
 	})
 	if fallback.CanonicalName != "k3" {
 		t.Fatalf("expected ID-derived canonical name k3, got %q", fallback.CanonicalName)
+	}
+}
+
+func TestNormalizeProviderCatalogModelUsesExplicitCategory(t *testing.T) {
+	model := normalizeProviderCatalogModel(map[string]any{
+		"id":           "opaque-vendor-model",
+		"display_name": "Opaque Vendor Model",
+		"category":     "kimi",
+	})
+	if model.Category != "kimi" {
+		t.Fatalf("expected explicit category kimi, got %q", model.Category)
+	}
+}
+
+func TestNormalizeProviderCatalogEntryDoesNotInferProviderTypeFromBaseURL(t *testing.T) {
+	entry := normalizeProviderCatalogEntry("minimax-cn", map[string]any{
+		"name": "MiniMax China",
+		"api":  "https://api.minimaxi.com/anthropic/v1",
+	})
+	if entry.Type != ProviderOpenAICompatible {
+		t.Fatalf("expected generic provider type, got %q", entry.Type)
+	}
+}
+
+func TestNormalizeProviderCatalogEntryUsesPluginCatalogType(t *testing.T) {
+	entry := normalizeProviderCatalogEntryWithTypes("anthropic", map[string]any{
+		"name": "Anthropic",
+		"api":  "https://api.anthropic.com",
+	}, map[string]string{"anthropic": ProviderAnthropic})
+	if entry.Type != ProviderAnthropic {
+		t.Fatalf("expected plugin catalog provider type, got %q", entry.Type)
+	}
+}
+
+func TestDefaultProviderCatalogTypeComesFromBuiltinPluginPolicy(t *testing.T) {
+	registry := builtinProviderPluginCatalogRegistry()
+	want := providerCatalogDefaultTypeFromRegistry(registry)
+	if want == "" {
+		t.Fatal("built-in provider plugins did not declare a default catalog provider type")
+	}
+	if got := defaultProviderCatalogProviderType(); got != want {
+		t.Fatalf("default catalog provider type = %q, want built-in plugin policy %q", got, want)
+	}
+}
+
+func TestProviderCatalogServiceUsesPluginDefaultCatalogProviderType(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:         "tokenhub.provider.default-compatible",
+		Name:       "Default Compatible",
+		Version:    "1.0.0",
+		Source:     pluginmeta.SourceLocalFile,
+		Kinds:      []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{pluginmeta.PlacementGatewayChain},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_type", Name: "default_compatible"},
+			{Kind: "provider_policy", Name: "default_catalog_provider_type", Subject: "default_compatible", Value: "true"},
+		},
+	}); err != nil {
+		t.Fatalf("register default plugin: %v", err)
+	}
+	service := newProviderCatalogService(store, catalogFile)
+	service.UsePluginCatalogTypes(registry)
+
+	custom, _, ok, err := service.Get(context.Background(), "custom", false)
+	if err != nil || !ok {
+		t.Fatalf("load custom catalog entry: ok=%v err=%v", ok, err)
+	}
+	if custom.Type != "default_compatible" {
+		t.Fatalf("custom catalog type = %q, want plugin default", custom.Type)
+	}
+
+	entries, _, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatalf("refresh catalog: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.ID == "fresh-provider" && entry.Type != "default_compatible" {
+			t.Fatalf("local catalog default type = %q, want plugin default", entry.Type)
+		}
+	}
+}
+
+func TestProviderCatalogEntryWithSubmittedModelsUsesExplicitProviderType(t *testing.T) {
+	catalog := providerCatalogEntryWithSubmittedModels(
+		ProviderCatalogEntry{ID: "custom"},
+		[]ProviderCatalogModel{{ID: "model-a", DisplayName: "Model A"}},
+		"custom",
+		"anthropic",
+	)
+	if catalog.Type != "anthropic" {
+		t.Fatalf("submitted model catalog type = %q, want explicit provider type", catalog.Type)
+	}
+	if catalog.ID != "custom" {
+		t.Fatalf("submitted model catalog ID = %q, want preserved catalog ID", catalog.ID)
+	}
+}
+
+func TestProviderCatalogServiceUsesPluginModelCategoryDefinitions(t *testing.T) {
+	categoryCapability, err := json.Marshal(AdapterModelCategory{
+		Key:               "acme",
+		Label:             "Acme",
+		Order:             25,
+		Aliases:           []string{"opaque"},
+		FamilyPrefixes:    []string{"opaque"},
+		CanonicalPrefixes: []string{"opaque"},
+	})
+	if err != nil {
+		t.Fatalf("encode category capability: %v", err)
+	}
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:         "tokenhub.provider.acme",
+		Name:       "Acme Provider",
+		Version:    "1.0.0",
+		Source:     pluginmeta.SourceLocalFile,
+		Kinds:      []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{pluginmeta.PlacementGatewayChain},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_type", Name: "acme_provider"},
+			{Kind: "provider_catalog", Name: "model_category", Subject: "acme_provider", Value: string(categoryCapability)},
+		},
+	}, AdapterRegistration{Type: "acme_provider"}); err != nil {
+		t.Fatalf("register category plugin: %v", err)
+	}
+	descriptor, ok := registry.Describe("acme_provider")
+	if !ok || len(descriptor.ProviderPolicy.ModelCategories) != 1 || descriptor.ProviderPolicy.ModelCategories[0].Key != "acme" {
+		t.Fatalf("adapter model categories = %+v ok=%v", descriptor.ProviderPolicy.ModelCategories, ok)
+	}
+
+	catalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")
+	if err := os.WriteFile(catalogFile, []byte(`{
+  "providers": {
+    "acme": {
+      "name": "Acme",
+      "type": "acme_provider",
+      "models": [
+        { "id": "opaquev2", "display_name": "Opaque Vendor Reasoner" }
+      ]
+    }
+  }
+}`), 0o600); err != nil {
+		t.Fatalf("write provider catalog: %v", err)
+	}
+	service := newProviderCatalogService(NewMemoryStore(), catalogFile)
+	service.UsePluginCatalogTypes(registry)
+	entries, err := service.loadLocalProviderCatalog()
+	if err != nil {
+		t.Fatalf("load provider catalog: %v", err)
+	}
+	if len(entries) != 1 || len(entries[0].Models) != 1 {
+		t.Fatalf("provider catalog entries = %+v", entries)
+	}
+	model := entries[0].Models[0]
+	if model.Category != "acme" || model.Family != "opaque" || model.CanonicalName != "opaque-v2" {
+		t.Fatalf("plugin category metadata was not applied: %+v", model)
+	}
+	if entries[0].CategoryCounts["acme"] != 1 {
+		t.Fatalf("provider category counts = %+v", entries[0].CategoryCounts)
+	}
+}
+
+func TestNormalizeProviderCatalogEntryUsesExplicitProviderType(t *testing.T) {
+	entry := normalizeProviderCatalogEntry("vendor-plugin", map[string]any{
+		"name": "Vendor Plugin",
+		"type": "vendor_subscription",
+		"api":  "https://api.vendor.example/anthropic/v1",
+	})
+	if entry.Type != "vendor_subscription" {
+		t.Fatalf("expected explicit plugin provider type, got %q", entry.Type)
+	}
+}
+
+func TestNormalizeProviderCatalogEntryAcceptsManifestURLFields(t *testing.T) {
+	entry := normalizeProviderCatalogEntry("vendor-plugin", map[string]any{
+		"name":     "Vendor Plugin",
+		"base_url": "https://api.vendor.example/v1",
+		"doc_url":  "https://vendor.example/docs",
+	})
+	if entry.BaseURL != "https://api.vendor.example/v1" || entry.DocURL != "https://vendor.example/docs" {
+		t.Fatalf("expected manifest-style URLs, got base=%q doc=%q", entry.BaseURL, entry.DocURL)
+	}
+}
+
+func TestNormalizeProviderBaseURLUsesBuiltinProviderCatalogBoundary(t *testing.T) {
+	tests := []struct {
+		name       string
+		providerID string
+		raw        string
+		want       string
+	}{
+		{
+			name:       "JieKou provider ID",
+			providerID: "302ai",
+			raw:        "https://api.highwayapi.ai/openai",
+			want:       "https://api.highwayapi.ai/openai/v1",
+		},
+		{
+			name:       "JieKou known OpenAI-compatible URL",
+			providerID: "custom-vendor",
+			raw:        "https://api.highwayapi.ai/openai",
+			want:       "https://api.highwayapi.ai/openai/v1",
+		},
+		{
+			name:       "DMXAPI provider ID",
+			providerID: "dmxapi",
+			raw:        "https://www.dmxapi.cn",
+			want:       "https://www.dmxapi.cn/v1",
+		},
+		{
+			name:       "third-party plugin URL remains explicit",
+			providerID: "vendor-plugin",
+			raw:        "https://api.vendor.example/openai",
+			want:       "https://api.vendor.example/openai",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeProviderBaseURL(tt.providerID, tt.raw); got != tt.want {
+				t.Fatalf("normalizeProviderBaseURL(%q, %q) = %q, want %q", tt.providerID, tt.raw, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -66,25 +299,102 @@ func TestBuiltinDeepSeekCatalogDescribesNativeV4Capabilities(t *testing.T) {
 	if !ok {
 		t.Fatal("expected native deepseek-v4-pro model")
 	}
-	if strings.Contains(pro.Metadata["endpoints"], "responses") {
-		t.Fatalf("V4 Pro must not advertise Responses before upstream support exists: %+v", pro.Metadata)
+	if pro.Metadata["endpoints"] != "responses,chat/completions,anthropic" {
+		t.Fatalf("unexpected V4 Pro protocol metadata: %+v", pro.Metadata)
+	}
+	for _, model := range []ProviderCatalogModel{flash, pro} {
+		if !slices.Contains(model.SupportedParameters, "top_logprobs") ||
+			model.Metadata["features"] != "function-calling,structured-outputs,reasoning,apply-patch,web-search" ||
+			model.Metadata["top_logprobs_range"] != "0,20" || model.Metadata["responses_stateful"] != "false" ||
+			model.Metadata["prompt_cache_mode"] != "automatic" || model.Metadata["custom_tool_names"] != "apply_patch" {
+			t.Fatalf("incomplete builtin DeepSeek Responses metadata for %s: %+v", model.ID, model)
+		}
 	}
 }
 
-func TestDeepSeekResponsesCapabilityIsModelScoped(t *testing.T) {
+func TestResponsesCapabilityUsesProviderPolicyAllowlist(t *testing.T) {
 	server := New(NewMemoryStore())
 	flash := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-v4-flash"}
 	pro := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-v4-pro"}
+	legacy := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-chat"}
 	if !server.routeSupportsAdapterCapability(flash, AdapterCapabilityResponses) ||
 		!server.routeSupportsAdapterCapability(flash, AdapterCapabilityResponseStream) {
 		t.Fatal("V4 Flash must support Responses and streaming Responses")
 	}
-	if server.routeSupportsAdapterCapability(pro, AdapterCapabilityResponses) ||
-		server.routeSupportsAdapterCapability(pro, AdapterCapabilityResponseStream) {
-		t.Fatal("V4 Pro must not support Responses before DeepSeek enables it upstream")
+	if !server.routeSupportsAdapterCapability(pro, AdapterCapabilityResponses) ||
+		!server.routeSupportsAdapterCapability(pro, AdapterCapabilityResponseStream) {
+		t.Fatal("V4 Pro must support Responses and streaming Responses")
+	}
+	if server.routeSupportsAdapterCapability(legacy, AdapterCapabilityResponses) ||
+		server.routeSupportsAdapterCapability(legacy, AdapterCapabilityResponseStream) {
+		t.Fatal("unadvertised DeepSeek models must not inherit provider-level Responses support")
 	}
 	if !server.routeSupportsAdapterCapability(pro, AdapterCapabilityChat) {
 		t.Fatal("V4 Pro must retain Chat Completions support")
+	}
+}
+
+func TestResponsesCapabilityWithoutAllowlistRemainsProviderScoped(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "open_responses_plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.open-responses-plugin",
+		Name:    "Open Responses Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_type", Name: providerType},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses, AdapterCapabilityResponseStream},
+	}); err != nil {
+		t.Fatalf("register open Responses plugin: %v", err)
+	}
+
+	route := RouteSelection{Provider: Provider{Type: providerType}, ProviderModel: "any-provider-model"}
+	if !server.routeSupportsAdapterCapability(route, AdapterCapabilityResponses) ||
+		!server.routeSupportsAdapterCapability(route, AdapterCapabilityResponseStream) {
+		t.Fatal("Responses-capable plugins without an allowlist should remain provider-scoped")
+	}
+}
+
+func TestResponsesCapabilityAllowlistDoesNotDependOnProviderTypeName(t *testing.T) {
+	server := New(NewMemoryStore())
+	providerType := "model_scoped_responses_plugin"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.model-scoped-responses-plugin",
+		Name:    "Model Scoped Responses Plugin",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider_type", Name: providerType},
+			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-a"},
+			{Kind: "provider_policy", Name: "responses_model_allowlist", Subject: providerType, Value: "model-b"},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register model-scoped Responses plugin: %v", err)
+	}
+
+	allowed := RouteSelection{Provider: Provider{Type: providerType}, ProviderModel: " MODEL-A "}
+	blocked := RouteSelection{Provider: Provider{Type: providerType}, ProviderModel: "model-c"}
+	if !server.routeSupportsAdapterCapability(allowed, AdapterCapabilityResponses) ||
+		!server.routeSupportsAdapterCapability(allowed, AdapterCapabilityResponseStream) {
+		t.Fatal("plugin allowlist models should support Responses regardless of provider type name")
+	}
+	if server.routeSupportsAdapterCapability(blocked, AdapterCapabilityResponses) ||
+		server.routeSupportsAdapterCapability(blocked, AdapterCapabilityResponseStream) {
+		t.Fatal("plugin allowlist should block unlisted models regardless of provider type name")
+	}
+	if !server.routeSupportsAdapterCapability(blocked, AdapterCapabilityChat) {
+		t.Fatal("Responses model allowlist must not restrict unrelated capabilities")
 	}
 }
 
@@ -94,6 +404,7 @@ func TestProviderCatalogServiceReloadsTrackedLocalFile(t *testing.T) {
 	writeProviderCatalogFixture(t, catalogFile)
 
 	service := newProviderCatalogService(store, catalogFile)
+	service.upstreamURL = ""
 	summaries, source, err := service.List(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
@@ -121,6 +432,316 @@ func TestProviderCatalogServiceReloadsTrackedLocalFile(t *testing.T) {
 	}
 	if source != "local-provider-catalog" || !providerCatalogContains(persisted, "fresh-provider") {
 		t.Fatalf("expected persisted local catalog, source=%q entries=%+v", source, persisted)
+	}
+}
+
+func TestProviderCatalogServiceUsesPluginCatalogTypes(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+
+	server := New(NewMemoryStore())
+	service := newProviderCatalogService(store, catalogFile)
+	service.UsePluginCatalogTypes(server.adapterRegistry)
+	entry, _, ok, err := service.Get(context.Background(), "anthropic", true)
+	if err != nil || !ok {
+		t.Fatalf("expected plugin-typed provider entry, ok=%v err=%v", ok, err)
+	}
+	if entry.Type != ProviderAnthropic {
+		t.Fatalf("expected plugin catalog provider type, got %q", entry.Type)
+	}
+}
+
+func TestProviderCatalogServiceSeedsFromBuiltInProviderPlugins(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(NewMemoryStore())
+	service := newProviderCatalogService(store, filepath.Join(t.TempDir(), "missing-provider-catalog.json"))
+	service.UsePluginCatalogTypes(server.adapterRegistry)
+
+	entries, source, err := service.List(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source != "builtin" {
+		t.Fatalf("expected builtin snapshot source, got %q", source)
+	}
+	var openAI ProviderCatalogEntry
+	for _, entry := range entries {
+		if entry.ID == "openai" {
+			openAI = entry
+			break
+		}
+	}
+	if openAI.Source != "plugin:built_in" || openAI.Type != ProviderOpenAI || openAI.ModelsCount == 0 {
+		t.Fatalf("expected OpenAI catalog seed from built-in plugin descriptor, got %+v", openAI)
+	}
+	if !providerCatalogContains(entries, "custom") {
+		t.Fatalf("expected custom provider catalog fallback in plugin seed: %+v", entries)
+	}
+}
+
+func TestProviderCatalogSeedIncludesCatalogOnlyBuiltInPlugins(t *testing.T) {
+	registry := NewAdapterRegistryWithPlugins(pluginmeta.NewRegistry())
+	if err := registry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      "tokenhub.provider.catalog-only-builtin",
+		Name:    "Catalog Only Built-in",
+		Version: "built-in",
+		Source:  pluginmeta.SourceBuiltIn,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{{
+			Kind:    "provider_catalog",
+			Name:    "entry",
+			Subject: "catalog_only_builtin",
+			Value:   `{"id":"catalog-only-builtin","name":"Catalog Only Built-in","type":"catalog_only_builtin"}`,
+		}},
+	}); err != nil {
+		t.Fatalf("register catalog-only built-in plugin: %v", err)
+	}
+
+	entries := providerCatalogSeedEntriesFromRegistry(registry)
+	if len(entries) != 1 || entries[0].ID != "catalog-only-builtin" || entries[0].Type != "catalog_only_builtin" {
+		t.Fatalf("catalog-only built-in seed entries = %+v", entries)
+	}
+	types := providerCatalogTypesFromRegistry(registry)
+	if types["catalog-only-builtin"] != "catalog_only_builtin" {
+		t.Fatalf("catalog-only built-in catalog types = %+v", types)
+	}
+}
+
+func TestBuiltinProviderCatalogDerivesFromPluginSeeds(t *testing.T) {
+	entries := builtinProviderCatalog(true)
+	var openAI ProviderCatalogEntry
+	var siliconFlow ProviderCatalogEntry
+	for _, entry := range entries {
+		switch entry.ID {
+		case "openai":
+			openAI = entry
+		case "siliconflow":
+			siliconFlow = entry
+		}
+	}
+	if openAI.Source != "plugin:built_in" || openAI.Type != ProviderOpenAI || openAI.ModelsCount == 0 {
+		t.Fatalf("expected OpenAI builtin catalog to come from built-in plugin seed, got %+v", openAI)
+	}
+	if siliconFlow.Source != "plugin:built_in" || siliconFlow.Type != ProviderOpenAICompatible {
+		t.Fatalf("expected SiliconFlow builtin catalog-only plugin seed, got %+v", siliconFlow)
+	}
+	if !providerCatalogContains(entries, "custom") {
+		t.Fatalf("expected custom provider catalog fallback in builtin catalog: %+v", entries)
+	}
+}
+
+func TestProviderCatalogServiceRefreshesFromUpstream(t *testing.T) {
+	store := NewMemoryStore()
+	localCatalogFile := filepath.Join(t.TempDir(), "local-provider-catalog.json")
+	writeProviderCatalogFixture(t, localCatalogFile)
+
+	upstreamCatalogFile := filepath.Join(t.TempDir(), "upstream-provider-catalog.json")
+	writeProviderCatalogFixture(t, upstreamCatalogFile)
+	replaceProviderCatalogFixtureURL(t, upstreamCatalogFile, "fresh-provider", "https://upstream-provider.example/v1")
+	upstreamCatalog, err := os.ReadFile(upstreamCatalogFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstreamCatalog = append(upstreamCatalog, bytes.Repeat([]byte(" "), 6<<20-len(upstreamCatalog))...)
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(upstreamCatalog)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newProviderCatalogService(store, localCatalogFile)
+	service.upstreamURL = upstream.URL
+	service.upstreamClient = upstream.Client()
+	summaries, source, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests.Load() != 1 || source != providerCatalogUpstreamSource || !providerCatalogContains(summaries, "fresh-provider") {
+		t.Fatalf("unexpected upstream refresh: requests=%d source=%q entries=%+v", requests.Load(), source, summaries)
+	}
+
+	entry, source, ok, err := service.Get(context.Background(), "fresh-provider", false)
+	if err != nil || !ok {
+		t.Fatalf("expected upstream provider entry, ok=%v err=%v", ok, err)
+	}
+	if source != providerCatalogUpstreamSource || entry.Source != providerCatalogUpstreamSource ||
+		entry.BaseURL != "https://upstream-provider.example/v1" || entry.Models[0].Metadata["source"] != providerCatalogUpstreamSource {
+		t.Fatalf("unexpected upstream provider entry: source=%q entry=%+v", source, entry)
+	}
+}
+
+func TestProviderCatalogServiceRefreshUsesUpstreamWhenCuratedLocalCatalogIsMissing(t *testing.T) {
+	store := NewMemoryStore()
+	upstreamCatalogFile := filepath.Join(t.TempDir(), "upstream-provider-catalog.json")
+	writeProviderCatalogFixture(t, upstreamCatalogFile)
+	replaceProviderCatalogFixtureURL(t, upstreamCatalogFile, "fresh-provider", "https://upstream-provider.example/v1")
+	upstreamCatalog, err := os.ReadFile(upstreamCatalogFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(upstreamCatalog)
+	}))
+	t.Cleanup(upstream.Close)
+
+	missingLocalCatalog := filepath.Join(t.TempDir(), "missing-provider-catalog.json")
+	service := newProviderCatalogService(store, missingLocalCatalog)
+	service.upstreamURL = upstream.URL
+	service.upstreamClient = upstream.Client()
+	summaries, source, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source != providerCatalogUpstreamSource || !providerCatalogContains(summaries, "fresh-provider") {
+		t.Fatalf("expected upstream refresh without curated local catalog, source=%q entries=%+v", source, summaries)
+	}
+
+	entry, storedSource, ok, err := service.Get(context.Background(), "fresh-provider", false)
+	if err != nil || !ok || storedSource != providerCatalogUpstreamSource || entry.BaseURL != "https://upstream-provider.example/v1" {
+		t.Fatalf("expected persisted upstream provider, source=%q entry=%+v ok=%v err=%v", storedSource, entry, ok, err)
+	}
+}
+
+func TestMergeCuratedProviderCatalogEntriesPreservesReviewedLocalProviders(t *testing.T) {
+	upstream := []ProviderCatalogEntry{
+		{ID: "stepfun", BaseURL: "https://stale.example/v1"},
+		{ID: "upstream-only", BaseURL: "https://upstream.example/v1"},
+	}
+	local := []ProviderCatalogEntry{
+		{ID: "stepfun", BaseURL: "https://api.stepfun.com/v1"},
+		{ID: "stepfun-plan", BaseURL: "https://api.stepfun.com/step_plan/v1"},
+		{ID: "local-only", BaseURL: "https://local.example/v1"},
+	}
+
+	merged := mergeCuratedProviderCatalogEntries(upstream, local)
+	byID := make(map[string]ProviderCatalogEntry, len(merged))
+	for _, entry := range merged {
+		byID[entry.ID] = entry
+	}
+	if len(merged) != 3 || byID["stepfun"].BaseURL != "https://api.stepfun.com/v1" ||
+		byID["stepfun-plan"].BaseURL != "https://api.stepfun.com/step_plan/v1" ||
+		byID["upstream-only"].BaseURL != "https://upstream.example/v1" {
+		t.Fatalf("unexpected merged catalog: %+v", merged)
+	}
+	if _, ok := byID["local-only"]; ok {
+		t.Fatalf("unreviewed local provider must not override upstream catalog: %+v", merged)
+	}
+}
+
+func TestProviderCatalogServiceRefreshFallsBackToLocalCatalog(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	replaceProviderCatalogFixtureURL(t, catalogFile, "fresh-provider", "https://local-fallback.example/v1")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newProviderCatalogService(store, catalogFile)
+	service.upstreamURL = upstream.URL
+	service.upstreamClient = upstream.Client()
+	_, source, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, storedSource, ok, err := service.Get(context.Background(), "fresh-provider", false)
+	if err != nil || !ok || source != providerCatalogLocalSource || storedSource != providerCatalogLocalSource ||
+		entry.BaseURL != "https://local-fallback.example/v1" {
+		t.Fatalf("expected local fallback, refresh_source=%q stored_source=%q entry=%+v ok=%v err=%v", source, storedSource, entry, ok, err)
+	}
+}
+
+func TestProviderCatalogServiceRefreshRejectsIncompleteUpstreamCatalog(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"providers": map[string]any{
+				"openai": map[string]any{
+					"name":   "OpenAI",
+					"models": []map[string]any{{"id": "gpt-test"}},
+				},
+			},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newProviderCatalogService(store, catalogFile)
+	service.upstreamURL = upstream.URL
+	service.upstreamClient = upstream.Client()
+	entries, source, err := service.List(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source != providerCatalogLocalSource || !providerCatalogContains(entries, "fresh-provider") {
+		t.Fatalf("expected validated local fallback, source=%q entries=%+v", source, entries)
+	}
+}
+
+func TestProviderCatalogServiceRefreshStopsWhenContextIsCanceledBeforeFallback(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	service := newProviderCatalogService(store, catalogFile)
+	previous, originalSource, _, err := service.loadStored(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leaseLost := errors.New("provider catalog lease lost")
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(leaseLost)
+	_, source, err := service.refreshLocked(ctx, previous)
+	if !errors.Is(err, leaseLost) || source != providerCatalogUpstreamSource {
+		t.Fatalf("expected canceled upstream refresh, source=%q err=%v", source, err)
+	}
+	_, storedSource, _, found, err := store.LoadProviderCatalogSnapshot(false)
+	if err != nil || !found || storedSource != originalSource {
+		t.Fatalf("canceled refresh changed snapshot: original=%q stored=%q found=%v err=%v", originalSource, storedSource, found, err)
+	}
+}
+
+func TestProviderCatalogServiceRefreshRechecksContextBeforeUpstreamSave(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	content, err := os.ReadFile(catalogFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := newProviderCatalogService(store, catalogFile)
+	previous, originalSource, _, err := service.loadStored(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	service.upstreamURL = "https://catalog.example/provider-catalog.json"
+	service.upstreamClient = providerCatalogHTTPClientFunc(func(req *http.Request) (*http.Response, error) {
+		cancel()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(content)),
+			Request:    req,
+		}, nil
+	})
+	_, source, err := service.refreshLocked(ctx, previous)
+	if !errors.Is(err, context.Canceled) || source != providerCatalogUpstreamSource {
+		t.Fatalf("expected cancellation before upstream save, source=%q err=%v", source, err)
+	}
+	_, storedSource, _, found, err := store.LoadProviderCatalogSnapshot(false)
+	if err != nil || !found || storedSource != originalSource {
+		t.Fatalf("canceled refresh changed snapshot: original=%q stored=%q found=%v err=%v", originalSource, storedSource, found, err)
 	}
 }
 
@@ -171,7 +792,9 @@ func TestProviderCatalogServiceInitializeRetainsLocalSnapshotWhenFileIsMissing(t
 	store := NewMemoryStore()
 	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
 	writeProviderCatalogFixture(t, catalogFile)
-	if _, _, err := newProviderCatalogService(store, catalogFile).List(context.Background(), true); err != nil {
+	seedService := newProviderCatalogService(store, catalogFile)
+	seedService.upstreamURL = ""
+	if _, _, err := seedService.List(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -243,6 +866,22 @@ func TestBootstrapSeedsProviderCatalogSnapshot(t *testing.T) {
 	if !found || source != "builtin" || len(entries) < 5 {
 		t.Fatalf("expected builtin provider catalog, found=%v source=%q entries=%d", found, source, len(entries))
 	}
+	var custom ProviderCatalogEntry
+	var openAI ProviderCatalogEntry
+	for _, entry := range entries {
+		if entry.ID == "openai" {
+			openAI = entry
+		}
+		if entry.ID == "custom" {
+			custom = entry
+		}
+	}
+	if openAI.Source != "plugin:built_in" || openAI.Type != ProviderOpenAI {
+		t.Fatalf("expected bootstrap provider catalog to seed from built-in plugin descriptor, got %+v", openAI)
+	}
+	if custom.Type != ProviderOpenAICompatible {
+		t.Fatalf("expected bootstrap custom catalog type to follow built-in plugin default, got %+v", custom)
+	}
 }
 
 func writeProviderCatalogFixture(t *testing.T, catalogFile string) {
@@ -306,6 +945,12 @@ func providerCatalogContains(entries []ProviderCatalogEntry, id string) bool {
 		}
 	}
 	return false
+}
+
+type providerCatalogHTTPClientFunc func(*http.Request) (*http.Response, error)
+
+func (fn providerCatalogHTTPClientFunc) Do(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }
 
 type providerCatalogConcurrentInitializeStore struct {

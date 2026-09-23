@@ -10,6 +10,28 @@ import (
 	"testing"
 )
 
+func TestGenericIdentityProviderAuthorizeURLIncludesPKCE(t *testing.T) {
+	provider := AdminResource{Fields: map[string]any{
+		"client_id":     "generic-client",
+		"authorize_url": "https://idp.example.test/authorize",
+		"scopes":        "openid profile",
+	}}
+	challenge := testAdminOAuthCodeChallenge(t)
+	target, err := buildIdentityProviderAuthorizeURL(
+		provider, "https://tokenhub.example.test/api/admin/auth/oauth/callback", "signed-state", challenge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := parsed.Query()
+	if query.Get("code_challenge") != challenge || query.Get("code_challenge_method") != "S256" {
+		t.Fatalf("generic OAuth authorize URL must retain provider PKCE: %s", parsed.RawQuery)
+	}
+}
+
 func TestDingTalkIdentityProviderLoginProtocol(t *testing.T) {
 	var tokenRequested bool
 	var userInfoRequested bool
@@ -68,7 +90,8 @@ func TestDingTalkIdentityProviderLoginProtocol(t *testing.T) {
 		},
 	}
 
-	authorizeTarget, err := buildIdentityProviderAuthorizeURL(provider, "https://tokenhub.example.test/api/admin/auth/oauth/callback", "signed-state")
+	authorizeChallenge := testAdminOAuthCodeChallenge(t)
+	authorizeTarget, err := buildIdentityProviderAuthorizeURL(provider, "https://tokenhub.example.test/api/admin/auth/oauth/callback", "signed-state", authorizeChallenge)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +101,8 @@ func TestDingTalkIdentityProviderLoginProtocol(t *testing.T) {
 	}
 	query := parsedAuthorizeTarget.Query()
 	if query.Get("client_id") != "ding-app-key" || query.Get("response_type") != "code" ||
-		query.Get("scope") != "openid" || query.Get("state") != "signed-state" || query.Get("prompt") != "consent" {
+		query.Get("scope") != "openid" || query.Get("state") != "signed-state" || query.Get("prompt") != "consent" ||
+		query.Has("code_challenge") || query.Has("code_challenge_method") {
 		t.Fatalf("unexpected authorize query: %s", parsedAuthorizeTarget.RawQuery)
 	}
 
@@ -94,8 +118,11 @@ func TestDingTalkIdentityProviderLoginProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.CreateResource("identity-providers", provider)
-	app := NewWithConfig(store, Config{AdminToken: "dev_admin_token", SecretKey: "test-secret"}).Handler()
-	startReq := httptest.NewRequest(http.MethodGet, "/api/admin/auth/oauth/start?id=idp_dingtalk&return_url=http%3A%2F%2Flocalhost%3A3000%2Foverview", nil)
+	app := NewWithConfig(store, Config{
+		AdminToken: "dev_admin_token", SecretKey: "test-secret",
+		CORSAllowedOrigins: []string{"http://localhost:3000"},
+	}).Handler()
+	startReq := httptest.NewRequest(http.MethodGet, adminOAuthStartURLForTest(t, "/api/admin/auth/oauth/start?id=idp_dingtalk&return_url=http%3A%2F%2Flocalhost%3A3000%2Foverview"), nil)
 	startReq.Host = "localhost:8080"
 	startResp := httptest.NewRecorder()
 	app.ServeHTTP(startResp, startReq)
@@ -108,9 +135,11 @@ func TestDingTalkIdentityProviderLoginProtocol(t *testing.T) {
 	}
 	callbackReq := httptest.NewRequest(http.MethodGet, "/api/admin/auth/oauth/callback?authCode=ding-code&state="+url.QueryEscape(startLocation.Query().Get("state")), nil)
 	callbackReq.Host = "localhost:8080"
+	callbackReq.AddCookie(requireResponseCookieWithPrefix(t, startResp, adminOAuthStateCookiePrefix))
 	callbackResp := httptest.NewRecorder()
 	app.ServeHTTP(callbackResp, callbackReq)
-	if callbackResp.Code != http.StatusFound || !strings.Contains(callbackResp.Header().Get("location"), "oauth_token=") {
+	callbackLocation, parseErr := url.Parse(callbackResp.Header().Get("location"))
+	if callbackResp.Code != http.StatusFound || parseErr != nil || callbackLocation.Query().Has("oauth_code") || !strings.Contains(callbackLocation.Fragment, "oauth_code=") {
 		t.Fatalf("unexpected callback response: status=%d location=%s", callbackResp.Code, callbackResp.Header().Get("location"))
 	}
 	var user AdminUser
@@ -183,7 +212,8 @@ func TestFeishuIdentityProviderLoginProtocol(t *testing.T) {
 		},
 	}
 
-	authorizeTarget, err := buildIdentityProviderAuthorizeURL(provider, "https://tokenhub.example.test/api/admin/auth/oauth/callback", "signed-state")
+	authorizeChallenge := testAdminOAuthCodeChallenge(t)
+	authorizeTarget, err := buildIdentityProviderAuthorizeURL(provider, "https://tokenhub.example.test/api/admin/auth/oauth/callback", "signed-state", authorizeChallenge)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,12 +224,13 @@ func TestFeishuIdentityProviderLoginProtocol(t *testing.T) {
 	query := parsedAuthorizeTarget.Query()
 	if query.Get("app_id") != "feishu-app-id" || query.Get("redirect_uri") == "" || query.Get("state") != "signed-state" ||
 		query.Get("scope") != "contact:user.base:readonly" ||
-		query.Has("client_id") || query.Has("response_type") {
+		query.Has("client_id") || query.Has("response_type") ||
+		query.Has("code_challenge") || query.Has("code_challenge_method") {
 		t.Fatalf("unexpected authorize query: %s", parsedAuthorizeTarget.RawQuery)
 	}
 
 	server := New(NewMemoryStore())
-	token, err := server.exchangeOAuthCode(context.Background(), provider, "feishu-code", "https://tokenhub.example.test/api/admin/auth/oauth/callback")
+	token, err := server.exchangeOAuthCode(context.Background(), provider, "feishu-code", "https://tokenhub.example.test/api/admin/auth/oauth/callback", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +295,8 @@ func TestWeComIdentityProviderLoginProtocol(t *testing.T) {
 		},
 	}
 
-	authorizeTarget, err := buildIdentityProviderAuthorizeURL(provider, "https://tokenhub.example.test/api/admin/auth/oauth/callback", "signed-state")
+	authorizeChallenge := testAdminOAuthCodeChallenge(t)
+	authorizeTarget, err := buildIdentityProviderAuthorizeURL(provider, "https://tokenhub.example.test/api/admin/auth/oauth/callback", "signed-state", authorizeChallenge)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,12 +306,13 @@ func TestWeComIdentityProviderLoginProtocol(t *testing.T) {
 	}
 	query := parsedAuthorizeTarget.Query()
 	if query.Get("login_type") != "CorpApp" || query.Get("appid") != "ww-corp-id" || query.Get("agentid") != "1000002" ||
-		query.Get("redirect_uri") == "" || query.Get("state") != "signed-state" || query.Has("client_id") || query.Has("scope") {
+		query.Get("redirect_uri") == "" || query.Get("state") != "signed-state" || query.Has("client_id") || query.Has("scope") ||
+		query.Has("code_challenge") || query.Has("code_challenge_method") {
 		t.Fatalf("unexpected authorize query: %s", parsedAuthorizeTarget.RawQuery)
 	}
 
 	server := New(NewMemoryStore())
-	token, err := server.exchangeOAuthCode(context.Background(), provider, "wecom-code", "https://tokenhub.example.test/api/admin/auth/oauth/callback")
+	token, err := server.exchangeOAuthCode(context.Background(), provider, "wecom-code", "https://tokenhub.example.test/api/admin/auth/oauth/callback", "")
 	if err != nil {
 		t.Fatal(err)
 	}

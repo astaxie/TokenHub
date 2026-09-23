@@ -1,0 +1,756 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { type Provider, type ProviderCatalogEntry } from "../core/types";
+import { setActiveLanguage } from "../i18n/runtime";
+import { ProviderUpsertModal } from "./provider-editor";
+
+const catalogEntry: ProviderCatalogEntry = {
+  id: "quality-provider",
+  name: "Quality Provider",
+  display_name: "Quality Provider",
+  type: "openai_compatible",
+  base_url: "https://provider.example/v1",
+  categories: ["openai"],
+  models_count: 0,
+  source: "component-test",
+};
+
+const codexAccountCatalogEntry: ProviderCatalogEntry = {
+  ...catalogEntry,
+  id: "openai-codex",
+  name: "OpenAI Codex",
+  display_name: "OpenAI Codex",
+  type: "openai_codex",
+  base_url: "https://chatgpt.com/backend-api/codex",
+  categories: ["codex"],
+};
+
+describe("ProviderUpsertModal", () => {
+  afterEach(() => {
+    setActiveLanguage("en");
+    vi.unstubAllGlobals();
+  });
+
+  it.each([true, false])("submits a Provider creation payload with API key required = %s", async (apiKeyRequired) => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/admin/provider-catalog/quality-provider")) {
+        return new Response(JSON.stringify({ data: catalogEntry }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/admin/providers") && init?.method === "POST") {
+        return new Response(JSON.stringify({ provider: { id: "prv_quality" }, imported_models: 0 }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[catalogEntry]}
+        loading={false}
+        mode="create"
+        providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, apiKeyRequired }]}
+        onClose={vi.fn()}
+        onSaved={onSaved}
+        pluginUI={[
+          {
+            plugin_id: "tokenhub.provider.quality",
+            id: "tenant",
+            slot: "provider.form.section",
+            title: "Quality Settings",
+            provider_types: ["openai_compatible"],
+            schema: { fields: [{ name: "tenant_id", type: "text", label: "Tenant ID" }] },
+          },
+        ]}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/api/admin/provider-catalog/quality-provider",
+      expect.any(Object),
+    ));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.type(screen.getByLabelText("Tenant ID"), "tenant-001");
+    if (apiKeyRequired) await user.type(screen.getByLabelText("API Key", { exact: true }), "provider-secret");
+    else expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
+    await user.click(screen.getByRole("button", { name: "新增 Provider" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const createCall = fetchMock.mock.calls.find(([input, init]) =>
+      String(input).endsWith("/api/admin/providers") && init?.method === "POST",
+    );
+    expect(createCall).toBeDefined();
+    expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
+      name: "Quality Provider",
+      type: "openai_compatible",
+      base_url: "https://provider.example/v1",
+      api_key: apiKeyRequired ? "provider-secret" : "",
+      catalog_id: "quality-provider",
+      options: { tenant_id: "tenant-001" },
+    });
+  });
+
+  it("preserves the visible and total model counts in the legacy directory summary", async () => {
+    const user = userEvent.setup();
+    const detail: ProviderCatalogEntry = {
+      ...catalogEntry,
+      id: "custom",
+      models_count: 3,
+      models: [
+        { id: "model-a", name: "model-a" },
+        { id: "model-b", name: "model-b" },
+      ],
+    };
+    const provider: Provider = {
+      id: "prv_custom",
+      name: "Custom Provider",
+      type: "openai_compatible",
+      base_url: "https://provider.example/v1",
+      status: "active",
+      healthy: true,
+      priority: 10,
+      options: { catalog_id: "custom" },
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: detail }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    setActiveLanguage("zh-CN");
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[detail]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        provider={provider}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "模型" }));
+
+    expect(await screen.findByText("2/3 个可引入模型")).toBeInTheDocument();
+  });
+
+  it("lists every catalog model in the provider model directory without truncation", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    // 100 catalog models also guards against a render cap below the full list length.
+    const catalogModels = Array.from({ length: 100 }, (_, index) => ({
+      id: `upstream-model-${String(index + 1).padStart(2, "0")}`,
+      name: `upstream-model-${String(index + 1).padStart(2, "0")}`,
+      display_name: `Upstream Model ${index + 1}`,
+    }));
+    const detail: ProviderCatalogEntry = {
+      ...catalogEntry,
+      models_count: catalogModels.length,
+      models: catalogModels,
+    };
+    const provider: Provider = {
+      id: "prv_quality",
+      name: "Quality Provider",
+      type: "openai_compatible",
+      base_url: "https://provider.example/v1",
+      status: "active",
+      healthy: true,
+      priority: 10,
+      options: { catalog_id: "quality-provider" },
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: detail }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[detail]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        provider={provider}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "模型" }));
+
+    expect(await screen.findByText("100/100 个可引入模型")).toBeInTheDocument();
+    expect(result.container.querySelectorAll(".model-option")).toHaveLength(100);
+  });
+
+  it("submits provider advanced fields from declarative plugin form sections", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    setActiveLanguage("zh-CN");
+    const provider: Provider = {
+      id: "prv_quality",
+      name: "Quality Provider",
+      type: "openai_compatible",
+      base_url: "https://provider.example/v1",
+      status: "active",
+      healthy: true,
+      priority: 10,
+      options: { system_prompt_transform_policy: "preserve" },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/admin/provider-catalog/quality-provider")) {
+        return new Response(JSON.stringify({ data: catalogEntry }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/admin/providers/prv_quality") && init?.method === "PATCH") {
+        return new Response(JSON.stringify({ provider }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[catalogEntry]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={onSaved}
+        pluginUI={[{
+          plugin_id: "tokenhub.admin.core-provider",
+          id: "provider-advanced-settings",
+          slot: "provider.form.section",
+          title: "Provider advanced settings",
+          schema: {
+            placement: "advanced",
+            fields: [{
+              name: "system_prompt_transform_policy",
+              type: "select",
+              label: "System prompt transform",
+              target: "provider",
+              options: ["preserve", "strip"],
+            }],
+          },
+        }]}
+        provider={provider}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "高级" }));
+    await user.selectOptions(screen.getByLabelText("系统提示词转换"), "strip");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const updateCall = fetchMock.mock.calls.find(([input, init]) =>
+      String(input).endsWith("/api/admin/providers/prv_quality") && init?.method === "PATCH",
+    );
+    expect(updateCall).toBeDefined();
+    expect(JSON.parse(String(updateCall?.[1]?.body))).toMatchObject({
+      id: "prv_quality",
+      system_prompt_transform_policy: "strip",
+      claude_code_attribution_policy: "strip",
+      options: {},
+    });
+  });
+
+  it("hydrates legacy provider aliases into the provider editor form", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    const provider: Provider = {
+      id: "prv_legacy_aliases",
+      name: "Legacy Aliases",
+      type: "openai_compatible",
+      base_url: "https://provider.example/v1",
+      status: "active",
+      healthy: true,
+      priority: 10,
+      options: {
+        anthropic_auth_type: "bearer",
+        claude_code_attribution_policy: "strip",
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/admin/provider-catalog/quality-provider")) {
+        return new Response(JSON.stringify({ data: catalogEntry }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: GET ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[catalogEntry]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        pluginUI={[{
+          plugin_id: "tokenhub.admin.core-provider",
+          id: "provider-legacy-aliases",
+          slot: "provider.form.section",
+          title: "Legacy Provider Aliases",
+          schema: {
+            placement: "advanced",
+            fields: [{
+              name: "system_prompt_transform_policy",
+              type: "select",
+              label: "System prompt transform",
+              target: "provider",
+              options: ["preserve", "strip"],
+            }],
+          },
+        }]}
+        provider={provider}
+        providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, authModes: ["bearer", "x-api-key"] }]}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "高级" }));
+    expect(screen.getByText("认证方式").closest("label")?.querySelector("select")).toHaveValue("bearer");
+    expect(screen.getByLabelText("系统提示词转换")).toHaveValue("strip");
+  });
+
+  it("defaults Anthropic auth selection from adapter metadata", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    const anthropicEntry = { ...catalogEntry, id: "anthropic-plugin", type: "anthropic" };
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[anthropicEntry]}
+        loading={false}
+        mode="create"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        providerTypeOptions={[{ value: "anthropic", label: "Anthropic", supportsCustomHeaders: true, authModes: ["bearer"] }]}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("tab", { name: "高级" }));
+
+    expect(screen.getByText("认证方式").closest("label")?.querySelector("select")).toHaveValue("bearer");
+  });
+
+  it("shows the provider OAuth callback from plugin action metadata", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[codexAccountCatalogEntry]}
+        loading={false}
+        mode="create"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        plugins={[{
+          id: "tokenhub.provider.openai-codex",
+          name: "OpenAI Codex Subscription",
+          version: "built-in",
+          source: "built_in",
+          kinds: ["provider"],
+          placements: [],
+          capabilities: [{ kind: "provider_resource_type", name: "openai_subscription", subject: "openai_codex" }],
+        }]}
+        pluginActions={[{
+          plugin_id: "tokenhub.provider.openai-codex",
+          action_id: "openai_codex.oauth.start",
+          kind: "external_redirect",
+          capability: "oauth.start",
+          subject: "openai_codex",
+          metadata: { oauth_redirect_uri: "https://callback.example/provider/oauth" },
+        }]}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("radio", { name: /账号资源池/ }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(screen.getByDisplayValue("https://callback.example/provider/oauth")).toBeInTheDocument();
+  });
+
+  it("filters account provider catalogs from create mode by plugin metadata", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    const kimiAccountCatalog = {
+      ...catalogEntry,
+      id: "kimi-subscription",
+      name: "Kimi Subscription",
+      display_name: "Kimi Subscription",
+      type: "kimi_subscription",
+      categories: ["moonshot"],
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: catalogEntry }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[catalogEntry, kimiAccountCatalog]}
+        loading={false}
+        mode="create"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        plugins={[{
+          id: "tokenhub.provider.kimi",
+          name: "Kimi Subscription",
+          version: "built-in",
+          source: "built_in",
+          kinds: ["provider"],
+          placements: [],
+          capabilities: [{ kind: "provider_resource_type", name: "kimi_subscription_account", subject: "kimi_subscription" }],
+        }]}
+        resources={[]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(screen.getByRole("button", { name: /Quality Provider/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /moonshot/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Kimi Subscription")).not.toBeInTheDocument();
+  });
+
+  it("loads account catalogs for non-Codex Provider plugins", async () => {
+    const kimiCatalog = {
+      ...catalogEntry,
+      id: "kimi-subscription",
+      name: "Kimi Subscription",
+      display_name: "Kimi Subscription",
+      type: "kimi_subscription",
+    };
+    const provider: Provider = {
+      id: "prv_kimi",
+      name: "Kimi Pool",
+      type: "kimi_subscription",
+      base_url: "https://kimi.example/api",
+      status: "active",
+      healthy: true,
+      priority: 10,
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ data: kimiCatalog }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[kimiCatalog]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        plugins={[{
+          id: "tokenhub.provider.kimi",
+          name: "Kimi Subscription",
+          version: "built-in",
+          source: "built_in",
+          kinds: ["provider"],
+          placements: [],
+          capabilities: [{ kind: "provider_resource_type", name: "kimi_subscription_account", subject: "kimi_subscription" }],
+        }]}
+        provider={provider}
+        resources={[{
+          id: "rsrc_kimi",
+          provider_id: "prv_kimi",
+          name: "Kimi Account",
+          resource_type: "kimi_subscription_account",
+          status: "active",
+          healthy: true,
+          priority: 1,
+          weight: 100,
+        }]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/api/admin/provider-catalog/kimi-subscription?resource_id=rsrc_kimi",
+      expect.any(Object),
+    ));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/provider-catalog/openai-codex"))).toBe(false);
+  });
+
+  it("uses resource-scoped quota panel actions from non-Codex Provider plugin metadata", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    const kimiCatalog = {
+      ...catalogEntry,
+      id: "kimi-subscription",
+      name: "Kimi Subscription",
+      display_name: "Kimi Subscription",
+      type: "kimi_subscription",
+    };
+    const provider: Provider = {
+      id: "prv_kimi",
+      name: "Kimi Pool",
+      type: "kimi_subscription",
+      base_url: "https://kimi.example/api",
+      status: "active",
+      healthy: true,
+      priority: 10,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/admin/provider-catalog/kimi-subscription")) {
+        return new Response(JSON.stringify({ data: kimiCatalog }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/admin/plugins/tokenhub.provider.kimi/actions/kimi.quota.read")) {
+        return new Response(JSON.stringify({ data: { fetched_at: 123, plan_type: "team" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/admin/plugins/tokenhub.provider.kimi/actions/kimi.enterprise.quota.read")) {
+        return new Response(JSON.stringify({ data: { fetched_at: 124, plan_type: "enterprise" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[kimiCatalog]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        pluginActions={[{
+          plugin_id: "tokenhub.provider.kimi",
+          action_id: "kimi.quota.read",
+          kind: "read",
+          capability: "quota.read",
+          subject: "kimi_subscription",
+          metadata: {
+            provider_resource_type: "kimi_subscription_account",
+            panel_title: "Kimi subscription quota",
+            panel_description: "Quota view provided by the Kimi provider plugin.",
+          },
+        }, {
+          plugin_id: "tokenhub.provider.kimi",
+          action_id: "kimi.enterprise.quota.read",
+          kind: "read",
+          capability: "quota.read",
+          subject: "kimi_subscription",
+          metadata: {
+            provider_resource_type: "kimi_enterprise_account",
+            panel_title: "Kimi enterprise quota",
+          },
+        }]}
+        pluginUI={[{
+          plugin_id: "tokenhub.provider.kimi",
+          id: "quota",
+          slot: "provider.resource.panel",
+          title: "Kimi subscription quota",
+          provider_types: ["kimi_subscription"],
+          resource_types: ["kimi_subscription_account"],
+          action: "kimi.quota.read",
+          schema: { description: "Quota view provided by the Kimi provider plugin." },
+        }, {
+          plugin_id: "tokenhub.provider.kimi",
+          id: "enterprise-quota",
+          slot: "provider.resource.panel",
+          title: "Kimi enterprise quota",
+          provider_types: ["kimi_subscription"],
+          resource_types: ["kimi_enterprise_account"],
+          action: "kimi.enterprise.quota.read",
+        }]}
+        plugins={[{
+          id: "tokenhub.provider.kimi",
+          name: "Kimi Subscription",
+          version: "built-in",
+          source: "built_in",
+          kinds: ["provider"],
+          placements: [],
+          capabilities: [
+            { kind: "provider_resource_type", name: "kimi_subscription_account", subject: "kimi_subscription" },
+            { kind: "provider_resource_type", name: "kimi_enterprise_account", subject: "kimi_subscription" },
+          ],
+        }]}
+        provider={provider}
+        resources={[{
+          id: "rsrc_kimi",
+          provider_id: "prv_kimi",
+          name: "Kimi Account",
+          resource_type: "kimi_subscription_account",
+          status: "active",
+          healthy: true,
+          priority: 1,
+          weight: 100,
+        }, {
+          id: "rsrc_kimi_enterprise",
+          provider_id: "prv_kimi",
+          name: "Kimi Enterprise Account",
+          resource_type: "kimi_enterprise_account",
+          status: "active",
+          healthy: true,
+          priority: 2,
+          weight: 100,
+        }]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/provider-catalog/kimi-subscription"))).toBe(true));
+    await user.click(screen.getByRole("tab", { name: "高级" }));
+
+    expect(await screen.findByText("Kimi subscription quota")).toBeInTheDocument();
+    expect(screen.getAllByText("Kimi subscription quota")).toHaveLength(1);
+    expect(screen.getByText("Quota view provided by the Kimi provider plugin.")).toBeInTheDocument();
+    expect(screen.queryByText("插件面板")).not.toBeInTheDocument();
+    expect(screen.queryByText(/ChatGPT\/Codex/)).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/actions/kimi.quota.read"))).toBe(true));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/actions/kimi.enterprise.quota.read"))).toBe(true));
+  });
+
+  it("requires a resource panel contribution before rendering the rich quota panel", async () => {
+    const user = userEvent.setup();
+    setActiveLanguage("zh-CN");
+    const provider: Provider = {
+      id: "prv_kimi",
+      name: "Kimi Pool",
+      type: "kimi_subscription",
+      base_url: "https://kimi.example/api",
+      status: "active",
+      healthy: true,
+      priority: 10,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/admin/provider-catalog/kimi-subscription")) {
+        return new Response(JSON.stringify({ data: { ...catalogEntry, id: "kimi-subscription", type: "kimi_subscription" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProviderUpsertModal
+        api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
+        catalog={[{ ...catalogEntry, id: "kimi-subscription", type: "kimi_subscription" }]}
+        loading={false}
+        mode="edit"
+        onClose={vi.fn()}
+        onSaved={vi.fn().mockResolvedValue(undefined)}
+        pluginActions={[{
+          plugin_id: "tokenhub.provider.kimi",
+          action_id: "kimi.quota.read",
+          kind: "read",
+          capability: "quota.read",
+          subject: "kimi_subscription",
+          metadata: {
+            provider_resource_type: "kimi_subscription_account",
+            panel_title: "Kimi subscription quota",
+          },
+        }]}
+        plugins={[{
+          id: "tokenhub.provider.kimi",
+          name: "Kimi Subscription",
+          version: "built-in",
+          source: "built_in",
+          kinds: ["provider"],
+          placements: [],
+          capabilities: [{ kind: "provider_resource_type", name: "kimi_subscription_account", subject: "kimi_subscription" }],
+        }]}
+        provider={provider}
+        resources={[{
+          id: "rsrc_kimi",
+          provider_id: "prv_kimi",
+          name: "Kimi Account",
+          resource_type: "kimi_subscription_account",
+          status: "active",
+          healthy: true,
+          priority: 1,
+          weight: 100,
+        }]}
+        setError={vi.fn()}
+        setLoading={vi.fn()}
+        setNotice={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/provider-catalog/kimi-subscription"))).toBe(true));
+    await user.click(screen.getByRole("tab", { name: "高级" }));
+
+    expect(screen.queryByText("Kimi subscription quota")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/actions/kimi.quota.read"))).toBe(false);
+  });
+});

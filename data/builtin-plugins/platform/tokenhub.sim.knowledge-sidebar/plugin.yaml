@@ -1,0 +1,22 @@
+schema_version: 2
+id: "tokenhub.sim.knowledge-sidebar"
+name: "Knowledge Sidebar Interface Template"
+version: 1.0.0
+summary: "Provide a knowledge-management style sidebar theme and layout."
+description: "Provide a knowledge-management style sidebar theme and layout."
+category: ui_template
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+settings:
+  scopes: ["browser"]
+distribution:
+  license: Apache-2.0
+kinds: ["sim"]
+placement: ["presentation"]
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

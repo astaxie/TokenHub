@@ -17,9 +17,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type AdminUser, type ApiContext } from "../core/types";
+import { rollbackCompatibilityReasonText } from "../i18n/db-evolution-reasons";
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
-import { GitHubBrandIcon } from "./auth";
+import { GitHubBrandIcon } from "../shared/auth";
 
 type VersionReleaseInfo = {
   version: string;
@@ -53,6 +54,16 @@ type RollbackVersionInfo = {
   version: string;
   published_at: string;
   html_url: string;
+  compatibility?: string;
+  compatibility_reason?: string;
+  compatibility_reason_code?: string;
+  compatibility_reason_params?: {
+    version?: string;
+    state?: number;
+    release?: string;
+    min?: number;
+    max?: number;
+  };
 };
 
 function RollbackConfirmDialog({
@@ -577,32 +588,50 @@ export function VersionStatus({ api, user }: { api: ApiContext; user: AdminUser 
                         ) : (
                           <fieldset className="version-options">
                             <legend className="sr-only">{tx("版本回退")}</legend>
-                            {rollbackVersions.map((version) => (
-                              <div
-                                className={selectedVersion === version.version ? "version-option selected" : "version-option"}
-                                key={version.version}
-                              >
-                                <label>
-                                  <input
-                                    checked={selectedVersion === version.version}
-                                    name="rollback-version"
-                                    onChange={() => setSelectedVersion(version.version)}
-                                    type="radio"
-                                    value={version.version}
-                                  />
-                                  <strong>v{version.version}</strong>
-                                  <span>{formatReleaseDate(version.published_at)}</span>
-                                </label>
-                                <a
-                                  aria-label={`${tx("查看发布")} v${version.version}`}
-                                  href={version.html_url}
-                                  rel="noopener noreferrer"
-                                  target="_blank"
+                            {rollbackVersions.map((version) => {
+                              // Without a compatibility verdict (older backend) the option
+                              // stays selectable; a verdict that is not "compatible" blocks
+                              // rollback until the database state or record changes.
+                              const blocked = version.compatibility !== undefined && version.compatibility !== "compatible";
+                              return (
+                                <div
+                                  className={selectedVersion === version.version ? "version-option selected" : "version-option"}
+                                  key={version.version}
                                 >
-                                  <ExternalLink size={14} />
-                                </a>
-                              </div>
-                            ))}
+                                  <label title={blocked ? rollbackCompatibilityReasonText(version) : undefined}>
+                                    <input
+                                      checked={selectedVersion === version.version}
+                                      disabled={blocked}
+                                      name="rollback-version"
+                                      onChange={() => {
+                                        if (!blocked) setSelectedVersion(version.version);
+                                      }}
+                                      type="radio"
+                                      value={version.version}
+                                    />
+                                    <strong>v{version.version}</strong>
+                                    <span className="version-option-meta">
+                                      <span>{formatReleaseDate(version.published_at)}</span>
+                                      {version.compatibility === "compatible" ? (
+                                        <em className="version-compat-badge ok">{tx("数据库兼容")}</em>
+                                      ) : blocked ? (
+                                        <em className="version-compat-badge blocked">
+                                          {version.compatibility === "incompatible" ? tx("数据库不兼容") : tx("兼容性未知")}
+                                        </em>
+                                      ) : null}
+                                    </span>
+                                  </label>
+                                  <a
+                                    aria-label={`${tx("查看发布")} v${version.version}`}
+                                    href={version.html_url}
+                                    rel="noopener noreferrer"
+                                    target="_blank"
+                                  >
+                                    <ExternalLink size={14} />
+                                  </a>
+                                </div>
+                              );
+                            })}
                           </fieldset>
                         )}
 

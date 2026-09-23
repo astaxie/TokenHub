@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.zai-coding-plan"
+name: "Z.AI Coding Plan"
+version: 1.0.0
+summary: "Connect TokenHub to Z.AI Coding Plan."
+description: "Connect TokenHub to Z.AI Coding Plan. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.z.ai/api/coding/paas/v4"
+    catalog:
+      id: "zai-coding-plan"
+      name: "Z.AI Coding Plan"
+      display_name: "Z.AI Coding Plan"
+      type: "openai_compatible"
+      base_url: "https://api.z.ai/api/coding/paas/v4"
+      doc_url: "https://docs.z.ai/devpack/overview"
+      categories: []
+      models_count: 6
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

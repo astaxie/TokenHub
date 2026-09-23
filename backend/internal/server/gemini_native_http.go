@@ -2,23 +2,27 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 func (s *Server) registerModelRoutes() {
-	s.mux.HandleFunc("/v1/models", s.handleModels)
+	s.registerPublicSingleMethodRoute(http.MethodGet, "/v1/models", s.handleModels, jsonMethodNotAllowed(http.MethodGet))
+	s.registerPublicDynamicGETRoute("/v1/models/{model...}", s.handleModelGet, jsonMethodNotAllowed(http.MethodGet))
 	s.mux.HandleFunc("/v1/models/", s.handleModel)
-	s.mux.HandleFunc("/v1beta/models", s.handleGeminiModels)
+	s.registerPublicSingleMethodRoute(http.MethodGet, "/v1beta/models", s.handleGeminiModels, jsonMethodNotAllowed(http.MethodGet))
+	s.registerPublicDynamicGETRoute("/v1beta/models/{model...}", s.handleGeminiModelGetRoute, geminiModelHeadFallback)
+	s.registerDynamicMethodRoute(http.MethodPost, "/v1beta/models/{model...}", s.handleGeminiModelPostRoute)
+	for _, action := range []string{"generateContent", "streamGenerateContent", "countTokens"} {
+		s.registerPublicGatewayOperation(http.MethodPost, "/v1beta/models/{model}:"+action)
+	}
 	s.mux.HandleFunc("/v1beta/models/", s.handleGeminiModel)
 }
 
 func (s *Server) handleGeminiModels(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
-		return
-	}
 	_, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
@@ -33,27 +37,63 @@ func (s *Server) handleGeminiModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGeminiModel(w http.ResponseWriter, r *http.Request) {
+	_, action, err := geminiModelPath(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	jsonMethodNotAllowed(geminiModelAllowedMethod(action))(w, r)
+}
+
+func (s *Server) handleGeminiModelGetRoute(w http.ResponseWriter, r *http.Request) {
 	model, action, err := geminiModelPath(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	if action == "" && r.Method == http.MethodGet {
-		s.handleGeminiModelGet(w, r, model)
+	if action != "" {
+		jsonMethodNotAllowed(http.MethodPost)(w, r)
 		return
 	}
-	if r.Method != http.MethodPost {
-		writeError(w, r, NewHTTPError(http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed"))
+	s.handleGeminiModelGet(w, r, model)
+}
+
+func (s *Server) handleGeminiModelPostRoute(w http.ResponseWriter, r *http.Request) {
+	model, action, err := geminiModelPath(r)
+	if err != nil {
+		writeError(w, r, err)
 		return
 	}
 	switch action {
-	case "generateContent", "streamGenerateContent":
-		s.gatewayInFlight(s.handleGeminiGenerate)(w, r)
+	case "generateContent":
+		s.gatewayInFlight(func(w http.ResponseWriter, r *http.Request) {
+			s.handleGeminiGenerate(w, r, model, false)
+		})(w, r)
+	case "streamGenerateContent":
+		s.gatewayInFlight(func(w http.ResponseWriter, r *http.Request) {
+			s.handleGeminiGenerate(w, r, model, true)
+		})(w, r)
 	case "countTokens":
 		s.handleGeminiCountTokens(w, r, model)
 	default:
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "operation_not_found", "Gemini model operation not found"))
 	}
+}
+
+func geminiModelHeadFallback(w http.ResponseWriter, r *http.Request) {
+	_, action, err := geminiModelPath(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	jsonMethodNotAllowed(geminiModelAllowedMethod(action))(w, r)
+}
+
+func geminiModelAllowedMethod(action string) string {
+	if action == "" {
+		return http.MethodGet
+	}
+	return http.MethodPost
 }
 
 func (s *Server) handleGeminiModelGet(w http.ResponseWriter, r *http.Request, modelName string) {
@@ -82,8 +122,8 @@ func (s *Server) handleGeminiCountTokens(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var payload map[string]any
-	if err := decodeJSON(r, &payload); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSONLimit(w, r, &payload, s.config.MaxMultimodalRequestBytes); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	tokens := estimateAnthropicValueTokens(payload["contents"]) + estimateAnthropicValueTokens(payload["systemInstruction"]) + estimateAnthropicValueTokens(payload["tools"])
@@ -93,29 +133,109 @@ func (s *Server) handleGeminiCountTokens(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, map[string]any{"totalTokens": tokens})
 }
 
-func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request) {
-	model, action, err := geminiModelPath(r)
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-	stream := action == "streamGenerateContent"
+func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, model string, stream bool) {
 	project, key, err := s.authenticate(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	var payload map[string]any
-	if err := decodeJSON(r, &payload); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
-		return
-	}
-	request, reverseNames, err := geminiToResponsesRequest(model, payload, stream)
-	if err != nil {
+	if err := s.decodeJSONLimit(w, r, &payload, s.config.MaxMultimodalRequestBytes); err != nil {
 		writeError(w, r, err)
 		return
 	}
-	routed, ok := s.startRoutedCall(w, r, project, key, model, stream, payload)
+	admittedAt := time.Now().UTC()
+	call, err := s.admitRoutedCall(w, r, project, key, model, stream, requestTokenReservation(payload))
+	if err != nil {
+		requestID := s.finishRejectedCall(r, admittedAt, project, key, model, stream, err, guardrailAuditSummary{Model: model})
+		w.Header().Set("x-request-id", requestID)
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAuthContextHooks(r.Context(), &call, r.Header); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayGeminiDecodeNormalizeHooks(r.Context(), call, r.Header, &payload, model, stream); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayAdmissionHooks(r.Context(), call, r.Header, payload, requestTokenReservation(payload)); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayGeminiPrivacyPreHooks(r.Context(), call, r.Header, &payload, model, stream); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayGeminiGuardrailPreHooks(r.Context(), call, &payload, model, stream); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	if err := s.runGatewayGeminiContextOptimizeHooks(r.Context(), call, &payload, model, stream); err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, guardrailAuditSummary{Model: model})
+		writeError(w, r, err)
+		return
+	}
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, geminiGuardrailTargets(payload))
+	auditPayload := guardrailRequestAuditPayload(model, decision, payload)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	if !stream {
+		resp, usage, hit, err := s.runGatewayCacheLookupHooks(r.Context(), call, payload)
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
+		if hit {
+			resp, err = s.runGatewayResponsePostHooks(r.Context(), call, RouteSelection{}, resp, providerRouteProtocolGemini)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			resp, err = s.runGatewayGuardrailPostHooks(r.Context(), call, RouteSelection{}, resp, usage, providerRouteProtocolGemini)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			body, ok := resp.(map[string]any)
+			if !ok {
+				err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, RouteSelection{}, body, usage, providerRouteProtocolGemini)
+			if err != nil {
+				s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+				writeError(w, r, err)
+				return
+			}
+			s.finishSuccessfulRoutedCall(r, RoutedCall{Call: call}, RouteSelection{}, usage, nil, auditPayload, body)
+			w.Header().Set("x-request-id", call.RequestID)
+			w.Header().Set("x-tokenhub-cache", "hit")
+			writeJSON(w, http.StatusOK, body)
+			return
+		}
+	}
+	request, reverseNames, err := geminiToResponsesRequest(model, payload, stream)
+	if err != nil {
+		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, auditPayload)
 	if !ok {
 		return
 	}
@@ -123,43 +243,77 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request) {
 	if stream {
 		capability = AdapterCapabilityResponseStream
 	}
-	routed.Routes = s.routesWithAdapterCapability(routed.Routes, capability)
+	routed.Routes = s.routesWithAdapterCapabilityOrProviderCall(routed.Call, routed.Routes, capability, providerRouteProtocolGemini)
 	if len(routed.Routes) == 0 {
 		err := NewHTTPError(http.StatusNotImplemented, "provider_capability_not_supported", "No route supports the Gemini CLI compatibility protocol")
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, payload)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	affinity, err := s.geminiGatewayAffinity(key.ID, r.Header, payload, routed.Routes)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, payload)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	if affinity != nil {
 		routed.Affinity = affinity
 		routed.Call.Affinity = affinity
-		routed.Routes = s.planRouteOrder(routed.Call, routed.Routes)
+		routed.Routes = s.planRouteOrderWithContext(r.Context(), routed.Call, routed.Routes)
 	}
 	if stream {
-		s.handleStreamingGemini(w, r, routed, request, payload, reverseNames)
+		s.handleStreamingGemini(w, r, routed, request, payload, reverseNames, auditPayload)
 		return
 	}
 	response, route, usage, attempts, err := s.executeRoutedGemini(r, routed, request, payload)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, payload)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	converted, err := codexResponsesToGemini(response, model, usage, reverseNames)
 	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, payload)
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, payload, converted)
+	postResp, err := s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, converted, providerRouteProtocolGemini)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	converted, ok = postResp.(map[string]any)
+	if !ok {
+		err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	postResp, err = s.runGatewayGuardrailPostHooks(r.Context(), routed.Call, route, converted, usage, providerRouteProtocolGemini)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	converted, ok = postResp.(map[string]any)
+	if !ok {
+		err := NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response")
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, converted, usage, providerRouteProtocolGemini)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, route, payload, converted, usage, providerRouteProtocolGemini)
+	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, converted)
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	writeJSON(w, http.StatusOK, converted)
@@ -176,9 +330,26 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 		if omitReasoningEffort {
 			upstream = withoutResponsesReasoningEffort(upstream)
 		}
-		response, usage, err := s.invokeResponsesAdapter(ctx, prepared, upstream, geminiCodexCompatibilityHeaders(r.Header, payload))
-		if isCodexModelUnsupportedError(err) {
-			s.removeCodexResourceModel(routeResourceID(prepared), prepared.ProviderModel)
+		if transformErr := s.runGatewayResponsesRequestTransformHooksForProtocol(ctx, routed.Call, prepared, &upstream, providerRouteProtocolGemini); transformErr != nil {
+			return nil, Usage{}, transformErr
+		}
+		if resp, usage, handled, err := s.runGatewayProviderCallHooks(ctx, routed.Call, prepared, upstream, providerRouteProtocolGemini); err != nil || handled {
+			if err != nil {
+				return nil, usage, err
+			}
+			body, ok := resp.(map[string]any)
+			if !ok {
+				return nil, usage, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Responses provider returned an invalid payload")
+			}
+			return body, usage, nil
+		}
+		headers := r.Header
+		if bridge, ok := s.geminiRouteBridge(prepared); ok {
+			headers = bridge.GeminiHeaders(r.Header, payload)
+		}
+		response, usage, err := s.invokeResponsesAdapter(ctx, prepared, upstream, headers)
+		if providerResourceModelUnsupportedError(err) {
+			s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
 		}
 		if err != nil {
 			return nil, usage, err
@@ -192,7 +363,7 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 	return response, route, usage, attempts, err
 }
 
-func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, routed RoutedCall, request ResponsesRequest, payload map[string]any, reverseNames map[string]string) {
+func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, routed RoutedCall, request ResponsesRequest, payload map[string]any, reverseNames map[string]string, auditPayload any) {
 	tracker := &streamWriteTracker{writer: w}
 	_, route, usage, attempts, streamErr := executeRoutedWithStore(r.Context(), s.store, routed, true, func(ctx context.Context, candidate RouteSelection, omitReasoningEffort bool, attempt int) (struct{}, Usage, error) {
 		prepared, err := s.prepareRouteForUpstream(ctx, candidate)
@@ -203,14 +374,35 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		if omitReasoningEffort {
 			upstream = withoutResponsesReasoningEffort(upstream)
 		}
+		if transformErr := s.runGatewayResponsesRequestTransformHooksForProtocol(ctx, routed.Call, prepared, &upstream, providerRouteProtocolGemini); transformErr != nil {
+			return struct{}{}, Usage{}, transformErr
+		}
 		tracker.onFirstWrite = func() {
 			w.Header().Set("content-type", "text/event-stream")
 			w.Header().Set("cache-control", "no-cache")
 			w.Header().Set("x-request-id", routed.Call.RequestID)
 			s.writeRouteHeaders(w, routed.Call, prepared, attempt)
 		}
-		sink := newCodexGeminiStreamSink(tracker, request.Model, reverseNames)
-		usage, err := s.streamCodexCompatibility(ctx, prepared, upstream, geminiCodexCompatibilityHeaders(r.Header, payload), sink)
+		streamWriter := io.Writer(tracker)
+		var transformer *gatewayStreamTransformWriter
+		if s.hasGatewayStreamTransformHooksForRoute(prepared, providerRouteProtocolGemini) {
+			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolGemini, tracker)
+			streamWriter = transformer
+		}
+		headers := r.Header
+		if bridge, ok := s.geminiRouteBridge(prepared); ok {
+			headers = bridge.GeminiHeaders(r.Header, payload)
+		}
+		sink := newCodexGeminiStreamSink(streamWriter, request.Model, reverseNames)
+		_, usage, handled, err := s.runGatewayProviderCallHooksOutput(ctx, routed.Call, prepared, upstream, providerRouteProtocolGemini, streamWriter)
+		if !handled && err == nil {
+			usage, err = s.streamCodexCompatibility(ctx, prepared, upstream, headers, sink)
+		}
+		if transformer != nil {
+			if closeErr := transformer.Close(); err == nil && closeErr != nil {
+				err = closeErr
+			}
+		}
 		return struct{}{}, usage, classifyStreamError(ctx, err, tracker.Wrote())
 	})
 	status, code := statusAndCode(streamErr)
@@ -219,6 +411,13 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		s.store.MarkRouteUsed(route.Route.ID)
 		s.store.MarkProviderResourceUsed(routeResourceID(route))
 	}
+	// StreamOutputCommitted stays unwired: it would keep the full TPM
+	// reservation on an interrupted stream with no provider token usage
+	// (store_routing_calls.go), changing quota behavior beyond this
+	// observability-only change. FirstByteAt and StreamFailed only label
+	// observability output, so wiring them is safe.
+	routed.Call.FirstByteAt = tracker.firstByteTime(streamErr == nil)
+	routed.Call.StreamFailed = streamErr != nil && tracker.Wrote()
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
 		Route:           route,
@@ -227,7 +426,7 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 		StatusCode:      status,
 		ErrorCode:       code,
 		ErrorMessage:    errorMessageOrEmpty(streamErr),
-		RequestPayload:  payload,
+		RequestPayload:  auditPayload,
 		ResponsePayload: auditStreamPayload(status, code, streamErr),
 	})
 	if streamErr != nil && !tracker.Wrote() {
@@ -238,11 +437,12 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 }
 
 func (s *Server) geminiGatewayAffinity(apiKeyID string, headers http.Header, payload map[string]any, routes []RouteSelection) (*RequestAffinity, error) {
-	if !routesContainAdapterType(routes, ProviderOpenAICodex) {
+	adapterType := s.firstRouteAdapterTypeWithCapability(routes, AdapterCapabilityAffinity)
+	if adapterType == "" {
 		return nil, nil
 	}
 	identifier := geminiSessionIdentifier(headers, payload)
-	return resolveCodexBridgeAffinity(s.config.SecretKey, apiKeyID, codexBridgeProtocolGemini, identifier)
+	return resolveProviderBridgeAffinityWithPolicy(s.config.SecretKey, apiKeyID, adapterType, adapterSessionAffinityPolicy(s.adapterRegistry, adapterType), codexBridgeProtocolGemini, identifier)
 }
 
 func geminiSessionIdentifier(headers http.Header, payload map[string]any) string {
@@ -292,8 +492,8 @@ func geminiModelAllowed(models []Model, name string) bool {
 // geminiAccessibleModels only advertises models that this native Gemini
 // surface can actually execute. AccessibleModels deliberately answers the
 // broader gateway question and may include chat-only routes; Gemini requests
-// are translated to Responses and, by contract, are backed by Codex
-// subscription resources.
+// are translated through the Codex Responses compatibility protocol, which is
+// declared by provider plugins instead of inferred from a provider type.
 func (s *Server) geminiAccessibleModels(key APIKey) []Model {
 	models := s.store.AccessibleModels(key)
 	compatible := make([]Model, 0, len(models))
@@ -307,7 +507,7 @@ func (s *Server) geminiAccessibleModels(key APIKey) []Model {
 		}
 		routes = s.routesWithAdapterCapability(routes, AdapterCapabilityResponses)
 		for _, route := range routes {
-			if route.Provider.Type == ProviderOpenAICodex && routeMatchesProject(route.Route, key.ProjectID) {
+			if _, ok := s.geminiRouteBridge(route); ok && routeMatchesProject(route.Route, key.ProjectID) {
 				compatible = append(compatible, model)
 				break
 			}
@@ -329,6 +529,6 @@ func geminiModelObject(model Model) map[string]any {
 		"description":                "TokenHub routed model",
 		"inputTokenLimit":            inputLimit,
 		"outputTokenLimit":           32768,
-		"supportedGenerationMethods": []string{"generateContent", "countTokens"},
+		"supportedGenerationMethods": []string{"generateContent", "streamGenerateContent", "countTokens"},
 	}
 }

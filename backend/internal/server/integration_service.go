@@ -10,6 +10,7 @@ import (
 type IntegrationService struct {
 	store    Store
 	registry *AdapterRegistry
+	client   *http.Client
 }
 
 type ProviderProbeBatchResult struct {
@@ -21,8 +22,12 @@ type ProviderProbeBatchResult struct {
 	Errors     []string              `json:"errors,omitempty"`
 }
 
-func NewIntegrationService(store Store, registry *AdapterRegistry) *IntegrationService {
-	return &IntegrationService{store: store, registry: registry}
+func NewIntegrationService(store Store, registry *AdapterRegistry, clients ...*http.Client) *IntegrationService {
+	client := http.DefaultClient
+	if len(clients) > 0 && clients[0] != nil {
+		client = clients[0]
+	}
+	return &IntegrationService{store: store, registry: registry, client: client}
 }
 
 func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceID string, request *ProviderProbeRequest) (any, error) {
@@ -38,9 +43,28 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	if err != nil {
 		return nil, err
 	}
+	descriptor, described := s.registry.Describe(provider.Type)
 	prober, supported := adapter.(ProviderResourceProber)
+	supported = supported && described && adapterSupports(descriptor, AdapterCapabilityProbe)
 	if !supported {
-		return s.store.TestProviderResource(resourceID)
+		if described && descriptor.ProviderPolicy.StoreProbeFallback {
+			return s.store.TestProviderResource(resourceID)
+		}
+		effective := effectiveProviderResourceConfig(provider, &resource)
+		descriptor, _ := s.registry.Describe(effective.Type)
+		if err := validateProviderHeaderSupportWithRegistry(s.registry, effective.Type, effective.Headers); err != nil {
+			return nil, err
+		}
+		startedAt := time.Now()
+		_, probeErr := CustomProviderCatalogFromUpstreamWithDescriptor(ctx, s.client, ProviderCreateRequest{
+			Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
+			Headers: effective.Headers, SensitiveHeaders: effective.SensitiveHeaders, Options: effective.Options,
+		}, descriptor)
+		s.finishProbe(ctx, provider, resource, startedAt, probeErr, Usage{})
+		if probeErr != nil {
+			return nil, probeErr
+		}
+		return s.store.RecoverProviderResource(resourceID)
 	}
 	probeRequest := prober.DefaultProbeRequest()
 	if request != nil {
@@ -52,9 +76,9 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	if err != nil {
 		return nil, err
 	}
-	// A probe that reached the upstream and came back clean is the one signal strong
-	// enough to clear the breaker. This is deliberately confined to the prober branch:
-	// the fallback above never contacts the upstream, so its "success" proves nothing.
+	// An adapter probe that reached the upstream and came back clean is strong
+	// enough to clear the breaker. The catalog-discovery fallback performs the
+	// same upstream check and recovers its resource before returning above.
 	if _, recoverErr := s.store.RecoverProviderResource(resource.ID); recoverErr != nil {
 		return nil, recoverErr
 	}
@@ -70,8 +94,52 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	if err != nil {
 		return nil, err
 	}
-	if _, supported := adapter.(ProviderResourceProber); !supported {
-		return s.store.TestProvider(providerID)
+	descriptor, described := s.registry.Describe(provider.Type)
+	if healthProber, supported := resolveProviderHealthProber(s.registry, provider.Type, adapter); supported {
+		result, probeErr := healthProber.ProbeProvider(ctx, effectiveProviderResourceConfig(provider, nil))
+		_, _ = s.store.SetProviderHealth(providerID, probeErr == nil)
+		if probeErr != nil {
+			return nil, probeErr
+		}
+		return result, nil
+	}
+	if _, supported := adapter.(ProviderResourceProber); !supported || !described || !adapterSupports(descriptor, AdapterCapabilityProbe) {
+		if described && descriptor.ProviderPolicy.StoreProbeFallback {
+			return s.store.TestProvider(providerID)
+		}
+		effectiveProvider := effectiveProviderResourceConfig(provider, nil)
+		var firstResourceErr error
+		for _, resource := range s.store.ListProviderResources() {
+			if resource.ProviderID == providerID && resource.Status == StatusActive {
+				result, probeErr := s.TestProviderResource(ctx, resource.ID, nil)
+				if probeErr != nil {
+					if firstResourceErr == nil {
+						firstResourceErr = probeErr
+					}
+					continue
+				}
+				_, _ = s.store.SetProviderHealth(providerID, true)
+				return result, nil
+			}
+		}
+		if firstResourceErr != nil {
+			_, _ = s.store.SetProviderHealth(providerID, false)
+			return nil, firstResourceErr
+		}
+		if err := validateProviderHeaderSupportWithRegistry(s.registry, effectiveProvider.Type, effectiveProvider.Headers); err != nil {
+			_, _ = s.store.SetProviderHealth(providerID, false)
+			return nil, err
+		}
+		descriptor, _ := s.registry.Describe(effectiveProvider.Type)
+		_, probeErr := CustomProviderCatalogFromUpstreamWithDescriptor(ctx, s.client, ProviderCreateRequest{
+			Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,
+			Headers: effectiveProvider.Headers, SensitiveHeaders: effectiveProvider.SensitiveHeaders, Options: effectiveProvider.Options,
+		}, descriptor)
+		if probeErr != nil {
+			_, _ = s.store.SetProviderHealth(providerID, false)
+			return nil, probeErr
+		}
+		return s.store.SetProviderHealth(providerID, true)
 	}
 	result := ProviderProbeBatchResult{ProviderID: providerID}
 	var firstErr error
@@ -104,6 +172,25 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	return result, nil
 }
 
+func resolveProviderHealthProber(registry *AdapterRegistry, providerType string, adapters ...any) (ProviderHealthProber, bool) {
+	var adapter any
+	if len(adapters) > 0 {
+		adapter = adapters[0]
+	} else {
+		resolved, err := registry.Resolve(providerType)
+		if err != nil {
+			return nil, false
+		}
+		adapter = resolved
+	}
+	healthProber, supported := adapter.(ProviderHealthProber)
+	if !supported {
+		return nil, false
+	}
+	descriptor, described := registry.Describe(providerType)
+	return healthProber, described && adapterSupports(descriptor, AdapterCapabilityProbe)
+}
+
 func (s *IntegrationService) finishProbe(ctx context.Context, provider Provider, resource ProviderResource, startedAt time.Time, err error, usage Usage) {
 	disposition := providerErrorDisposition(err)
 	if err == nil {
@@ -125,19 +212,9 @@ func (s *IntegrationService) finishProbe(ctx context.Context, provider Provider,
 }
 
 func integrationProvider(store Store, providerID string) (Provider, bool) {
-	for _, provider := range store.ListProviders() {
-		if provider.ID == providerID {
-			return provider, true
-		}
-	}
-	return Provider{}, false
+	return store.GetProvider(providerID)
 }
 
 func integrationProviderResource(store Store, resourceID string) (ProviderResource, bool) {
-	for _, resource := range store.ListProviderResources() {
-		if resource.ID == resourceID {
-			return resource, true
-		}
-	}
-	return ProviderResource{}, false
+	return store.GetProviderResource(resourceID)
 }

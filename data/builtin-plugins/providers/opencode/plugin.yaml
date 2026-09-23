@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.opencode"
+name: "OpenCode Zen"
+version: 1.0.0
+summary: "Connect TokenHub to OpenCode Zen."
+description: "Connect TokenHub to OpenCode Zen. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://opencode.ai/zen/v1"
+    catalog:
+      id: "opencode"
+      name: "OpenCode Zen"
+      display_name: "OpenCode Zen"
+      type: "openai_compatible"
+      base_url: "https://opencode.ai/zen/v1"
+      doc_url: "https://opencode.ai/docs/zen"
+      categories: []
+      models_count: 70
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

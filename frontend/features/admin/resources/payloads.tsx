@@ -1,3 +1,4 @@
+import { providerBlockedAddressMessage } from "./provider-network-errors";
 import { appRole } from "../core/navigation";
 import { clearSavedSession } from "../core/session";
 import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ApprovalRequest, authExpiredEventName, type FieldConfig, type Project, type ProviderCatalogModel, type ProviderResource, type ResourceConfig, type UserImportResult } from "../core/types";
@@ -5,24 +6,45 @@ import { inferModelCategoryText, normalizeNotificationChannelType, notificationC
 import { firstActiveModel, firstActiveProject, firstActiveProvider, firstActiveTeam, firstActiveUser, firstCostCenterCode, firstIssueableProject, projectMemberProjectSelectOptions, stringifyValue } from "../domain/entities";
 import { compactNumber } from "../domain/formatting";
 import { enumValueLabel, numberFromUnknown, numberOr, parseLooseValue, splitList } from "../domain/labels";
+import { defaultProviderSystemPromptTransformPolicy, providerSystemPromptTransformPolicy } from "../domain/provider-attribution";
+import { defaultProviderTypeValue, legacyProviderAuthModeField, providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
 import { initialModelRoutes } from "../domain/provider-model-selection";
+import { providerPluginOptionValues } from "../domain/provider-plugin-options";
+import { modelMetadataPayload } from "../domain/model-display-name";
+import { defaultDisplayName } from "../domain/form-defaults";
+import { configuredPriceEntered } from "../domain/configured-pricing";
+import { providerReasoningOptions, providerReasoningOverrideFormValues } from "../domain/provider-reasoning";
+import { providerEgressTestPayload } from "../domain/provider-egress";
+import { providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
+import { isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType } from "../domain/provider-resource-types";
+import { modelPricingPeriodsInvalidPeriodError, modelPricingPeriodsJSONError, modelPricingPeriodsObjectArrayError, parseModelPricingPeriods } from "../domain/model-pricing-periods";
+import { providerTypeOptionsFromData } from "../shared/ui";
 import { activeLanguage, tx } from "../i18n/runtime";
 import { handleApprovalOrJSON } from "./governance-config";
-import { projectQuotaFields, type ProjectQuotaValues } from "../views/crud-projects";
+import { projectQuotaFields, type ProjectQuotaValues } from "../domain/project-quota";
 
-export function providerPayload(values: Record<string, string>) {
+export function providerPayload(values: Record<string, string>, data?: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">) {
+  const providerTypeOptions = data ? providerTypeOptionsFromData(data, values) : [];
+  const authMode = providerAuthMode(values, providerTypeOptions);
   return {
     id: values.id,
     name: values.name,
     type: values.type,
     base_url: values.base_url,
     api_key: values.api_key,
+    clear_api_key: values.clear_api_key === "true",
     status: values.status || "active",
     healthy: values.healthy !== "false",
     priority: numberOr(values.priority, 10),
-		catalog_id: values.catalog_id,
-		model_category: values.model_category,
-		selected_models: splitList(values.selected_models),
+    ...providerHeadersPayload(values.custom_headers),
+    [providerAuthModeField]: authMode,
+    [legacyProviderAuthModeField]: authMode,
+    system_prompt_transform_policy: providerSystemPromptTransformPolicy(values) || defaultProviderSystemPromptTransformPolicy(values.type, values.catalog_id, providerTypeOptions),
+    claude_code_attribution_policy: providerSystemPromptTransformPolicy(values) || defaultProviderSystemPromptTransformPolicy(values.type, values.catalog_id, providerTypeOptions),
+    catalog_id: values.catalog_id,
+    model_category: values.model_category,
+    options: { ...providerReasoningOptions(values), ...providerPluginOptionValues(values) },
+    selected_models: splitList(values.selected_models),
     custom_models: parseProviderCatalogModels(values.custom_models),
   };
 }
@@ -37,19 +59,20 @@ function parseProviderCatalogModels(value?: string): ProviderCatalogModel[] {
   }
 }
 
-export function providerUpdatePayload(values: Record<string, string>) {
-  const payload = providerPayload(values) as Record<string, unknown>;
+export function providerUpdatePayload(values: Record<string, string>, data?: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">) {
+  const payload = providerPayload(values, data) as Record<string, unknown>;
   if (!values.api_key?.trim()) {
     delete payload.api_key;
   }
   return payload;
 }
 
-export function providerResourcePayload(values: Record<string, string>) {
-  const isOpenAIAccount = values.resource_type === "openai_subscription";
-  const credentials = isOpenAIAccount
+export function providerResourcePayload(values: Record<string, string>, data?: AppData) {
+  const isAccountResource = providerResourceValuesAreAccount(values, data);
+  const authType = values.auth_type?.trim();
+  const credentials = isAccountResource
     ? {
-        auth_type: values.auth_type || "oauth",
+        ...(authType ? { auth_type: authType } : {}),
         access_token: values.access_token,
         refresh_token: values.refresh_token,
         id_token: values.id_token,
@@ -65,9 +88,9 @@ export function providerResourcePayload(values: Record<string, string>) {
   return {
     provider_id: values.provider_id,
     name: values.name,
-    resource_type: values.resource_type || "api_key",
+    resource_type: values.resource_type || providerResourceAPIKeyType,
     base_url: values.base_url,
-    api_key: isOpenAIAccount ? values.access_token : values.api_key,
+    api_key: isAccountResource ? values.access_token : values.api_key,
     group: values.group || "default",
     region: values.region,
     environment: values.environment,
@@ -78,43 +101,60 @@ export function providerResourcePayload(values: Record<string, string>) {
     rate_limit_rpm: numberOr(values.rate_limit_rpm, 0),
     token_limit_tpm: numberOr(values.token_limit_tpm, 0),
     max_concurrency: numberOr(values.max_concurrency, 0),
+    ...providerHeadersPayload(values.custom_headers),
     credentials,
-    options: providerResourceOptions(values),
+    options: providerResourceOptions(values, data),
   };
 }
 
-export function providerResourceUpdatePayload(values: Record<string, string>) {
-  const payload = providerResourcePayload(values) as Record<string, unknown>;
-  const isOpenAIAccount = values.resource_type === "openai_subscription";
-  if (isOpenAIAccount && !values.access_token?.trim()) delete payload.api_key;
-  if (!isOpenAIAccount && !values.api_key?.trim()) delete payload.api_key;
-  if (isOpenAIAccount && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
+export function providerResourceUpdatePayload(values: Record<string, string>, data?: AppData) {
+  const payload = providerResourcePayload(values, data) as Record<string, unknown>;
+  const isAccountResource = providerResourceValuesAreAccount(values, data);
+  if (isAccountResource && !values.access_token?.trim()) delete payload.api_key;
+  if (!isAccountResource && !values.api_key?.trim()) delete payload.api_key;
+  if (isAccountResource && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
     delete payload.credentials;
   }
   return payload;
 }
 
-export function providerResourceOptions(values: Record<string, string>) {
-  if (values.resource_type !== "openai_subscription") return {};
-  return {
-    credential_source: "openai_subscription",
-    auth_type: values.auth_type || "oauth",
+export function providerResourceOptions(values: Record<string, string>, data?: AppData) {
+  const authType = values.auth_type?.trim();
+  const accountOptions: Record<string, string> = providerResourceValuesAreAccount(values, data) ? {
+    credential_source: values.resource_type,
+    ...(authType ? { auth_type: authType } : {}),
     account_email: values.account_email,
     account_id: values.account_id,
     organization_id: values.organization_id,
     plan_type: values.plan_type,
     token_expires_at: values.expires_at,
     scopes: values.scopes,
-  };
+  } : {};
+  const options = providerReasoningOptions(values, accountOptions);
+  const transformPolicy = providerSystemPromptTransformPolicy(values);
+  if (transformPolicy === "preserve" || transformPolicy === "strip") {
+    options.system_prompt_transform_policy = transformPolicy;
+    delete options.claude_code_attribution_policy;
+  } else {
+    delete options.system_prompt_transform_policy;
+    delete options.claude_code_attribution_policy;
+  }
+  return { ...options, ...providerPluginOptionValues(values) };
 }
 
-export function providerResourceToForm(item: ProviderResource) {
+function providerResourceValuesAreAccount(values: Record<string, string>, data?: AppData) {
+  if (!data) return isProviderAccountResourceType(values.resource_type);
+  const providerType = data.providers.find((provider) => provider.id === values.provider_id)?.type ?? "";
+  return isProviderAccountResourceTypeForData(data, providerType, values.resource_type);
+}
+
+export function providerResourceToForm(item: ProviderResource, providerOptions?: Record<string, string>) {
   const summary = item.credential_summary ?? {};
   return {
     provider_id: item.provider_id,
     name: item.name,
     resource_type: item.resource_type,
-    auth_type: summary.auth_type || item.options?.auth_type || "oauth",
+    auth_type: summary.auth_type || item.options?.auth_type || "",
     access_token: "",
     refresh_token: "",
     id_token: "",
@@ -133,14 +173,45 @@ export function providerResourceToForm(item: ProviderResource) {
     rate_limit_rpm: String(item.rate_limit_rpm ?? ""),
     token_limit_tpm: String(item.token_limit_tpm ?? ""),
     max_concurrency: String(item.max_concurrency ?? ""),
+    system_prompt_transform_policy: providerSystemPromptTransformPolicy(item.options ?? {}) || "inherit",
     region: item.region ?? "",
     environment: item.environment ?? "",
     status: item.status,
     healthy: String(item.healthy),
+    custom_headers: providerHeadersFormValue(item.headers, item.sensitive_headers),
+    ...providerReasoningOverrideFormValues(item.options, providerOptions),
   };
 }
 
-export function modelPayload(values: Record<string, string>) {
+export function providerResourceSystemPromptTransformPolicyPayload(resource: ProviderResource, policy: string) {
+  const options = { ...(resource.options ?? {}) };
+  if (policy === "inherit") {
+    delete options.system_prompt_transform_policy;
+    delete options.claude_code_attribution_policy;
+  } else {
+    options.system_prompt_transform_policy = policy;
+    delete options.claude_code_attribution_policy;
+  }
+  return {
+    provider_id: resource.provider_id,
+    name: resource.name,
+    resource_type: resource.resource_type,
+    base_url: resource.base_url ?? "",
+    group: resource.group ?? "",
+    region: resource.region ?? "",
+    environment: resource.environment ?? "",
+    status: resource.status,
+    healthy: resource.healthy,
+    priority: resource.priority,
+    weight: resource.weight,
+    rate_limit_rpm: resource.rate_limit_rpm ?? 0,
+    token_limit_tpm: resource.token_limit_tpm ?? 0,
+    max_concurrency: resource.max_concurrency ?? 0,
+    options,
+  };
+}
+
+export function modelPayload(values: Record<string, string>, existingMetadata?: Record<string, string>) {
   const payload = numberPayload(
     {
       name: values.name,
@@ -149,20 +220,58 @@ export function modelPayload(values: Record<string, string>) {
       context_window: values.context_window,
       input_price_usd_per_1m: values.input_price_usd_per_1m,
       cache_read_price_usd_per_1m: values.cache_read_price_usd_per_1m,
+      cache_write_price_usd_per_1m: values.cache_write_price_usd_per_1m,
+      cache_write_5m_price_usd_per_1m: values.cache_write_5m_price_usd_per_1m,
+      cache_write_1h_price_usd_per_1m: values.cache_write_1h_price_usd_per_1m,
       output_price_usd_per_1m: values.output_price_usd_per_1m,
       embedding_price_usd_per_1m: values.embedding_price_usd_per_1m,
       status: values.status,
     },
-    ["context_window", "input_price_usd_per_1m", "cache_read_price_usd_per_1m", "output_price_usd_per_1m", "embedding_price_usd_per_1m"],
+    [
+      "context_window",
+      "input_price_usd_per_1m",
+      "cache_read_price_usd_per_1m",
+      "cache_write_price_usd_per_1m",
+      "cache_write_5m_price_usd_per_1m",
+      "cache_write_1h_price_usd_per_1m",
+      "output_price_usd_per_1m",
+      "embedding_price_usd_per_1m",
+    ],
   );
   if (values.modality === "embedding") {
     payload.cache_read_price_usd_per_1m = 0;
+    payload.cache_write_price_usd_per_1m = 0;
+    payload.cache_write_price_configured = false;
+    payload.cache_write_5m_price_usd_per_1m = 0;
+    payload.cache_write_5m_price_configured = false;
+    payload.cache_write_1h_price_usd_per_1m = 0;
+    payload.cache_write_1h_price_configured = false;
+  } else {
+    payload.cache_write_price_configured = configuredPriceEntered(values.cache_write_price_usd_per_1m);
+    payload.cache_write_5m_price_configured = configuredPriceEntered(values.cache_write_5m_price_usd_per_1m);
+    payload.cache_write_1h_price_configured = configuredPriceEntered(values.cache_write_1h_price_usd_per_1m);
   }
   payload.category = values.category || inferModelCategoryText(values.name || values.family || "");
   payload.capabilities = splitList(values.capabilities);
   payload.supported_parameters = splitList(values.supported_parameters);
   payload.input_modalities = splitList(values.input_modalities);
   payload.output_modalities = splitList(values.output_modalities);
+  try {
+    payload.pricing_periods = parseModelPricingPeriods(values.pricing_periods);
+  } catch (err) {
+    if (err instanceof Error && err.message === modelPricingPeriodsJSONError) throw new Error(tx("分时价格配置必须是 JSON 数组"));
+    if (err instanceof Error && err.message === modelPricingPeriodsObjectArrayError) throw new Error(tx("分时价格配置必须是 JSON 对象数组"));
+    if (err instanceof Error && err.message === modelPricingPeriodsInvalidPeriodError) throw new Error(tx("分时价格配置包含无效时间、时区或生效日期"));
+    throw err;
+  }
+  Object.assign(payload, modelMetadataPayload(existingMetadata, values.display_name ?? ""));
+  const pricingMetadata = { ...(payload.metadata as Record<string, string> | undefined) };
+  if (values.modality !== "embedding" && configuredPriceEntered(values.cache_read_price_usd_per_1m)) {
+    pricingMetadata.cache_read_price_configured = "true";
+  } else {
+    pricingMetadata.cache_read_price_configured = "false";
+  }
+  payload.metadata = pricingMetadata;
   const routes = initialModelRoutes(values.initial_provider_models);
   if (routes.length > 0) payload.routes = routes;
   return payload;
@@ -402,7 +511,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "provider_id") values[field.key] = firstActiveProvider(data)?.id ?? "";
     if (field.key === "model_name") values[field.key] = firstActiveModel(data)?.name ?? "";
     if (field.key === "group") values[field.key] = "default";
-    if (field.key === "resource_type") values[field.key] = "api_key";
+    if (field.key === "resource_type") values[field.key] = providerResourceAPIKeyType;
     if (field.key === "environment") values[field.key] = "prod";
     if (field.key === "project_id") values[field.key] = config.view === "api-keys" ? firstIssueableProject(data, currentUser) : (firstActiveProject(data)?.id ?? "");
     if (field.key === "owner_user_id" && config.view === "api-keys") values[field.key] = currentUser && appRole(currentUser.role) !== "admin" ? currentUser.id : "";
@@ -417,8 +526,12 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "monthly_cost_usd") values[field.key] = "2000";
     if (field.key === "max_concurrency") values[field.key] = "20";
     if (field.key === "modality") values[field.key] = "chat";
-    if (field.key === "type") values[field.key] = "openai_compatible";
-    if (field.key === "auth_type") values[field.key] = "api_key";
+    if (field.key === "type") {
+      values[field.key] = config.view === "providers"
+        ? defaultProviderTypeValue(providerTypeOptionsFromData(data))
+        : "";
+    }
+    if (field.key === "auth_type") values[field.key] = providerResourceAPIKeyType;
     if (field.key === "scope") values[field.key] = "project";
     if (field.key === "period") values[field.key] = "monthly";
     if (field.key === "enforcement") values[field.key] = "block";
@@ -435,7 +548,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
     if (field.key === "owner") values[field.key] = firstActiveUser(data)?.id ?? "";
     if (field.key === "cost_center") values[field.key] = firstCostCenterCode(data);
     if (field.key === "role_key") values[field.key] = "user";
-    if (field.key === "display_name") values[field.key] = "普通用户";
+    if (field.key === "display_name") values[field.key] = defaultDisplayName(config.view);
     if (field.key === "data_scope") values[field.key] = "self";
     if (field.key === "permissions") values[field.key] = "overview:read, project:read";
     if (field.key === "menu_scopes") values[field.key] = "overview, projects";
@@ -505,10 +618,19 @@ export function notificationChannelPayload(values: Record<string, string>, exist
   const whatsappAccessToken = values.access_token || stringifyValue(existing?.fields?.access_token || existing?.fields?.whatsapp_access_token || existing?.fields?.secret);
   let fields: Record<string, unknown>;
   if (type === "email") {
+    // "auto" is the legacy/opportunistic STARTTLS mode: the field is left unset
+    // so the backend keeps the previous behavior. "starttls" persists an
+    // explicit fail-closed mode, and "ssl" persists direct TLS. New channels
+    // default to "starttls" (explicit, safe) via notificationChannelDefaults.
+    let smtpEncryption: string | undefined;
+    if (values.smtp_encryption && values.smtp_encryption !== "auto") {
+      smtpEncryption = values.smtp_encryption;
+    }
     fields = {
       type,
       smtp_host: values.smtp_host,
       smtp_port: numberOr(values.smtp_port, 587),
+      ...(smtpEncryption === undefined ? {} : { smtp_encryption: smtpEncryption }),
       smtp_username: values.smtp_username,
       smtp_password: smtpPassword,
       smtp_from: values.smtp_from,
@@ -562,6 +684,7 @@ export function notificationChannelDefaults(type: string) {
     whatsapp_api_version: "v20.0",
     smtp_host: "smtp.example.com",
     smtp_port: "587",
+    smtp_encryption: "starttls",
     smtp_username: "tokenhub@example.com",
     smtp_password: "",
     smtp_from: "tokenhub@example.com",
@@ -650,16 +773,52 @@ export async function importUsersFromCSVContent(ctx: ApiContext, content: string
 }
 
 export async function readAdminError(resp: Response, fallback: string) {
-  if (resp.status === 403) {
-    return permissionDeniedMessage(fallback);
-  }
   const body = await resp.text().catch(() => "");
-  if (!body) return `${fallback} (${resp.status})`;
+  if (!body) return resp.status === 403 ? permissionDeniedMessage(fallback) : `${fallback} (${resp.status})`;
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string };
+    const parsed = JSON.parse(body) as { error?: { code?: string; message?: string; details?: unknown }; message?: string };
+    const localized = providerBlockedAddressMessage(parsed.error?.code, parsed.error?.details) ?? localizedAdminErrorCode(parsed.error?.code);
+    if (localized) return localized;
+    if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("账号会话已失效，请重新进行账号授权。");
+    if (resp.status === 403) return permissionDeniedMessage(fallback);
     return parsed.error?.message || parsed.message || `${fallback} (${resp.status})`;
   } catch {
     return body.length > 180 ? `${body.slice(0, 180)}...` : body;
+  }
+}
+
+function localizedAdminErrorCode(code?: string) {
+  switch (code) {
+    case "provider_models_authentication_failed":
+      return tx("上游拒绝了 Provider 凭据，请检查 API Key 或认证配置。");
+    case "provider_models_rate_limited":
+      return tx("上游模型目录请求过于频繁，请稍后重试。");
+    case "provider_models_upstream_error":
+      return tx("上游模型目录加载失败，请检查 Provider 连接配置后重试。");
+    case "provider_models_dns_failed":
+      return tx("Provider 域名解析失败，请检查后端所在主机的 DNS 配置。");
+    case "provider_models_timeout":
+      return tx("连接上游模型目录超时。如果上游需要代理，请前往「系统设置 → 基础设置 → 编辑配置」，将「Provider 出口模式」设为「使用统一代理」，填写后端主机可访问的代理协议、Host 和端口，保存后重试；仅开启浏览器代理不代表后端已使用代理。");
+    case "provider_models_tls_failed":
+      return tx("上游 TLS 证书验证失败，请检查证书有效期、域名和信任链。");
+    case "provider_models_request_failed":
+      return tx("无法连接上游模型目录，请检查 Provider 地址和网络配置后重试。");
+    case "provider_models_invalid_response":
+      return tx("上游模型目录返回了无法识别的数据，请检查 Provider 兼容性。");
+    case "provider_models_empty":
+      return tx("上游模型目录未返回任何模型，请检查 Provider 配置或稍后重试。");
+    case "provider_synthetic_dns_cidrs_required":
+      return tx("开启时至少填写一个 Synthetic DNS CIDR。");
+    case "provider_synthetic_dns_cidrs_invalid":
+      return tx("Synthetic DNS CIDR 格式无效，请每行填写一个 CIDR。");
+    case "provider_synthetic_dns_cidrs_too_broad":
+      return tx("Synthetic DNS CIDR 范围过宽，请缩小后重试。");
+    case "provider_synthetic_dns_cidrs_not_allowed":
+      return tx("该 Synthetic DNS CIDR 与受保护地址范围重叠，无法保存。");
+    case "provider_synthetic_dns_private_cidr_requires_unsafe_mode":
+      return tx("该 Synthetic DNS CIDR 属于私网或 ULA；如确认代理使用此网段，请先开启高风险私网信任。");
+    default:
+      return "";
   }
 }
 
@@ -677,27 +836,13 @@ export async function adminMutate(ctx: ApiContext, path: string, method: "POST" 
   }
 }
 
-export async function testProviderAvailability(ctx: ApiContext, provider: { id: string }) {
-  const resourcesResp = await adminFetch(ctx, "/api/admin/provider-resources");
-  if (!resourcesResp.ok) throw new Error(await readAdminError(resourcesResp, tx("读取 Provider 账号资源")));
-  const payload = (await resourcesResp.json()) as { data?: ProviderResource[] };
-  const subscription = (payload.data ?? []).find((resource) =>
-    resource.provider_id === provider.id && resource.resource_type === "openai_subscription" && resource.status === "active",
-  );
-  if (!subscription) {
-    await adminMutate(ctx, `/api/admin/providers/${provider.id}/test`, "POST", {});
-    return;
-  }
-  const testResp = await adminFetch(ctx, `/api/admin/provider-resources/${subscription.id}/test`, {
+export async function testProviderEgress(ctx: ApiContext, providerID: string, values: Record<string, string>) {
+  const resp = await adminFetch(ctx, "/api/admin/provider-egress/test", {
     method: "POST",
-    body: JSON.stringify({
-      model: "gpt-5.6-luna",
-      reasoning_effort: "medium",
-      speed: "standard",
-      prompt: "请用一句话确认 Codex 连接正常。",
-    }),
+    body: JSON.stringify(providerEgressTestPayload(providerID, values)),
   });
-  if (!testResp.ok) throw new Error(await readAdminError(testResp, tx("Codex Luna 中等推理标准测试")));
+  if (!resp.ok) throw new Error(await readAdminError(resp, tx("代理连接测试失败")));
+  return await resp.json() as { ok: boolean; latency_ms?: number; target_host?: string };
 }
 
 export async function adminDelete(ctx: ApiContext, path: string) {
@@ -791,7 +936,6 @@ export function resourceKindLabel(kind: string) {
     reports: "导出报表",
     "notification-channels": "通知渠道",
     monitors: "健康检测",
-    proxies: "代理出口",
     announcements: "公告通知",
     "security-policies": "安全策略",
   };
@@ -812,7 +956,8 @@ export function isAuthExpiredError(error: unknown) {
 export async function adminFetch(ctx: ApiContext, path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${ctx.adminToken}`);
-  if (init.body && !headers.has("content-type")) {
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !isFormData && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
   const resp = await fetch(`${ctx.baseURL.replace(/\/$/, "")}${path}`, { ...init, headers });

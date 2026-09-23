@@ -1,0 +1,131 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+)
+
+const (
+	providerCatalogLocalSource     = "local-provider-catalog"
+	providerCatalogUpstreamSource  = "upstream-provider-catalog"
+	providerCatalogUpstreamURL     = "https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json"
+	providerCatalogUpstreamTimeout = 15 * time.Second
+	providerCatalogMaxBytes        = 16 << 20
+)
+
+// These entries are reviewed against first-party documentation and must not be
+// replaced by an older upstream snapshot during an explicit catalog refresh.
+var curatedLocalProviderCatalogs = map[string]bool{
+	"stepfun":        true,
+	"stepfun-global": true,
+	"stepfun-plan":   true,
+	"stepfun-ai":     true,
+}
+
+type providerCatalogHTTPClient interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+// refreshLocked fetches the latest public catalog for an explicit admin
+// refresh. Any fetch, response, parse, or completeness failure falls back to
+// the catalog shipped with TokenHub.
+func (s *providerCatalogService) refreshLocked(ctx context.Context, previous []ProviderCatalogEntry) ([]ProviderCatalogEntry, string, error) {
+	entries, upstreamErr := s.loadUpstreamProviderCatalog(ctx)
+	if upstreamErr == nil {
+		if localEntries, localErr := s.loadLocalProviderCatalog(); localErr == nil {
+			entries = mergeCuratedProviderCatalogEntries(entries, localEntries)
+		}
+	}
+	if upstreamErr == nil {
+		entries, upstreamErr = prepareProviderCatalogRefreshWithDefault(entries, previous, s.defaultType)
+	}
+	if upstreamErr == nil {
+		if err := context.Cause(ctx); err != nil {
+			return nil, providerCatalogUpstreamSource, err
+		}
+		if err := s.store.SaveProviderCatalogSnapshot(entries, providerCatalogUpstreamSource, time.Now().UTC()); err != nil {
+			return nil, providerCatalogUpstreamSource, err
+		}
+		return cloneCatalogEntries(entries, false), providerCatalogUpstreamSource, nil
+	}
+	if err := context.Cause(ctx); err != nil {
+		return nil, providerCatalogUpstreamSource, err
+	}
+
+	entries, localErr := s.loadLocalProviderCatalog()
+	if localErr == nil {
+		entries, localErr = prepareProviderCatalogRefreshWithDefault(entries, previous, s.defaultType)
+	}
+	if localErr != nil {
+		return nil, providerCatalogLocalSource, fmt.Errorf("upstream provider catalog refresh failed (%v); local fallback failed: %w", upstreamErr, localErr)
+	}
+	if err := context.Cause(ctx); err != nil {
+		return nil, providerCatalogLocalSource, err
+	}
+	if err := s.store.SaveProviderCatalogSnapshot(entries, providerCatalogLocalSource, time.Now().UTC()); err != nil {
+		return nil, providerCatalogLocalSource, err
+	}
+	return cloneCatalogEntries(entries, false), providerCatalogLocalSource, nil
+}
+
+func mergeCuratedProviderCatalogEntries(upstream []ProviderCatalogEntry, local []ProviderCatalogEntry) []ProviderCatalogEntry {
+	localByID := make(map[string]ProviderCatalogEntry, len(curatedLocalProviderCatalogs))
+	for _, entry := range local {
+		if curatedLocalProviderCatalogs[entry.ID] {
+			localByID[entry.ID] = entry
+		}
+	}
+
+	merged := make([]ProviderCatalogEntry, 0, len(upstream)+len(localByID))
+	for _, entry := range upstream {
+		if replacement, ok := localByID[entry.ID]; ok {
+			merged = append(merged, replacement)
+			delete(localByID, entry.ID)
+			continue
+		}
+		merged = append(merged, entry)
+	}
+	for _, entry := range local {
+		if replacement, ok := localByID[entry.ID]; ok {
+			merged = append(merged, replacement)
+			delete(localByID, entry.ID)
+		}
+	}
+	return merged
+}
+
+func (s *providerCatalogService) loadUpstreamProviderCatalog(ctx context.Context) ([]ProviderCatalogEntry, error) {
+	upstreamURL := strings.TrimSpace(s.upstreamURL)
+	if upstreamURL == "" {
+		return nil, fmt.Errorf("provider catalog upstream URL is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create provider catalog upstream request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := s.upstreamClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch provider catalog upstream: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch provider catalog upstream: unexpected HTTP status %d", resp.StatusCode)
+	}
+	content, err := io.ReadAll(io.LimitReader(resp.Body, providerCatalogMaxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read provider catalog upstream: %w", err)
+	}
+	if len(content) > providerCatalogMaxBytes {
+		return nil, fmt.Errorf("read provider catalog upstream: response exceeds %d bytes", providerCatalogMaxBytes)
+	}
+	entries, err := parseProviderCatalogWithPolicy(content, providerCatalogUpstreamSource, s.catalogTypes, s.defaultType, s.modelCategories)
+	if err != nil {
+		return nil, fmt.Errorf("parse provider catalog upstream: %w", err)
+	}
+	return entries, nil
+}

@@ -20,7 +20,7 @@ func buildAnthropicRequest(providerModel string, req ChatCompletionRequest, reas
 		return nil, err
 	}
 
-	maxTokens := req.MaxTokens
+	maxTokens := req.requestedMaxTokens()
 	if maxTokens <= 0 {
 		// Anthropic requires an explicit positive max_tokens; 0 carries special
 		// prompt-cache semantics and must not be used as a default.
@@ -391,6 +391,6 @@ func anthropicChatResponse(body map[string]any, model string, usage Usage) (map[
 			"message":       message,
 			"finish_reason": finishReason,
 		}},
-		"usage": usage,
+		"usage": openAIChatUsageObject(usage),
 	}, nil
 }

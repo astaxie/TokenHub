@@ -716,6 +716,10 @@
   align-items: stretch;
 }
 
+.daily-usage-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .executive-panel {
   min-width: 0;
   overflow: hidden;
@@ -723,7 +727,8 @@
 
 .executive-chart-panel,
 .executive-department-panel,
-.executive-member-panel {
+.executive-member-panel,
+.daily-usage-grid .executive-panel {
   padding: 18px;
 }
 

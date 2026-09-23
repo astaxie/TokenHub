@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.gmicloud"
+name: "GMI Cloud"
+version: 1.0.0
+summary: "Connect TokenHub to GMI Cloud."
+description: "Connect TokenHub to GMI Cloud. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.gmi-serving.com/v1"
+    catalog:
+      id: "gmicloud"
+      name: "GMI Cloud"
+      display_name: "GMI Cloud"
+      type: "openai_compatible"
+      base_url: "https://api.gmi-serving.com/v1"
+      doc_url: "https://docs.gmicloud.ai/inference-engine/api-reference/llm-api-reference"
+      categories: []
+      models_count: 8
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

@@ -1,13 +1,29 @@
+import { useState } from "react";
+import { type ApiContext, type ProviderResource } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
+import { providerAuthMode, providerAuthModeField } from "../domain/provider-custom-upstream";
+import { providerReasoningFieldConfigs, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { tx } from "../i18n/runtime";
-import { providerTypeOptions } from "../shared/ui";
+import { adminFetch, providerResourceSystemPromptTransformPolicyPayload, readAdminError } from "../resources/payloads";
+import { providerTypeAuthModes, providerTypeManagedHeaders, providerTypePreferredAuthMode, providerTypeRequiresAPIKey, providerTypeSupportsCustomHeaders, type ProviderTypeOption } from "../shared/ui";
+import { ProviderInlineField } from "./provider-editor-fields";
+import { ProviderCustomHeaders } from "./provider-custom-headers";
+
+export { providerReasoningFormValues } from "../domain/provider-reasoning";
 
 type ProviderEditSectionProps = {
   values: Record<string, string>;
   onUpdate: (key: string, value: string) => void;
 };
 
-export function ProviderConnectionFields({ values, onUpdate }: ProviderEditSectionProps) {
+export function ProviderConnectionFields({
+  values,
+  onUpdate,
+  providerTypeOptions = [],
+  validationErrors = [],
+}: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[]; validationErrors?: string[] }) {
+  const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
+  const apiKeyRequired = providerTypeRequiresAPIKey(effectiveProviderTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid provider-connect-form-grid">
@@ -16,31 +32,94 @@ export function ProviderConnectionFields({ values, onUpdate }: ProviderEditSecti
           <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
         </label>
         <label className="field">
-          <span>API Key</span>
+          <span>{apiKeyRequired ? "API Key" : tx("认证密钥（可选）")}</span>
           <input
             autoComplete="new-password"
             value={values.api_key ?? ""}
             type="password"
-            onChange={(event) => onUpdate("api_key", event.target.value)}
+            onChange={(event) => {
+              onUpdate("api_key", event.target.value);
+              if (event.target.value.trim()) onUpdate("clear_api_key", "false");
+            }}
           />
-          <small>{tx("留空表示不修改现有 Key；填写新值才会覆盖。")}</small>
+          <small>{tx(apiKeyRequired ? "留空表示不修改现有 Key；填写新值才会覆盖。" : "留空表示不修改现有 token；填写新值才会覆盖。")}</small>
         </label>
+        {!apiKeyRequired ? (
+          <div className="field">
+            <span>{tx("Provider 认证")}</span>
+            <label className="checkbox-line">
+              <input checked={values.clear_api_key === "true"} type="checkbox" onChange={(event) => {
+                onUpdate("clear_api_key", String(event.target.checked));
+                if (event.target.checked) onUpdate("api_key", "");
+              }} />
+              <span>{tx("移除已保存的认证密钥，改为无认证访问")}</span>
+            </label>
+          </div>
+        ) : null}
       </div>
+      <ProviderCustomHeaders
+        disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
+        managedHeaders={providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type)}
+        onChange={(value) => onUpdate("custom_headers", value)}
+        validationErrors={validationErrors}
+        value={values.custom_headers ?? "[]"}
+      />
     </section>
   );
+}
+
+function providerTypeOptionsForCurrentValue(providerType: string): ProviderTypeOption[] {
+  const value = providerType.trim();
+  if (!value) return [];
+  return [{
+    value,
+    label: providerTypeLabel(value),
+    supportsCustomHeaders: providerTypeSupportsCustomHeaders([], value),
+  }];
+}
+
+export function ProviderAuthModeField({ values, onUpdate, providerTypeOptions = [] }: ProviderEditSectionProps & { providerTypeOptions?: ProviderTypeOption[] }) {
+  const authModes = providerTypeAuthModes(providerTypeOptions, values.type);
+  if (authModes.length === 0) return null;
+  const authModeValue = providerAuthMode(values, providerTypeOptions) || providerTypePreferredAuthMode(providerTypeOptions, values.type);
+  return (
+    <label className="field">
+      <span>{tx("认证方式")}</span>
+      <select value={authModeValue} onChange={(event) => onUpdate(providerAuthModeField, event.target.value)}>
+        {authModes.map((mode) => <option key={mode} value={mode}>{providerAuthModeLabel(mode)}</option>)}
+      </select>
+      <small>{tx("认证密钥始终使用上面的加密 API Key，不需要写入自定义 Headers。")}</small>
+    </label>
+  );
+}
+
+function providerAuthModeLabel(mode: string) {
+  if (mode === "x-api-key") return "x-api-key";
+  if (mode === "bearer") return "Authorization Bearer";
+  return mode;
 }
 
 export function ProviderAdvancedFields({
   values,
   onUpdate,
   accountIntegration,
-}: ProviderEditSectionProps & { accountIntegration: boolean }) {
+  creating = false,
+  idPlaceholder,
+  providerTypeOptions = [],
+}: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
+  const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
+  const showReasoningCompatibility = providerTypeSupportsReasoningConfig(effectiveProviderTypeOptions, values.type);
   return (
     <section className="provider-edit-section">
       <div className="provider-form-grid">
         <label className="field">
           <span>Provider ID</span>
-          <input value={values.id ?? ""} readOnly />
+          <input
+            value={values.id ?? ""}
+            readOnly={!creating}
+            placeholder={idPlaceholder}
+            onChange={creating ? (event) => onUpdate("id", event.target.value) : undefined}
+          />
         </label>
         <label className="field">
           <span>{tx(accountIntegration ? "通道名称" : "渠道名称")}</span>
@@ -49,14 +128,98 @@ export function ProviderAdvancedFields({
         <label className="field">
           <span>{tx(accountIntegration ? "兼容协议" : "渠道商类型")}</span>
           <select value={values.type ?? ""} onChange={(event) => onUpdate("type", event.target.value)} required>
-            {providerTypeOptions.map((option) => <option key={option} value={option}>{providerTypeLabel(option)}</option>)}
+            {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
+        {creating ? (
+          <label className="field">
+            <span>Base URL</span>
+            <input value={values.base_url ?? ""} onChange={(event) => onUpdate("base_url", event.target.value)} />
+          </label>
+        ) : null}
+        <ProviderAuthModeField values={values} onUpdate={onUpdate} providerTypeOptions={effectiveProviderTypeOptions} />
         <label className="field">
           <span>{tx("优先级")}</span>
           <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
         </label>
       </div>
+      {showReasoningCompatibility ? <details className="provider-account-runtime">
+        <summary>
+          <strong>{tx("Provider 推理参数兼容")}</strong>
+          <span>{tx("Provider 默认规则，适用于支持推理参数的客户端和上游。")}</span>
+        </summary>
+        <div className="provider-account-fields">
+          {providerReasoningFieldConfigs().map((field) => (
+            <ProviderInlineField
+              key={field.key}
+              field={field}
+              value={values[field.key] ?? ""}
+              values={values}
+              onChange={(value) => onUpdate(field.key, value)}
+            />
+          ))}
+        </div>
+      </details> : null}
+    </section>
+  );
+}
+
+export function ProviderResourceSystemPromptTransformFields({
+  api,
+  providerID,
+  resources,
+  onSaved,
+}: {
+  api: ApiContext;
+  providerID: string;
+  resources: ProviderResource[];
+  onSaved: () => Promise<void>;
+}) {
+  const [busyID, setBusyID] = useState("");
+  const [error, setError] = useState("");
+  const providerResources = resources.filter((resource) => resource.provider_id === providerID);
+  if (providerResources.length === 0) return null;
+
+  async function updatePolicy(resource: ProviderResource, policy: string) {
+    setBusyID(resource.id);
+    setError("");
+    try {
+      const resp = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(resource.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(providerResourceSystemPromptTransformPolicyPayload(resource, policy)),
+      });
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx("更新系统提示词转换策略")));
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : tx("更新系统提示词转换策略失败"));
+    } finally {
+      setBusyID("");
+    }
+  }
+
+  return (
+    <section className="provider-edit-section">
+      <div className="wizard-panel-head">
+        <h3>{tx("Provider Resource 系统提示词转换")}</h3>
+        <p>{tx("每个 Resource 默认继承 Provider 策略，也可以独立覆盖。故障切换时会按实际尝试的 Resource 处理请求。")}</p>
+      </div>
+      <div className="provider-form-grid">
+        {providerResources.map((resource) => (
+          <label className="field" key={resource.id}>
+            <span>{resource.name}</span>
+            <select
+              disabled={busyID === resource.id}
+              value={resource.options?.system_prompt_transform_policy ?? resource.options?.claude_code_attribution_policy ?? "inherit"}
+              onChange={(event) => void updatePolicy(resource, event.target.value)}
+            >
+              <option value="inherit">{tx("继承 Provider 策略")}</option>
+              <option value="preserve">{tx("保留系统提示词块")}</option>
+              <option value="strip">{tx("移除客户端归因块")}</option>
+            </select>
+          </label>
+        ))}
+      </div>
+      {error ? <p className="provider-quota-error" role="alert">{error}</p> : null}
     </section>
   );
 }

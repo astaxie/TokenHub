@@ -340,6 +340,81 @@
   box-shadow: var(--shadow-sm);
 }
 
+.overview-plugin-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.admin-ui-dashboard-card {
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.admin-ui-dashboard-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.admin-ui-dashboard-card-head > span {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.admin-ui-dashboard-card-head h2 {
+  margin: 0;
+}
+
+.admin-ui-dashboard-card-head p {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.admin-ui-dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.admin-ui-dashboard-metric {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.admin-ui-dashboard-metric span,
+.admin-ui-dashboard-metric small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.admin-ui-dashboard-metric strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.admin-ui-dashboard-metric small {
+  margin-top: 5px;
+}
+
 .overview-trend-panel {
   min-height: 432px;
   padding: 22px 22px 16px;
@@ -560,4 +635,3 @@
 .role-usage-overview {
   gap: 16px;
 }
-

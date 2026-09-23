@@ -3,6 +3,8 @@ set -eu
 
 image_root="${TOKENHUB_CONTAINER_IMAGE_ROOT:-/usr/local/lib/tokenhub-image}"
 install_root="${TOKENHUB_INSTALL_ROOT:-/opt/tokenhub}"
+plugin_root="${TOKENHUB_PLUGIN_DIR:-/app/plugins}"
+export TOKENHUB_PLUGIN_DIR="$plugin_root"
 run_mode="${TOKENHUB_RUN_MODE:-all}"
 state_file="$install_root/.container-image-version"
 releases_dir="$install_root/releases"
@@ -14,13 +16,17 @@ fail() {
 }
 
 validate_root() {
-  case "$install_root" in
+  root_name="$1"
+  root_path="$2"
+  case "$root_path" in
     /*) ;;
-    *) fail "TOKENHUB_INSTALL_ROOT must be an absolute path" ;;
+    *) fail "$root_name must be an absolute path" ;;
   esac
-  [ "$install_root" != "/" ] || fail "TOKENHUB_INSTALL_ROOT must not be /"
-  case "$install_root/" in
-    *"/../"*|*"/./"*) fail "TOKENHUB_INSTALL_ROOT must not contain . or .. path segments" ;;
+  case "$root_path" in
+    /|//*) fail "$root_name must not be / or start with //" ;;
+  esac
+  case "$root_path/" in
+    *"/../"*|*"/./"*) fail "$root_name must not contain . or .. path segments" ;;
   esac
 }
 
@@ -81,7 +87,8 @@ activate_release() {
   mv -Tf "$next" "$current_link"
 }
 
-validate_root
+validate_root TOKENHUB_INSTALL_ROOT "$install_root"
+validate_root TOKENHUB_PLUGIN_DIR "$plugin_root"
 case "$run_mode" in
   all|backend|frontend) ;;
   *) fail "TOKENHUB_RUN_MODE must be all, backend, or frontend" ;;
@@ -97,8 +104,8 @@ printf '%s\n' "$image_build_id" | grep -Eq '^[0-9a-f]{64}$' ||
   fail "image BUILD_ID is invalid"
 
 if [ "$(id -u)" -eq 0 ]; then
-  mkdir -p "$releases_dir" /app/data
-  chown node:node "$install_root" "$releases_dir" /app/data
+  mkdir -p "$releases_dir" /app/data "$plugin_root"
+  chown node:node "$install_root" "$releases_dir" /app/data "$plugin_root"
   exec setpriv --reuid=node --regid=node --init-groups "$0" "$@"
 fi
 

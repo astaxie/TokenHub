@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider.kronk"
+name: "Kronk"
+version: 1.0.0
+summary: "Connect TokenHub to Kronk."
+description: "Connect TokenHub to Kronk. Connection behavior is provided by the host-managed kronk adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "kronk"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "kronk"
+  provider:
+    default_base_url: "http://127.0.0.1:11435/v1"
+    catalog:
+      id: "kronk"
+      name: "Kronk"
+      display_name: "Kronk"
+      type: "kronk"
+      base_url: "http://127.0.0.1:11435/v1"
+      doc_url: "https://github.com/ardanlabs/kronk"
+      categories: []
+      models_count: 0
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

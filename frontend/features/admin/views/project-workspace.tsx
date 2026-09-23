@@ -7,7 +7,8 @@ import { approvalTriggerLabel } from "../domain/labels";
 import { countWithUnit, tx } from "../i18n/runtime";
 import { adminFetch, pendingProjectQuotaApproval, projectQuotaIssue, projectQuotaPolicy, projectQuotaValues, readAdminError, requestProjectQuotaIncrease, saveProjectQuota } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
-import { ProjectMemberRow, projectQuotaFields, type ProjectQuotaValues } from "./crud-projects";
+import { projectQuotaFields, type ProjectQuotaValues } from "../domain/project-quota";
+import { ProjectMemberRow } from "./crud-projects";
 
 export type ProjectWorkspaceMode = "create" | "view" | "edit";
 
@@ -188,7 +189,7 @@ export function ProjectWorkspace({
 
   useEffect(() => {
     setDraft(projectWorkspaceDraft(project));
-  }, [mode, project?.id]);
+  }, [mode, project]);
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -709,7 +710,7 @@ function ProjectQuotaSection({
 
   useEffect(() => {
     setValues(projectQuotaValues(quota));
-  }, [project.id, quota?.id]);
+  }, [project.id, quota]);
 
   const hasQuota = Boolean(quota);
   const quotaIssue = projectQuotaIssue(data, project);

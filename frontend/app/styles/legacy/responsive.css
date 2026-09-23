@@ -146,11 +146,16 @@
   .provider-credential-options,
   .provider-account-auth-grid,
   .provider-account-fields,
+  .plugin-page-view,
   .playground-shell,
   .playground-detail-strip,
   .model-catalog,
   .route-matrix,
   .request-history-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .system-settings-plugin-grid {
     grid-template-columns: 1fr;
   }
 

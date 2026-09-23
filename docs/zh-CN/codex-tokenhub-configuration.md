@@ -177,7 +177,7 @@ Invoke-WebRequest `
 
 如果返回 `provider_capability_not_supported`，应由管理员检查模型路由和 Provider 资源类型。修改本机 Codex 配置无法绕过该限制。
 
-对于 DeepSeek 官方 Provider，Responses 与 Codex 能力按模型开放：当前应使用 `deepseek-v4-flash`；在 DeepSeek 上游正式开放前，TokenHub 不会把 `deepseek-v4-pro` 标记为支持 Responses。DeepSeek 会自动管理上下文缓存。启用 `TOKENHUB_CACHE_AFFINITY_ENABLED=true` 后，TokenHub 会使用 `session-id`、`client_metadata.session_id` 或 `prompt_cache_key` 等稳定的 Codex 会话提示，将连续 Responses 请求固定到同一个上游账号；该标识仅控制网关路由，不会在 TokenHub 内创建另一份响应缓存。
+对于 DeepSeek 官方 Provider，Responses 与 Codex 能力按模型开放，`deepseek-v4-flash` 和 `deepseek-v4-pro` 均可使用。两个模型都支持服务端 `web_search`、Codex 的 `apply_patch` 自定义工具，以及范围为 0–20 的 `top_logprobs`，但不支持图片或文件输入。DeepSeek 的 Responses API 是无状态的，因此客户端每轮都必须在 `input` 中传入完整对话历史，不能依赖 `previous_response_id` 或 `conversation`。DeepSeek 会自动管理上下文缓存。启用 `TOKENHUB_CACHE_AFFINITY_ENABLED=true` 后，TokenHub 会使用 `session-id`、`client_metadata.session_id` 或 `prompt_cache_key` 等稳定的 Codex 会话提示，将连续 Responses 请求固定到同一个上游账号；该标识仅控制网关路由，不会在 TokenHub 内创建另一份响应缓存。
 
 ---
 

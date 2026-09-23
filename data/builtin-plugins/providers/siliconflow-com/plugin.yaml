@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.siliconflow-com"
+name: "SiliconFlow"
+version: 1.0.0
+summary: "Connect TokenHub to SiliconFlow."
+description: "Connect TokenHub to SiliconFlow. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.siliconflow.com/v1"
+    catalog:
+      id: "siliconflow-com"
+      name: "SiliconFlow"
+      display_name: "SiliconFlow"
+      type: "openai_compatible"
+      base_url: "https://api.siliconflow.com/v1"
+      doc_url: "https://cloud.siliconflow.com/models"
+      categories: []
+      models_count: 76
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

@@ -2,10 +2,12 @@ import { ChevronDown, Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type AdminResource, type APIKey, type AppData, type FieldConfig, type Project, type ResourceAction, type ResourceConfig } from "../core/types";
+import { projectKeyDownloadFilename, projectKeyDownloadTemplates } from "../core/project-key-download-templates";
+import { apiKeyCanManage } from "../domain/api-key-management-authz";
 import { apiKeyOwnerSelectOptions, apiKeyOwnerUserID, costCenterLabel, costCenterSelectOptions, ownerUserLabel, projectMemberCanIssueLabel, projectMemberProjectSelectOptions, projectMemberRoleLabel, projectMemberRoleOptions, projectName, projectOwnerLabel, projectSelectOptions, projectTeamLabel, stringifyForm, stringifyValue, teamLabel, teamSelectOptions, truthyValue, userSelectOptions } from "../domain/entities";
-import { apiGatewayBaseURL } from "../domain/formatting";
-import { tx } from "../i18n/runtime";
-import { adminDelete, adminFetch, adminMutate, keyPatchPayload, projectQuotaSummary, updateAPIKeyStatus } from "./payloads";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
+import { openAPIKeyAccess } from "../shared/api-key-access";
+import { adminDelete, adminFetch, adminMutate, keyPatchPayload, projectQuotaSummary, readAdminError, updateAPIKeyStatus } from "./payloads";
 import { StatusPill } from "../shared/ui";
 
 export function projectConfig(): ResourceConfig<Project> {
@@ -212,16 +214,34 @@ export function apiKeyConfig(): ResourceConfig<APIKey> {
     create: async () => undefined,
     update: (ctx, item, values) => adminMutate(ctx, `/api/admin/api-keys/${item.id}`, "PATCH", keyPatchPayload(values)),
     remove: (ctx, item) => adminDelete(ctx, `/api/admin/api-keys/${item.id}`),
+    canUpdate: (item, currentUser, data) => apiKeyCanManage(data, item, currentUser),
+    canRemove: (item, currentUser, data) => apiKeyCanManage(data, item, currentUser),
     actions: [
+      {
+        label: "使用",
+        title: "查看协议、地址和 Key 使用说明",
+        open: openAPIKeyAccess,
+      },
+      {
+        label: "用量",
+        title: "查看这个 Key 的用量详情",
+        href: (item) => `/api-keys/${encodeURIComponent(item.id)}/usage`,
+      },
       {
         label: "轮换",
         title: "生成新 Key，并立即吊销旧 Key",
+        visible: (item, currentUser, data) => apiKeyCanManage(data, item, currentUser),
+        confirmation: {
+          title: "确认轮换 API Key",
+          message: (item) => formatTranslationTemplate(tx("即将轮换「{name}」（{hint}）。旧 Key 将立即失效，使用它的应用需要更新配置。确认后将打开使用窗口，展示新 Key。"), { name: item.name, hint: `${item.key_prefix}…${item.key_suffix}` }),
+          confirmLabel: "确认轮换",
+        },
         run: async (ctx, item) => {
           const resp = await adminFetch(ctx, `/api/admin/api-keys/${item.id}/rotate`, {
             method: "POST",
             body: JSON.stringify({}),
           });
-          if (!resp.ok) throw new Error(`rotate api key ${resp.status}`);
+          if (!resp.ok) throw new Error(await readAdminError(resp, tx("轮换 API Key")));
           const payload = (await resp.json()) as { api_key: string };
           window.dispatchEvent(new CustomEvent("tokenhub-issued-key", { detail: payload.api_key }));
         },
@@ -330,21 +350,8 @@ export function APIKeyDownloadMenu({ item, data, baseURL }: { item: APIKey; data
     setOpen((current) => !current);
   }
 
-  function downloadConfig() {
-    downloadTextTemplate(
-      codexConfigTemplate(item, data, baseURL),
-      `${templateFilename(item.name)}-codex-config.toml`,
-      "text/plain;charset=utf-8",
-    );
-    setOpen(false);
-  }
-
-  function downloadEnvironment() {
-    downloadTextTemplate(
-      tokenHubEnvironmentTemplate(item),
-      `${templateFilename(item.name)}.env`,
-      "text/plain;charset=utf-8",
-    );
+  function downloadTemplate(template: (typeof projectKeyDownloadTemplates)[number]) {
+    downloadTextTemplate(template.render(item, data, baseURL), projectKeyDownloadFilename(item.name, template), "text/plain;charset=utf-8");
     setOpen(false);
   }
 
@@ -365,64 +372,17 @@ export function APIKeyDownloadMenu({ item, data, baseURL }: { item: APIKey; data
       </button>
       {open ? createPortal(
         <div className="api-key-download-options" ref={optionsRef} role="menu" style={position}>
-          <button onClick={downloadConfig} role="menuitem" type="button">
-            <strong>{tx("Codex CLI 配置")}</strong>
-            <span>config.toml · {tx("连接 TokenHub Responses")}</span>
-          </button>
-          <button onClick={downloadEnvironment} role="menuitem" type="button">
-            <strong>{tx("环境变量模板")}</strong>
-            <span>.env · {tx("替换 Key 占位符")}</span>
-          </button>
+          {projectKeyDownloadTemplates.map((template) => (
+            <button key={template.id} onClick={() => downloadTemplate(template)} role="menuitem" type="button">
+              <strong>{tx(template.menuLabel)}</strong>
+              <span>{tx(template.menuSubtitle)}</span>
+            </button>
+          ))}
         </div>,
         document.body,
       ) : null}
     </div>
   );
-}
-
-export function codexConfigTemplate(item: APIKey, data: AppData, apiBaseURL: string) {
-  const model = codexTemplateModel(item, data);
-  const baseURL = apiGatewayBaseURL(apiBaseURL);
-  return `# TokenHub Codex CLI configuration for ${item.name}
-# Set the API key before starting Codex:
-# export TOKENHUB_API_KEY="REPLACE_WITH_YOUR_TOKENHUB_API_KEY"
-
-model = "${escapeTomlString(model)}"
-model_provider = "tokenhub"
-model_reasoning_effort = "medium"
-
-[model_providers.tokenhub]
-name = "TokenHub - ${escapeTomlString(item.name)}"
-base_url = "${escapeTomlString(baseURL)}"
-wire_api = "responses"
-env_key = "TOKENHUB_API_KEY"
-env_key_instructions = "Set TOKENHUB_API_KEY to REPLACE_WITH_YOUR_TOKENHUB_API_KEY"
-`;
-}
-
-export function tokenHubEnvironmentTemplate(item: APIKey) {
-  return `# TokenHub API Key for ${item.name}
-TOKENHUB_API_KEY=REPLACE_WITH_YOUR_TOKENHUB_API_KEY
-`;
-}
-
-function codexTemplateModel(item: APIKey, data: AppData) {
-  const activeModels = new Set(data.models.filter((model) => model.status === "active").map((model) => model.name));
-  const routedModels = data.routes
-    .filter((route) => route.status === "active" && activeModels.has(route.model_name))
-    .map((route) => route.model_name);
-  const allowedModels = (item.allowed_models ?? []).filter(Boolean);
-  const candidates = allowedModels.length > 0 ? allowedModels.filter((model) => routedModels.includes(model)) : routedModels;
-  return candidates[0] ?? allowedModels[0] ?? "REPLACE_WITH_MODEL_ID_FROM_V1_MODELS";
-}
-
-function escapeTomlString(value: string) {
-  return value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
-}
-
-function templateFilename(value: string) {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized || "tokenhub-key";
 }
 
 function downloadTextTemplate(content: string, filename: string, type: string) {

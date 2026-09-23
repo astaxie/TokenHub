@@ -1,0 +1,282 @@
+{
+  "id": "stackit",
+  "api": "https://api.openai-compat.model-serving.eu01.onstackit.cloud/v1",
+  "name": "STACKIT",
+  "doc": "https://docs.stackit.cloud/products/data-and-ai/ai-model-serving/basics/available-shared-models",
+  "display_name": "STACKIT",
+  "models": [
+    {
+      "id": "neuralmagic/Meta-Llama-3.1-8B-Instruct-FP8",
+      "name": "Llama 3.1 8B",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "release_date": "2024-07-23",
+      "last_updated": "2024-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.16,
+        "output": 0.27
+      },
+      "display_name": "Llama 3.1 8B",
+      "type": "chat"
+    },
+    {
+      "id": "neuralmagic/Mistral-Nemo-Instruct-2407-FP8",
+      "name": "Mistral Nemo",
+      "family": "mistral",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": false,
+      "temperature": true,
+      "release_date": "2024-07-01",
+      "last_updated": "2024-07-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.49,
+        "output": 0.71
+      },
+      "display_name": "Mistral Nemo",
+      "type": "chat"
+    },
+    {
+      "id": "cortecs/Llama-3.3-70B-Instruct-FP8-Dynamic",
+      "name": "Llama 3.3 70B",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": false,
+      "temperature": true,
+      "release_date": "2024-12-05",
+      "last_updated": "2024-12-05",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.49,
+        "output": 0.71
+      },
+      "display_name": "Llama 3.3 70B",
+      "type": "chat"
+    },
+    {
+      "id": "google/gemma-3-27b-it",
+      "name": "Gemma 3 27B",
+      "family": "gemma",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "structured_output": false,
+      "temperature": true,
+      "release_date": "2025-05-17",
+      "last_updated": "2025-05-17",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 37000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.49,
+        "output": 0.71
+      },
+      "display_name": "Gemma 3 27B",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen3-VL-Embedding-8B",
+      "name": "Qwen3-VL Embedding 8B",
+      "family": "qwen",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "structured_output": false,
+      "temperature": false,
+      "release_date": "2026-02-05",
+      "last_updated": "2026-02-05",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 32000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.09,
+        "output": 0.09
+      },
+      "display_name": "Qwen3-VL Embedding 8B",
+      "type": "chat"
+    },
+    {
+      "id": "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8",
+      "name": "Qwen3-VL 235B",
+      "family": "qwen",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": false,
+      "temperature": true,
+      "release_date": "2024-11-01",
+      "last_updated": "2024-11-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 218000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 1.64,
+        "output": 1.91
+      },
+      "display_name": "Qwen3-VL 235B",
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "name": "GPT-OSS 120B",
+      "family": "gpt",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": false,
+      "temperature": true,
+      "release_date": "2025-08-05",
+      "last_updated": "2025-08-05",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 131000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.49,
+        "output": 0.71
+      },
+      "display_name": "GPT-OSS 120B",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true
+        }
+      }
+    },
+    {
+      "id": "intfloat/e5-mistral-7b-instruct",
+      "name": "E5 Mistral 7B",
+      "family": "mistral",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "structured_output": false,
+      "temperature": false,
+      "release_date": "2023-12-11",
+      "last_updated": "2023-12-11",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 4096,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0.02,
+        "output": 0.02
+      },
+      "display_name": "E5 Mistral 7B",
+      "type": "chat"
+    }
+  ]
+}

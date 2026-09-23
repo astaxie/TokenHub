@@ -121,7 +121,12 @@ func buildUsers(config *Config, b *bundle.CanonicalMigrationBundle, idStrategy b
 			continue
 		}
 		seen[userID] = struct{}{}
-		username := sanitizeUsername(firstNonEmpty(user.UserAlias, user.UserEmail, userID))
+		email := strings.TrimSpace(user.UserEmail)
+		if email == "" {
+			warn(b, "litellm_user_skipped", "user without email was skipped", "key_management_settings.users")
+			continue
+		}
+		username := sanitizeUsername(firstNonEmpty(user.UserAlias, email, userID))
 		users = append(users, bundle.UserRef{
 			ExternalRef: bundle.ExternalRef{System: AdapterName, ID: userExternalRef(userID)},
 			TeamRef:     optionalTeamRef(user.TeamID),
@@ -129,7 +134,7 @@ func buildUsers(config *Config, b *bundle.CanonicalMigrationBundle, idStrategy b
 				ID:       mustMintID(idStrategy, userExternalRef(userID)),
 				Username: username,
 				Name:     firstNonEmpty(user.UserAlias, username),
-				Email:    strings.TrimSpace(user.UserEmail),
+				Email:    email,
 				Role:     "viewer",
 				Status:   "active",
 			},

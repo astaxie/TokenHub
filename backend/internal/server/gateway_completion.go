@@ -78,6 +78,17 @@ type TraceEmitter interface {
 	Shutdown(ctx context.Context) error
 }
 
+func (s *Server) emitGatewayCompletionTraceExports(completion GatewayCallCompletion) {
+	if completion.Kind == "" {
+		completion.Kind = CompletionKindRouted
+	}
+	if completion.FinishedAt.IsZero() {
+		completion.FinishedAt = tracingFinishedAt()
+	}
+	s.emitGatewayTrace(completion)
+	s.runGatewayTraceExportHooks(context.Background(), completion)
+}
+
 // finishCall records one finished gateway call everywhere it needs to be recorded.
 //
 // Having a single funnel is what makes tracing correct rather than merely
@@ -94,7 +105,7 @@ func (s *Server) finishCall(completion GatewayCallCompletion) {
 	// FinishCall but its result never leaves that function, so anything observing
 	// the caller's Usage afterwards would report a zero cost. priceUsage is pure and
 	// idempotent, which makes the store's own call a no-op rather than a conflict.
-	completion.Usage = priceUsage(completion.Call.Model, completion.Usage)
+	completion.Usage = priceUsageAt(completion.Call.Model, completion.Usage, completion.Call.StartedAt)
 	// Thread the attempt outcomes into the call context so the single metrics
 	// observation point can report per-candidate counts and upstream latency.
 	// Only the bounded outcome fields are consumed there, so the upstream error
@@ -129,7 +140,7 @@ func (s *Server) finishCall(completion GatewayCallCompletion) {
 		completion.ErrorMessage = ""
 		completion.Attempts = attemptsWithoutErrorText(completion.Attempts)
 	}
-	s.emitGatewayTrace(completion)
+	s.emitGatewayCompletionTraceExports(completion)
 }
 
 // finishRoutedCall completes a call while its request is still in hand, taking the

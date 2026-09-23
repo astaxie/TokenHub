@@ -9,6 +9,7 @@ out/
 # Generated local artifacts
 tmp/
 output/
+artifacts/
 .tokenhub/
 
 # Internal design notes
@@ -34,9 +35,12 @@ backend/tokenhub
 # Local runtime data
 data/*
 !data/
+!data/builtin-plugins/
+!data/builtin-plugins/**
 !data/model-catalog.yaml
 !data/provider-catalog.json
 backend/data/
+backend/internal/server/data/
 
 # Environment
 .env

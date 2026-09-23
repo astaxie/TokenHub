@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "generated_at": "2026-08-10T10:09:53.983667Z",
+    "git_commit": "43fc005a604a1e72ff8e30bbd9f15917523e06d6",
+    "git_dirty": false,
+    "go_version": "go1.26.4",
+    "os": "darwin",
+    "arch": "arm64",
+    "cpu_count": 18,
+    "cpu_model": "Apple M5 Pro",
+    "memory_bytes": 51539607552
+  },
+  "benchmarks": {
+    "BenchmarkGatewayChat/SQLite": {
+      "ns_per_op": 947466,
+      "bytes_per_op": 624293,
+      "allocs_per_op": 5850
+    },
+    "BenchmarkGatewayFailover/SQLite": {
+      "ns_per_op": 1042749,
+      "bytes_per_op": 739826,
+      "allocs_per_op": 7315
+    },
+    "BenchmarkGatewayGovernanceCosts/AuditSmall": {
+      "ns_per_op": 818722,
+      "bytes_per_op": 622908,
+      "allocs_per_op": 5849
+    },
+    "BenchmarkGatewayGovernanceCosts/LargePayloadAuditPersistenceOff": {
+      "ns_per_op": 3228938,
+      "bytes_per_op": 3103563,
+      "allocs_per_op": 5850
+    },
+    "BenchmarkGatewayGovernanceCosts/LargePayloadAuditPersistenceOn": {
+      "ns_per_op": 3230578,
+      "bytes_per_op": 3197511,
+      "allocs_per_op": 5934
+    },
+    "BenchmarkGatewayGovernanceCosts/Metrics": {
+      "ns_per_op": 850078,
+      "bytes_per_op": 621106,
+      "allocs_per_op": 5850
+    },
+    "BenchmarkGatewayGovernanceCosts/Tracing": {
+      "ns_per_op": 737304,
+      "bytes_per_op": 608065,
+      "allocs_per_op": 6000
+    },
+    "BenchmarkGatewayGovernanceCosts/TracingWithPayloads": {
+      "ns_per_op": 738797,
+      "bytes_per_op": 610942,
+      "allocs_per_op": 6005
+    },
+    "BenchmarkGatewayPayloadAuditRendering/Bytes256": {
+      "ns_per_op": 7349,
+      "bytes_per_op": 25607,
+      "allocs_per_op": 52
+    },
+    "BenchmarkGatewayPayloadAuditRendering/Bytes32768": {
+      "ns_per_op": 252386,
+      "bytes_per_op": 407384,
+      "allocs_per_op": 53
+    },
+    "BenchmarkGatewayResponses/SQLite": {
+      "ns_per_op": 834774,
+      "bytes_per_op": 639725,
+      "allocs_per_op": 5866
+    },
+    "BenchmarkGatewayStreaming/SQLite": {
+      "ns_per_op": 799535,
+      "bytes_per_op": 551608,
+      "allocs_per_op": 5950
+    }
+  }
+}

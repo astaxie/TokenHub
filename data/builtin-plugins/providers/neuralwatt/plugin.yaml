@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.neuralwatt"
+name: "Neuralwatt"
+version: 1.0.0
+summary: "Connect TokenHub to Neuralwatt."
+description: "Connect TokenHub to Neuralwatt. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.neuralwatt.com/v1"
+    catalog:
+      id: "neuralwatt"
+      name: "Neuralwatt"
+      display_name: "Neuralwatt"
+      type: "openai_compatible"
+      base_url: "https://api.neuralwatt.com/v1"
+      doc_url: "https://portal.neuralwatt.com/docs"
+      categories: []
+      models_count: 14
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

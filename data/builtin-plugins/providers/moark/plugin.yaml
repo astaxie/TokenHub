@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.moark"
+name: "Moark"
+version: 1.0.0
+summary: "Connect TokenHub to Moark."
+description: "Connect TokenHub to Moark. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://moark.com/v1"
+    catalog:
+      id: "moark"
+      name: "Moark"
+      display_name: "Moark"
+      type: "openai_compatible"
+      base_url: "https://moark.com/v1"
+      doc_url: "https://moark.com/docs/openapi/v1#tag/%E6%96%87%E6%9C%AC%E7%94%9F%E6%88%90"
+      categories: []
+      models_count: 2
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

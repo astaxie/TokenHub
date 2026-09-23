@@ -103,8 +103,8 @@ func (s *Server) handleGatewayModelAccessKeys(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusOK, result)
 	case http.MethodPost:
 		var input GatewayModelAccessKeyCreateInput
-		if err := decodeJSON(r, &input); err != nil {
-			writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+		if err := s.decodeJSON(w, r, &input); err != nil {
+			writeError(w, r, err)
 			return
 		}
 		result, err := s.store.CreateGatewayModelAccessKey(input)
@@ -147,8 +147,8 @@ func (s *Server) handleGatewayModelAccessKeyItem(w http.ResponseWriter, r *http.
 		Reason           string `json:"reason,omitempty"`
 		RequestedBy      string `json:"requested_by,omitempty"`
 	}
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error()))
+	if err := s.decodeJSON(w, r, &input); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	if parts[1] == "reveal" {

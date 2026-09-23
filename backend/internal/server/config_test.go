@@ -64,6 +64,47 @@ func TestConfigDefaultDatabaseURLUsesLocalDataFromBackendDir(t *testing.T) {
 	}
 }
 
+func TestConfigDefaultPluginDirUsesBackendDataFromRepoRoot(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, "backend", "data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	withWorkingDir(t, tmp)
+	t.Setenv("TOKENHUB_PLUGIN_DIR", "")
+	t.Setenv("TOKENHUB_DEPLOYMENT_TYPE", "")
+
+	config := ConfigFromEnv()
+	if config.PluginDir != "backend/data/plugins" {
+		t.Fatalf("expected backend data plugin dir, got %q", config.PluginDir)
+	}
+}
+
+func TestConfigParsesPluginDir(t *testing.T) {
+	t.Setenv("TOKENHUB_PLUGIN_DIR", "/srv/tokenhub/plugins")
+
+	config := ConfigFromEnv()
+	if config.PluginDir != "/srv/tokenhub/plugins" {
+		t.Fatalf("unexpected plugin dir: %q", config.PluginDir)
+	}
+}
+
+func TestConfigDefaultPluginDirUsesContainerRuntimePath(t *testing.T) {
+	t.Setenv("TOKENHUB_PLUGIN_DIR", "")
+	t.Setenv("TOKENHUB_DEPLOYMENT_TYPE", containerDeploymentType)
+
+	config := ConfigFromEnv()
+	if config.PluginDir != "/app/plugins" {
+		t.Fatalf("expected container plugin dir, got %q", config.PluginDir)
+	}
+}
+
+func TestDefaultPluginDirUsesNativeInstallRoot(t *testing.T) {
+	got := DefaultPluginDir(nativeDeploymentType, "/srv/tokenhub")
+	if got != "/srv/tokenhub/plugins" {
+		t.Fatalf("expected native plugin dir under install root, got %q", got)
+	}
+}
+
 func TestConfigParsesTrustedProxyCIDRs(t *testing.T) {
 	t.Setenv("TOKENHUB_TRUSTED_PROXY_CIDRS", "127.0.0.1, 10.0.0.0/8;2001:db8::/32")
 
@@ -77,6 +118,7 @@ func TestConfigParsesClusterCoordinationSettings(t *testing.T) {
 	t.Setenv("TOKENHUB_CORS_ALLOWED_ORIGINS", "https://console.example.com,https://admin.example.com")
 	t.Setenv("TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS", "45")
 	t.Setenv("TOKENHUB_CLUSTER_LOCK_TTL_SECONDS", "60")
+	t.Setenv("TOKENHUB_BILLING_REDIS_URL", "redis://redis.example.test:6379/2")
 	t.Setenv("TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS", "90")
 
 	config := ConfigFromEnv()
@@ -85,6 +127,9 @@ func TestConfigParsesClusterCoordinationSettings(t *testing.T) {
 	}
 	if config.InFlightLeaseTTLSeconds != 45 || config.ClusterLockTTLSeconds != 60 || config.GracefulShutdownSeconds != 90 {
 		t.Fatalf("unexpected cluster settings: %+v", config)
+	}
+	if config.BillingRedisURL != "redis://redis.example.test:6379/2" {
+		t.Fatalf("unexpected Redis billing URL: %+v", config)
 	}
 }
 
@@ -95,6 +140,13 @@ func TestConfigParsesImageExecutionSettings(t *testing.T) {
 	config := ConfigFromEnv()
 	if config.ImageJobTimeoutSeconds != 300 || config.ImageCapabilityRetrySecs != 86400 {
 		t.Fatalf("unexpected image execution settings: %+v", config)
+	}
+}
+
+func TestConfigFromEnvEnablesResponseWorkerStartup(t *testing.T) {
+	config := ConfigFromEnv()
+	if !config.ResponseWorkerStartupEnabled {
+		t.Fatal("environment config must enable response worker startup polling")
 	}
 }
 
@@ -162,6 +214,29 @@ func TestProductionConfigAcceptsStrongCredentials(t *testing.T) {
 	}
 }
 
+func TestProductionConfigAcceptsDisabledOptionalBootstrapCredentials(t *testing.T) {
+	config := Config{
+		Environment: "production",
+		SecretKey:   strings.Repeat("s", 32),
+	}
+	if err := config.ValidateForStartup(); err != nil {
+		t.Fatalf("expected optional bootstrap credentials to be disabled: %v", err)
+	}
+}
+
+func TestProductionConfigRejectsWeakEnabledOptionalCredentials(t *testing.T) {
+	config := Config{
+		Environment:            "production",
+		AdminToken:             "short-token",
+		BootstrapAdminPassword: "short",
+		SecretKey:              strings.Repeat("s", 32),
+	}
+	err := config.ValidateForStartup()
+	if err == nil || !strings.Contains(err.Error(), "TOKENHUB_ADMIN_TOKEN") || !strings.Contains(err.Error(), "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD") {
+		t.Fatalf("expected enabled weak credentials to be rejected: %v", err)
+	}
+}
+
 func TestDevelopmentConfigKeepsLocalDefaults(t *testing.T) {
 	config := Config{
 		Environment:            "dev",
@@ -186,6 +261,76 @@ func TestBlankEnvironmentIsRejected(t *testing.T) {
 		err := config.ValidateForStartup()
 		if err == nil || !strings.Contains(err.Error(), "TOKENHUB_ENV") {
 			t.Fatalf("expected %q environment to be rejected, got %v", environment, err)
+		}
+	}
+}
+
+func TestGetenvBytes(t *testing.T) {
+	const fallback int64 = 8 << 20
+	cases := []struct {
+		name string
+		set  bool
+		val  string
+		want int64
+	}{
+		{"unset", false, "", fallback},
+		{"empty", true, "", fallback},
+		{"raw", true, "1048576", 1 << 20},
+		{"kib", true, "16k", 16 << 10},
+		{"mb", true, "32mb", 32 << 20},
+		{"mib_caps", true, "8MiB", 8 << 20},
+		{"gib_clamped", true, "1g", maxConfigurableRequestBytes},
+		{"bytes_suffix", true, "2048b", 2048},
+		{"garbage", true, "abc", fallback},
+		{"zero", true, "0", fallback},
+		{"negative", true, "-5", fallback},
+		{"above_ceiling", true, "9999g", maxConfigurableRequestBytes},
+		// Representable in int64 (~5.4e18 < math.MaxInt64) but above the ceiling:
+		// must clamp to the ceiling, not fall back. Regression for the old
+		// (1<<62)/multiplier overflow guard that wrongly rejected it.
+		{"representable_above_ceiling", true, "5000000000g", maxConfigurableRequestBytes},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.set {
+				t.Setenv("TOKENHUB_TEST_BYTES", tc.val)
+			} else {
+				t.Setenv("TOKENHUB_TEST_BYTES", "")
+			}
+			if got := getenvBytes("TOKENHUB_TEST_BYTES", fallback); got != tc.want {
+				t.Fatalf("getenvBytes(%q)=%d, want %d", tc.val, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseByteSize(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int64
+		ok   bool
+	}{
+		{"1048576", 1 << 20, true},
+		{"16k", 16 << 10, true},
+		{"512m", 512 << 20, true},
+		{"1g", 1 << 30, true},
+		{"2048b", 2048, true},
+		{"8MiB", 8 << 20, true},
+		{"", 0, false},
+		{"abc", 0, false},
+		{"99999999999g", 0, false},              // overflow beyond int64
+		{"5000000000g", 5000000000 << 30, true}, // representable above ceiling; clamp happens in getenvBytes
+		{"8kk", 0, false},                       // malformed suffix
+		{"8ib", 0, false},                       // malformed suffix
+		{"8big", 0, false},                      // malformed suffix
+		{"8mbb", 0, false},                      // malformed suffix
+		{"k", 0, false},                         // suffix without digits
+		{"-5", 0, false},                        // negative
+	}
+	for _, tc := range cases {
+		got, ok := parseByteSize(tc.in)
+		if ok != tc.ok || (ok && got != tc.want) {
+			t.Fatalf("parseByteSize(%q)=(%d,%v), want (%d,%v)", tc.in, got, ok, tc.want, tc.ok)
 		}
 	}
 }

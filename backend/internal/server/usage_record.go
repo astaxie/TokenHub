@@ -1,20 +1,29 @@
 package server
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 func newUsageRecord(call CallContext, route RouteSelection, usage Usage, createdAt time.Time) *UsageRecord {
+	attributedUserID := strings.TrimSpace(call.AttributedUserID)
+	if attributedUserID == "" {
+		attributedUserID = usageAttributionUserID(call.Key, call.Project)
+	}
 	return &UsageRecord{
 		ID:                       NewID("use"),
 		RequestID:                call.RequestID,
 		ProjectID:                call.Project.ID,
 		APIKeyID:                 call.Key.ID,
-		AttributedUserID:         usageAttributionUserID(call.Key, call.Project),
+		AttributedUserID:         attributedUserID,
 		ModelName:                call.Model.Name,
 		ProviderID:               route.Provider.ID,
 		ProviderResourceID:       routeResourceID(route),
 		InputTokens:              usage.PromptTokens,
 		CachedInputTokens:        usage.CachedInputTokens,
 		CacheWriteTokens:         usage.CacheWriteInputTokens,
+		CacheWrite5mTokens:       usage.CacheWrite5mInputTokens,
+		CacheWrite1hTokens:       usage.CacheWrite1hInputTokens,
 		InputAudioTokens:         usage.InputAudioTokens,
 		OutputTokens:             usage.CompletionTokens,
 		ReasoningTokens:          usage.ReasoningOutputTokens,
@@ -22,6 +31,10 @@ func newUsageRecord(call CallContext, route RouteSelection, usage Usage, created
 		AcceptedPredictionTokens: usage.AcceptedPredictionTokens,
 		RejectedPredictionTokens: usage.RejectedPredictionTokens,
 		TotalTokens:              usage.TotalTokens,
+		InputCostUSD:             usage.InputCostUSD,
+		CacheReadCostUSD:         usage.CacheReadCostUSD,
+		CacheWriteCostUSD:        usage.CacheWriteCostUSD,
+		OutputCostUSD:            usage.OutputCostUSD,
 		CostUSD:                  usage.CostUSD,
 		ProviderCostUSD:          usage.ProviderCostUSD,
 		CreatedAt:                createdAt,

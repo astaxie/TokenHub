@@ -1,12 +1,19 @@
-import { Check, Copy, KeyRound } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import Select, { type MultiValue } from "react-select";
 import { type AdminUser, type AppData, type FieldConfig, type Model } from "../core/types";
 import { modelCategory, modelCategoryLabel } from "../domain/catalog";
-import { codexImageCapableResources, findProvider, isCodexSubscriptionImageModel, modelRoutesFor } from "../domain/entities";
+import { modelDisplayName } from "../domain/model-display-name";
+import { findProvider, modelRoutesFor } from "../domain/entities";
 import { compactNumber, routeStrategyLabel } from "../domain/formatting";
-import { enumOptionLabel, enumValueLabel, splitList } from "../domain/labels";
+import { enumOptionLabel, enumValueLabel, providerTypeLabel, splitList } from "../domain/labels";
+import { providerCatalogEntriesFromPluginCapabilities } from "../domain/provider-plugin-catalog";
 import { activeLanguage, clearCustomValidity, handleRequiredFieldInvalid, selectedModelsText, selectedOptionsText, translatedCell, tx } from "../i18n/runtime";
-import { PaginationControls, usePagination } from "../views/settings-table";
+import { PaginationControls, usePagination } from "./pagination";
+import { useModalFocus } from "./modal-focus";
+
+function HiddenSelectIndicator() {
+  return null;
+}
 
 export function ConfirmDialog({
   title,
@@ -25,66 +32,15 @@ export function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const focus = useModalFocus(loading ? undefined : onCancel);
   return (
     <div className="modal-backdrop" role="presentation">
-      <div className="confirm-modal" role="dialog" aria-modal="true">
+      <div className="confirm-modal" role="dialog" aria-modal="true" aria-label={tx(title)} {...focus}>
         <h2>{tx(title)}</h2>
         <p>{tx(message)}</p>
         <div className="modal-actions">
-          <button className="secondary-button" onClick={onCancel} type="button">{tx("取消")}</button>
+          <button className="secondary-button" onClick={onCancel} disabled={loading} type="button">{tx("取消")}</button>
           <button className={confirmClassName} onClick={onConfirm} disabled={loading} type="button">{tx(confirmLabel)}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function IssuedKeyModal({ value, onClose }: { value: string; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const [closeCountdown, setCloseCountdown] = useState(3);
-
-  useEffect(() => {
-    if (closeCountdown <= 0) return;
-    const timer = window.setTimeout(() => setCloseCountdown((current) => Math.max(current - 1, 0)), 1000);
-    return () => window.clearTimeout(timer);
-  }, [closeCountdown]);
-
-  async function copyKey() {
-    try {
-      await navigator.clipboard?.writeText(value);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" role="presentation">
-      <div className="confirm-modal issued-key-modal" role="dialog" aria-modal="true" aria-labelledby="issued-key-title">
-        <div className="issued-key-icon" aria-hidden="true">
-          <KeyRound size={18} />
-        </div>
-        <div>
-          <p className="eyebrow">{tx("新 Key 仅展示一次：")}</p>
-          <h2 id="issued-key-title">{tx("新 Key 已生成")}</h2>
-          <p>{tx("请现在复制并保存这个 Key。关闭弹窗后将无法再次查看完整 Key，只能通过轮换生成新的 Key。")}</p>
-        </div>
-        <label className="issued-key-field">
-          <span>{tx("完整 Key")}</span>
-          <textarea
-            readOnly
-            value={value}
-            onFocus={(event) => event.currentTarget.select()}
-          />
-        </label>
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={() => void copyKey()} type="button">
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? tx("已复制") : tx("复制 Key")}
-          </button>
-          <button className="button" disabled={closeCountdown > 0} onClick={onClose} type="button">
-            {closeCountdown > 0 ? issuedKeyCloseCountdownLabel(closeCountdown) : tx("我已保存，关闭")}
-          </button>
         </div>
       </div>
     </div>
@@ -119,8 +75,36 @@ export function FieldInput({
   const autoComplete = field.autoComplete ?? "off";
   const inputName = `tokenhub-${field.key}`;
   let options = field.optionsFromData?.(data, currentUser, values) ?? (field.options ?? []).map((option) => ({ value: option, label: enumOptionLabel(field.key, option) }));
-  if (field.type !== "multi-select" && value && !options.some((option) => option.value === value)) {
+  if (field.type !== "multi-select" && field.type !== "tag-select" && value && !options.some((option) => option.value === value)) {
     options = [...options, { value, label: value }];
+  }
+  if (field.type === "tag-select") {
+    const translatedOptions = options.map((option) => ({ ...option, label: tx(option.label) }));
+    const optionsByValue = new Map(translatedOptions.map((option) => [option.value, option]));
+    const selected = splitList(value).map((item) => optionsByValue.get(item) ?? { value: item, label: item });
+    return (
+      <div className="field tag-select-field" data-field-key={field.key}>
+        <label htmlFor={inputName}>{tx(field.label)}</label>
+        <Select
+          className="tag-select"
+          classNamePrefix="tag-select"
+          components={{ ClearIndicator: HiddenSelectIndicator, DropdownIndicator: HiddenSelectIndicator, IndicatorSeparator: HiddenSelectIndicator }}
+          inputId={inputName}
+          instanceId={inputName}
+          isDisabled={readOnly}
+          isMulti
+          isSearchable
+          noOptionsMessage={() => tx("没有匹配的选项")}
+          onChange={(next: MultiValue<{ value: string; label: string }>) => onChange(next.map((option) => option.value).join(", "))}
+          openMenuOnFocus
+          options={translatedOptions}
+          placeholder={tx(field.placeholder ?? "请选择")}
+          required={field.required}
+          value={selected}
+        />
+        {field.help ? <small>{tx(field.help)}</small> : null}
+      </div>
+    );
   }
   if (field.type === "multi-select" && (!editing || field.multiSelectOnEdit)) {
     const selected = new Set(splitList(value));
@@ -356,35 +340,18 @@ export function StatusPill({ status, label }: { status: string; label?: string }
   return <span className={`pill ${kind}`}>{label ? tx(label) : enumValueLabel(status)}</span>;
 }
 
-export function ModelNameCell({ model }: { model: Model }) {
+export function ModelNameCell({ model, data }: { model: Model; data?: Pick<AppData, "plugins" | "providerAdapters"> }) {
+  const title = modelDisplayName(model.metadata, model.name);
+  const category = modelCategory(model, data);
   return (
     <div className="model-name-cell">
-      <strong>{model.name}</strong>
-      <span>{modelCategoryLabel(modelCategory(model))} · {model.family || "-"} · {model.modality || "chat"} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}</span>
+      <strong>{title}</strong>
+      <span>{title !== model.name ? `${model.name} · ` : ""}{modelCategoryLabel(category, data)} · {model.family || "-"} · {model.modality || "chat"} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}</span>
     </div>
   );
 }
 
 export function ModelRouteProviders({ model, data }: { model: Model; data: AppData }) {
-  if (isCodexSubscriptionImageModel(model)) {
-    const resources = codexImageCapableResources(data);
-    if (resources.length === 0) {
-      return <span className="muted-inline">{tx("暂无可生图账号")}</span>;
-    }
-    return (
-      <div className="route-provider-list">
-        {resources.slice(0, 4).map((resource) => (
-          <div className="route-provider-chip" key={resource.id}>
-            <span className="route-dot ok" />
-            <strong>{findProvider(data, resource.provider_id)?.name || resource.provider_id}</strong>
-            <em>{resource.name}</em>
-            <small>{tx("Codex 订阅生图")}</small>
-          </div>
-        ))}
-        {resources.length > 4 ? <span className="route-overflow">+{resources.length - 4}</span> : null}
-      </div>
-    );
-  }
   const routes = modelRoutesFor(model, data);
   if (routes.length === 0) {
     return <span className="muted-inline">{tx("未配置线路")}</span>;
@@ -407,51 +374,308 @@ export function ModelRouteProviders({ model, data }: { model: Model; data: AppDa
   );
 }
 
-export const providerTypeOptions = ["mock", "openai", "openai_codex", "openai_compatible", "azure_openai", "anthropic", "gemini", "deepseek", "qwen", "local"];
-
-export const modelCategoryLabels: Record<string, string> = {
-  all: "全部",
-  codex: "OpenAI Codex",
-  openai: "OpenAI",
-  claude: "Claude",
-  deepseek: "DeepSeek",
-  gemini: "Gemini",
-  qwen: "Qwen",
-  glm: "GLM",
-  kimi: "Kimi",
-  doubao: "Doubao",
-  ernie: "ERNIE",
-  baichuan: "Baichuan",
-  minimax: "MiniMax",
-  stepfun: "StepFun",
-  wanx: "WanX",
-  paddlepaddle: "PaddlePaddle",
-  microsoft: "Microsoft",
-  llama: "Llama",
-  mistral: "Mistral",
-  grok: "Grok",
-  custom: "自定义",
+export type ProviderTypeOption = {
+  value: string;
+  label: string;
+  supportsCustomHeaders: boolean;
+  apiKeyRequired?: boolean;
+  managedHeaders?: string[];
+  authModes?: string[];
+  routeProtocols?: string[];
+  systemPromptTransformDefault?: string;
+  claudeCodeAttributionDefault?: string;
+  reasoningConfigurable?: boolean;
+  defaultBaseURL?: string;
+  defaultCatalogProviderType?: boolean;
+  modelDiscovery?: {
+    path?: string;
+    auth?: string;
+    apiKeyQueryParam?: string;
+    headers?: Record<string, string>;
+  };
 };
 
-export const preferredModelCategories = [
-  "codex",
-  "openai",
-  "claude",
-  "deepseek",
-  "gemini",
-  "qwen",
-  "glm",
-  "kimi",
-  "doubao",
-  "ernie",
-  "baichuan",
-  "minimax",
-  "stepfun",
-  "wanx",
-  "grok",
-  "paddlepaddle",
-  "microsoft",
-  "llama",
-  "mistral",
-  "custom",
-];
+export function providerTypeOptionsFromData(data: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">, values?: Record<string, string>) {
+  const types = new Set<string>();
+  const labelByType = new Map<string, string>();
+  const policyByType = new Map<string, boolean>();
+  const apiKeyRequiredByType = new Map<string, boolean>();
+  const managedHeadersByType = new Map<string, Set<string>>();
+  const authModesByType = new Map<string, Set<string>>();
+  const routeProtocolsByType = new Map<string, Set<string>>();
+  const systemPromptTransformDefaultByType = new Map<string, string>();
+  const reasoningConfigurableByType = new Map<string, boolean>();
+  const defaultBaseURLByType = new Map<string, string>();
+  const defaultCatalogProviderTypeByType = new Map<string, boolean>();
+  const modelDiscoveryByType = new Map<string, ProviderTypeOption["modelDiscovery"]>();
+  for (const adapter of data.providerAdapters ?? []) {
+    if (!adapter.type) continue;
+    types.add(adapter.type);
+    const pluginLabel = providerAdapterPluginLabel(data.plugins, adapter.plugin_id);
+    if (pluginLabel) labelByType.set(adapter.type, pluginLabel);
+    policyByType.set(adapter.type, adapter.provider_policy?.supports_custom_headers ?? true);
+    apiKeyRequiredByType.set(adapter.type, adapter.provider_policy?.api_key_required ?? true);
+    for (const header of adapter.provider_policy?.managed_headers ?? []) {
+      addProviderManagedHeader(managedHeadersByType, adapter.type, header);
+    }
+    const systemPromptTransformDefault = adapter.provider_policy?.system_prompt_transform_default || adapter.provider_policy?.claude_code_attribution_default;
+    if (systemPromptTransformDefault) {
+      systemPromptTransformDefaultByType.set(adapter.type, systemPromptTransformDefault);
+    }
+    if (typeof adapter.provider_policy?.reasoning_configurable === "boolean") {
+      reasoningConfigurableByType.set(adapter.type, adapter.provider_policy.reasoning_configurable);
+    }
+    if (adapter.provider_policy?.default_base_url?.trim()) {
+      defaultBaseURLByType.set(adapter.type, adapter.provider_policy.default_base_url.trim().replace(/\/+$/, ""));
+    }
+    if (adapter.provider_policy?.default_catalog_provider_type) {
+      defaultCatalogProviderTypeByType.set(adapter.type, true);
+    }
+    const modelDiscovery = providerTypeModelDiscoveryFromAdapter(adapter.provider_policy?.model_discovery);
+    if (modelDiscovery) modelDiscoveryByType.set(adapter.type, modelDiscovery);
+    for (const authMode of adapter.provider_policy?.auth_modes ?? []) {
+      addProviderAuthMode(authModesByType, adapter.type, authMode);
+    }
+    for (const protocol of adapter.provider_policy?.route_protocols ?? []) {
+      addProviderRouteProtocol(routeProtocolsByType, adapter.type, protocol);
+    }
+  }
+  for (const plugin of data.plugins ?? []) {
+    for (const capability of plugin.capabilities ?? []) {
+      if (capability.kind === "provider") {
+        const providerType = String(capability.subject || capability.name || "").trim();
+        if (providerType) types.add(providerType);
+        if (providerType && plugin.name) labelByType.set(providerType, plugin.name);
+      }
+      if (capability.kind === "provider_policy" && capability.name === "supports_custom_headers") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        policyByType.set(providerType, capability.value !== "false");
+      }
+      if (capability.kind === "provider_policy" && capability.name === "api_key_required") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        apiKeyRequiredByType.set(providerType, capability.value !== "false");
+      }
+      if (capability.kind === "provider_policy" && capability.name === "managed_header") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        addProviderManagedHeader(managedHeadersByType, providerType, capability.value);
+      }
+      if (capability.kind === "provider_policy" && capability.name === "route_protocol") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        addProviderRouteProtocol(routeProtocolsByType, providerType, capability.value);
+      }
+      if (capability.kind === "provider_policy" && capability.name === "auth_mode") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        addProviderAuthMode(authModesByType, providerType, capability.value);
+      }
+      if (capability.kind === "provider_policy" && capability.name === "default_base_url") {
+        const providerType = String(capability.subject || "").trim();
+        const baseURL = String(capability.value || "").trim().replace(/\/+$/, "");
+        if (!providerType || !baseURL) continue;
+        types.add(providerType);
+        defaultBaseURLByType.set(providerType, baseURL);
+      }
+      if (capability.kind === "provider_policy" && capability.name === "default_catalog_provider_type") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        defaultCatalogProviderTypeByType.set(providerType, capability.value !== "false");
+      }
+      if (capability.kind === "provider_policy" && capability.name.startsWith("model_discovery_")) {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        applyProviderModelDiscoveryCapability(modelDiscoveryByType, providerType, capability.name, capability.value);
+      }
+      if (capability.kind === "provider_policy" && (capability.name === "system_prompt_transform_default" || capability.name === "claude_code_attribution_default")) {
+        const providerType = String(capability.subject || "").trim();
+        const policy = String(capability.value || "").trim();
+        if (!providerType || !policy) continue;
+        types.add(providerType);
+        if (capability.name === "system_prompt_transform_default" || !systemPromptTransformDefaultByType.has(providerType)) {
+          systemPromptTransformDefaultByType.set(providerType, policy);
+        }
+      }
+      if (capability.kind === "provider_policy" && capability.name === "reasoning_configurable") {
+        const providerType = String(capability.subject || "").trim();
+        if (!providerType) continue;
+        types.add(providerType);
+        reasoningConfigurableByType.set(providerType, capability.value !== "false");
+      }
+    }
+  }
+  for (const entry of [...providerCatalogEntriesFromPluginCapabilities(data.plugins), ...(data.providerCatalog ?? [])]) {
+    if (!entry.type) continue;
+    types.add(entry.type);
+    const label = String(entry.display_name || entry.name || entry.type).trim();
+    if (label) labelByType.set(entry.type, label);
+    if (entry.base_url?.trim() && !defaultBaseURLByType.has(entry.type)) {
+      defaultBaseURLByType.set(entry.type, entry.base_url.trim().replace(/\/+$/, ""));
+    }
+  }
+  for (const provider of data.providers ?? []) {
+    if (provider.type) {
+      types.add(provider.type);
+    }
+  }
+  if (values?.type) types.add(values.type);
+  return [...types].map((value) => ({
+    value,
+    label: providerTypeOptionLabel(value, labelByType),
+    supportsCustomHeaders: policyByType.get(value) ?? defaultProviderTypeSupportsCustomHeaders(),
+    apiKeyRequired: apiKeyRequiredByType.get(value) ?? true,
+    managedHeaders: providerManagedHeaderList(managedHeadersByType.get(value)),
+    authModes: providerAuthModeList(authModesByType.get(value)),
+    routeProtocols: providerRouteProtocolList(routeProtocolsByType.get(value)),
+    systemPromptTransformDefault: systemPromptTransformDefaultByType.get(value),
+    claudeCodeAttributionDefault: systemPromptTransformDefaultByType.get(value),
+    reasoningConfigurable: reasoningConfigurableByType.get(value),
+    defaultBaseURL: defaultBaseURLByType.get(value),
+    defaultCatalogProviderType: defaultCatalogProviderTypeByType.get(value),
+    modelDiscovery: modelDiscoveryByType.get(value),
+  }));
+}
+
+function providerTypeOptionLabel(providerType: string, labels: Map<string, string>) {
+  if (providerType === "mock") return providerTypeLabel(providerType);
+  return labels.get(providerType) ?? providerTypeLabel(providerType);
+}
+
+function providerAdapterPluginLabel(plugins: Pick<AppData, "plugins">["plugins"] | undefined, pluginID: string | undefined) {
+  if (!pluginID) return "";
+  const plugin = (plugins ?? []).find((item) => item.id === pluginID);
+  return String(plugin?.name || "").trim();
+}
+
+function applyProviderModelDiscoveryCapability(
+  policies: Map<string, ProviderTypeOption["modelDiscovery"]>,
+  providerType: string,
+  name: string,
+  rawValue: string | undefined,
+) {
+  const value = String(rawValue || "").trim();
+  if (!value) return;
+  const policy = { ...(policies.get(providerType) ?? {}) };
+  if (name === "model_discovery_path") policy.path = value;
+  if (name === "model_discovery_auth") policy.auth = value;
+  if (name === "model_discovery_api_key_query_param") policy.apiKeyQueryParam = value;
+  if (name === "model_discovery_headers") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        policy.headers = Object.fromEntries(Object.entries(parsed).map(([key, item]) => [key, String(item)]));
+      }
+    } catch {
+      return;
+    }
+  }
+  policies.set(providerType, policy);
+}
+
+export function providerTypeSupportsCustomHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.supportsCustomHeaders ?? defaultProviderTypeSupportsCustomHeaders();
+}
+
+export function providerTypeRequiresAPIKey(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.apiKeyRequired ?? true;
+}
+
+export function providerTypeManagedHeaders(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.managedHeaders ?? [];
+}
+
+export function providerTypeRouteProtocols(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.routeProtocols ?? [];
+}
+
+export function providerTypeAuthModes(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.authModes ?? [];
+}
+
+export function providerTypePreferredAuthMode(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  const modes = providerTypeAuthModes(providerTypeOptions, providerType);
+  return modes.includes("x-api-key") ? "x-api-key" : modes[0] ?? "";
+}
+
+export function providerTypeModelDiscovery(providerTypeOptions: ProviderTypeOption[], providerType: string) {
+  return providerTypeOptions.find((option) => option.value === providerType)?.modelDiscovery;
+}
+
+function defaultProviderTypeSupportsCustomHeaders() {
+  return true;
+}
+
+function addProviderManagedHeader(policies: Map<string, Set<string>>, providerType: string, rawValue: string | undefined) {
+  const value = String(rawValue || "").trim().toLowerCase();
+  if (!value) return;
+  const headers = policies.get(providerType) ?? new Set<string>();
+  headers.add(value);
+  policies.set(providerType, headers);
+}
+
+function providerManagedHeaderList(headers?: Set<string>) {
+  return Array.from(headers ?? []).sort();
+}
+
+function providerTypeModelDiscoveryFromAdapter(policy?: {
+  path?: string;
+  auth?: string;
+  api_key_query_param?: string;
+  headers?: Record<string, string>;
+}): ProviderTypeOption["modelDiscovery"] {
+  if (!policy) return undefined;
+  const result = {
+    path: stringOrUndefined(policy.path),
+    auth: stringOrUndefined(policy.auth),
+    apiKeyQueryParam: stringOrUndefined(policy.api_key_query_param),
+    headers: providerModelDiscoveryHeaders(policy.headers),
+  };
+  if (!result.path && !result.auth && !result.apiKeyQueryParam && !result.headers) return undefined;
+  return result;
+}
+
+function providerModelDiscoveryHeaders(headers?: Record<string, string>) {
+  if (!headers) return undefined;
+  const normalized = Object.fromEntries(Object.entries(headers)
+    .map(([key, value]) => [key.trim(), value.trim()])
+    .filter(([key, value]) => key && value));
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function stringOrUndefined(value?: string) {
+  const text = value?.trim();
+  return text || undefined;
+}
+
+function addProviderAuthMode(authModesByType: Map<string, Set<string>>, providerType: string, authMode?: string) {
+  authMode = String(authMode || "").trim();
+  if (!providerType || !authMode) return;
+  const authModes = authModesByType.get(providerType) ?? new Set<string>();
+  authModes.add(authMode);
+  authModesByType.set(providerType, authModes);
+}
+
+function addProviderRouteProtocol(protocolsByType: Map<string, Set<string>>, providerType: string, protocol?: string) {
+  protocol = String(protocol || "").trim().toLowerCase();
+  if (!providerType || !protocol) return;
+  const protocols = protocolsByType.get(providerType) ?? new Set<string>();
+  protocols.add(protocol);
+  protocolsByType.set(providerType, protocols);
+}
+
+function providerAuthModeList(authModes?: Set<string>) {
+  return authModes ? [...authModes].sort() : undefined;
+}
+
+function providerRouteProtocolList(protocols?: Set<string>) {
+  return protocols ? [...protocols].sort() : undefined;
+}

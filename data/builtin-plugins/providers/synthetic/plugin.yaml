@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.synthetic"
+name: "Synthetic"
+version: 1.0.0
+summary: "Connect TokenHub to Synthetic."
+description: "Connect TokenHub to Synthetic. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://api.synthetic.new/openai/v1"
+    catalog:
+      id: "synthetic"
+      name: "Synthetic"
+      display_name: "Synthetic"
+      type: "openai_compatible"
+      base_url: "https://api.synthetic.new/openai/v1"
+      doc_url: "https://synthetic.new/pricing"
+      categories: []
+      models_count: 33
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

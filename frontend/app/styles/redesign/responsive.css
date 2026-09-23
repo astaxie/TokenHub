@@ -97,7 +97,9 @@
   }
 
   .app-shell,
-  .app-shell.sidebar-collapsed {
+  .app-shell.sidebar-collapsed,
+  .app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"],
+  .app-shell[data-sim-plugin-id="tokenhub.sim.knowledge-sidebar"].sidebar-collapsed {
     grid-template-columns: 1fr;
   }
 
@@ -147,6 +149,9 @@
 
   .page-breadcrumb {
     max-width: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
+    overflow: visible;
   }
 
   .page-context-side {
@@ -215,6 +220,7 @@
   .wizard-form-grid,
   .wizard-model-list,
   .wizard-review-grid,
+  .rate-card-form .form-grid,
   .provider-modal-body,
   .provider-form-grid,
   .provider-access-options,

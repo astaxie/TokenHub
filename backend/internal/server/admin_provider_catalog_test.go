@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
@@ -93,6 +95,57 @@ func TestAdminCreatesProviderModelAndRoute(t *testing.T) {
 	}
 	if !strings.Contains(routes.Body, "local-coder") || !strings.Contains(routes.Body, "qwen2.5-coder") {
 		t.Fatalf("expected new route in list: %s", routes.Body)
+	}
+}
+
+func TestAdminRouteRejectsKnownModelProviderProtocolMismatch(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_native_anthropic", Name: "Native Anthropic", Type: ProviderAnthropic, Status: StatusActive, Healthy: true})
+	store.AddProviderModel(ProviderModel{ProviderID: provider.ID, UpstreamModel: "gpt-5.6-luna", Status: StatusActive})
+	store.AddModel(Model{Name: "gpt-5.6-luna", Modality: "chat", Status: StatusActive, Metadata: map[string]string{"endpoints": "responses,chat/completions"}})
+
+	response := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": "gpt-5.6-luna", "provider_id": provider.ID, "provider_model": "gpt-5.6-luna", "status": StatusActive,
+	}, "")
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body, `"code":"route_protocol_mismatch"`) {
+		t.Fatalf("expected protocol mismatch rejection, got %d: %s", response.Code, response.Body)
+	}
+}
+
+func TestAdminModelCreateRejectsInitialRouteProtocolMismatch(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_initial_anthropic", Name: "Native Anthropic", Type: ProviderAnthropic, Status: StatusActive, Healthy: true})
+	store.AddProviderModel(ProviderModel{ProviderID: provider.ID, UpstreamModel: "responses-only", Status: StatusActive})
+
+	response := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/models", map[string]any{
+		"name": "responses-only", "modality": "chat", "metadata": map[string]string{"endpoints": "responses"},
+		"routes": []map[string]any{{"provider_id": provider.ID, "provider_model": "responses-only", "status": StatusActive}},
+	}, "")
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body, `"code":"route_protocol_mismatch"`) {
+		t.Fatalf("expected initial route protocol mismatch rejection, got %d: %s", response.Code, response.Body)
+	}
+}
+
+func TestAdminRouteAllowsCatalogModelWithMatchingProviderProtocol(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	provider := store.AddProvider(Provider{ID: "prv_protocol_openai", Name: "OpenAI Compatible", Type: ProviderOpenAICompatible, Status: StatusActive, Healthy: true})
+	store.AddProviderModel(ProviderModel{ProviderID: provider.ID, UpstreamModel: "gpt-5.6-luna", Status: StatusActive})
+	store.AddModel(Model{Name: "gpt-5.6-luna", Modality: "chat", Status: StatusActive, Metadata: map[string]string{"endpoints": "responses,chat/completions"}})
+
+	response := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": "gpt-5.6-luna", "provider_id": provider.ID, "provider_model": "gpt-5.6-luna", "status": StatusActive,
+	}, "")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected compatible route creation, got %d: %s", response.Code, response.Body)
 	}
 }
 
@@ -189,6 +242,230 @@ func TestAdminTestsUnsavedProviderConnection(t *testing.T) {
 	}
 }
 
+func TestAdminTestsUnsavedAnthropicProviderAuthentication(t *testing.T) {
+	for _, testCase := range []struct {
+		name              string
+		authType          string
+		wantAuthorization string
+		wantAPIKey        string
+	}{
+		{name: "default x-api-key", wantAPIKey: "test-secret"},
+		{name: "bearer", authType: anthropicAuthTypeBearer, wantAuthorization: "Bearer test-secret"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("authorization"); got != testCase.wantAuthorization {
+					t.Errorf("authorization = %q, want %q", got, testCase.wantAuthorization)
+				}
+				if got := r.Header.Get("x-api-key"); got != testCase.wantAPIKey {
+					t.Errorf("x-api-key = %q, want %q", got, testCase.wantAPIKey)
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"data": []map[string]any{{"id": "claude-test"}},
+				})
+			}))
+			defer upstream.Close()
+
+			app := newTestServer()
+			resp := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", map[string]any{
+				"name":                "Anthropic",
+				"type":                ProviderAnthropic,
+				"base_url":            upstream.URL + "/v1",
+				"api_key":             "test-secret",
+				"anthropic_auth_type": testCase.authType,
+			}, "")
+			if resp.Code != http.StatusOK {
+				t.Fatalf("expected connection test 200, got %d: %s", resp.Code, resp.Body)
+			}
+		})
+	}
+}
+
+func TestAdminSavedAnthropicProviderCatalogAuthentication(t *testing.T) {
+	seenHeaders := make(chan http.Header, 2)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenHeaders <- r.Header.Clone()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{{"id": "claude-test"}},
+		})
+	}))
+	defer upstream.Close()
+
+	app := newTestServer()
+	created := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                  "prv_anthropic_bearer",
+		"name":                "Anthropic Bearer",
+		"type":                ProviderAnthropic,
+		"base_url":            upstream.URL + "/v1",
+		"api_key":             "saved-secret",
+		"anthropic_auth_type": anthropicAuthTypeBearer,
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", created.Code, created.Body)
+	}
+
+	for _, testCase := range []struct {
+		name              string
+		authType          string
+		wantAuthorization string
+		wantAPIKey        string
+	}{
+		{name: "inherit saved bearer", wantAuthorization: "Bearer saved-secret"},
+		{name: "explicit x-api-key override", authType: anthropicAuthTypeAPIKey, wantAPIKey: "saved-secret"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			body := map[string]any{"provider_id": "prv_anthropic_bearer"}
+			if testCase.authType != "" {
+				body["anthropic_auth_type"] = testCase.authType
+			}
+			resp := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/custom", body, "")
+			if resp.Code != http.StatusOK {
+				t.Fatalf("expected saved provider catalog 200, got %d: %s", resp.Code, resp.Body)
+			}
+			headers := <-seenHeaders
+			if got := headers.Get("authorization"); got != testCase.wantAuthorization {
+				t.Errorf("authorization = %q, want %q", got, testCase.wantAuthorization)
+			}
+			if got := headers.Get("x-api-key"); got != testCase.wantAPIKey {
+				t.Errorf("x-api-key = %q, want %q", got, testCase.wantAPIKey)
+			}
+		})
+	}
+}
+
+func TestAdminValidatesAnthropicProviderAuthentication(t *testing.T) {
+	app := newTestServer()
+	valid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                  "prv_anthropic_bearer",
+		"name":                "Anthropic Bearer",
+		"type":                ProviderAnthropic,
+		"base_url":            "https://example.invalid",
+		"anthropic_auth_type": anthropicAuthTypeBearer,
+	}, "")
+	if valid.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", valid.Code, valid.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(valid.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Provider.Options[anthropicAuthTypeOption]; got != anthropicAuthTypeBearer {
+		t.Fatalf("stored authentication type = %q, want %q", got, anthropicAuthTypeBearer)
+	}
+
+	for _, body := range []map[string]any{
+		{
+			"name":                "Invalid Anthropic",
+			"type":                ProviderAnthropic,
+			"base_url":            "https://example.invalid",
+			"anthropic_auth_type": "basic",
+		},
+		{
+			"name":     "Invalid Anthropic Option",
+			"type":     ProviderAnthropic,
+			"base_url": "https://example.invalid",
+			"options":  map[string]string{anthropicAuthTypeOption: "basic"},
+		},
+	} {
+		resp := doJSON(t, app, http.MethodPost, "/api/admin/providers", body, "")
+		if resp.Code != http.StatusBadRequest || !strings.Contains(resp.Body, `"code":"provider_anthropic_auth_type_invalid"`) {
+			t.Fatalf("expected invalid authentication type, got %d: %s", resp.Code, resp.Body)
+		}
+	}
+}
+
+func TestAdminPersistsPluginProviderAuthenticationMode(t *testing.T) {
+	store := NewMemoryStore()
+	server := New(store)
+	providerType := "auth_mode_plugin_provider"
+	pluginID := "tokenhub.provider.auth-mode-plugin"
+	descriptor := pluginmeta.BuiltInProvider(pluginID, "Auth Mode Plugin", []string{providerType}, []string{string(AdapterCapabilityChat)})
+	descriptor.Capabilities = append(descriptor.Capabilities,
+		pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: providerAuthModeOption, Subject: providerType, Value: "oauth"},
+		pluginmeta.CapabilityDescriptor{Kind: "provider_policy", Name: providerAuthModeOption, Subject: providerType, Value: "x-api-key"},
+	)
+	if err := server.adapterRegistry.RegisterPlugin(descriptor, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      MockAdapter{},
+		Capabilities: []AdapterCapability{AdapterCapabilityChat},
+	}); err != nil {
+		t.Fatalf("register auth mode plugin: %v", err)
+	}
+	app := server.Handler()
+
+	valid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                 "prv_auth_mode_plugin",
+		"name":               "Auth Mode Plugin Provider",
+		"type":               providerType,
+		"base_url":           "https://example.invalid/v1",
+		"api_key":            "plugin-secret",
+		"options":            map[string]string{"region": "legacy"},
+		"provider_auth_mode": "oauth",
+	}, "")
+	if valid.Code != http.StatusCreated {
+		t.Fatalf("expected provider creation 201, got %d: %s", valid.Code, valid.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(valid.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if got := result.Provider.Options[providerAuthModeOption]; got != "oauth" {
+		t.Fatalf("stored plugin auth mode = %q, want oauth", got)
+	}
+	if got := result.Provider.Options[anthropicAuthTypeOption]; got != "" {
+		t.Fatalf("plugin provider stored legacy Anthropic auth option = %q", got)
+	}
+	if got := result.Provider.Options["region"]; got != "legacy" {
+		t.Fatalf("stored plugin provider lost existing options = %q", got)
+	}
+
+	patched := doJSON(t, app, http.MethodPatch, "/api/admin/providers/prv_auth_mode_plugin", map[string]any{
+		"anthropic_auth_type": anthropicAuthTypeAPIKey,
+	}, "")
+	if patched.Code != http.StatusOK {
+		t.Fatalf("expected provider patch 200, got %d: %s", patched.Code, patched.Body)
+	}
+	var patchedResult ProviderCreateResult
+	if err := json.Unmarshal([]byte(patched.Body), &patchedResult); err != nil {
+		t.Fatal(err)
+	}
+	if got := patchedResult.Provider.Options[providerAuthModeOption]; got != anthropicAuthTypeAPIKey {
+		t.Fatalf("patched plugin auth mode = %q, want x-api-key", got)
+	}
+	if got := patchedResult.Provider.Options["region"]; got != "legacy" {
+		t.Fatalf("patched plugin provider lost existing options = %q", got)
+	}
+
+	invalid := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"name":               "Invalid Plugin Auth Mode",
+		"type":               providerType,
+		"base_url":           "https://example.invalid/v1",
+		"provider_auth_mode": "basic",
+	}, "")
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body, `"code":"provider_auth_mode_invalid"`) {
+		t.Fatalf("expected invalid plugin auth mode, got %d: %s", invalid.Code, invalid.Body)
+	}
+
+	preferred := doJSON(t, app, http.MethodPost, "/api/admin/providers", map[string]any{
+		"id":                  "prv_auth_mode_preferred",
+		"name":                "Preferred Auth Mode Provider",
+		"type":                providerType,
+		"base_url":            "https://example.invalid/v1",
+		"provider_auth_mode":  "oauth",
+		"anthropic_auth_type": "x-api-key",
+	}, "")
+	if preferred.Code != http.StatusCreated {
+		t.Fatalf("expected preferred auth mode creation 201, got %d: %s", preferred.Code, preferred.Body)
+	}
+	var preferredResult ProviderCreateResult
+	if err := json.Unmarshal([]byte(preferred.Body), &preferredResult); err != nil {
+		t.Fatal(err)
+	}
+	if got := preferredResult.Provider.Options[providerAuthModeOption]; got != "oauth" {
+		t.Fatalf("preferred plugin auth mode = %q, want oauth", got)
+	}
+}
+
 func TestAdminProviderConnectionTestRequiresCredentials(t *testing.T) {
 	app := newTestServer()
 	for _, testCase := range []struct {
@@ -197,7 +474,7 @@ func TestAdminProviderConnectionTestRequiresCredentials(t *testing.T) {
 		code string
 	}{
 		{name: "base URL", body: map[string]any{"api_key": "test-secret"}, code: "provider_base_url_required"},
-		{name: "API key", body: map[string]any{"base_url": "https://example.invalid/v1"}, code: "provider_api_key_required"},
+		{name: "API key", body: map[string]any{"type": ProviderOpenAI, "base_url": "https://example.invalid/v1"}, code: "provider_api_key_required"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			resp := doJSON(t, app, http.MethodPost, "/api/admin/providers/test-connection", testCase.body, "")
@@ -464,6 +741,93 @@ func TestAdminCustomProviderCatalogLoadsUpstreamModels(t *testing.T) {
 	}
 }
 
+func TestAdminProviderCreateImportsSubmittedModelsForPluginCatalog(t *testing.T) {
+	server := NewWithConfig(NewMemoryStore(), Config{AdminToken: "plugin-create-admin"})
+	providerType := "submitted_models_provider"
+	pluginID := "tokenhub.provider.submitted-models"
+	if err := server.adapterRegistry.RegisterPlugin(pluginmeta.Descriptor{
+		ID:      pluginID,
+		Name:    "Submitted Models Provider",
+		Version: "1.0.0",
+		Source:  pluginmeta.SourceLocalFile,
+		Kinds:   []pluginmeta.Kind{pluginmeta.KindProvider},
+		Placements: []pluginmeta.Placement{
+			pluginmeta.PlacementGatewayChain,
+			pluginmeta.PlacementManagementAction,
+		},
+		Capabilities: []pluginmeta.CapabilityDescriptor{
+			{Kind: "provider", Name: string(AdapterCapabilityResponses), Subject: providerType},
+		},
+	}, AdapterRegistration{
+		Type:         providerType,
+		Adapter:      struct{}{},
+		Capabilities: []AdapterCapability{AdapterCapabilityResponses},
+	}); err != nil {
+		t.Fatalf("register submitted models provider: %v", err)
+	}
+
+	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/providers", map[string]any{
+		"catalog_id":      providerType,
+		"selected_models": []string{"plugin/model-a"},
+		"custom_models": []map[string]any{{
+			"id":             "plugin/model-a",
+			"display_name":   "Plugin Model A",
+			"category":       "custom",
+			"type":           "chat",
+			"context_window": 128000,
+		}},
+	}, "plugin-create-admin")
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create provider from plugin catalog: expected 201, got %d: %s", response.Code, response.Body)
+	}
+	var result ProviderCreateResult
+	if err := json.Unmarshal([]byte(response.Body), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Provider.Type != providerType || result.CatalogSource != "plugin:local_file" || result.ImportedModels != 1 {
+		t.Fatalf("create result = %+v", result)
+	}
+	models := server.store.ListProviderModels()
+	if len(models) != 1 || models[0].ProviderID != result.Provider.ID || models[0].UpstreamModel != "plugin/model-a" || models[0].Source != "custom-upstream" {
+		t.Fatalf("imported provider models = %+v", models)
+	}
+}
+
+func TestAdminAnthropicProviderCatalogLoadsVersionedUpstreamModels(t *testing.T) {
+	app := newTestServer()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/anthropic/v1/models" {
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+		if got := r.Header.Get("x-api-key"); got != "upstream-secret" {
+			t.Fatalf("unexpected upstream API key %q", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("unexpected Anthropic version %q", got)
+		}
+		if got := r.Header.Get("authorization"); got != "" {
+			t.Fatalf("unexpected OpenAI authorization header %q", got)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{{"id": "MiniMax-M2.7", "type": "model"}},
+		})
+	}))
+	defer upstream.Close()
+
+	resp := doJSON(t, app, http.MethodPost, "/api/admin/provider-catalog/custom", map[string]any{
+		"name":     "MiniMax",
+		"type":     ProviderAnthropic,
+		"base_url": upstream.URL + "/anthropic/v1",
+		"api_key":  "upstream-secret",
+	}, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected Anthropic provider catalog, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, `"MiniMax-M2.7"`) {
+		t.Fatalf("expected upstream Anthropic model, got %s", resp.Body)
+	}
+}
+
 func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	entries := []ProviderCatalogEntry{
 		{
@@ -489,12 +853,6 @@ func TestProviderCatalogUsesStandardModelCategories(t *testing.T) {
 	}
 	if normalizeModelLookupName("DeepSeekV4") != "deepseek-v4" || normalizeModelLookupName("openai/gpt5") != "gpt-5" {
 		t.Fatalf("expected compact provider model names to normalize")
-	}
-	if got := normalizeProviderBaseURL("302ai", "https://api.highwayapi.ai/openai"); got != "https://api.highwayapi.ai/openai/v1" {
-		t.Fatalf("expected JieKou OpenAI-compatible base URL to include /v1, got %s", got)
-	}
-	if got := normalizeProviderBaseURL("dmxapi", "https://www.dmxapi.cn"); got != "https://www.dmxapi.cn/v1" {
-		t.Fatalf("expected dmxapi OpenAI-compatible base URL to include /v1, got %s", got)
 	}
 }
 
@@ -939,6 +1297,75 @@ func TestAdminRejectsUnimportedAndDuplicateProviderModelRoutes(t *testing.T) {
 	}
 }
 
+func TestAdminCodexImageVirtualModelRouteRequiresSupportedProviderInventory(t *testing.T) {
+	store := NewMemoryStore()
+	store.AddModel(Model{Name: codexImageModelName, Modality: "image", Status: StatusActive})
+	codexProvider := store.AddProvider(Provider{
+		ID: "prv_codex_image_route", Name: "Codex Image Route", Type: ProviderOpenAICodex, Status: StatusActive, Healthy: true,
+	})
+	otherProvider := store.AddProvider(Provider{
+		ID: "prv_openai_image_route", Name: "OpenAI Image Route", Type: ProviderOpenAI, Status: StatusActive, Healthy: true,
+	})
+	app := New(store).Handler()
+
+	wrongProvider := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": otherProvider.ID,
+		"provider_model": codexImageUpstreamModel, "status": StatusActive,
+	}, "")
+	if wrongProvider.Code != http.StatusBadRequest || !strings.Contains(wrongProvider.Body, "codex_image_provider_required") {
+		t.Fatalf("expected Codex Provider validation, got %d: %s", wrongProvider.Code, wrongProvider.Body)
+	}
+
+	wrongModel := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": codexProvider.ID,
+		"provider_model": "gpt-5.6-luna", "status": StatusActive,
+	}, "")
+	if wrongModel.Code != http.StatusBadRequest || !strings.Contains(wrongModel.Body, "codex_image_upstream_model_invalid") {
+		t.Fatalf("expected Codex image upstream validation, got %d: %s", wrongModel.Code, wrongModel.Body)
+	}
+
+	activeWithoutCapability := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": codexProvider.ID,
+		"provider_model": codexImageUpstreamModel, "status": StatusActive,
+	}, "")
+	if activeWithoutCapability.Code != http.StatusConflict || !strings.Contains(activeWithoutCapability.Body, "codex_image_capability_required") {
+		t.Fatalf("expected active route without capability to be rejected, got %d: %s", activeWithoutCapability.Code, activeWithoutCapability.Body)
+	}
+
+	disabled := doJSON(t, app, http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name": codexImageModelName, "provider_id": codexProvider.ID,
+		"provider_model": codexImageUpstreamModel, "status": StatusDisabled,
+	}, "")
+	if disabled.Code != http.StatusCreated {
+		t.Fatalf("expected disabled route to be created for later activation, got %d: %s", disabled.Code, disabled.Body)
+	}
+	var route ModelRoute
+	if err := json.Unmarshal([]byte(disabled.Body), &route); err != nil {
+		t.Fatal(err)
+	}
+	activateWithoutCapability := doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{"status": StatusActive}, "")
+	if activateWithoutCapability.Code != http.StatusConflict || !strings.Contains(activateWithoutCapability.Body, "codex_image_capability_required") {
+		t.Fatalf("expected activation without capability to be rejected, got %d: %s", activateWithoutCapability.Code, activateWithoutCapability.Body)
+	}
+
+	resource, err := store.AddProviderResource(ProviderResource{
+		ID: "rsrc_codex_image_route_supported", ProviderID: codexProvider.ID,
+		Name: "Codex Image Route Supported Account", ResourceType: ProviderResourceOpenAISubscription,
+		Status: StatusActive, Healthy: true,
+		Options:     map[string]string{codexImageCapabilityOption: codexImageCapabilitySupported},
+		Credentials: &ProviderResourceCredentials{AccessToken: "route-supported-access", RefreshToken: "route-supported-refresh", AccountID: "route-supported-account"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activateWithCapability := doJSON(t, app, http.MethodPatch, "/api/admin/routing-rules/"+route.ID, map[string]any{
+		"status": StatusActive, "provider_resource_id": resource.ID,
+	}, "")
+	if activateWithCapability.Code != http.StatusOK {
+		t.Fatalf("expected activation with supported capability to succeed, got %d: %s", activateWithCapability.Code, activateWithCapability.Body)
+	}
+}
+
 func TestExternalModelRoleSurvivesCandidateCatalogRefresh(t *testing.T) {
 	store := NewMemoryStore()
 	external := store.AddModel(Model{
@@ -960,5 +1387,84 @@ func TestExternalModelRoleSurvivesCandidateCatalogRefresh(t *testing.T) {
 	model, ok := modelByNameForTest(store.ListModels(), external.Name)
 	if !ok || model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal || model.Status != StatusDisabled {
 		t.Fatalf("candidate refresh must preserve external role and publication state: %+v", model)
+	}
+}
+
+// TestAdminProviderCatalogItemDecodesEscapedID guards the escaped-path
+// parsing in the provider-catalog item handler: a catalog ID containing "/"
+// arrives as %2F and must be looked up under its decoded value, while
+// malformed escapes are rejected.
+func TestAdminProviderCatalogItemDecodesEscapedID(t *testing.T) {
+	store := NewMemoryStore()
+	entry := ProviderCatalogEntry{
+		ID:          "vendor/model-with-slash",
+		Name:        "Vendor Model",
+		DisplayName: "Vendor Model",
+		Type:        ProviderOpenAICompatible,
+		BaseURL:     "https://example.invalid/v1",
+		Categories:  []string{"openai"},
+		ModelsCount: 1,
+		Models:      []ProviderCatalogModel{{ID: "vendor/model-with-slash", Name: "vendor-model"}},
+	}
+	if err := store.SaveProviderCatalogSnapshot([]ProviderCatalogEntry{entry}, "test", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+
+	resp := doJSON(t, app, http.MethodGet, "/api/admin/provider-catalog/vendor%2Fmodel-with-slash", nil, "")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected escaped catalog id to resolve, got %d: %s", resp.Code, resp.Body)
+	}
+	if !strings.Contains(resp.Body, `"id":"vendor/model-with-slash"`) {
+		t.Fatalf("expected decoded catalog entry in body: %s", resp.Body)
+	}
+}
+
+// TestAdminRouteCreationDoesNotMarkExternalModelWhenRouteWriteFails guards
+// route create ordering: when the route write itself fails, the model
+// directory must not be marked external as if the route had been created.
+func TestAdminRouteCreationDoesNotMarkExternalModelWhenRouteWriteFails(t *testing.T) {
+	store := NewMemoryStore()
+	if err := SeedDemoData(store); err != nil {
+		t.Fatal(err)
+	}
+	store.AddModel(Model{Name: "atomic-route-model", Family: "atomic", Modality: "chat", Status: StatusActive})
+	store.AddProviderModel(ProviderModel{
+		ProviderID:    "prv_mock",
+		UpstreamModel: "atomic-upstream",
+		DisplayName:   "Atomic Upstream",
+		Status:        StatusActive,
+	})
+	if err := store.db.Exec(`
+		CREATE TRIGGER fail_atomic_route_insert
+		BEFORE INSERT ON model_routes
+		WHEN NEW.model_name = 'atomic-route-model'
+		BEGIN
+			SELECT RAISE(FAIL, 'forced route write failure');
+		END;
+	`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	created := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/routing-rules", map[string]any{
+		"model_name":     "atomic-route-model",
+		"provider_id":    "prv_mock",
+		"provider_model": "atomic-upstream",
+		"status":         StatusActive,
+	}, "")
+	if created.Code != http.StatusInternalServerError {
+		t.Fatalf("expected route write failure 500, got %d: %s", created.Code, created.Body)
+	}
+	for _, route := range store.ListRoutes() {
+		if route.ModelName == "atomic-route-model" {
+			t.Fatalf("route write failure must not persist a route: %+v", route)
+		}
+	}
+	model, ok := modelByNameForTest(store.ListModels(), "atomic-route-model")
+	if !ok {
+		t.Fatal("expected the model to exist")
+	}
+	if model.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal {
+		t.Fatal("route write failure must not mark the model external")
 	}
 }

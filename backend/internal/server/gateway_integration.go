@@ -200,7 +200,11 @@ func (s *Server) handleGatewayIntegrationEvent(w http.ResponseWriter, r *http.Re
 	}
 
 	var event GatewayIntegrationEvent
-	if err := decodeJSON(r, &event); err != nil {
+	if err := s.decodeJSON(w, r, &event); err != nil {
+		if isPayloadTooLarge(err) {
+			writeError(w, r, err)
+			return
+		}
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "invalid_integration_event", "Invalid integration event"))
 		return
 	}

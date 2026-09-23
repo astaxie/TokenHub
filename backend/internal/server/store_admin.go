@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,10 +13,14 @@ import (
 )
 
 func (s *GormStore) CreateResource(kind string, resource AdminResource) AdminResource {
+	resource, _ = s.CreateResourceChecked(kind, resource)
+	return resource
+}
+
+func (s *GormStore) CreateResourceChecked(kind string, resource AdminResource) (AdminResource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	resource, _ = s.createResourceLocked(kind, resource, true)
-	return resource
+	return s.createResourceLocked(kind, resource, true)
 }
 
 func (s *GormStore) CreateRoutingPolicy(resource AdminResource) (AdminResource, error) {
@@ -55,9 +61,22 @@ func (s *GormStore) createResourceLocked(kind string, resource AdminResource, up
 }
 
 func (s *GormStore) ListResources(kind string) []AdminResource {
-	var items []AdminResource
-	_ = s.db.Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	items, _ := s.ListResourcesChecked(kind)
 	return items
+}
+
+// ListResourcesChecked preserves any context already attached to s.db (for
+// example, the startup lease context) while making query failures observable.
+func (s *GormStore) ListResourcesChecked(kind string) ([]AdminResource, error) {
+	var items []AdminResource
+	err := s.db.Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	return items, err
+}
+
+func (s *GormStore) ListResourcesContext(ctx context.Context, kind string) ([]AdminResource, error) {
+	var items []AdminResource
+	err := s.db.WithContext(ctx).Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	return items, err
 }
 
 func (s *GormStore) UpdateResource(kind string, id string, patch AdminResource) (AdminResource, error) {
@@ -399,6 +418,11 @@ func updateAdminUser(db *gorm.DB, id string, patch AdminUser, password string) (
 	if err := db.Save(&user).Error; err != nil {
 		return AdminUser{}, err
 	}
+	if password != "" {
+		if err := deleteInitialAdminPassword(db, user.ID); err != nil {
+			return AdminUser{}, err
+		}
+	}
 	return publicAdminUser(user), nil
 }
 
@@ -481,39 +505,57 @@ func (s *GormStore) CreateAdminPasswordResetToken(userID string, createdBy strin
 }
 
 func (s *GormStore) ResetAdminUserPassword(token string, password string) (AdminUser, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.resetAdminUserPassword(token, password, hashPassword)
+}
 
+func (s *GormStore) resetAdminUserPassword(token string, password string, passwordHasher func(string) (string, error)) (AdminUser, error) {
 	if strings.TrimSpace(token) == "" || strings.TrimSpace(password) == "" {
 		return AdminUser{}, NewHTTPError(400, "invalid_reset_request", "token and password are required")
 	}
-	var item AdminPasswordResetToken
-	if err := s.db.First(&item, "token_hash = ?", HashSecret(token)).Error; err != nil {
-		return AdminUser{}, NewHTTPError(400, "invalid_reset_token", "Reset token is invalid or expired")
+	tokenHash := HashSecret(token)
+	var candidate AdminPasswordResetToken
+	if err := s.db.Select("id").Take(&candidate, "token_hash = ? AND used_at IS NULL AND expires_at > ?", tokenHash, time.Now().UTC()).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return AdminUser{}, NewHTTPError(400, "invalid_reset_token", "Reset token is invalid or expired")
+		}
+		return AdminUser{}, err
 	}
-	if item.UsedAt != nil || time.Now().UTC().After(item.ExpiresAt) {
-		return AdminUser{}, NewHTTPError(400, "invalid_reset_token", "Reset token is invalid or expired")
-	}
-	var user AdminUser
-	if err := s.db.First(&user, "id = ?", item.UserID).Error; err != nil {
-		return AdminUser{}, notFound(err, "admin_user_not_found", "Admin user not found")
-	}
-	now := time.Now().UTC()
-	passwordHash, err := hashPassword(password)
+	passwordHash, err := passwordHasher(password)
 	if err != nil {
 		return AdminUser{}, err
 	}
-	user.PasswordHash = passwordHash
-	user.UpdatedAt = now
-	item.UsedAt = &now
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	var user AdminUser
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		claimed := tx.Model(&AdminPasswordResetToken{}).
+			Where("token_hash = ? AND used_at IS NULL AND expires_at > ?", tokenHash, now).
+			Update("used_at", now)
+		if claimed.Error != nil {
+			return claimed.Error
+		}
+		if claimed.RowsAffected != 1 {
+			return NewHTTPError(400, "invalid_reset_token", "Reset token is invalid or expired")
+		}
+		var item AdminPasswordResetToken
+		if err := tx.First(&item, "token_hash = ?", tokenHash).Error; err != nil {
+			return err
+		}
+		if err := tx.First(&user, "id = ?", item.UserID).Error; err != nil {
+			return notFound(err, "admin_user_not_found", "Admin user not found")
+		}
+		user.PasswordHash = passwordHash
+		user.UpdatedAt = now
 		if err := tx.Save(&user).Error; err != nil {
 			return err
 		}
-		if err := tx.Save(&item).Error; err != nil {
+		if err := tx.Where("user_id = ?", user.ID).Delete(&AdminSession{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("user_id = ?", user.ID).Delete(&AdminSession{}).Error
+		return deleteInitialAdminPassword(tx, user.ID)
 	}); err != nil {
 		return AdminUser{}, err
 	}
@@ -556,7 +598,10 @@ func (s *GormStore) AuthenticateAdminUser(identity string, password string, ttl 
 		if err := tx.Save(&user).Error; err != nil {
 			return err
 		}
-		return tx.Create(&session).Error
+		if err := tx.Create(&session).Error; err != nil {
+			return err
+		}
+		return deleteInitialAdminPassword(tx, user.ID)
 	})
 	if err != nil {
 		return AdminUser{}, AdminSession{}, err
@@ -588,7 +633,10 @@ func (s *GormStore) CreateAdminSession(userID string, ttl time.Duration) (AdminU
 		if err := tx.Save(&user).Error; err != nil {
 			return err
 		}
-		return tx.Create(&session).Error
+		if err := tx.Create(&session).Error; err != nil {
+			return err
+		}
+		return deleteInitialAdminPassword(tx, user.ID)
 	})
 	if err != nil {
 		return AdminUser{}, AdminSession{}, err

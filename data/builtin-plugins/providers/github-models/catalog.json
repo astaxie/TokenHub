@@ -1,0 +1,1998 @@
+{
+  "id": "github-models",
+  "api": "https://models.github.ai/inference",
+  "name": "GitHub Models",
+  "doc": "https://docs.github.com/en/github-models",
+  "display_name": "GitHub Models",
+  "models": [
+    {
+      "id": "ai21-labs/ai21-jamba-1.5-mini",
+      "name": "AI21 Jamba 1.5 Mini",
+      "family": "jamba",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-08-29",
+      "last_updated": "2024-08-29",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "AI21 Jamba 1.5 Mini",
+      "type": "chat"
+    },
+    {
+      "id": "ai21-labs/ai21-jamba-1.5-large",
+      "name": "AI21 Jamba 1.5 Large",
+      "family": "jamba",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-08-29",
+      "last_updated": "2024-08-29",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 256000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "AI21 Jamba 1.5 Large",
+      "type": "chat"
+    },
+    {
+      "id": "core42/jais-30b-chat",
+      "name": "JAIS 30b Chat",
+      "family": "jais",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-03",
+      "release_date": "2023-08-30",
+      "last_updated": "2023-08-30",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 8192,
+        "output": 2048
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "JAIS 30b Chat",
+      "type": "chat"
+    },
+    {
+      "id": "xai/grok-3-mini",
+      "name": "Grok 3 Mini",
+      "family": "grok",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-10",
+      "release_date": "2024-12-09",
+      "last_updated": "2024-12-09",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Grok 3 Mini",
+      "type": "chat"
+    },
+    {
+      "id": "xai/grok-3",
+      "name": "Grok 3",
+      "family": "grok",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-10",
+      "release_date": "2024-12-09",
+      "last_updated": "2024-12-09",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Grok 3",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3.5-moe-instruct",
+      "name": "Phi-3.5-MoE instruct (128k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-08-20",
+      "last_updated": "2024-08-20",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3.5-MoE instruct (128k)",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3-small-128k-instruct",
+      "name": "Phi-3-small instruct (128k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-04-23",
+      "last_updated": "2024-04-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3-small instruct (128k)",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3.5-mini-instruct",
+      "name": "Phi-3.5-mini instruct (128k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-08-20",
+      "last_updated": "2024-08-20",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3.5-mini instruct (128k)",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3-medium-128k-instruct",
+      "name": "Phi-3-medium instruct (128k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-04-23",
+      "last_updated": "2024-04-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3-medium instruct (128k)",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3-small-8k-instruct",
+      "name": "Phi-3-small instruct (8k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-04-23",
+      "last_updated": "2024-04-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 8192,
+        "output": 2048
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3-small instruct (8k)",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-4-reasoning",
+      "name": "Phi-4-Reasoning",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-12-11",
+      "last_updated": "2024-12-11",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-4-Reasoning",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/mai-ds-r1",
+      "name": "MAI-DS-R1",
+      "family": "mai",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-06",
+      "release_date": "2025-01-20",
+      "last_updated": "2025-01-20",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 65536,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "MAI-DS-R1",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-4-mini-instruct",
+      "name": "Phi-4-mini-instruct",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-12-11",
+      "last_updated": "2024-12-11",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-4-mini-instruct",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-4",
+      "name": "Phi-4",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-12-11",
+      "last_updated": "2024-12-11",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 16000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-4",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3.5-vision-instruct",
+      "name": "Phi-3.5-vision instruct (128k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-08-20",
+      "last_updated": "2024-08-20",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3.5-vision instruct (128k)",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3-medium-4k-instruct",
+      "name": "Phi-3-medium instruct (4k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-04-23",
+      "last_updated": "2024-04-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 4096,
+        "output": 1024
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3-medium instruct (4k)",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-4-multimodal-instruct",
+      "name": "Phi-4-multimodal-instruct",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-12-11",
+      "last_updated": "2024-12-11",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-4-multimodal-instruct",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-4-mini-reasoning",
+      "name": "Phi-4-mini-reasoning",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-12-11",
+      "last_updated": "2024-12-11",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-4-mini-reasoning",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3-mini-128k-instruct",
+      "name": "Phi-3-mini instruct (128k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-04-23",
+      "last_updated": "2024-04-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3-mini instruct (128k)",
+      "type": "chat"
+    },
+    {
+      "id": "microsoft/phi-3-mini-4k-instruct",
+      "name": "Phi-3-mini instruct (4k)",
+      "family": "phi",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-04-23",
+      "last_updated": "2024-04-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 4096,
+        "output": 1024
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Phi-3-mini instruct (4k)",
+      "type": "chat"
+    },
+    {
+      "id": "openai/o3",
+      "name": "OpenAI o3",
+      "family": "o",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "temperature": false,
+      "knowledge": "2024-04",
+      "release_date": "2025-01-31",
+      "last_updated": "2025-01-31",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 200000,
+        "output": 100000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "OpenAI o3",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o1-mini",
+      "name": "OpenAI o1-mini",
+      "family": "o-mini",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "temperature": false,
+      "knowledge": "2023-10",
+      "release_date": "2024-09-12",
+      "last_updated": "2024-12-17",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 65536
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "OpenAI o1-mini",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-4o",
+      "name": "GPT-4o",
+      "family": "gpt",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-05-13",
+      "last_updated": "2024-05-13",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "GPT-4o",
+      "type": "chat"
+    },
+    {
+      "id": "openai/o4-mini",
+      "name": "OpenAI o4-mini",
+      "family": "o-mini",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "temperature": false,
+      "knowledge": "2024-04",
+      "release_date": "2025-01-31",
+      "last_updated": "2025-01-31",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 200000,
+        "output": 100000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "OpenAI o4-mini",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o1-preview",
+      "name": "OpenAI o1-preview",
+      "family": "o",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "temperature": false,
+      "knowledge": "2023-10",
+      "release_date": "2024-09-12",
+      "last_updated": "2024-09-12",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "OpenAI o1-preview",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/o3-mini",
+      "name": "OpenAI o3-mini",
+      "family": "o-mini",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "temperature": false,
+      "knowledge": "2024-04",
+      "release_date": "2025-01-31",
+      "last_updated": "2025-01-31",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 200000,
+        "output": 100000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "OpenAI o3-mini",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-4.1-nano",
+      "name": "GPT-4.1-nano",
+      "family": "gpt-nano",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-04",
+      "release_date": "2025-04-14",
+      "last_updated": "2025-04-14",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "GPT-4.1-nano",
+      "type": "chat"
+    },
+    {
+      "id": "openai/o1",
+      "name": "OpenAI o1",
+      "family": "o",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "temperature": false,
+      "knowledge": "2023-10",
+      "release_date": "2024-09-12",
+      "last_updated": "2024-12-17",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 200000,
+        "output": 100000
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "OpenAI o1",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "visibility": "hidden"
+        }
+      }
+    },
+    {
+      "id": "openai/gpt-4.1",
+      "name": "GPT-4.1",
+      "family": "gpt",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-04",
+      "release_date": "2025-04-14",
+      "last_updated": "2025-04-14",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "GPT-4.1",
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-4.1-mini",
+      "name": "GPT-4.1-mini",
+      "family": "gpt-mini",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-04",
+      "release_date": "2025-04-14",
+      "last_updated": "2025-04-14",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "GPT-4.1-mini",
+      "type": "chat"
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "GPT-4o mini",
+      "family": "gpt-mini",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-10",
+      "release_date": "2024-07-18",
+      "last_updated": "2024-07-18",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "GPT-4o mini",
+      "type": "chat"
+    },
+    {
+      "id": "mistral-ai/mistral-small-2503",
+      "name": "Mistral Small 3.1",
+      "family": "mistral-small",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-09",
+      "release_date": "2025-03-01",
+      "last_updated": "2025-03-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Mistral Small 3.1",
+      "type": "chat"
+    },
+    {
+      "id": "mistral-ai/mistral-nemo",
+      "name": "Mistral Nemo",
+      "family": "mistral-nemo",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-07-18",
+      "last_updated": "2024-07-18",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Mistral Nemo",
+      "type": "chat"
+    },
+    {
+      "id": "mistral-ai/mistral-medium-2505",
+      "name": "Mistral Medium 3 (25.05)",
+      "family": "mistral-medium",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-09",
+      "release_date": "2025-05-01",
+      "last_updated": "2025-05-01",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Mistral Medium 3 (25.05)",
+      "type": "chat"
+    },
+    {
+      "id": "mistral-ai/mistral-large-2411",
+      "name": "Mistral Large 24.11",
+      "family": "mistral-large",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-09",
+      "release_date": "2024-11-01",
+      "last_updated": "2024-11-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Mistral Large 24.11",
+      "type": "chat"
+    },
+    {
+      "id": "mistral-ai/ministral-3b",
+      "name": "Ministral 3B",
+      "family": "ministral",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-10-22",
+      "last_updated": "2024-10-22",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Ministral 3B",
+      "type": "chat"
+    },
+    {
+      "id": "mistral-ai/codestral-2501",
+      "name": "Codestral 25.01",
+      "family": "codestral",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2025-01-01",
+      "last_updated": "2025-01-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 32000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Codestral 25.01",
+      "type": "chat"
+    },
+    {
+      "id": "cohere/cohere-command-a",
+      "name": "Cohere Command A",
+      "family": "command-a",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-11-01",
+      "last_updated": "2024-11-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Cohere Command A",
+      "type": "chat"
+    },
+    {
+      "id": "cohere/cohere-command-r-08-2024",
+      "name": "Cohere Command R 08-2024",
+      "family": "command-r",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-08-01",
+      "last_updated": "2024-08-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Cohere Command R 08-2024",
+      "type": "chat"
+    },
+    {
+      "id": "cohere/cohere-command-r-plus",
+      "name": "Cohere Command R+",
+      "family": "command-r",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-04-04",
+      "last_updated": "2024-08-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Cohere Command R+",
+      "type": "chat"
+    },
+    {
+      "id": "cohere/cohere-command-r-plus-08-2024",
+      "name": "Cohere Command R+ 08-2024",
+      "family": "command-r",
+      "attachment": false,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-08-01",
+      "last_updated": "2024-08-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Cohere Command R+ 08-2024",
+      "type": "chat"
+    },
+    {
+      "id": "cohere/cohere-command-r",
+      "name": "Cohere Command R",
+      "family": "command-r",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-03",
+      "release_date": "2024-03-11",
+      "last_updated": "2024-08-01",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 4096
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Cohere Command R",
+      "type": "chat"
+    },
+    {
+      "id": "meta/meta-llama-3-8b-instruct",
+      "name": "Meta-Llama-3-8B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-04-18",
+      "last_updated": "2024-04-18",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 8192,
+        "output": 2048
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Meta-Llama-3-8B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-3.2-11b-vision-instruct",
+      "name": "Llama-3.2-11B-Vision-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-09-25",
+      "last_updated": "2024-09-25",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Llama-3.2-11B-Vision-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/meta-llama-3.1-405b-instruct",
+      "name": "Meta-Llama-3.1-405B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-07-23",
+      "last_updated": "2024-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Meta-Llama-3.1-405B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-4-scout-17b-16e-instruct",
+      "name": "Llama 4 Scout 17B 16E Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-12",
+      "release_date": "2025-01-31",
+      "last_updated": "2025-01-31",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Llama 4 Scout 17B 16E Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-3.3-70b-instruct",
+      "name": "Llama-3.3-70B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-12-06",
+      "last_updated": "2024-12-06",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Llama-3.3-70B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/meta-llama-3.1-70b-instruct",
+      "name": "Meta-Llama-3.1-70B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-07-23",
+      "last_updated": "2024-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Meta-Llama-3.1-70B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/meta-llama-3.1-8b-instruct",
+      "name": "Meta-Llama-3.1-8B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-07-23",
+      "last_updated": "2024-07-23",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Meta-Llama-3.1-8B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-3.2-90b-vision-instruct",
+      "name": "Llama-3.2-90B-Vision-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-09-25",
+      "last_updated": "2024-09-25",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Llama-3.2-90B-Vision-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "meta/llama-4-maverick-17b-128e-instruct-fp8",
+      "name": "Llama 4 Maverick 17B 128E Instruct FP8",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-12",
+      "release_date": "2025-01-31",
+      "last_updated": "2025-01-31",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Llama 4 Maverick 17B 128E Instruct FP8",
+      "type": "chat"
+    },
+    {
+      "id": "meta/meta-llama-3-70b-instruct",
+      "name": "Meta-Llama-3-70B-Instruct",
+      "family": "llama",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2023-12",
+      "release_date": "2024-04-18",
+      "last_updated": "2024-04-18",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 8192,
+        "output": 2048
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "Meta-Llama-3-70B-Instruct",
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-r1-0528",
+      "name": "DeepSeek-R1-0528",
+      "family": "deepseek-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-06",
+      "release_date": "2025-05-28",
+      "last_updated": "2025-05-28",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 65536,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "DeepSeek-R1-0528",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v3-0324",
+      "name": "DeepSeek-V3-0324",
+      "family": "deepseek",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-06",
+      "release_date": "2025-03-24",
+      "last_updated": "2025-03-24",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "DeepSeek-V3-0324",
+      "type": "chat"
+    },
+    {
+      "id": "deepseek/deepseek-r1",
+      "name": "DeepSeek-R1",
+      "family": "deepseek-thinking",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "knowledge": "2024-06",
+      "release_date": "2025-01-20",
+      "last_updated": "2025-01-20",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": true,
+      "limit": {
+        "context": 65536,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "display_name": "DeepSeek-R1",
+      "type": "chat",
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "interleaved": true,
+          "summaries": true,
+          "visibility": "summary",
+          "continuation": [
+            "thinking_blocks"
+          ]
+        }
+      }
+    }
+  ]
+}

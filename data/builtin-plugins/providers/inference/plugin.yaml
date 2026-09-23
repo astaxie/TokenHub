@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.inference"
+name: "Inference"
+version: 1.0.0
+summary: "Connect TokenHub to Inference."
+description: "Connect TokenHub to Inference. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://inference.net/v1"
+    catalog:
+      id: "inference"
+      name: "Inference"
+      display_name: "Inference"
+      type: "openai_compatible"
+      base_url: "https://inference.net/v1"
+      doc_url: "https://inference.net/models"
+      categories: []
+      models_count: 9
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

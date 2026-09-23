@@ -1,0 +1,78 @@
+{
+  "id": "inception",
+  "api": "https://api.inceptionlabs.ai/v1/",
+  "name": "Inception",
+  "doc": "https://platform.inceptionlabs.ai/docs",
+  "display_name": "Inception",
+  "models": [
+    {
+      "id": "mercury-edit-2",
+      "name": "Mercury Edit 2",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": false,
+      "temperature": true,
+      "release_date": "2026-03-30",
+      "last_updated": "2026-03-30",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "cost": {
+        "input": 0.25,
+        "output": 0.75,
+        "cache_read": 0.025
+      },
+      "display_name": "Mercury Edit 2",
+      "type": "chat"
+    },
+    {
+      "id": "mercury-2",
+      "name": "Mercury 2",
+      "family": "mercury",
+      "attachment": false,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2025-01-01",
+      "release_date": "2026-02-24",
+      "last_updated": "2026-02-24",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 50000
+      },
+      "cost": {
+        "input": 0.25,
+        "output": 0.75,
+        "cache_read": 0.025
+      },
+      "display_name": "Mercury 2",
+      "type": "chat"
+    }
+  ]
+}
