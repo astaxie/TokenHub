@@ -37,7 +37,7 @@ func TestSQLiteGatewayExpandMigrationUpgradesV6Schema(t *testing.T) {
 	if migration.Go == nil {
 		t.Fatal("SQLite Gateway schema migration is not registered as a Go migration")
 	}
-	if err := migration.Go(context.Background(), db); err != nil {
+	if err := migration.Go(context.Background(), directSQLMigrationExecer{DB: db}); err != nil {
 		t.Fatal(err)
 	}
 
