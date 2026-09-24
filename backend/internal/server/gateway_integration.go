@@ -809,6 +809,11 @@ func applyGatewayProject(tx *gorm.DB, event GatewayIntegrationEvent, now time.Ti
 	if err := syncGatewayServingProject(tx, item, now); err != nil {
 		return "", "project", 0, "", err
 	}
+	if event.EventType == "project.deleted" {
+		if err := revokeGatewayProjectModelAccessKeys(tx, item.ID); err != nil {
+			return "", "project", 0, "", err
+		}
+	}
 	return item.ID, "project", item.Version, "applied", nil
 }
 

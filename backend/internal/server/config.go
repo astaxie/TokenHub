@@ -240,6 +240,11 @@ func (c Config) ValidateForStartup() error {
 		return nil
 	}
 	invalid := make([]string, 0, 4)
+	adminToken := strings.TrimSpace(c.AdminToken)
+	integrationToken := strings.TrimSpace(c.IntegrationToken)
+	if adminToken != "" && adminToken == integrationToken {
+		invalid = append(invalid, "TOKENHUB_ADMIN_TOKEN and TOKENHUB_INTEGRATION_TOKEN must be different")
+	}
 	if strings.TrimSpace(c.AdminToken) != "" {
 		if reason := weakProductionSecretReason(c.AdminToken, 32, "dev_admin_token", "change-me-tokenhub-admin-token"); reason != "" {
 			invalid = append(invalid, "TOKENHUB_ADMIN_TOKEN "+reason)

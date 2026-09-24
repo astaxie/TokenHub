@@ -36,7 +36,13 @@ case "$*" in
     exit "${FAKE_CONFIG_STATUS:-0}"
     ;;
   *" config --environment")
+    if [ "${FAKE_CONFIG_ENVIRONMENT_STATUS:-0}" -ne 0 ]; then
+      exit "$FAKE_CONFIG_ENVIRONMENT_STATUS"
+    fi
     printf '%s\n' "$FAKE_COMPOSE_ENVIRONMENT"
+    ;;
+  *" config --format json")
+    printf '%s\n' "$FAKE_COMPOSE_JSON"
     ;;
   "volume ls --quiet --filter name=^tokenhub-data$")
     if [ "${FAKE_DATA_VOLUME_EXISTS:-false}" = true ]; then
@@ -123,6 +129,8 @@ run_install() {
   DOCKER_BIN="$FAKE_DOCKER" \
     FAKE_CALL_LOG="$CALL_LOG" \
     FAKE_COMPOSE_ENVIRONMENT="$FAKE_COMPOSE_ENVIRONMENT" \
+    FAKE_COMPOSE_JSON="${FAKE_COMPOSE_JSON:-}" \
+    FAKE_CONFIG_ENVIRONMENT_STATUS="${FAKE_CONFIG_ENVIRONMENT_STATUS:-0}" \
     FAKE_PULL_STATUS="${FAKE_PULL_STATUS:-0}" \
     FAKE_BUILD_STATUS="${FAKE_BUILD_STATUS:-0}" \
     FAKE_UP_STATUS="${FAKE_UP_STATUS:-0}" \
@@ -194,6 +202,29 @@ TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=strong-admin-password
 EOF
 )
 
+equal_token_environment=$(cat <<'EOF'
+TOKENHUB_ENV=prod
+TOKENHUB_ADMIN_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+TOKENHUB_INTEGRATION_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+TOKENHUB_SECRET_KEY=ssssssssssssssssssssssssssssssss
+TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD=strong-admin-password
+EOF
+)
+
+: >"$CALL_LOG"
+FAKE_COMPOSE_ENVIRONMENT="$equal_token_environment"
+set +e
+output="$(run_install --check-only 2>&1)"
+status=$?
+set -e
+if [ "$status" -ne 1 ]; then
+  printf 'expected reused admin and integration tokens to exit 1, got %d\n' "$status" >&2
+  exit 1
+fi
+assert_contains "$output" "TOKENHUB_ADMIN_TOKEN and TOKENHUB_INTEGRATION_TOKEN must be different"
+assert_not_contains "$(<"$CALL_LOG")" " pull"
+assert_not_contains "$(<"$CALL_LOG")" " build"
+
 placeholder_environment=$(cat <<'EOF'
 TOKENHUB_ENV=prod
 TOKENHUB_ADMIN_TOKEN=change-me-tokenhub-admin-token
@@ -209,6 +240,17 @@ output="$(run_install --check-only 2>&1)"
 assert_contains "$output" "deployment configuration is valid for prod"
 assert_not_contains "$(<"$CALL_LOG")" " pull"
 assert_not_contains "$(<"$CALL_LOG")" " build"
+
+fallback_json=$(cat <<'EOF'
+{"services":{"tokenhub-backend":{"image":"tokenhub:test","environment":{"TOKENHUB_ENV":"prod","TOKENHUB_ADMIN_TOKEN":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","TOKENHUB_INTEGRATION_TOKEN":"iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii","TOKENHUB_SECRET_KEY":"ssssssssssssssssssssssssssssssss","TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD":"strong-admin-password"}}}}
+EOF
+)
+: >"$CALL_LOG"
+FAKE_COMPOSE_ENVIRONMENT="" FAKE_COMPOSE_JSON="$fallback_json" FAKE_CONFIG_ENVIRONMENT_STATUS=1
+output="$(run_install --check-only 2>&1)"
+assert_contains "$output" "deployment configuration is valid for prod"
+FAKE_COMPOSE_JSON=""
+FAKE_CONFIG_ENVIRONMENT_STATUS=0
 
 postgres_placeholder_environment=$(cat <<'EOF'
 TOKENHUB_ENV=prod

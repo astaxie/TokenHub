@@ -139,6 +139,21 @@ func SchemaMigrationRegistry() []dbschema.Migration {
 					ADD COLUMN IF NOT EXISTS "redis_user_lease_held" boolean`,
 			},
 		},
+		{
+			Version:          7,
+			Name:             "add-gateway-control-plane-schema-sqlite",
+			Dialect:          dbschema.DialectSQLite,
+			Go:               gatewaySchemaMigrationSQLite,
+			ChecksumOverride: "tokenhub-schema-gateway-control-plane-sqlite-v1",
+			StatementBudget:  80,
+		},
+		{
+			Version:          8,
+			Name:             "add-gateway-control-plane-schema-postgres",
+			Dialect:          dbschema.DialectPostgres,
+			Statements:       gatewaySchemaMigrationPostgresStatements,
+			ChecksumOverride: "tokenhub-schema-gateway-control-plane-postgres-v1",
+		},
 	}
 }
 

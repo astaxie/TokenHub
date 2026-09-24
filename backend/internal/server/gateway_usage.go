@@ -190,9 +190,11 @@ func (s *GormStore) GetGatewayUsage(filter GatewayUsageFilter) (GatewayUsageRepo
 		daily[item.Date] = current
 	}
 	offset := time.Duration(filter.TimezoneOffsetMinutes) * time.Minute
-	dateFrom := filter.DateFrom.Add(offset)
-	dateTo := filter.DateTo.Add(offset)
-	for date := dateFrom; !date.After(dateTo); date = date.AddDate(0, 0, 1) {
+	dateFrom := filter.DateFrom.UTC().Add(offset)
+	dateTo := filter.DateTo.UTC().Add(offset)
+	startDate := time.Date(dateFrom.Year(), dateFrom.Month(), dateFrom.Day(), 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(dateTo.Year(), dateTo.Month(), dateTo.Day(), 0, 0, 0, 0, time.UTC)
+	for date := startDate; !date.After(endDate); date = date.AddDate(0, 0, 1) {
 		key := date.Format("2006-01-02")
 		item := daily[key]
 		item.Date = key

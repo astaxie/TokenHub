@@ -130,6 +130,7 @@ image_tag = image.rsplit(":", 1)[1] if ":" in image else ""
 for name, default in (
     ("TOKENHUB_ENV", "prod"),
     ("TOKENHUB_ADMIN_TOKEN", "change-me-tokenhub-admin-token"),
+    ("TOKENHUB_INTEGRATION_TOKEN", "change-me-tokenhub-integration-token"),
     ("TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD", "change-me-tokenhub-admin-password"),
     ("TOKENHUB_DATABASE_URL", "sqlite:///app/data/tokenhub.db"),
     ("TOKENHUB_SECRET_KEY", "change-me-tokenhub-secret-key"),
@@ -467,6 +468,10 @@ elif [[ "$environment" != "dev" && "$environment" != "development" && "$environm
     "dev_admin_token" "change-me-tokenhub-admin-token"
   validate_secret "TOKENHUB_INTEGRATION_TOKEN" "$integration_token" 32 \
     "dev_integration_token" "change-me-tokenhub-integration-token"
+  if [ -n "$(trim_whitespace "$admin_token")" ] &&
+    [ "$(trim_whitespace "$admin_token")" = "$(trim_whitespace "$integration_token")" ]; then
+    validation_errors+=("TOKENHUB_ADMIN_TOKEN and TOKENHUB_INTEGRATION_TOKEN must be different")
+  fi
   validate_secret "TOKENHUB_SECRET_KEY" "$secret_key" 32 "$root_key_can_be_unset" \
     "dev_tokenhub_secret_key" "change-me-tokenhub-secret-key"
   validate_secret "TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD" "$bootstrap_admin_password" 12 true \

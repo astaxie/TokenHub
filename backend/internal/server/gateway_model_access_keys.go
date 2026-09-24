@@ -184,6 +184,9 @@ func (s *GormStore) CreateGatewayModelAccessKey(input GatewayModelAccessKeyCreat
 	if err := validateNewGatewayModelAccessKeyInput(normalized, time.Now().UTC()); err != nil {
 		return GatewayModelAccessKeyCreateResult{}, err
 	}
+	if err := validateGatewayModelAccessKeyLimits(normalized.Limits); err != nil {
+		return GatewayModelAccessKeyCreateResult{}, err
+	}
 
 	rawSecret := s.generateAPIKeySecret()
 	prefix, suffix := PrefixSuffix(rawSecret)
@@ -212,6 +215,8 @@ func (s *GormStore) CreateGatewayModelAccessKey(input GatewayModelAccessKeyCreat
 		Allowed:              normalized.AllowedModels,
 		IPAllowlist:          normalized.IPAllowlist,
 		Limits:               normalized.Limits,
+		RateLimitRPM:         positiveLimitPointer(normalized.Limits.RateLimitRPM),
+		TokenLimitTPM:        positiveLimitPointer(normalized.Limits.TokenLimitTPM),
 		Status:               StatusActive,
 		ExpiresAt:            normalized.ExpiresAt,
 		CreatedAt:            now,
@@ -278,13 +283,29 @@ const gatewayModelAccessKeyEffectiveStatusExpression = `(CASE
 	WHEN NOT EXISTS (
 		SELECT 1 FROM gateway_projects gp
 		JOIN gateway_tenants gt ON gt.id = gp.tenant_id
+		LEFT JOIN gateway_organizations go ON go.id = gp.organization_id
 		WHERE gp.id = api_keys.project_id AND gp.status = 'active'
 			AND gt.external_tenant_id = api_keys.tenant_external_id AND gt.status = 'active'
+			AND (gp.organization_id = '' OR (go.id IS NOT NULL AND go.status = 'active'))
 	) THEN 'disabled'
 	WHEN api_keys.principal_type = 'user' AND NOT EXISTS (
 		SELECT 1 FROM gateway_principals gpr
 		JOIN gateway_tenants gt ON gt.id = gpr.tenant_id
 		WHERE gpr.external_principal_id = api_keys.principal_external_id AND gpr.status = 'active'
+		AND gt.external_tenant_id = api_keys.tenant_external_id AND gt.status = 'active'
+	) THEN 'disabled'
+	WHEN api_keys.principal_type = 'user' AND EXISTS (
+		SELECT 1 FROM gateway_projects gp
+		JOIN gateway_tenants gt ON gt.id = gp.tenant_id
+		WHERE gp.id = api_keys.project_id AND gp.organization_id <> ''
+			AND gt.external_tenant_id = api_keys.tenant_external_id AND gt.status = 'active'
+	) AND NOT EXISTS (
+		SELECT 1 FROM gateway_principals gpr
+		JOIN gateway_principal_organization_bindings gob ON gob.principal_id = gpr.id
+		JOIN gateway_projects gp ON gp.organization_id = gob.organization_id
+		JOIN gateway_tenants gt ON gt.id = gp.tenant_id
+		WHERE gpr.external_principal_id = api_keys.principal_external_id AND gpr.status = 'active'
+			AND gob.status = 'active' AND gp.id = api_keys.project_id
 			AND gt.external_tenant_id = api_keys.tenant_external_id AND gt.status = 'active'
 	) THEN 'disabled'
 	WHEN api_keys.principal_type <> 'user' AND NOT EXISTS (
@@ -383,6 +404,24 @@ func hydrateGatewayModelAccessKeyEffectiveStatuses(db *gorm.DB, items []APIKey, 
 			return err
 		}
 	}
+	organizationIDs := make([]string, 0, len(projects))
+	for _, project := range projects {
+		if project.OrganizationID != "" {
+			organizationIDs = append(organizationIDs, project.OrganizationID)
+		}
+	}
+	var organizations []GatewayOrganization
+	if len(organizationIDs) > 0 {
+		if err := db.Where("id IN ?", normalizedUniqueStrings(organizationIDs)).Find(&organizations).Error; err != nil {
+			return err
+		}
+	}
+	var bindings []GatewayPrincipalOrganizationBinding
+	if len(organizationIDs) > 0 && len(principalExternalIDs) > 0 {
+		if err := db.Where("organization_id IN ?", normalizedUniqueStrings(organizationIDs)).Find(&bindings).Error; err != nil {
+			return err
+		}
+	}
 
 	tenantByExternalID := make(map[string]GatewayTenant, len(tenants))
 	for _, tenant := range tenants {
@@ -391,6 +430,14 @@ func hydrateGatewayModelAccessKeyEffectiveStatuses(db *gorm.DB, items []APIKey, 
 	projectByID := make(map[string]GatewayProject, len(projects))
 	for _, project := range projects {
 		projectByID[project.ID] = project
+	}
+	organizationByID := make(map[string]GatewayOrganization, len(organizations))
+	for _, organization := range organizations {
+		organizationByID[organization.ID] = organization
+	}
+	bindingByScope := make(map[string]GatewayPrincipalOrganizationBinding, len(bindings))
+	for _, binding := range bindings {
+		bindingByScope[binding.PrincipalID+"\x00"+binding.OrganizationID] = binding
 	}
 	principalByScope := make(map[string]GatewayPrincipal, len(principals))
 	for _, principal := range principals {
@@ -420,10 +467,24 @@ func hydrateGatewayModelAccessKeyEffectiveStatuses(db *gorm.DB, items []APIKey, 
 			key.Status = StatusDisabled
 			continue
 		}
+		if project.OrganizationID != "" {
+			organization, found := organizationByID[project.OrganizationID]
+			if !found || organization.TenantID != tenant.ID || organization.Status != StatusActive {
+				key.Status = StatusDisabled
+				continue
+			}
+		}
 		if key.PrincipalType == "user" {
 			principal, found := principalByScope[gatewayModelAccessKeyScopeID(tenant.ID, key.PrincipalExternalID)]
 			if !found || principal.Status != StatusActive {
 				key.Status = StatusDisabled
+				continue
+			}
+			if project.OrganizationID != "" {
+				binding, found := bindingByScope[principal.ID+"\x00"+project.OrganizationID]
+				if !found || binding.Status != StatusActive {
+					key.Status = StatusDisabled
+				}
 			}
 			continue
 		}
@@ -581,6 +642,20 @@ func validateNewGatewayModelAccessKeyInput(input GatewayModelAccessKeyCreateInpu
 	return nil
 }
 
+func validateGatewayModelAccessKeyLimits(limits QuotaLimits) error {
+	if limits.RateLimitRPM < 0 || limits.TokenLimitTPM < 0 {
+		return NewHTTPError(http.StatusBadRequest, "invalid_model_access_key", "RPM and TPM limits must be zero or greater")
+	}
+	return nil
+}
+
+func positiveLimitPointer(value int64) *int64 {
+	if value <= 0 {
+		return nil
+	}
+	return &value
+}
+
 func gatewayModelAccessKeyControlRequestID(tenantID string, requestID string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(tenantID) + "\x00" + strings.TrimSpace(requestID)))
 	return hex.EncodeToString(sum[:])
@@ -733,6 +808,11 @@ func revokeGatewayOrganizationModelAccessKeys(db *gorm.DB, tenantExternalID stri
 	projects := db.Model(&GatewayProject{}).Select("id").Where("organization_id = ?", organizationID)
 	return revokeGatewayModelAccessKeyQuery(db.Model(&APIKey{}).
 		Where("managed_by = ? AND tenant_external_id = ? AND project_id IN (?)", gatewayModelAccessKeyManagedBy, tenantExternalID, projects))
+}
+
+func revokeGatewayProjectModelAccessKeys(db *gorm.DB, projectID string) error {
+	return revokeGatewayModelAccessKeyQuery(db.Model(&APIKey{}).
+		Where("managed_by = ? AND project_id = ?", gatewayModelAccessKeyManagedBy, projectID))
 }
 
 func revokeGatewayModelAccessKeyQuery(query *gorm.DB) error {

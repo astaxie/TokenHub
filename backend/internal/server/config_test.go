@@ -214,6 +214,20 @@ func TestProductionConfigAcceptsStrongCredentials(t *testing.T) {
 	}
 }
 
+func TestProductionConfigRejectsReusedAdminAndIntegrationTokens(t *testing.T) {
+	token := strings.Repeat("x", 32)
+	config := Config{
+		Environment:      "production",
+		AdminToken:       token,
+		IntegrationToken: token,
+		SecretKey:        strings.Repeat("s", 32),
+	}
+	err := config.ValidateForStartup()
+	if err == nil || !strings.Contains(err.Error(), "TOKENHUB_ADMIN_TOKEN and TOKENHUB_INTEGRATION_TOKEN must be different") {
+		t.Fatalf("expected token separation validation error: %v", err)
+	}
+}
+
 func TestProductionConfigAcceptsDisabledOptionalBootstrapCredentials(t *testing.T) {
 	config := Config{
 		Environment:      "production",
