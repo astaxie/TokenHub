@@ -144,12 +144,3 @@ var gatewaySchemaMigrationPostgresStatements = []string{
 	`CREATE INDEX IF NOT EXISTS "idx_integration_inbox_tenant_id" ON "integration_inbox" ("tenant_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_usage_records_project_created" ON "usage_records" ("project_id","created_at")`,
 }
-
-func gatewaySchemaMigrationPostgres(ctx context.Context, db dbschema.MigrationExecer) error {
-	for _, statement := range gatewaySchemaMigrationPostgresStatements {
-		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return err
-		}
-	}
-	return nil
-}
