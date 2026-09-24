@@ -169,7 +169,7 @@ func TestRunStartupGuardRefusesIncompatiblePrevious(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A dirty ledger makes every rollback incompatible.
-	if err := store.db.Exec("UPDATE schema_migrations SET checksum = 'abc', dirty = 1 WHERE version = ?", CurrentCompatibilityManifest().TargetVersion).Error; err != nil {
+	if err := store.db.Exec("UPDATE schema_migrations SET checksum = 'abc', dirty = 1 WHERE version = ?", 7).Error; err != nil {
 		t.Fatal(err)
 	}
 	writeFakeNativeBundle(t, root, "0.4.0")

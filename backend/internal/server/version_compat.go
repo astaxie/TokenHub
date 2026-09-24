@@ -18,15 +18,16 @@ type CompatibilityManifest struct {
 	MaxCompatible int64 `json:"max_compatible"`
 }
 
-// CurrentCompatibilityManifest is this release's declaration. This release
-// requires the metering evidence, audit correlation, and Jev response binding expansions. Startup
-// upgrades older databases before requests are admitted; the runtime does not
-// silently skip these schema changes.
+// CurrentCompatibilityManifest is this release's declaration. SQLite reaches
+// version 7 and PostgreSQL reaches version 8 because dialect-specific
+// migrations use distinct ledger versions. Startup upgrades older databases
+// before requests are admitted; the runtime does not silently skip these
+// schema changes.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: 6,
-		MinCompatible: 6,
-		MaxCompatible: 6,
+		TargetVersion: 8,
+		MinCompatible: 7,
+		MaxCompatible: 8,
 	}
 }
 

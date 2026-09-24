@@ -158,6 +158,34 @@ type APIKey struct {
 	Metadata             map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
 }
 
+type legacyAPIKey struct {
+	ID              string            `json:"id" gorm:"primaryKey"`
+	ProjectID       string            `json:"project_id" gorm:"index"`
+	OwnerUserID     string            `json:"owner_user_id,omitempty" gorm:"index"`
+	Name            string            `json:"name"`
+	Group           string            `json:"group,omitempty" gorm:"index"`
+	KeyHash         string            `json:"-" gorm:"uniqueIndex"`
+	KeyPrefix       string            `json:"key_prefix"`
+	KeySuffix       string            `json:"key_suffix"`
+	Allowed         []string          `json:"allowed_models" gorm:"serializer:json"`
+	ModelAccessMode string            `json:"model_access_mode"`
+	IPAllowlist     []string          `json:"ip_allowlist,omitempty" gorm:"serializer:json"`
+	Limits          QuotaLimits       `json:"limits" gorm:"embedded;embeddedPrefix:limit_"`
+	RateLimitRPM    *int64            `json:"rate_limit_rpm,omitempty"`
+	TokenLimitTPM   *int64            `json:"token_limit_tpm,omitempty"`
+	Status          string            `json:"status"`
+	ExpiresAt       *time.Time        `json:"expires_at,omitempty"`
+	RotatedFromID   string            `json:"rotated_from_id,omitempty" gorm:"index"`
+	GraceUntil      *time.Time        `json:"grace_until,omitempty"`
+	CreatedAt       time.Time         `json:"created_at"`
+	LastUsedAt      *time.Time        `json:"last_used_at,omitempty"`
+	Metadata        map[string]string `json:"metadata,omitempty" gorm:"serializer:json"`
+}
+
+func (legacyAPIKey) TableName() string {
+	return "api_keys"
+}
+
 type QuotaLimits struct {
 	RateLimitRPM    int64   `json:"rate_limit_rpm,omitempty"`
 	TokenLimitTPM   int64   `json:"token_limit_tpm,omitempty"`
@@ -477,9 +505,9 @@ type Usage struct {
 
 type UsageRecord struct {
 	ID                       string    `json:"id" gorm:"primaryKey"`
-	RequestID                string    `json:"request_id" gorm:"index;index:idx_usage_request_key,priority:1"`
+	RequestID                string    `json:"request_id" gorm:"index"`
 	ProjectID                string    `json:"project_id" gorm:"index;index:idx_usage_records_project_created,priority:1"`
-	APIKeyID                 string    `json:"api_key_id" gorm:"index;index:idx_usage_request_key,priority:2"`
+	APIKeyID                 string    `json:"api_key_id" gorm:"index"`
 	AttributedUserID         string    `json:"attributed_user_id,omitempty" gorm:"index"`
 	ModelName                string    `json:"model" gorm:"index"`
 	ProviderID               string    `json:"provider_id" gorm:"index"`

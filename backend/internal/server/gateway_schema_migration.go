@@ -3,12 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"tokenhub/backend/internal/dbschema"
 )
 
 func gatewaySchemaMigrationSQLite(ctx context.Context, db dbschema.MigrationExecer) error {
-	for _, statement := range []string{
+	tableStatements := []string{
 		"CREATE TABLE IF NOT EXISTS `gateway_tenants` (`id` text,`external_tenant_id` text,`name` text,`status` text,`version` integer,`synced_at` datetime,`deleted_at` datetime,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`id`))",
 		"CREATE TABLE IF NOT EXISTS `gateway_organizations` (`id` text,`tenant_id` text,`external_organization_id` text,`parent_id` text,`name` text,`status` text,`version` integer,`synced_at` datetime,`deleted_at` datetime,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`id`))",
 		"CREATE TABLE IF NOT EXISTS `gateway_principals` (`id` text,`tenant_id` text,`external_principal_id` text,`external_membership_id` text,`display_name` text,`status` text,`version` integer,`source_occurred_at` datetime,`synced_at` datetime,`deleted_at` datetime,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`id`))",
@@ -16,11 +17,15 @@ func gatewaySchemaMigrationSQLite(ctx context.Context, db dbschema.MigrationExec
 		"CREATE TABLE IF NOT EXISTS `gateway_projects` (`id` text,`tenant_id` text,`external_project_id` text,`organization_id` text,`owner_principal_id` text,`name` text,`status` text,`version` integer,`synced_at` datetime,`deleted_at` datetime,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`id`))",
 		"CREATE TABLE IF NOT EXISTS `gateway_workloads` (`id` text,`tenant_id` text,`external_workload_id` text,`project_id` text,`owner_principal_id` text,`name` text,`workload_type` text,`environment` text,`status` text,`version` integer,`synced_at` datetime,`deleted_at` datetime,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`id`))",
 		"CREATE TABLE IF NOT EXISTS `integration_inbox` (`event_id` text,`event_digest` text,`tenant_id` text,`event_type` text,`aggregate_type` text,`aggregate_id` text,`aggregate_version` integer,`applied_version` integer,`status` text,`entity_type` text,`token_hub_entity_id` text,`received_at` datetime,`processed_at` datetime,`created_at` datetime,`updated_at` datetime,PRIMARY KEY (`event_id`))",
-	} {
-		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return err
-		}
 	}
+	if _, err := db.ExecContext(ctx, strings.Join(tableStatements, ";\n")); err != nil {
+		return err
+	}
+	columns, err := sqliteTableColumns(ctx, db, "api_keys")
+	if err != nil {
+		return err
+	}
+	columnStatements := make([]string, 0, 11)
 	for _, column := range []struct {
 		name     string
 		typeName string
@@ -32,17 +37,16 @@ func gatewaySchemaMigrationSQLite(ctx context.Context, db dbschema.MigrationExec
 		{"key_ciphertext", "text"}, {"rate_limit_rpm", "integer"},
 		{"token_limit_tpm", "integer"},
 	} {
-		exists, err := sqliteColumnExists(ctx, db, "api_keys", column.name)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			if _, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE `api_keys` ADD COLUMN `%s` %s", column.name, column.typeName)); err != nil {
-				return err
-			}
+		if _, exists := columns[column.name]; !exists {
+			columnStatements = append(columnStatements, fmt.Sprintf("ALTER TABLE `api_keys` ADD COLUMN `%s` %s", column.name, column.typeName))
 		}
 	}
-	for _, statement := range []string{
+	if len(columnStatements) > 0 {
+		if _, err := db.ExecContext(ctx, strings.Join(columnStatements, ";\n")); err != nil {
+			return err
+		}
+	}
+	indexStatements := []string{
 		"CREATE INDEX IF NOT EXISTS `idx_api_key_gateway_scope` ON `api_keys`(`tenant_external_id`,`project_external_id`)",
 		"CREATE UNIQUE INDEX IF NOT EXISTS `idx_api_keys_control_request_id` ON `api_keys`(`control_request_id`)",
 		"CREATE INDEX IF NOT EXISTS `idx_api_keys_environment` ON `api_keys`(`environment`)",
@@ -78,13 +82,34 @@ func gatewaySchemaMigrationSQLite(ctx context.Context, db dbschema.MigrationExec
 		"CREATE INDEX IF NOT EXISTS `idx_integration_inbox_status` ON `integration_inbox`(`status`)",
 		"CREATE INDEX IF NOT EXISTS `idx_integration_inbox_aggregate` ON `integration_inbox`(`aggregate_type`,`aggregate_id`,`aggregate_version`)",
 		"CREATE INDEX IF NOT EXISTS `idx_integration_inbox_tenant_id` ON `integration_inbox`(`tenant_id`)",
+		"CREATE INDEX IF NOT EXISTS `idx_usage_request_key` ON `usage_records`(`request_id`,`api_key_id`)",
 		"CREATE INDEX IF NOT EXISTS `idx_usage_records_project_created` ON `usage_records`(`project_id`,`created_at`)",
-	} {
-		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return err
-		}
+	}
+	if _, err := db.ExecContext(ctx, strings.Join(indexStatements, ";\n")); err != nil {
+		return err
 	}
 	return nil
+}
+
+func sqliteTableColumns(ctx context.Context, db dbschema.MigrationExecer, table string) (map[string]struct{}, error) {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%q)", table))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	columns := make(map[string]struct{})
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return nil, err
+		}
+		columns[name] = struct{}{}
+	}
+	return columns, rows.Err()
 }
 
 var gatewaySchemaMigrationPostgresStatements = []string{
@@ -142,5 +167,6 @@ var gatewaySchemaMigrationPostgresStatements = []string{
 	`CREATE INDEX IF NOT EXISTS "idx_integration_inbox_status" ON "integration_inbox" ("status")`,
 	`CREATE INDEX IF NOT EXISTS "idx_integration_inbox_aggregate" ON "integration_inbox" ("aggregate_type","aggregate_id","aggregate_version")`,
 	`CREATE INDEX IF NOT EXISTS "idx_integration_inbox_tenant_id" ON "integration_inbox" ("tenant_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_usage_request_key" ON "usage_records" ("request_id","api_key_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_usage_records_project_created" ON "usage_records" ("project_id","created_at")`,
 }

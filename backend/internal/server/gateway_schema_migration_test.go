@@ -20,7 +20,9 @@ func TestSQLiteGatewayExpandMigrationUpgradesV6Schema(t *testing.T) {
 	for _, statement := range []string{
 		`CREATE TABLE api_keys (id text PRIMARY KEY, project_id text, owner_user_id text, name text, key_hash text, status text)`,
 		`CREATE TABLE usage_records (id text PRIMARY KEY, request_id text, project_id text, api_key_id text, created_at datetime)`,
+		`CREATE TABLE gateway_tenants (id text PRIMARY KEY, external_tenant_id text, name text, status text, version integer, synced_at datetime, deleted_at datetime, created_at datetime, updated_at datetime)`,
 		`INSERT INTO api_keys (id, name, key_hash, status) VALUES ('key_existing', 'Existing key', 'hash_existing', 'active')`,
+		`INSERT INTO gateway_tenants (id, external_tenant_id, name, status, version) VALUES ('tenant_existing', 'tenant_existing', 'Existing tenant', 'active', 4)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
@@ -48,11 +50,22 @@ func TestSQLiteGatewayExpandMigrationUpgradesV6Schema(t *testing.T) {
 	if keyName != "Existing key" {
 		t.Fatalf("existing API key was not preserved: %q", keyName)
 	}
+	var tenantName string
+	if err := db.QueryRow("SELECT name FROM gateway_tenants WHERE id = 'tenant_existing'").Scan(&tenantName); err != nil {
+		t.Fatal(err)
+	}
+	if tenantName != "Existing tenant" {
+		t.Fatalf("existing Gateway tenant was not preserved: %q", tenantName)
+	}
 	for _, table := range []string{"gateway_tenants", "gateway_organizations", "gateway_principals", "gateway_principal_organization_bindings", "gateway_projects", "gateway_workloads", "integration_inbox"} {
 		var count int
 		if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("expected migrated table %s, count=%d err=%v", table, count, err)
 		}
+	}
+	var usageIndexCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_usage_request_key'").Scan(&usageIndexCount); err != nil || usageIndexCount != 1 {
+		t.Fatalf("expected migrated usage request index, count=%d err=%v", usageIndexCount, err)
 	}
 	rows, err := db.Query("PRAGMA table_info(api_keys)")
 	if err != nil {

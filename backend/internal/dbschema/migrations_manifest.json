@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "baselines": {
-    "postgres": "e4739a63bcbf8024da2a456a48010610fc80a886301eb3ee45c10cd855454bbc",
-    "sqlite": "026f2df1ce6a7bc43b866132b5df7a9c3679ad8b0b261ee4c4b7feb5c5c46bad"
+    "postgres": "480bd423b47864df5a076c55f2f03362e17aa2f55d282cfff58924d994291294",
+    "sqlite": "36ecbd5b00d8f964bf34d3f3b7d3b6e7532cc7ad98011efd4749c60bccad6127"
   },
   "migrations": [
     {
@@ -49,6 +49,24 @@
       "checksum": "d4fffe9ce0a02dcf7bf27d5d44541f121f8ffd76384b8e1168365d8c26199a80",
       "lock_timeout_seconds": 30,
       "statement_budget": 10
+    },
+    {
+      "version": 7,
+      "name": "add-gateway-control-plane-schema-sqlite",
+      "phase": "expand",
+      "dialect": "sqlite",
+      "checksum": "tokenhub-schema-gateway-control-plane-sqlite-v1",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 80
+    },
+    {
+      "version": 8,
+      "name": "add-gateway-control-plane-schema-postgres",
+      "phase": "expand",
+      "dialect": "postgres",
+      "checksum": "tokenhub-schema-gateway-control-plane-postgres-v1",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 50
     }
   ]
 }
