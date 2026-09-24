@@ -1,5 +1,5 @@
 import { type AdminUser, oauthBaseURLStorageKey, sessionStorageKey } from "./types";
-import { parseProviderAccountOAuthResult, type ProviderAccountOAuthGenerateResponse, type ProviderAccountOAuthResult } from "./session-oauth";
+import { parseProviderAccountOAuthResult, type ProviderAccountOAuthResult } from "./session-oauth";
 import { clearTransientAdminSession, readTransientAdminSession, saveTransientAdminSession, type StoredAdminSession } from "../domain/admin-session";
 import {
   parseOAuthLoginResult,
