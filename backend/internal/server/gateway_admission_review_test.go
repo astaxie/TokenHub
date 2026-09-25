@@ -11,6 +11,7 @@ import (
 
 	"tokenhub/backend/internal/billing"
 	pluginmeta "tokenhub/backend/internal/plugin"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 )
 
 func TestAnthropicProviderCallOnlyRoute(t *testing.T) {
@@ -125,7 +126,7 @@ func TestReconciliationBillingBridgeUsesAttributionSnapshot(t *testing.T) {
 		{"missing metadata", nil, "", ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			bridge := reconciliationBillingBridge{reader: projectionBillingReader{records: []billing.Record{{Metadata: test.metadata}}}}
+			bridge := reconciliationpersistence.NewBillingReader(projectionBillingReader{records: []billing.Record{{Metadata: test.metadata}}})
 			records, err := bridge.ListRecordsInRange("connector", time.Time{}, time.Now())
 			if err != nil {
 				t.Fatal(err)
