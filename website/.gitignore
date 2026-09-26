@@ -1,0 +1,14 @@
+# Dependencies
+/node_modules/
+
+# Docusaurus build artifacts
+/.docusaurus/
+/build/
+
+# Generated documentation trees, produced from the repository docs by
+# scripts/sync-docs.mjs. Never edit files here by hand.
+/docs/
+/i18n/
+
+# Generated source map used by the editUrl helper.
+/scripts/docs-source-map.json
