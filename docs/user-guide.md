@@ -37,7 +37,7 @@ Creating a key opens this setup window automatically with the complete key, read
 
 In **Key Management**, select **Usage** for a Key to open its dedicated usage page. The page reports requests, success rate, latency, detailed token categories, estimated client cost, model and error breakdowns, and paginated request details. Use the 7-, 30-, or 90-day presets, or select a custom UTC range of up to 366 days.
 
-The quota section compares the current UTC day and month counters with the effective limits after Key, Project, Team, and global quota policies are combined. Usage belongs only to the selected saved Key ID. A rotated predecessor or successor is shown as related information but is never merged into the totals. Request payloads, when audit capture is enabled, follow the existing redaction and truncation rules; the complete API Key is never returned.
+The quota section compares the current day and month counters in the administrator-configured quota timezone (`quota_timezone`, UTC by default) with the effective limits after Key, Project, Team, and global quota policies are combined. Daily quotas reset at midnight in that timezone, and monthly quotas reset at midnight on the first day of the month. Usage date filters remain in UTC. Usage belongs only to the selected saved Key ID. A rotated predecessor or successor is shown as related information but is never merged into the totals. Request payloads, when audit capture is enabled, follow the existing redaction and truncation rules; the complete API Key is never returned.
 
 ## Test a Model in the Playground
 
