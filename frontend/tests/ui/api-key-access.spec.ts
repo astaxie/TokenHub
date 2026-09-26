@@ -1,25 +1,42 @@
 import type { Page } from "@playwright/test";
 import type { APIKey, APIKeyUsageResponse } from "../../features/admin/core/types";
 import { test, expect, capture } from "./harness";
-import { fixedTime, project, user } from "./fixtures/shell";
+import { fixedTime, model, project, user } from "./fixtures/shell";
 import type { MockAPI } from "./network";
 
 const original: APIKey = { id: "key_ui_access", name: "UI Setup Key", project_id: project.id, owner_user_id: user.id, status: "active", allowed_models: [], model_access_mode: "inherit", key_prefix: "sk_ui", key_suffix: "5678" };
 const usageKey: APIKey = { ...original, id: "key_review_a", name: "UI Usage Key", key_suffix: "aaaa" };
 const newSecret = "sk_ui_synthetic_issued_key_1234";
+const restrictedSecret = "sk_ui_synthetic_restricted_key_5678";
 const rotatedSecret = "sk_ui_synthetic_rotated_key_9012";
 
-function setup(api: MockAPI, options: { failRotation?: boolean; loading?: Promise<void> } = {}) {
+type CreateKeyFixture = {
+  projectID: string;
+  name: string;
+  modelAccessMode: "inherit" | "restricted";
+  allowedModels: string[];
+  secret: string;
+};
+
+function setup(api: MockAPI, options: { failRotation?: boolean; loading?: Promise<void>; createKey?: Partial<CreateKeyFixture> } = {}) {
   const keys: APIKey[] = [structuredClone(original)];
+  const createKey: CreateKeyFixture = {
+    projectID: project.id,
+    name: "UI Created Key",
+    modelAccessMode: "inherit",
+    allowedModels: [],
+    secret: newSecret,
+    ...options.createKey,
+  };
   api.define("GET", "/api/admin/api-keys", () => ({ json: { data: structuredClone(keys) } }));
   api.respond("GET", "/api/admin/users", { data: [user] });
   api.respond("GET", "/api/admin/resources/teams", { data: [] });
   api.respond("GET", "/api/admin/resources/project-members", { data: [] });
-  api.define("POST", `/api/admin/projects/${project.id}/keys`, input => {
-    expect(input.body).toEqual({ name: "UI Created Key", group: "default", owner_user_id: user.id, model_access_mode: "inherit", allowed_models: [], ip_allowlist: [], limits: { daily_requests: 1000, monthly_requests: 30000, daily_tokens: 100000000, monthly_tokens: 2000000000, daily_cost_usd: 100, monthly_cost_usd: 2000, max_concurrency: 20 } });
-    const created = { ...original, id: "key_ui_created", name: "UI Created Key", key_suffix: "1234" };
+  api.define("POST", `/api/admin/projects/${createKey.projectID}/keys`, input => {
+    expect(input.body).toEqual({ name: createKey.name, group: "default", owner_user_id: user.id, model_access_mode: createKey.modelAccessMode, allowed_models: createKey.allowedModels, ip_allowlist: [], limits: { daily_requests: 1000, monthly_requests: 30000, daily_tokens: 100000000, monthly_tokens: 2000000000, daily_cost_usd: 100, monthly_cost_usd: 2000, max_concurrency: 20 } });
+    const created = { ...original, id: "key_ui_created", project_id: createKey.projectID, name: createKey.name, model_access_mode: createKey.modelAccessMode, allowed_models: createKey.allowedModels, key_suffix: "1234" };
     keys.push(created);
-    return { status: 201, json: { ...created, api_key: newSecret, plain_text_visible_once: true } };
+    return { status: 201, json: { ...created, api_key: createKey.secret, plain_text_visible_once: true } };
   });
   api.define("POST", `/api/admin/api-keys/${original.id}/rotate`, async input => {
     expect(input.body).toEqual({});
@@ -110,6 +127,29 @@ test("api-key-access creation opens setup and closing clears the full key", asyn
   await expect(dialog.getByLabel("API Key 占位符")).toHaveValue("YOUR_TOKENHUB_API_KEY");
   await expect(dialog.getByLabel("完整 Key")).toHaveCount(0);
   expect(await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }))).not.toContain(newSecret);
+});
+
+test("api-key-access selected model allowlist persists restricted scope", async ({ page, api }) => {
+  const restrictedProject = { ...project, model_access_mode: "restricted" as const, allowed_models: [model.name] };
+  api.replaceResponse("GET", "/api/admin/overview", { projects: [restrictedProject], models: [model], providers: [], provider_resources: [], alerts: [] });
+  setup(api, { createKey: { name: "UI Restricted Key", modelAccessMode: "restricted", allowedModels: [model.name], secret: restrictedSecret } });
+
+  await openKeys(page);
+  await page.getByRole("button", { name: "发放 Key", exact: true }).click();
+  await page.getByRole("button", { name: new RegExp(project.name) }).click();
+  await page.getByLabel("归属用户").selectOption(user.id);
+  await page.getByRole("button", { name: "下一步" }).click();
+  await page.getByLabel("Key 名称").fill("UI Restricted Key");
+  await page.getByRole("button", { name: "下一步" }).click();
+  await page.getByRole("button", { name: /指定模型白名单/ }).click();
+  await page.getByRole("checkbox", { name: new RegExp(model.name) }).check();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await page.getByRole("button", { name: "生成 Key" }).click();
+  const dialog = page.getByRole("dialog", { name: "使用 API Key" });
+  await expect(dialog.getByLabel("完整 Key")).toHaveValue(restrictedSecret);
+  await dialog.getByRole("button", { name: "我已保存，关闭" }).click();
+  await expect(page.getByRole("row").filter({ hasText: "UI Restricted Key" })).toContainText(model.name);
 });
 
 test("api-key-access rotation requires confirmation and cancels without a write", async ({ page, api }, testInfo) => {
