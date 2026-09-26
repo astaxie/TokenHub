@@ -107,7 +107,13 @@ func (s *Server) deliverNotification(ctx context.Context, alert AlertEvent, chan
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		// Send to the configured destination; redirects can turn POST into GET or
+		// forward the notification to a different endpoint.
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
@@ -125,7 +131,7 @@ func (s *Server) deliverNotification(ctx context.Context, alert AlertEvent, chan
 	} else if len(respBody) > maxNotificationResponseBytes && notificationChannelChecksResponseBody(delivery.Channel) {
 		delivery.Status = "failed"
 		delivery.Error = "notification response exceeds 4096 bytes"
-	} else if err := notificationChannelResponseError(delivery.Channel, resp.Header.Get("content-type"), respBody); err != nil {
+	} else if err := notificationChannelResponseError(delivery.Channel, respBody); err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()
 	}

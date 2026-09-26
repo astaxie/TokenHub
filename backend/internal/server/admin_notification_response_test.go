@@ -17,6 +17,7 @@ func TestNotificationChannelTestHTTPResponseOutcomes(t *testing.T) {
 		channelType   string
 		body          string
 		contentLength string
+		contentType   string
 		wantStatus    string
 		wantError     string
 	}{
@@ -24,6 +25,16 @@ func TestNotificationChannelTestHTTPResponseOutcomes(t *testing.T) {
 		{name: "truncated_response", channelType: "dingtalk", body: `{"errcode":`, contentLength: "100", wantStatus: "failed", wantError: "unexpected EOF"},
 		{name: "oversized_error_response", channelType: "dingtalk", body: `{"errcode":310000,"errmsg":"` + strings.Repeat("x", 4096) + `"}`, wantStatus: "failed", wantError: "exceeds 4096 bytes"},
 		{name: "malformed_bot_json", channelType: "feishu", body: `{"code":`, wantStatus: "failed", wantError: "invalid JSON"},
+		{name: "empty_bot_response", channelType: "dingtalk", wantStatus: "failed", wantError: "invalid JSON"},
+		{name: "html_bot_response", channelType: "wecom", contentType: "text/html", body: "<html>Please sign in</html>", wantStatus: "failed", wantError: "invalid JSON"},
+		{name: "missing_bot_result", channelType: "dingtalk", body: `{}`, wantStatus: "failed", wantError: "missing or invalid errcode"},
+		{name: "null_bot_result", channelType: "wecom", body: `{"errcode":null}`, wantStatus: "failed", wantError: "missing or invalid errcode"},
+		{name: "fractional_bot_result", channelType: "wecom", body: `{"errcode":0.5}`, wantStatus: "failed", wantError: "missing or invalid errcode"},
+		{name: "string_bot_result", channelType: "wecom", body: `{"errcode":"error"}`, wantStatus: "failed", wantError: "missing or invalid errcode"},
+		{name: "bot_error_with_text_content_type", channelType: "wecom", contentType: "text/plain", body: `{"errcode":93000,"errmsg":"invalid webhook"}`, wantStatus: "failed", wantError: "errcode=93000"},
+		{name: "feishu_legacy_error", channelType: "feishu", body: `{"StatusCode":9499,"StatusMessage":"bad request"}`, wantStatus: "failed", wantError: "StatusCode=9499"},
+		{name: "feishu_legacy_success", channelType: "feishu", body: `{"StatusCode":0,"StatusMessage":"success"}`, wantStatus: "success"},
+		{name: "feishu_success", channelType: "feishu", body: `{"code":0,"msg":"success"}`, wantStatus: "success"},
 		{name: "wecom_success", channelType: "wecom", body: `{"errcode":0,"errmsg":"ok"}`, wantStatus: "success"},
 		{name: "webhook_at_size_limit", channelType: "webhook", body: strings.Repeat("x", 4096), wantStatus: "success"},
 		{name: "large_webhook_success", channelType: "webhook", body: strings.Repeat("x", 8192), wantStatus: "success"},
@@ -32,7 +43,11 @@ func TestNotificationChannelTestHTTPResponseOutcomes(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
+				contentType := tt.contentType
+				if contentType == "" {
+					contentType = "application/json"
+				}
+				w.Header().Set("Content-Type", contentType)
 				if tt.contentLength != "" {
 					w.Header().Set("Content-Length", tt.contentLength)
 				}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -11,7 +10,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"mime"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -379,30 +377,40 @@ func notificationChannelChecksResponseBody(channelType string) bool {
 	}
 }
 
-func notificationChannelResponseError(channelType string, contentType string, body []byte) error {
+func notificationChannelResponseError(channelType string, body []byte) error {
 	channelType = normalizeNotificationChannelType(channelType)
-	if !notificationChannelChecksResponseBody(channelType) || len(bytes.TrimSpace(body)) == 0 {
+	if !notificationChannelChecksResponseBody(channelType) {
 		return nil
 	}
-	mediaType, _, _ := mime.ParseMediaType(contentType)
-	if mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json") {
-		return nil
-	}
-	var payload map[string]any
+	// Bot result schemas determine acceptance, even when a proxy rewrites the
+	// Content-Type header. HTTP 200 alone does not confirm a bot notification.
+	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return fmt.Errorf("%s response error: invalid JSON", channelType)
 	}
-	switch channelType {
-	case "dingtalk", "wecom":
-		if code := int64Field(payload, "errcode"); code != 0 {
-			return fmt.Errorf("%s response error: errcode=%d errmsg=%s", channelType, code, stringField(payload, "errmsg"))
+	codeField := "errcode"
+	messageFields := []string{"errmsg"}
+	if channelType == "feishu" {
+		codeField = "code"
+		if _, exists := payload[codeField]; !exists {
+			codeField = "StatusCode"
 		}
-	case "feishu":
-		if code := int64Field(payload, "code"); code != 0 {
-			return fmt.Errorf("feishu response error: code=%d msg=%s", code, firstStringField(payload, "msg", "message"))
+		messageFields = []string{"msg", "message", "StatusMessage"}
+	}
+	var code *int64
+	if err := json.Unmarshal(payload[codeField], &code); err != nil || code == nil {
+		return fmt.Errorf("%s response error: missing or invalid %s", channelType, codeField)
+	}
+	if *code == 0 {
+		return nil
+	}
+	var message string
+	for _, field := range messageFields {
+		if err := json.Unmarshal(payload[field], &message); err == nil && message != "" {
+			break
 		}
 	}
-	return nil
+	return fmt.Errorf("%s response error: %s=%d message=%s", channelType, codeField, *code, message)
 }
 
 func normalizeNotificationChannelType(channelType string) string {
@@ -616,10 +624,8 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 		_ = conn.Close()
 		return err
 	}
-	// Close force-drops the connection as a safety net. Delivery is decided by Quit
-	// below, whose error is returned; a Close failure after that adds no information.
-	// The static type is *smtp.Client, so the io.Closer exemption does not apply.
-	defer client.Close() //nolint:errcheck // delivery result comes from Quit
+	// Always release the connection; the DATA response determines delivery.
+	defer client.Close() //nolint:errcheck // closing cannot reverse DATA acceptance
 
 	if !directTLS {
 		if ok, _ := client.Extension("STARTTLS"); ok {
@@ -659,7 +665,10 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	if err := writer.Close(); err != nil {
 		return err
 	}
-	return client.Quit()
+	// DATA's 250 response confirms acceptance. A failed or timed-out QUIT
+	// cannot undo that acceptance and must not invite a duplicate retry.
+	_ = client.Quit()
+	return nil
 }
 
 func directSMTPTLSEnabled(fields map[string]any) bool {
