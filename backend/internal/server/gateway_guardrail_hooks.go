@@ -65,7 +65,7 @@ func (s *Server) runGatewayChatGuardrailPreHooks(ctx context.Context, call CallC
 }
 
 func (s *Server) runGatewayResponsesGuardrailPreHooks(ctx context.Context, call CallContext, req *ResponsesRequest) error {
-	return s.runGatewayGuardrailPreHooks(ctx, call, *req, responsesGuardrailTargets(req), func(data json.RawMessage) error {
+	return s.runGatewayGuardrailPreHooks(ctx, call, *req, routedResponsesGuardrailTargets(call, req), func(data json.RawMessage) error {
 		originalModel := req.Model
 		originalStream := req.Stream
 		var patched ResponsesRequest

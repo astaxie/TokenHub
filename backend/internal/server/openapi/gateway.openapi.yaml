@@ -32,6 +32,8 @@ tags:
     description: OpenAI-compatible embeddings.
   - name: Images
     description: Image generation, edits, asynchronous jobs, and signed asset downloads.
+  - name: Audio
+    description: Speech synthesis, transcription, and translation through compatible providers.
   - name: Gemini Native
     description: Native Gemini v1beta model, generation, streaming, and token-counting routes.
 paths:
@@ -594,15 +596,292 @@ paths:
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
           $ref: "#/components/responses/ProviderError"
+  /v1/audio/speech:
+    post:
+      operationId: createSpeech
+      tags: [Audio]
+      summary: Synthesize speech.
+      description: |
+        Routes a published model to an OpenAI or OpenAI-compatible provider. Vendor fields,
+        multipart files, repeated form fields, and response formats are preserved.
+        Requests use the configured multimodal size limit. Responses are buffered up to
+        128 MiB before delivery. Only upstream-reported token usage is billed.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/MediaRequest"
+      responses:
+        "200":
+          description: Provider media response, with its original content type.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "413":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/audio/transcriptions:
+    post:
+      operationId: createTranscription
+      tags: [Audio]
+      summary: Transcribe audio.
+      description: |
+        Routes a published model to an OpenAI or OpenAI-compatible provider. Vendor fields,
+        multipart files, repeated form fields, and response formats are preserved.
+        Requests use the configured multimodal size limit. Responses are buffered up to
+        128 MiB before delivery. Only upstream-reported token usage is billed.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/MediaUploadRequest"
+      responses:
+        "200":
+          description: Provider media response, with its original content type.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "413":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/audio/translations:
+    post:
+      operationId: createAudioTranslation
+      tags: [Audio]
+      summary: Translate audio.
+      description: |
+        Routes a published model to an OpenAI or OpenAI-compatible provider. Vendor fields,
+        multipart files, repeated form fields, and response formats are preserved.
+        Requests use the configured multimodal size limit. Responses are buffered up to
+        128 MiB before delivery. Only upstream-reported token usage is billed.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/MediaUploadRequest"
+      responses:
+        "200":
+          description: Provider media response, with its original content type.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "413":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+  /v1/images/variations:
+    post:
+      operationId: createImageVariation
+      tags: [Images]
+      summary: Create image variations.
+      description: |
+        Routes a published model to an OpenAI or OpenAI-compatible provider. Vendor fields,
+        multipart files, repeated form fields, and response formats are preserved.
+        Requests use the configured multimodal size limit. Responses are buffered up to
+        128 MiB before delivery. Only upstream-reported token usage is billed.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/MediaUploadRequest"
+      responses:
+        "200":
+          description: Provider media response, with its original content type.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "413":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
   /v1/images/generations:
     post:
       operationId: createImageGeneration
       tags: [Images]
       summary: Generate images.
       description: >-
-        Generates images synchronously. Send `Prefer: respond-async` or
-        `x-tokenhub-async: true` to receive a `202` image job instead of
-        waiting for completion.
+        Ordinary published image models preserve provider-specific fields, multiple
+        results, URLs, and Base64 payloads. Managed gpt-image-2 and subscription
+        image models retain the existing image-job contract; only those models
+        accept `Prefer: respond-async` or `x-tokenhub-async: true` for local jobs.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       parameters:
@@ -677,7 +956,9 @@ paths:
       tags: [Images]
       summary: Edit images.
       description: >-
-        Accepts multipart image edits with up to 16 input images. Recognized
+        Ordinary published image models accept JSON or multipart edits and preserve
+        vendor fields and file parts. Managed image models retain the following
+        contract: multipart edits with up to 16 input images. Recognized
         native clients may instead send JSON containing Base64 data URLs; the
         request must carry the configured image alias header or originator
         prefix, and JSON responses always use `b64_json`. Send
@@ -704,7 +985,7 @@ paths:
                   mask: "@mask.png"
           application/json:
             schema:
-              $ref: "#/components/schemas/NativeCodexImageEditRequest"
+              $ref: "#/components/schemas/MediaRequest"
             examples:
               nativeCodexEdit:
                 value:
@@ -2576,6 +2857,30 @@ components:
             additionalProperties: true
         usage:
           $ref: "#/components/schemas/Usage"
+    MediaRequest:
+      type: object
+      required: [model]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        input:
+          description: Provider-specific input, text, structured media, or task ID.
+        prompt:
+          type: string
+    MediaUploadRequest:
+      type: object
+      required: [model]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        file:
+          type: string
+          format: binary
+        image:
+          type: string
+          format: binary
     ImageGenerationRequest:
       type: object
       required: [model, prompt]

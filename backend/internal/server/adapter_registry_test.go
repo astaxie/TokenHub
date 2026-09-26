@@ -23,13 +23,13 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	},
 	ProviderOpenAI: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
-		AdapterCapabilityEmbeddings, AdapterCapabilityImageGenerate,
+		AdapterCapabilityEmbeddings, AdapterCapabilityImageGenerate, AdapterCapabilityMedia,
 		AdapterCapabilityProbe, AdapterCapabilityResponses,
 		AdapterCapabilityResponseStream,
 	},
 	ProviderOpenAICompatible: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
-		AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityRerank,
+		AdapterCapabilityEmbeddings, AdapterCapabilityMedia, AdapterCapabilityProbe, AdapterCapabilityRerank,
 		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
 	},
 	ProviderOpenAICodex: {
@@ -241,7 +241,7 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !compatible.ProviderPolicy.DefaultCatalogProviderType {
 		t.Fatal("OpenAI-compatible should declare itself as the default catalog provider type")
 	}
-	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"chat/completions", "embeddings", "rerank", "responses"}) {
+	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"audio/speech", "audio/transcriptions", "audio/translations", "chat/completions", "embeddings", "images/generations", "rerank", "responses"}) {
 		t.Fatalf("OpenAI-compatible route protocols = %v", compatible.ProviderPolicy.RouteProtocols)
 	}
 

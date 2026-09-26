@@ -333,7 +333,7 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireRequestContentType(t, document, "/v1/images/edits", "post", "multipart/form-data")
 	requireRequestExampleFieldForMedia(t, document, "/v1/images/edits", "post", "multipart/form-data", "editWithMask", "image", "@portrait.png")
 	requireRequestContentType(t, document, "/v1/images/edits", "post", "application/json")
-	requireRequestSchemaRef(t, document, "/v1/images/edits", "post", "#/components/schemas/NativeCodexImageEditRequest")
+	requireRequestSchemaRef(t, document, "/v1/images/edits", "post", "#/components/schemas/MediaRequest")
 	requireRequestExampleField(t, document, "/v1/images/edits", "post", "nativeCodexEdit", "model", openAIImageModelName)
 	requireSchemaRequired(t, document, "NativeCodexImageEditRequest", []string{"model", "prompt", "images"})
 	requireSchemaArrayBounds(t, document, "NativeCodexImageEditRequest", "images", 1, maxImageEditInputCount)
@@ -586,6 +586,10 @@ func providerRoutedOperation(operation gatewayOperation) bool {
 		"/v1/systemone",
 		"/v1/images/generations",
 		"/v1/images/edits",
+		"/v1/images/variations",
+		"/v1/audio/speech",
+		"/v1/audio/transcriptions",
+		"/v1/audio/translations",
 		"/v1beta/models/{model}:generateContent",
 		"/v1beta/models/{model}:streamGenerateContent":
 		return true
@@ -620,6 +624,10 @@ func modelAccessControlledOperation(operation gatewayOperation) bool {
 		"/v1/systemone",
 		"/v1/images/generations",
 		"/v1/images/edits",
+		"/v1/images/variations",
+		"/v1/audio/speech",
+		"/v1/audio/transcriptions",
+		"/v1/audio/translations",
 		"/v1beta/models/{model}:generateContent",
 		"/v1beta/models/{model}:streamGenerateContent",
 		"/v1beta/models/{model}:countTokens":

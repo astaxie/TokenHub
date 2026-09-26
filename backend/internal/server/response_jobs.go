@@ -493,7 +493,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
 		return
 	}
-	decision, err := s.evaluateOutboundGuardrails(ctx, call.Project.ID, responsesGuardrailTargets(&request))
+	decision, err := s.evaluateOutboundGuardrails(ctx, call.Project.ID, routedResponsesGuardrailTargets(call, &request))
 	auditPayload := guardrailRequestAuditPayload(request.Model, decision, request)
 	if err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
