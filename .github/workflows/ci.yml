@@ -62,7 +62,9 @@ jobs:
           working-directory: backend
 
       - name: Test
-        run: go test ./...
+        # The server integration package can exceed Go's default 10-minute
+        # limit on hosted runners. Leave time within the job for final checks.
+        run: go test -timeout 15m ./...
 
       - name: Migration manifest is current
         run: |

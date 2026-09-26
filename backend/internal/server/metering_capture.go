@@ -12,19 +12,20 @@ import (
 )
 
 type meteringRequestSnapshot struct {
-	ModelName   string                 `json:"model"`
-	LegacyPrice *meteringPriceSnapshot `json:"legacy_price,omitempty"`
-	RequestID   string                 `json:"request_id"`
-	ProjectID   string                 `json:"project_id"`
-	ProjectName string                 `json:"project_name"`
-	APIKeyID    string                 `json:"api_key_id"`
-	APIKeyName  string                 `json:"api_key_name"`
-	UserID      string                 `json:"user_id"`
-	TeamID      string                 `json:"team_id,omitempty"`
-	CostCenter  string                 `json:"cost_center,omitempty"`
-	BudgetDay   string                 `json:"budget_day_utc"`
-	BudgetMonth string                 `json:"budget_month_utc"`
-	Price       meteringPriceSnapshot  `json:"price"`
+	QuotaPeriods *quotaPeriods          `json:"quota_periods,omitempty"`
+	ModelName    string                 `json:"model"`
+	LegacyPrice  *meteringPriceSnapshot `json:"legacy_price,omitempty"`
+	RequestID    string                 `json:"request_id"`
+	ProjectID    string                 `json:"project_id"`
+	ProjectName  string                 `json:"project_name"`
+	APIKeyID     string                 `json:"api_key_id"`
+	APIKeyName   string                 `json:"api_key_name"`
+	UserID       string                 `json:"user_id"`
+	TeamID       string                 `json:"team_id,omitempty"`
+	CostCenter   string                 `json:"cost_center,omitempty"`
+	BudgetDay    string                 `json:"budget_day_utc"`
+	BudgetMonth  string                 `json:"budget_month_utc"`
+	Price        meteringPriceSnapshot  `json:"price"`
 }
 
 type meteringAttemptSnapshot struct {
@@ -80,7 +81,7 @@ func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPrice
 	return snapshot
 }
 
-func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext) error {
+func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext, periods quotaPeriods) error {
 	if call.RequestID == "" {
 		return nil
 	}
@@ -93,7 +94,7 @@ func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext) error 
 		price = card.at(call.StartedAt)
 	}
 	legacyPrice := legacyMeteringPrice(call.Model, call.StartedAt, false)
-	snapshot := meteringRequestSnapshot{ModelName: call.Model.Name, LegacyPrice: &legacyPrice, RequestID: call.RequestID, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
+	snapshot := meteringRequestSnapshot{QuotaPeriods: &periods, ModelName: call.Model.Name, LegacyPrice: &legacyPrice, RequestID: call.RequestID, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
 	return saveMeteringEntry(tx, call.RequestID+":admission", "admission", call.RequestID, snapshot, call.StartedAt)
 }
 
