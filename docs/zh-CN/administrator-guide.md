@@ -420,6 +420,14 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 内部邮箱以 `<provider>.tokenhub.local` 结尾，只用于账号标识，不是可投递邮箱。在新登录链路完整验证前，请保留一个可控的密码管理员账号。
 
+## 测试通知渠道
+
+在**健康与告警 → 通知渠道**中保存渠道后，点击该行的**发送测试通知**。TokenHub 使用已保存的目标与凭据，向 SMTP 收件人或配置的 Webhook／机器人发送一条明确标记的测试消息，不使用表单中尚未保存的修改。已禁用的渠道也可以测试，且不会被启用。
+
+控制台显示投递成功或脱敏后的失败原因。成功仅表示 SMTP 服务器或目标 API 已接受请求；请到目标收件箱／渠道确认接收，邮件还应检查垃圾邮件过滤。每次投递尝试都会写入**告警投递**及审计日志，不会创建正式告警。仅平台管理员和安全管理员可以测试。
+
+API：`POST /api/admin/resources/notification-channels/{channel_id}/test`，使用管理员认证，无需请求体。返回 `AlertDelivery`，请检查 `status`（`success` 或 `failed`）和 `error`：即使目标拒绝投递，已完成的尝试仍返回 HTTP 200。SMTP 和 HTTP 投递均设有网络超时。响应、记录与审计中的已存储凭据以及 URL 路径／查询参数继续脱敏。
+
 ## 邮件通知渠道
 
 类型为 `email` 的通知渠道通过 SMTP 投递。默认情况下 TokenHub 使用明文连接，并按服务器通告的能力升级到 STARTTLS（通常为 587 端口）。如果邮件服务器只在隐式 TLS 端口（如 465）上提供 SMTP，请将渠道字段 `smtp_encryption` 设置为 `ssl`、`tls`、`smtps` 或 `implicit`，以便从第一个字节开始即以 TLS 建立连接。渠道的其他标准字段（`smtp_host`、`smtp_port`、`smtp_username`、`smtp_password`、`smtp_from`、`email_to`）保持不变。

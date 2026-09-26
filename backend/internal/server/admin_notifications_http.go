@@ -11,7 +11,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"io"
 	"mime"
 	"net"
 	"net/http"
@@ -347,90 +346,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 	if err != nil {
 		return AlertDelivery{}, err
 	}
-	payload := map[string]any{
-		"source":     "tokenhub",
-		"alert":      alert,
-		"channel":    channel.Name,
-		"sent_at":    time.Now().UTC().Format(time.RFC3339),
-		"severity":   alert.Severity,
-		"scope":      alert.ScopeType,
-		"scope_id":   alert.ScopeID,
-		"message":    alert.Message,
-		"event_code": alert.Code,
-	}
-	delivery := AlertDelivery{
-		AlertID:   alert.ID,
-		ChannelID: channel.ID,
-		Channel:   normalizeNotificationChannelType(stringField(channel.Fields, "type")),
-		Target:    notificationChannelTarget(channel),
-		Status:    "success",
-		Payload:   snapshotJSON(payload),
-	}
-	if delivery.Channel == "" {
-		delivery.Channel = "webhook"
-	}
-	if !supportedNotificationChannel(delivery.Channel) {
-		delivery.Status = "failed"
-		delivery.Error = "unsupported notification channel"
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	if delivery.Channel == "email" {
-		if err := sendEmailAlert(ctx, channel, alert, s.smtpRootCAs); err != nil {
-			delivery.Status = "failed"
-			delivery.Error = err.Error()
-		}
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	target, err := notificationChannelRequestTarget(channel)
-	if err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	bodyPayload, headers, err := notificationChannelPayloadForChannel(channel, payload, alert)
-	if err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	body, _ := json.Marshal(bodyPayload)
-	if delivery.Channel == "dingtalk" {
-		target, err = signedDingTalkWebhookURL(target, firstStringField(channel.Fields, "secret", "sign_secret", "dingtalk_secret"))
-		if err != nil {
-			delivery.Status = "failed"
-			delivery.Error = err.Error()
-			return s.recordAlertDelivery(channel, delivery), nil
-		}
-	}
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, target, bytes.NewReader(body))
-	if err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	req.Header.Set("content-type", "application/json")
-	for key, value := range headers {
-		req.Header.Set(key, value)
-	}
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-	if err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	defer resp.Body.Close()
-	delivery.StatusCode = resp.StatusCode
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		delivery.Status = "failed"
-		delivery.Error = resp.Status
-	} else if err := notificationChannelResponseError(delivery.Channel, resp.Header.Get("content-type"), respBody); err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-	}
-	return s.recordAlertDelivery(channel, delivery), nil
+	return s.deliverNotification(ctx, alert, channel), nil
 }
 
 func signedDingTalkWebhookURL(rawURL string, secret string) (string, error) {
@@ -674,6 +590,16 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	if err != nil {
 		return err
 	}
+	deadline := time.Now().Add(5 * time.Second)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		_ = conn.Close()
+		return err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		_ = conn.Close()

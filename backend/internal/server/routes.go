@@ -249,6 +249,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/invoices/{invoice_id}/confirm", s.handleAdminInvoiceConfirmPost, s.adminMethodNotAllowed("usage", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/invoices/{invoice_id}/reject", s.handleAdminInvoiceRejectPost, s.adminMethodNotAllowed("usage", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/monitors/{monitor_id}/run", s.handleAdminMonitorRunPost, s.adminMethodNotAllowed("provider", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/notification-channels/{channel_id}/test", s.handleAdminNotificationChannelTestPost, s.adminMethodNotAllowed("alert", http.MethodPost))
 	s.mux.HandleFunc("/api/admin/resources/", s.handleAdminResources)
 	s.registerMethodRoutes("/api/admin/sqlite/backups", func(allowedMethods string) http.HandlerFunc {
 		return s.adminMethodNotAllowed("backup", allowedMethods)

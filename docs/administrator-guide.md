@@ -421,6 +421,14 @@ When updating an identity source or notification channel, the following values m
 
 The derived addresses end in `<provider>.tokenhub.local`. They are internal account identifiers, not deliverable mailboxes. Keep a controlled password administrator until the new login has been tested end to end.
 
+## Test Notification Channels
+
+After saving a channel under **Health & Alerts → Notification Channels**, click **Send test notification** on its row. TokenHub sends a clearly marked test message using the saved destination and credentials, including SMTP recipients or the configured webhook/bot. Unsaved form changes are not used. Disabled channels can also be tested without enabling them.
+
+The console reports delivery success or a redacted failure reason. Success means the SMTP server or destination API accepted the request; confirm receipt in the target inbox/channel (and check spam filtering for email). Every attempt records its result in **Alert Deliveries** and the audit log without creating an operational alert. Only platform and security administrators can run tests.
+
+API: `POST /api/admin/resources/notification-channels/{channel_id}/test` with administrator authentication and no request body. It returns an `AlertDelivery`; inspect `status` (`success` or `failed`) and `error`, since a completed delivery attempt returns HTTP 200 even when the destination rejects it. SMTP and HTTP delivery use bounded network timeouts. Stored secrets and credential-bearing URL paths/queries remain redacted in responses, records, and audits.
+
 ## Email Notification Channels
 
 Notification channels of type `email` are delivered over SMTP. By default

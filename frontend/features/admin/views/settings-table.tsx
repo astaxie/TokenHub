@@ -346,7 +346,7 @@ export function EntityTable<T>({
                           {tx(action.label)}
                         </Link>
                       ) : (
-                        <button className="text-button" key={action.label} onClick={() => onAction(action, item)} title={tx(action.title ?? action.label)} type="button">
+                        <button className="text-button" disabled={loading} key={action.label} onClick={() => onAction(action, item)} title={tx(action.title ?? action.label)} type="button">
                           {tx(action.label)}
                         </button>
                       ))}
