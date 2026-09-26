@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"strconv"
 	"strings"
 )
 
@@ -29,7 +30,17 @@ func (m mediaRequest) model() string {
 	_ = json.Unmarshal(m.Fields["model"], &v)
 	return strings.TrimSpace(v)
 }
-func (m mediaRequest) stream() bool { var v bool; _ = json.Unmarshal(m.Fields["stream"], &v); return v }
+func (m mediaRequest) stream() bool {
+	var value bool
+	if m.Multipart {
+		var text string
+		_ = json.Unmarshal(m.Fields["stream"], &text)
+		value, _ = strconv.ParseBool(text)
+	} else {
+		_ = json.Unmarshal(m.Fields["stream"], &value)
+	}
+	return value
+}
 
 func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (mediaRequest, error) {
 	request := mediaRequest{Fields: map[string]json.RawMessage{}}

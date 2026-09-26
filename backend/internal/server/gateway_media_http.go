@@ -95,15 +95,13 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	}
 	routes := routed.Routes[:0]
 	for _, route := range routed.Routes {
-		descriptor, found := s.adapterRegistry.Describe(route.Provider.Type)
-		_, implemented := resolveTypedAdapter[providerMedia](s.adapterRegistry, route.Provider.Type)
-		if found && implemented && adapterSupports(descriptor, AdapterCapabilityMedia) {
+		if s.routeSupportsMedia(routed.Call, route) {
 			routes = append(routes, route)
 		}
 	}
 	routed.Routes = routes
 	if len(routes) == 0 {
-		err := NewHTTPError(501, "provider_capability_not_supported", "Publish a media model routed to an OpenAI or OpenAI-compatible provider")
+		err := NewHTTPError(501, "provider_capability_not_supported", "Publish a media model with a compatible provider or matching provider_call hook")
 		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, audit)
 		writeError(w, r, err)
 		return
@@ -118,8 +116,7 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 		if err := s.runGatewayRequestTransformHooks(ctx, routed.Call, prepared, upstream.Fields, call.RouteProtocol, upstream.applyPatch); err != nil {
 			return mediaResponse{}, Usage{}, err
 		}
-		adapter, _ := resolveTypedAdapter[providerMedia](s.adapterRegistry, prepared.Provider.Type)
-		return adapter.Media(ctx, prepared.Provider, prepared.ProviderModel, strings.TrimPrefix(r.URL.Path, "/v1"), upstream)
+		return s.invokeMediaRoute(ctx, routed.Call, prepared, strings.TrimPrefix(r.URL.Path, "/v1"), upstream)
 	})
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, audit)
@@ -148,7 +145,7 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 	if err := decodeGatewayHookRequestPatch(data, &fields); err != nil {
 		return err
 	}
-	patched := mediaRequest{Fields: fields}
+	patched := mediaRequest{Fields: fields, Multipart: m.Multipart}
 	if err := validateGatewayHookRequestInvariant(m.model(), m.stream(), patched.model(), patched.stream()); err != nil {
 		return err
 	}
@@ -226,12 +223,15 @@ func (s *Server) finishMediaHooks(ctx context.Context, call CallContext, route R
 		result.Body = data
 	} else {
 		var wrapped struct {
-			Data string `json:"data_base64"`
+			Data *string `json:"data_base64"`
 		}
-		if err := json.Unmarshal(data, &wrapped); err != nil {
-			return result, usage, err
+		if err := json.Unmarshal(data, &wrapped); err != nil || wrapped.Data == nil {
+			return result, usage, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must preserve a string data_base64 field")
 		}
-		result.Body, err = base64.StdEncoding.DecodeString(wrapped.Data)
+		result.Body, err = base64.StdEncoding.DecodeString(*wrapped.Data)
+		if err != nil {
+			return result, usage, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must return valid base64 data")
+		}
 	}
 	return result, usage, err
 }
