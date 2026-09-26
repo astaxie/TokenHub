@@ -169,12 +169,15 @@ test("api-key-access browser history navigation dismisses rotation confirmation"
   expect(api.calls.filter(call => call.method === "POST")).toHaveLength(0);
 });
 
-test("api-key-access browser history dismisses rotation confirmation within Key Management", async ({ page, api }) => {
+test("api-key-access browser history dismisses rotation confirmation within Key Management", async ({ page, api }, testInfo) => {
   const keys = setup(api);
   keys.push(structuredClone(usageKey));
   stubKeyUsagePage(api, usageKey);
   await page.goto(`/api-keys/${usageKey.id}/usage`);
   await expect(page.getByRole("heading", { name: usageKey.name })).toBeVisible();
+  const timezoneHint = page.getByText("统计日期以 UTC 为准，额度周期使用系统配置的配额时区", { exact: true });
+  await expect(timezoneHint).toBeVisible();
+  await capture(page, testInfo, timezoneHint.locator(".."), "key-usage-quota-timezone", "用量统计与配额时区说明");
   await page.getByRole("complementary").getByRole("button", { name: "Key 管理", exact: true }).click();
   await expect(page).toHaveURL(/\/api-keys$/);
   await page.getByRole("row").filter({ hasText: original.name }).getByRole("button", { name: "轮换", exact: true }).click();

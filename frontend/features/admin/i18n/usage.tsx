@@ -1,5 +1,7 @@
 export const usageTranslations = {
   en: {
+    "配额时区": "Quota Timezone",
+    "每日和每月配额按此时区的零点重置，默认 UTC。可填写 Asia/Shanghai 等 IANA 时区。修改不会重新归属历史用量。": "Daily and monthly quotas reset at midnight in this timezone (UTC by default). Enter an IANA timezone such as Asia/Shanghai. Changes do not reassign historical usage.",
     "缓存命中率": "Cache Hit Rate",
     "今日用量": "Daily Usage",
     "当天用量": "Today's Usage",
@@ -151,6 +153,8 @@ export const usageTranslations = {
     "所选时区中不存在该本地时间": "This local time does not exist in the selected timezone",
   },
   ja: {
+    "配额时区": "クォータのタイムゾーン",
+    "每日和每月配额按此时区的零点重置，默认 UTC。可填写 Asia/Shanghai 等 IANA 时区。修改不会重新归属历史用量。": "日次・月次クォータはこのタイムゾーンの午前0時にリセットされます（既定は UTC）。Asia/Shanghai などの IANA タイムゾーンを入力してください。変更しても過去の使用量は再配分されません。",
     "缓存命中率": "キャッシュヒット率",
     "今日用量": "本日の使用量",
     "当天用量": "当日の使用量",

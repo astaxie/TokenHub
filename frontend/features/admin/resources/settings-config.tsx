@@ -123,6 +123,7 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
     { key: "default_timeout", label: "默认超时", help: "网关转发上游请求的默认等待时间，例如 120s。" },
     { key: "audit_retention", label: "审计保留", help: "请求和响应正文的保留周期，范围为 1d 至 3650d；请求元数据不会被清理。" },
     { key: "dashboard_timezone", label: "用量看板时区", placeholder: "UTC", help: "用于当天用量和使用趋势的自然日边界。请填写 IANA 时区，例如 UTC、Asia/Shanghai 或 America/New_York。" },
+    { key: "quota_timezone", label: "配额时区", placeholder: "UTC", help: "每日和每月配额按此时区的零点重置，默认 UTC。可填写 Asia/Shanghai 等 IANA 时区。修改不会重新归属历史用量。" },
     { key: "plugin_marketplace_url", label: "插件市场地址", placeholder: "", help: "插件管理页右上角打开的插件市场网站地址。必须使用 HTTP 或 HTTPS。" },
     { key: "api_key_prefix", label: "API Key 前缀", placeholder: "sk_", help: "新建和轮换 Key 时使用；建议以 _ 结尾，例如 sk_。" },
     { key: "api_key_random_length", label: "API Key 随机长度", type: "number", placeholder: "48", help: "前缀后面的随机字符数，系统会限制在 24-128 之间。" },
@@ -208,6 +209,7 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
     remove: undefined,
     toForm: (item) => ({
       ...(base.toForm?.(item) ?? {}),
+      quota_timezone: stringifyValue(item.fields?.quota_timezone) || "UTC",
       dashboard_timezone: stringifyValue(item.fields?.dashboard_timezone) || "UTC",
       plugin_marketplace_url: stringifyValue(item.fields?.plugin_marketplace_url) || "",
     }),
