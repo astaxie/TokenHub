@@ -37,6 +37,8 @@ func (s *Server) handleAdminNotificationChannelTestPost(w http.ResponseWriter, r
 	writeJSON(w, http.StatusOK, delivery)
 }
 
+const maxNotificationResponseBytes = 4096
+
 func (s *Server) deliverNotification(ctx context.Context, alert AlertEvent, channel AdminResource) AlertDelivery {
 	payload := map[string]any{
 		"source":     "tokenhub",
@@ -113,10 +115,16 @@ func (s *Server) deliverNotification(ctx context.Context, alert AlertEvent, chan
 	}
 	defer resp.Body.Close()
 	delivery.StatusCode = resp.StatusCode
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxNotificationResponseBytes+1))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		delivery.Status = "failed"
 		delivery.Error = resp.Status
+	} else if readErr != nil {
+		delivery.Status = "failed"
+		delivery.Error = "read notification response: " + readErr.Error()
+	} else if len(respBody) > maxNotificationResponseBytes && notificationChannelChecksResponseBody(delivery.Channel) {
+		delivery.Status = "failed"
+		delivery.Error = "notification response exceeds 4096 bytes"
 	} else if err := notificationChannelResponseError(delivery.Channel, resp.Header.Get("content-type"), respBody); err != nil {
 		delivery.Status = "failed"
 		delivery.Error = err.Error()

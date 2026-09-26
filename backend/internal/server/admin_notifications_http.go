@@ -369,8 +369,19 @@ func signedDingTalkWebhookURL(rawURL string, secret string) (string, error) {
 	return parsed.String(), nil
 }
 
+// These bot APIs can reject delivery in a JSON result despite HTTP 200.
+func notificationChannelChecksResponseBody(channelType string) bool {
+	switch channelType {
+	case "dingtalk", "feishu", "wecom":
+		return true
+	default:
+		return false
+	}
+}
+
 func notificationChannelResponseError(channelType string, contentType string, body []byte) error {
-	if len(bytes.TrimSpace(body)) == 0 {
+	channelType = normalizeNotificationChannelType(channelType)
+	if !notificationChannelChecksResponseBody(channelType) || len(bytes.TrimSpace(body)) == 0 {
 		return nil
 	}
 	mediaType, _, _ := mime.ParseMediaType(contentType)
@@ -379,12 +390,12 @@ func notificationChannelResponseError(channelType string, contentType string, bo
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil
+		return fmt.Errorf("%s response error: invalid JSON", channelType)
 	}
-	switch normalizeNotificationChannelType(channelType) {
-	case "dingtalk":
+	switch channelType {
+	case "dingtalk", "wecom":
 		if code := int64Field(payload, "errcode"); code != 0 {
-			return fmt.Errorf("dingtalk response error: errcode=%d errmsg=%s", code, stringField(payload, "errmsg"))
+			return fmt.Errorf("%s response error: errcode=%d errmsg=%s", channelType, code, stringField(payload, "errmsg"))
 		}
 	case "feishu":
 		if code := int64Field(payload, "code"); code != 0 {
