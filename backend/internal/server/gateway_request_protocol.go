@@ -4,6 +4,8 @@ import "strings"
 
 func gatewayRequestProtocol(path string) string {
 	switch {
+	case strings.HasPrefix(path, "/v1/audio/"):
+		return strings.TrimPrefix(path, "/v1/")
 	case path == "/v1/systemone":
 		return providerRouteProtocolSystemOne
 	case strings.Contains(path, "/messages"):

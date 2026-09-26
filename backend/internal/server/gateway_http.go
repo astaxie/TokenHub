@@ -1337,7 +1337,7 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 		return false
 	}
 	switch providerErrorDisposition(err) {
-	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted, ProviderErrorEgress:
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted, ProviderErrorEgress, ProviderErrorOutcomeUnknown:
 		return false
 	case ProviderErrorTransientSame:
 		return !routeIsBound

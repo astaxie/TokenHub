@@ -1123,7 +1123,7 @@ type ResponsesReasoning struct {
 func (r *ResponsesRequest) UnmarshalJSON(data []byte) error {
 	type requestAlias ResponsesRequest
 	var decoded requestAlias
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	if err := decodeResponsesJSON(data, &decoded); err != nil {
 		return err
 	}
 	var raw map[string]json.RawMessage

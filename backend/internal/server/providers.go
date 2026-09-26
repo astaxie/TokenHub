@@ -336,7 +336,14 @@ func (a OpenAICompatibleAdapter) Responses(ctx context.Context, provider Provide
 	req.Model = providerModel
 	req = normalizedResponsesReasoning(req)
 	var body map[string]any
-	if err := a.doJSON(ctx, provider, http.MethodPost, "/responses", req, &body); err != nil {
+	response, err := a.doRaw(ctx, provider, http.MethodPost, "/responses", req, false)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	defer response.Body.Close()
+	decoder := json.NewDecoder(response.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(&body); err != nil {
 		return nil, Usage{}, err
 	}
 	return body, usageFromMap(body), nil
