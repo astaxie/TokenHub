@@ -421,6 +421,16 @@ When updating an identity source or notification channel, the following values m
 
 The derived addresses end in `<provider>.tokenhub.local`. They are internal account identifiers, not deliverable mailboxes. Keep a controlled password administrator until the new login has been tested end to end.
 
+## Test Notification Channels
+
+After saving a channel under **Health & Alerts → Notification Channels**, click **Send test notification** on its row. TokenHub sends a clearly marked test message using the saved destination and credentials, including SMTP recipients or the configured webhook/bot. Unsaved form changes are not used. Disabled channels can also be tested without enabling them.
+
+The console reports delivery success or a redacted failure reason. DingTalk, Feishu, and WeCom must return an explicit zero success code, even with HTTP 200; application errors, missing or invalid result codes, and incomplete or unreadable HTTP responses fail the test. Bot result bodies that exceed 4096 bytes fail validation; generic webhook response bodies are not subject to this validation limit. Success means the SMTP server or destination API accepted the request; confirm receipt in the target inbox/channel (and check spam filtering for email). Every attempt records its result in **Alert Deliveries** and the audit log without creating an operational alert. Only platform and security administrators can run tests.
+
+Notification delivery does not follow HTTP redirects; configure the final destination URL directly. SMTP delivery succeeds once the server accepts the message after DATA; a later QUIT failure or timeout does not change that result. These acceptance rules apply to both tests and regular notifications.
+
+API: `POST /api/admin/resources/notification-channels/{channel_id}/test` with administrator authentication and no request body. It returns an `AlertDelivery`; inspect `status` (`success` or `failed`) and `error`, since a completed delivery attempt returns HTTP 200 even when the destination rejects it. SMTP and HTTP delivery use bounded network timeouts. Stored secrets and credential-bearing URL paths/queries remain redacted in responses, records, and audits.
+
 ## Email Notification Channels
 
 Notification channels of type `email` are delivered over SMTP. By default

@@ -1352,12 +1352,13 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (!action.run) return;
     setLoading(true);
     setError("");
-    setNotice("");
+    setNotice(action.pendingMessage ? tx(action.pendingMessage) : "");
     try {
       await action.run(api, item, appData);
       setNotice(tx(action.doneMessage?.(item) ?? "操作已完成"));
       await load();
     } catch (err) {
+      setNotice("");
       if (isAuthExpiredError(err)) return;
       setError(err instanceof Error ? err.message : tx("操作失败"));
     } finally {

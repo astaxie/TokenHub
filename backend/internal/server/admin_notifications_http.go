@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -11,8 +10,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"io"
-	"mime"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -347,90 +344,7 @@ func (s *Server) deliverAlert(ctx context.Context, alertID string, channelID str
 	if err != nil {
 		return AlertDelivery{}, err
 	}
-	payload := map[string]any{
-		"source":     "tokenhub",
-		"alert":      alert,
-		"channel":    channel.Name,
-		"sent_at":    time.Now().UTC().Format(time.RFC3339),
-		"severity":   alert.Severity,
-		"scope":      alert.ScopeType,
-		"scope_id":   alert.ScopeID,
-		"message":    alert.Message,
-		"event_code": alert.Code,
-	}
-	delivery := AlertDelivery{
-		AlertID:   alert.ID,
-		ChannelID: channel.ID,
-		Channel:   normalizeNotificationChannelType(stringField(channel.Fields, "type")),
-		Target:    notificationChannelTarget(channel),
-		Status:    "success",
-		Payload:   snapshotJSON(payload),
-	}
-	if delivery.Channel == "" {
-		delivery.Channel = "webhook"
-	}
-	if !supportedNotificationChannel(delivery.Channel) {
-		delivery.Status = "failed"
-		delivery.Error = "unsupported notification channel"
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	if delivery.Channel == "email" {
-		if err := sendEmailAlert(ctx, channel, alert, s.smtpRootCAs); err != nil {
-			delivery.Status = "failed"
-			delivery.Error = err.Error()
-		}
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	target, err := notificationChannelRequestTarget(channel)
-	if err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	bodyPayload, headers, err := notificationChannelPayloadForChannel(channel, payload, alert)
-	if err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	body, _ := json.Marshal(bodyPayload)
-	if delivery.Channel == "dingtalk" {
-		target, err = signedDingTalkWebhookURL(target, firstStringField(channel.Fields, "secret", "sign_secret", "dingtalk_secret"))
-		if err != nil {
-			delivery.Status = "failed"
-			delivery.Error = err.Error()
-			return s.recordAlertDelivery(channel, delivery), nil
-		}
-	}
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, target, bytes.NewReader(body))
-	if err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	req.Header.Set("content-type", "application/json")
-	for key, value := range headers {
-		req.Header.Set(key, value)
-	}
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-	if err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-		return s.recordAlertDelivery(channel, delivery), nil
-	}
-	defer resp.Body.Close()
-	delivery.StatusCode = resp.StatusCode
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		delivery.Status = "failed"
-		delivery.Error = resp.Status
-	} else if err := notificationChannelResponseError(delivery.Channel, resp.Header.Get("content-type"), respBody); err != nil {
-		delivery.Status = "failed"
-		delivery.Error = err.Error()
-	}
-	return s.recordAlertDelivery(channel, delivery), nil
+	return s.deliverNotification(ctx, alert, channel), nil
 }
 
 func signedDingTalkWebhookURL(rawURL string, secret string) (string, error) {
@@ -453,29 +367,50 @@ func signedDingTalkWebhookURL(rawURL string, secret string) (string, error) {
 	return parsed.String(), nil
 }
 
-func notificationChannelResponseError(channelType string, contentType string, body []byte) error {
-	if len(bytes.TrimSpace(body)) == 0 {
+// These bot APIs can reject delivery in a JSON result despite HTTP 200.
+func notificationChannelChecksResponseBody(channelType string) bool {
+	switch channelType {
+	case "dingtalk", "feishu", "wecom":
+		return true
+	default:
+		return false
+	}
+}
+
+func notificationChannelResponseError(channelType string, body []byte) error {
+	channelType = normalizeNotificationChannelType(channelType)
+	if !notificationChannelChecksResponseBody(channelType) {
 		return nil
 	}
-	mediaType, _, _ := mime.ParseMediaType(contentType)
-	if mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json") {
-		return nil
-	}
-	var payload map[string]any
+	// Bot result schemas determine acceptance, even when a proxy rewrites the
+	// Content-Type header. HTTP 200 alone does not confirm a bot notification.
+	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(body, &payload); err != nil {
+		return fmt.Errorf("%s response error: invalid JSON", channelType)
+	}
+	codeField := "errcode"
+	messageFields := []string{"errmsg"}
+	if channelType == "feishu" {
+		codeField = "code"
+		if _, exists := payload[codeField]; !exists {
+			codeField = "StatusCode"
+		}
+		messageFields = []string{"msg", "message", "StatusMessage"}
+	}
+	var code *int64
+	if err := json.Unmarshal(payload[codeField], &code); err != nil || code == nil {
+		return fmt.Errorf("%s response error: missing or invalid %s", channelType, codeField)
+	}
+	if *code == 0 {
 		return nil
 	}
-	switch normalizeNotificationChannelType(channelType) {
-	case "dingtalk":
-		if code := int64Field(payload, "errcode"); code != 0 {
-			return fmt.Errorf("dingtalk response error: errcode=%d errmsg=%s", code, stringField(payload, "errmsg"))
-		}
-	case "feishu":
-		if code := int64Field(payload, "code"); code != 0 {
-			return fmt.Errorf("feishu response error: code=%d msg=%s", code, firstStringField(payload, "msg", "message"))
+	var message string
+	for _, field := range messageFields {
+		if err := json.Unmarshal(payload[field], &message); err == nil && message != "" {
+			break
 		}
 	}
-	return nil
+	return fmt.Errorf("%s response error: %s=%d message=%s", channelType, codeField, *code, message)
 }
 
 func normalizeNotificationChannelType(channelType string) string {
@@ -674,15 +609,23 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	if err != nil {
 		return err
 	}
+	deadline := time.Now().Add(5 * time.Second)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		_ = conn.Close()
+		return err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		_ = conn.Close()
 		return err
 	}
-	// Close force-drops the connection as a safety net. Delivery is decided by Quit
-	// below, whose error is returned; a Close failure after that adds no information.
-	// The static type is *smtp.Client, so the io.Closer exemption does not apply.
-	defer client.Close() //nolint:errcheck // delivery result comes from Quit
+	// Always release the connection; the DATA response determines delivery.
+	defer client.Close() //nolint:errcheck // closing cannot reverse DATA acceptance
 
 	if !directTLS {
 		if ok, _ := client.Extension("STARTTLS"); ok {
@@ -722,7 +665,10 @@ func sendEmail(ctx context.Context, fields map[string]any, recipients []string, 
 	if err := writer.Close(); err != nil {
 		return err
 	}
-	return client.Quit()
+	// DATA's 250 response confirms acceptance. A failed or timed-out QUIT
+	// cannot undo that acceptance and must not invite a duplicate retry.
+	_ = client.Quit()
+	return nil
 }
 
 func directSMTPTLSEnabled(fields map[string]any) bool {

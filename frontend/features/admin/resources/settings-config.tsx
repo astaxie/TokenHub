@@ -6,7 +6,7 @@ import { boolLabel, dataScopeLabel, identityProviderDefaultGrantLabel, identityP
 import { formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { genericResourceConfig } from "./generic-config";
 import { adminUserConfig, alertDeliveryConfig, alertEventConfig, alertRuleConfig, approvalConfig, approvalFlowConfig, costCenterConfig, downloadSQLiteBackup, reportConfig, restoreSQLiteBackup } from "./governance-config";
-import { adminDelete, adminFetch, adminMutate, identityProviderPayload, notificationChannelPayload } from "./payloads";
+import { adminDelete, adminFetch, adminMutate, readAdminError, identityProviderPayload, notificationChannelPayload } from "./payloads";
 import { apiKeyConfig, projectConfig, projectMemberConfig } from "./project-key-config";
 import { modelConfig, providerConfig, routeConfig } from "./provider-model-config";
 import { routingPolicyConfig } from "./routing-policy-config";
@@ -400,6 +400,20 @@ export function notificationChannelConfig(): ResourceConfig<AdminResource> {
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
       { key: "updated_at", label: "更新时间", render: (item) => formatTime(item.updated_at ?? "") },
     ],
+    actions: [{
+      label: "发送测试通知",
+      pendingMessage: "测试通知发送中…",
+      title: "使用已保存的配置向目标发送一条测试通知",
+      run: async (ctx, item) => {
+        const resp = await adminFetch(ctx, `/api/admin/resources/notification-channels/${encodeURIComponent(item.id)}/test`, { method: "POST" });
+        if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试通知发送失败")));
+        const delivery = await resp.json() as { status: string; error?: string };
+        if (delivery.status !== "success") {
+          throw new Error(formatTranslationTemplate(tx("测试通知发送失败：{error}"), { error: delivery.error || tx("操作失败") }));
+        }
+      },
+      doneMessage: () => tx("测试通知已提交，请到收件箱或目标渠道确认接收。"),
+    }],
     create: (ctx, values) => adminMutate(ctx, "/api/admin/resources/notification-channels", "POST", notificationChannelPayload(values)),
     update: (ctx, item, values) => adminMutate(ctx, `/api/admin/resources/notification-channels/${item.id}`, "PATCH", notificationChannelPayload(values, item)),
     toForm: (item) => ({
