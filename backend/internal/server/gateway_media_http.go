@@ -161,8 +161,8 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 }
 
 func mediaGuardrailTargets(fields map[string]json.RawMessage) []guardrailTextTarget {
-	targets := responsesCompactGuardrailTargets(fields)
-	for _, name := range []string{"prompt", "negative_prompt", "text"} {
+	var targets []guardrailTextTarget
+	for _, name := range []string{"input", "instructions", "prompt", "negative_prompt", "text"} {
 		var value any
 		if decodeResponsesJSON(fields[name], &value) == nil {
 			appendMediaResponseTextTargets(&targets, value, name, func(value any) {
