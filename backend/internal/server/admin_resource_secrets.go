@@ -172,7 +172,11 @@ func (s *Server) revealNotificationChannelSecrets(channel AdminResource) AdminRe
 		if !ok || !strings.HasPrefix(secret, "enc:v1:") {
 			continue
 		}
-		fields[key] = codec.revealAdminResourceSecret(secret)
+		// Legacy notification credentials are stored as plaintext and can share
+		// the encryption prefix. Only replace a value after successful decryption.
+		if revealed := codec.revealAdminResourceSecret(secret); revealed != "" {
+			fields[key] = revealed
+		}
 	}
 	channel.Fields = fields
 	return channel
