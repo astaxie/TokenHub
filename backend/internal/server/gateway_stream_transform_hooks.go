@@ -45,6 +45,9 @@ func (s *Server) hasGatewayStreamTransformHooksForRoute(route RouteSelection, pr
 func (s *Server) newGatewayStreamTransformWriter(ctx context.Context, call CallContext, route RouteSelection, protocol string, sink io.Writer) *gatewayStreamTransformWriter {
 	writer := &gatewayStreamTransformWriter{server: s, ctx: ctx, call: call, route: route, protocol: protocol, sink: sink}
 	writer.decoder = newSSEStreamWriter(writer.handleEvent)
+	if modelHasMediaOutput(call.Model) {
+		writer.decoder.assembler.limit = maxMediaResponseBytes
+	}
 	return writer
 }
 

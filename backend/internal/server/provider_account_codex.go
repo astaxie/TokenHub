@@ -460,7 +460,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, tracker)
 			streamWriter = transformer
 		}
-		response, _, usage, streamErr := consumeCodexResponsesStream(opened.Body, streamWriter)
+		response, _, usage, streamErr := consumeRoutedResponsesStream(routed.Call, prepared.Provider, opened.Body, streamWriter)
 		if transformer != nil {
 			if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {
 				streamErr = closeErr

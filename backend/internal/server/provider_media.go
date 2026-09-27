@@ -49,8 +49,8 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 		return mediaResponse{}, Usage{MeteringInvalid: true}, uncertainMediaSubmission(err)
 	}
 	if err := checkProviderResponseForProvider(response, provider); err != nil {
-		if response.StatusCode >= 500 {
-			err = uncertainMediaSubmission(err)
+		if response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout {
+			return mediaResponse{}, Usage{MeteringInvalid: true}, uncertainMediaSubmission(err)
 		}
 		return mediaResponse{}, Usage{}, err
 	}

@@ -19,24 +19,36 @@ func (s *Server) routeSupportsMedia(call CallContext, route RouteSelection) bool
 func (s *Server) invokeMediaRoute(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest) (mediaResponse, Usage, error) {
 	var payload any
 	var usage Usage
-	var handled bool
+	var handled, usageReported bool
 	var err error
 	var stream mediaHookStreamBuffer
 	if call.Stream {
 		stream.limit = maxMediaResponseBytes
-		payload, usage, handled, err = s.runGatewayProviderCallHooksOutput(ctx, call, route, request.Fields, call.RouteProtocol, &stream)
+		payload, usage, handled, err = s.runGatewayProviderCallHooksOutputWithUsagePresence(ctx, call, route, request.Fields, call.RouteProtocol, &stream, &usageReported)
 	} else {
-		payload, usage, handled, err = s.runGatewayProviderCallHooks(ctx, call, route, request.Fields, call.RouteProtocol)
+		payload, usage, handled, err = s.runGatewayProviderCallHooksOutputWithUsagePresence(ctx, call, route, request.Fields, call.RouteProtocol, nil, &usageReported)
 	}
 	if err != nil {
 		return mediaResponse{}, usage, err
 	}
 	if handled {
-		if call.Stream {
-			return mediaResponse{Body: stream.Bytes(), ContentType: "text/event-stream", Status: http.StatusOK}, usage, nil
+		response := mediaResponse{Body: stream.Bytes(), ContentType: "text/event-stream", Status: http.StatusOK}
+		if !call.Stream {
+			response, err = mediaProviderHookResponse(payload)
+			if err != nil {
+				return mediaResponse{}, usage, err
+			}
 		}
-		response, err := mediaProviderHookResponse(payload)
-		return response, usage, err
+		if mediaResponseIsSSE(response.ContentType) {
+			parsed, streamErr := inspectMediaStream(response.Body, route.Provider)
+			if !usageReported {
+				usage = parsed
+			}
+			if streamErr != nil {
+				return mediaResponse{}, usage, uncertainMediaSubmission(streamErr)
+			}
+		}
+		return response, usage, nil
 	}
 	adapter, ok := resolveTypedAdapter[providerMedia](s.adapterRegistry, route.Provider.Type)
 	if !ok || !s.routeSupportsAdapterCapability(route, AdapterCapabilityMedia) {

@@ -636,7 +636,7 @@ func (s *Server) streamPlaygroundResponses(
 		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, providerRouteProtocolResponses, sink)
 		streamWriter = transformer
 	}
-	response, outputText, usage, streamErr := consumeCodexResponsesStream(opened.Body, streamWriter)
+	response, outputText, usage, streamErr := consumeRoutedResponsesStream(call, route.Provider, opened.Body, streamWriter)
 	if transformer != nil {
 		if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {
 			streamErr = closeErr

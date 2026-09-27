@@ -83,7 +83,12 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 		writeError(w, r, err)
 		return
 	}
-	if err = s.runMediaPreflight(r, &call, &request); err != nil {
+	err = s.runMediaPreflight(r, &call, &request)
+	if err == nil {
+		audit.Guardrail, err = s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, mediaGuardrailTargets(request.Fields))
+		audit.Guardrail.Replacements = nil
+	}
+	if err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, audit)
 		writeError(w, r, err)
 		return
@@ -185,11 +190,7 @@ func (s *Server) runMediaPreflight(r *http.Request, call *CallContext, request *
 	if err := s.runGatewayGuardrailPreHooks(ctx, *call, request.Fields, mediaGuardrailTargets(request.Fields), request.applyPatch); err != nil {
 		return err
 	}
-	if err := s.runGatewayContextOptimizeHooks(ctx, *call, request.Fields, request.applyPatch); err != nil {
-		return err
-	}
-	_, err := s.evaluateOutboundGuardrails(ctx, call.Project.ID, mediaGuardrailTargets(request.Fields))
-	return err
+	return s.runGatewayContextOptimizeHooks(ctx, *call, request.Fields, request.applyPatch)
 }
 
 func (s *Server) finishMediaHooks(ctx context.Context, call CallContext, route RouteSelection, result mediaResponse, usage Usage) (mediaResponse, Usage, error) {
@@ -218,10 +219,11 @@ func (s *Server) finishMediaHooks(ctx context.Context, call CallContext, route R
 	if err != nil {
 		return result, usage, err
 	}
-	usage, err = s.runGatewayUsageAttributionHooks(ctx, call, route, payload, usage, call.RouteProtocol)
+	attributed, err := s.runGatewayUsageAttributionHooks(ctx, call, route, payload, usage, call.RouteProtocol)
 	if err != nil {
 		return result, usage, err
 	}
+	usage = attributed
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return result, usage, err
