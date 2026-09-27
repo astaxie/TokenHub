@@ -42,6 +42,27 @@ func (m mediaRequest) stream() bool {
 	return value
 }
 
+func (m mediaRequest) validateStream() error {
+	raw, exists := m.Fields["stream"]
+	if !exists {
+		return nil
+	}
+	if m.Multipart {
+		var value *string
+		if json.Unmarshal(raw, &value) == nil && value != nil {
+			if _, err := strconv.ParseBool(*value); err == nil {
+				return nil
+			}
+		}
+		return errors.New("stream must be a single boolean text field")
+	}
+	var value *bool
+	if json.Unmarshal(raw, &value) != nil || value == nil {
+		return errors.New("stream must be a boolean")
+	}
+	return nil
+}
+
 func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (mediaRequest, error) {
 	request := mediaRequest{Fields: map[string]json.RawMessage{}}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
@@ -83,8 +104,8 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 				break
 			}
 			if part.FileName() != "" {
-				if part.FormName() == "model" {
-					err = errors.New("model must be a text field")
+				if part.FormName() == "model" || part.FormName() == "stream" {
+					err = errors.New("model and stream must be text fields")
 					break
 				}
 				request.Files = append(request.Files, mediaFile{Header: part.Header, Data: data})
@@ -100,8 +121,8 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 			for name, values := range fields {
 				if len(values) == 1 {
 					request.Fields[name], _ = json.Marshal(values[0])
-				} else if name == "model" {
-					err = errors.New("model must occur exactly once")
+				} else if name == "model" || name == "stream" {
+					err = errors.New("model and stream must occur at most once")
 				} else {
 					request.Fields[name], _ = json.Marshal(values)
 				}
@@ -119,6 +140,9 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 	}
 	if request.model() == "" {
 		return request, NewHTTPError(400, "missing_model", "model is required")
+	}
+	if err := request.validateStream(); err != nil {
+		return request, NewHTTPError(400, "invalid_media_request", err.Error())
 	}
 	return request, nil
 }

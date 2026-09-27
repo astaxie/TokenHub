@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"tokenhub/backend/internal/guardrails"
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
@@ -146,6 +145,9 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 		return err
 	}
 	patched := mediaRequest{Fields: fields, Multipart: m.Multipart}
+	if err := patched.validateStream(); err != nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid media stream mode")
+	}
 	if err := validateGatewayHookRequestInvariant(m.model(), m.stream(), patched.model(), patched.stream()); err != nil {
 		return err
 	}
@@ -156,9 +158,11 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 func mediaGuardrailTargets(fields map[string]json.RawMessage) []guardrailTextTarget {
 	targets := responsesCompactGuardrailTargets(fields)
 	for _, name := range []string{"prompt", "negative_prompt", "text"} {
-		var value string
-		if json.Unmarshal(fields[name], &value) == nil && value != "" {
-			targets = append(targets, guardrailTextTarget{fragment: guardrails.Fragment{ID: name, Text: value, Mutable: true}, replace: func(value string) { setRawJSONField(fields, name, value, true) }})
+		var value any
+		if decodeResponsesJSON(fields[name], &value) == nil {
+			appendMediaResponseTextTargets(&targets, value, name, func(value any) {
+				setRawJSONField(fields, name, value, true)
+			})
 		}
 	}
 	return targets
@@ -189,6 +193,9 @@ func (s *Server) runMediaPreflight(r *http.Request, call *CallContext, request *
 }
 
 func (s *Server) finishMediaHooks(ctx context.Context, call CallContext, route RouteSelection, result mediaResponse, usage Usage) (mediaResponse, Usage, error) {
+	if mediaResponseIsSSE(result.ContentType) {
+		return s.finishMediaStreamHooks(ctx, call, route, result, usage)
+	}
 	hasHooks := false
 	for _, stage := range []pluginmeta.GatewayHookStage{pluginmeta.StageResponsePost, pluginmeta.StageGuardrailPost, pluginmeta.StageUsageAttribution} {
 		hasHooks = hasHooks || len(s.gatewayRouteHooksForRoute(stage, route, call.RouteProtocol, true)) > 0

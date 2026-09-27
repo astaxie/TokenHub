@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -55,14 +56,23 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes+1))
-	if err != nil || len(body) > maxMediaResponseBytes {
-		if ctx.Err() != nil {
-			return mediaResponse{}, Usage{MeteringInvalid: true}, ctx.Err()
-		}
-		return mediaResponse{}, Usage{MeteringInvalid: true}, uncertainMediaSubmission(NewHTTPError(502, "invalid_media_response", "Unable to read the complete media response within the size limit"))
-	}
-	usage := Usage{ServedModel: model, UpstreamRequestID: response.Header.Get("x-request-id"), Transport: "http_media"}
 	contentType = response.Header.Get("Content-Type")
+	usage := Usage{}
+	var streamErr error
+	if mediaResponseIsSSE(contentType) {
+		usage, streamErr = inspectMediaStream(body, provider)
+	}
+	usage.ServedModel, usage.UpstreamRequestID, usage.Transport = model, response.Header.Get("x-request-id"), "http_media"
+	if err != nil || len(body) > maxMediaResponseBytes {
+		usage.MeteringInvalid = true
+		if ctx.Err() != nil {
+			return mediaResponse{}, usage, uncertainMediaSubmission(ctx.Err())
+		}
+		return mediaResponse{}, usage, uncertainMediaSubmission(NewHTTPError(502, "invalid_media_response", "Unable to read the complete media response within the size limit"))
+	}
+	if streamErr != nil {
+		return mediaResponse{}, usage, uncertainMediaSubmission(streamErr)
+	}
 	if strings.Contains(strings.ToLower(contentType), "application/json") {
 		var payload map[string]any
 		decoder := json.NewDecoder(bytes.NewReader(body))
@@ -79,5 +89,8 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 // A timeout or broken success response can follow a billable generation. Do not
 // submit it again to another provider when the first outcome is unknown.
 func uncertainMediaSubmission(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorClient}
+	}
 	return &ProviderInvocationError{Err: err, Disposition: ProviderErrorOutcomeUnknown}
 }

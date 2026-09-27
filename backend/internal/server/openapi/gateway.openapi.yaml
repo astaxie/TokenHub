@@ -242,6 +242,11 @@ paths:
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestID"
+            x-tokenhub-upstream-response-id:
+              description: Original vendor root ID for a completed media job, as an exact string or numeric value. Use it with vendor task-query models. Omitted for nonscalar IDs, control characters, surrounding whitespace, or values over 2048 bytes.
+              schema:
+                type: string
+                maxLength: 2048
           content:
             application/json:
               schema:

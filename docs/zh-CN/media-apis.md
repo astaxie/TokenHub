@@ -29,6 +29,8 @@ TokenHub 支持 [DMXAPI 文档](https://doc.dmxapi.cn/jichu.html)使用的媒体
 
 托管的 `gpt-image-2`、Codex 订阅及插件图片配置继续使用原有校验、单图任务、素材存储和 `Prefer: respond-async`。如果上游模型与托管公开模型同名，又需要完整供应商 Images 参数，请发布另一个公开别名（如 `vendor-gpt-image`），映射到该上游 ID。普通图片路由直接返回供应商结果；本地任务查询和 TokenHub 签名图片链接仅适用于托管任务。
 
+对 `/v1/responses` 设置 `background:true` 时，响应正文的 `id` 标识 TokenHub 本地请求任务。媒体任务完成后的查询响应通过 `x-tokenhub-upstream-response-id` 返回供应商原始根 ID，可将其用于供应商的辅助查询模型。本地任务完成表示上游 API 调用结束，供应商的生成任务可能仍需继续轮询。字符串和数字 ID 保持精确；非标量 ID、含控制字符或首尾空白、超过 2048 字节的值不会写入该响应头。
+
 ## 调用示例
 
 在环境变量 `TOKENHUB_API_KEY` 中设置项目密钥。以下模型名称需要已发布且获准访问。
@@ -60,9 +62,13 @@ curl https://tokenhub.example/v1/responses \
 
 新增直通媒体接口使用 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES`（默认 32 MiB）。multipart 最多 128 个部分，每个文本字段最多 1 MiB。响应最多缓存 128 MiB 后交付，保留供应商内容类型；这条路径不提供低延迟逐块交付。托管图片原有限制保持不变，TokenHub 不主动下载响应中的 URL。
 
+multipart 的 `model` 和 `stream` 必须是单个文本字段。JSON 的 `stream` 必须是布尔值，multipart 的 `stream` 必须是布尔值文本。有歧义的控制字段会在路由前被拒绝，请求钩子的修改也接受同样的校验。文本策略检查每个重复的提示词/文本值，同时保留 `timestamp_granularities[]` 等重复选项。
+
 接口执行鉴权、模型白名单、配额、作用域路由、供应商资源容量限制、文本前置策略、响应钩子和用量归属。请求钩子接收 JSON/文本字段，multipart 文件字节保持不透明。媒体 Responses 的文本策略也检查供应商提示词、歌词和 Wan 嵌套消息，同时保留不透明的素材/任务 ID。直通媒体审计只记录模型、内容类型和字节数，不保存上传或生成的媒体。客户端 Cookie 和鉴权头不转发，使用已配置供应商凭证及受保护的出站传输。结果不确定的媒体提交失败不会自动换路由再次生成，包括通过 Chat/Responses 调用的媒体模型；明确的鉴权或限流拒绝仍可触发故障切换。
 
 匹配的 `provider_call` 钩子会在直通媒体适配器之前执行，可以拒绝、跳过或接管路由。非流式钩子返回供应商 JSON 响应，或包含字符串 `data_base64` 和 `content_type` 的二进制封装。流式钩子返回 `stream_events`，交付仍采用缓冲方式。处理二进制或文本响应的响应/护栏钩子必须保留有效的 `data_base64`；格式错误的修改会报错，不会返回空的成功响应。
+
+SSE 响应在缓冲交付前逐事件执行 `stream_transform`、`response_post` 和 `guardrail_post`。即使后续流式错误或策略阻止结果交付，上游已报告的 Token 用量仍被保留。终止流的错误会记为失败且不会触发再次生成，错误消息中的供应商凭证会被脱敏。客户端取消请求不会计入供应商健康故障。
 
 Token 计费使用上游返回的用量。二进制音频、字幕文本或未返回 Token 的供应商不会被虚构 Token 成本；请求数/并发限制和请求日志仍生效。按秒、按图、按字符的费用不转换成 Token 单价。为返回 Token 的模型配置价格，其他费用与供应商账单核对。
 

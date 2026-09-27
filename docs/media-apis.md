@@ -29,6 +29,8 @@ Use the endpoint specified for the particular model in the upstream documentatio
 
 The managed `gpt-image-2`, Codex subscription, and plugin image profiles retain their existing validation, one-image job flow, stored assets, and `Prefer: respond-async` support. To use a provider's full Images contract for an upstream model with a managed public name, publish a separate public alias (for example `vendor-gpt-image`) mapped to that upstream ID. Ordinary image routes return the provider's response directly; local job polling and signed TokenHub image URLs apply only to managed jobs.
 
+With `background:true` on `/v1/responses`, the response body's `id` identifies TokenHub's local request job. Completed media polling replies expose the vendor's original root ID in `x-tokenhub-upstream-response-id`; use that ID with the vendor's auxiliary query model. Local completion means the upstream API call finished; vendor rendering may still require polling. String and numeric IDs are preserved exactly. The header is omitted for nonscalar IDs, control characters, surrounding whitespace, or values over 2048 bytes.
+
 ## Examples
 
 Replace `TOKENHUB_API_KEY` with a project key in your environment. Model names below must already be published and allowed for that key.
@@ -60,9 +62,13 @@ curl https://tokenhub.example/v1/responses \
 
 The new direct media routes use `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` (32 MiB by default). Multipart requests allow up to 128 parts and 1 MiB per text field. Responses are buffered up to 128 MiB before delivery and keep the provider content type; this direct path does not provide low-latency chunk delivery. Existing managed image limits remain unchanged. Files are not downloaded from response URLs by TokenHub.
 
+Multipart `model` and `stream` controls must be single text fields. JSON `stream` must be a boolean; multipart `stream` must contain a boolean text value. Ambiguous controls are rejected before routing, including request-hook patches. Text policies inspect every repeated prompt/text value while preserving repeated options such as `timestamp_granularities[]`.
+
 Authentication, model allowlists, quotas, scoped routing, provider resource capacity, text preflight policies, response hooks, and usage attribution apply. Request hooks see JSON/text fields; multipart file bytes are opaque. Media Responses text policies also inspect vendor prompts, lyrics, and nested Wan messages while preserving opaque asset/task IDs. Direct media audit records contain model, content type, and byte count, not uploaded/generated media. Client cookies and authorization are not forwarded; configured provider credentials and guarded outbound transport are used. An ambiguous media submission failure does not trigger an automatic second generation on another route, including media models on Chat/Responses. Definite authentication or rate-limit rejections still allow failover.
 
 Matching `provider_call` hooks run before direct media adapters and can deny, skip, or handle a route. Non-stream hooks return a JSON provider response, or a binary envelope with string `data_base64` and `content_type` fields. Streaming hooks return `stream_events`; delivery remains buffered. Response/guardrail hooks processing binary or text bodies must preserve valid `data_base64`; malformed patches fail instead of returning an empty successful response.
+
+For SSE responses, `stream_transform`, `response_post`, and `guardrail_post` run on individual events before buffered delivery. Upstream token usage is retained even if a subsequent stream error or policy blocks the result. Terminal stream errors are recorded as failures and do not trigger a second generation; provider credentials in error messages are redacted. Client cancellation does not count as a provider health failure.
 
 Token billing uses upstream-reported usage. Binary audio, text subtitles, and providers that report no tokens do not acquire an invented token cost; request/concurrency limits and request logs still apply. Per-second, per-image, and character-based billing are not converted into token prices. Configure pricing for token-reporting models and reconcile other charges with the upstream bill.
 
