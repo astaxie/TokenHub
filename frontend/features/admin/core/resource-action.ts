@@ -3,6 +3,7 @@ import type { AdminUser, ApiContext, AppData, ModalState, ViewKey } from "./type
 export type ResourceAction<T> = {
   label: string;
   title?: string;
+  pendingMessage?: string;
   visible?: (item: T, currentUser: AdminUser | null, data: AppData) => boolean;
   href?: (item: T) => string;
   navigate?: (item: T) => ViewKey;
