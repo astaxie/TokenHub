@@ -695,6 +695,7 @@ func splitNotificationRecipients(value string) []string {
 func (s *Server) resolvePasswordResetMailChannel() (AdminResource, error) {
 	channels := s.store.ListResources("notification-channels")
 	for _, channel := range channels {
+		channel = s.revealNotificationChannelSecrets(channel)
 		if channel.Status != StatusActive || normalizeNotificationChannelType(stringField(channel.Fields, "type")) != "email" {
 			continue
 		}

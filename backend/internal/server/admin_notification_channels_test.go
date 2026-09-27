@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -55,6 +57,44 @@ func TestNotificationChannelTestUsesSavedWebhookWithoutCreatingAlert(t *testing.
 		t.Fatalf("unexpected audit trail: %+v", audits)
 	}
 	assertAlertDeliverySurfacesHideSecrets(t, app, store, response.Body, "dev_admin_token", "saved-secret", "query-secret")
+}
+
+func TestNotificationChannelTestRevealsStoredWebhookSecret(t *testing.T) {
+	var received atomic.Bool
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received.Store(true)
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(webhook.Close)
+	store, err := NewSQLiteStoreWithConfig("sqlite:"+filepath.Join(t.TempDir(), "tokenhub.db"), Config{
+		AdminToken: "gorm-delivery-admin",
+		SecretKey:  "gorm-delivery-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	server := NewWithConfig(store, Config{AdminToken: "gorm-delivery-admin", SecretKey: "gorm-delivery-secret"})
+	t.Cleanup(func() { _ = server.Shutdown(t.Context()) })
+	encryptedURL, err := store.protectAdminResourceSecret(webhook.URL + "/saved")
+	if err != nil {
+		t.Fatal(err)
+	}
+	channel := store.CreateResource("notification-channels", AdminResource{
+		Name: "Encrypted webhook", Status: StatusActive,
+		Fields: map[string]any{"type": "webhook", "webhook_url": encryptedURL},
+	})
+	stored := store.ListResources("notification-channels")
+	if len(stored) != 1 || !strings.HasPrefix(stringField(stored[0].Fields, "webhook_url"), "enc:v1:") {
+		t.Fatalf("webhook URL was not encrypted at rest: %+v", stored)
+	}
+	testResponse := doJSON(t, server.Handler(), http.MethodPost, notificationTestPath(channel.ID), nil, "gorm-delivery-admin")
+	if testResponse.Code != http.StatusOK || !strings.Contains(testResponse.Body, `"status":"success"`) || !received.Load() {
+		t.Fatalf("encrypted webhook test failed: %d %s received=%t", testResponse.Code, testResponse.Body, received.Load())
+	}
 }
 
 func TestNotificationChannelTestEmailUsesSavedRecipients(t *testing.T) {

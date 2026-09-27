@@ -158,6 +158,26 @@ func preserveAdminResourceSecrets(kind string, existing map[string]any, patch ma
 	return fields
 }
 
+func (s *Server) revealNotificationChannelSecrets(channel AdminResource) AdminResource {
+	codec, ok := s.store.(adminResourceSecretCodec)
+	if !ok || len(channel.Fields) == 0 {
+		return channel
+	}
+	fields := cloneAdminResourceFields(channel.Fields)
+	for key, value := range fields {
+		if !sensitiveAdminResourceFields["notification-channels"][strings.ToLower(strings.TrimSpace(key))] {
+			continue
+		}
+		secret, ok := value.(string)
+		if !ok || !strings.HasPrefix(secret, "enc:v1:") {
+			continue
+		}
+		fields[key] = codec.revealAdminResourceSecret(secret)
+	}
+	channel.Fields = fields
+	return channel
+}
+
 func existingAdminResourceSecret(kind, patchKey string, existing, patch map[string]any) (any, bool) {
 	aliases := adminResourceSecretAliases(kind, patchKey, existing, patch)
 	for _, alias := range aliases {

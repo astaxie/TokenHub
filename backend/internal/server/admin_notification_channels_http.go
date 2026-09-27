@@ -40,6 +40,7 @@ func (s *Server) handleAdminNotificationChannelTestPost(w http.ResponseWriter, r
 const maxNotificationResponseBytes = 4096
 
 func (s *Server) deliverNotification(ctx context.Context, alert AlertEvent, channel AdminResource) AlertDelivery {
+	channel = s.revealNotificationChannelSecrets(channel)
 	payload := map[string]any{
 		"source":     "tokenhub",
 		"alert":      alert,
