@@ -100,7 +100,14 @@ func TestAlertBotDeliveryFormats(t *testing.T) {
 					t.Fatalf("expected %s header %q, got %q", tt.headerKey, tt.headerValue, r.Header.Get(tt.headerKey))
 				}
 				_, _ = io.Copy(&received, r.Body)
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
+				switch tt.channelType {
+				case "feishu":
+					_, _ = io.WriteString(w, `{"code":0,"msg":"success"}`)
+				case "dingtalk", "wecom":
+					_, _ = io.WriteString(w, `{"errcode":0,"errmsg":"ok"}`)
+				}
 			}))
 			defer webhook.Close()
 
