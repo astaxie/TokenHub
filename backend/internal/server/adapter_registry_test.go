@@ -241,7 +241,7 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !compatible.ProviderPolicy.DefaultCatalogProviderType {
 		t.Fatal("OpenAI-compatible should declare itself as the default catalog provider type")
 	}
-	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"audio/speech", "audio/transcriptions", "audio/translations", "chat/completions", "embeddings", "images/generations", "rerank", "responses"}) {
+	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"audio/speech", "audio/transcriptions", "audio/translations", "chat/completions", "embeddings", "images/edits", "images/generations", "images/variations", "rerank", "responses"}) {
 		t.Fatalf("OpenAI-compatible route protocols = %v", compatible.ProviderPolicy.RouteProtocols)
 	}
 

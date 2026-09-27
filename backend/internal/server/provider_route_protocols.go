@@ -20,7 +20,7 @@ const (
 func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[string]bool {
 	protocols := map[string]bool{}
 	if adapterSupports(descriptor, AdapterCapabilityMedia) {
-		for _, protocol := range []string{"audio/speech", "audio/transcriptions", "audio/translations", providerRouteProtocolImageGeneration} {
+		for _, protocol := range []string{"audio/speech", "audio/transcriptions", "audio/translations", providerRouteProtocolImageGeneration, "images/edits", "images/variations"} {
 			protocols[protocol] = true
 		}
 	}

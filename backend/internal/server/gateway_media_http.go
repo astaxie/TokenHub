@@ -224,23 +224,10 @@ func (s *Server) finishMediaHooks(ctx context.Context, call CallContext, route R
 		return result, usage, err
 	}
 	usage = attributed
-	data, err := json.Marshal(payload)
+	data, err := encodeMediaPostHookResponse(payload, jsonResponse, maxMediaResponseBytes)
 	if err != nil {
 		return result, usage, err
 	}
-	if jsonResponse {
-		result.Body = data
-	} else {
-		var wrapped struct {
-			Data *string `json:"data_base64"`
-		}
-		if err := json.Unmarshal(data, &wrapped); err != nil || wrapped.Data == nil {
-			return result, usage, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must preserve a string data_base64 field")
-		}
-		result.Body, err = base64.StdEncoding.DecodeString(*wrapped.Data)
-		if err != nil {
-			return result, usage, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must return valid base64 data")
-		}
-	}
-	return result, usage, err
+	result.Body = data
+	return result, usage, nil
 }

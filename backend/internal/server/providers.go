@@ -985,7 +985,7 @@ func geminiUsage(body map[string]any) Usage {
 
 func usageFromMap(body map[string]any) Usage {
 	usageMap, _ := body["usage"].(map[string]any)
-	inputDetails, _ := firstNonNil(usageMap["prompt_tokens_details"], usageMap["input_tokens_details"]).(map[string]any)
+	inputDetails, _ := firstNonNil(usageMap["prompt_tokens_details"], usageMap["input_tokens_details"], usageMap["input_token_details"]).(map[string]any)
 	outputDetails, _ := firstNonNil(usageMap["completion_tokens_details"], usageMap["output_tokens_details"]).(map[string]any)
 	usage := Usage{
 		PromptTokens: int64FromAny(firstNonNil(usageMap["prompt_tokens"], usageMap["input_tokens"])),
