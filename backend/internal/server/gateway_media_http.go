@@ -130,12 +130,12 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
 	result, usage, err = s.finishMediaHooks(r.Context(), routed.Call, route, result, usage)
+	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, audit)
 		writeError(w, r, err)
 		return
 	}
-	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	s.finishRoutedCall(r, GatewayCallCompletion{Call: routed.Call, Route: route, Usage: usage, Attempts: attempts, StatusCode: result.Status, RequestPayload: audit, ResponsePayload: map[string]any{"content_type": result.ContentType, "bytes": len(result.Body)}})
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
 	w.Header().Set("Content-Type", firstNonEmpty(result.ContentType, "application/octet-stream"))

@@ -47,6 +47,14 @@ func (s *Server) invokeMediaRoute(ctx context.Context, call CallContext, route R
 			if streamErr != nil {
 				return mediaResponse{}, usage, uncertainMediaSubmission(streamErr)
 			}
+		} else if strings.Contains(strings.ToLower(response.ContentType), "application/json") {
+			parsed, jsonErr := inspectMediaJSON(response.Body)
+			if !usageReported {
+				usage = parsed
+			}
+			if jsonErr != nil {
+				return mediaResponse{}, usage, invalidMediaProviderHookResponse()
+			}
 		}
 		return response, usage, nil
 	}

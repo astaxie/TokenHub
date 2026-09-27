@@ -1,9 +1,7 @@
 package server
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -74,14 +72,11 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 		return mediaResponse{}, usage, uncertainMediaSubmission(streamErr)
 	}
 	if strings.Contains(strings.ToLower(contentType), "application/json") {
-		var payload map[string]any
-		decoder := json.NewDecoder(bytes.NewReader(body))
-		decoder.UseNumber()
-		if err := decoder.Decode(&payload); err != nil {
-			return mediaResponse{}, Usage{MeteringInvalid: true}, uncertainMediaSubmission(NewHTTPError(502, "invalid_media_response", "Provider returned invalid JSON"))
-		}
-		usage = usageFromMap(payload)
+		usage, err = inspectMediaJSON(body)
 		usage.ServedModel, usage.UpstreamRequestID, usage.Transport = model, response.Header.Get("x-request-id"), "http_media"
+		if err != nil {
+			return mediaResponse{}, usage, uncertainMediaSubmission(err)
+		}
 	}
 	return mediaResponse{Body: body, ContentType: contentType, Status: response.StatusCode}, usage, nil
 }
