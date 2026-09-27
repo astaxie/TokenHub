@@ -732,7 +732,13 @@ func (s *Server) sendAdminPasswordResetEmail(r *http.Request, channel AdminResou
 		return err
 	}
 	resetLink := s.adminPasswordResetLink(r, plainToken)
-	return sendEmail(r.Context(), channel.Fields, []string{user.Email}, passwordResetEmailMessage(channel.Fields, []string{user.Email}, user, resetLink, token.ExpiresAt), s.smtpRootCAs)
+	if err := sendEmail(r.Context(), channel.Fields, []string{user.Email}, passwordResetEmailMessage(channel.Fields, []string{user.Email}, user, resetLink, token.ExpiresAt), s.smtpRootCAs); err != nil {
+		// Reset handlers and user imports expose errors in responses and audits.
+		safe := *AsHTTPError(err)
+		safe.Message = redactNotificationChannelSecrets(safe.Message, channel)
+		return &safe
+	}
+	return nil
 }
 
 func (s *Server) adminPasswordResetLink(r *http.Request, token string) string {

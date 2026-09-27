@@ -429,7 +429,7 @@ The console reports delivery success or a redacted failure reason. DingTalk, Fei
 
 Notification delivery does not follow HTTP redirects; configure the final destination URL directly. SMTP delivery succeeds once the server accepts the message after DATA; a later QUIT failure or timeout does not change that result. These acceptance rules apply to both tests and regular notifications.
 
-API: `POST /api/admin/resources/notification-channels/{channel_id}/test` with administrator authentication and no request body. It returns an `AlertDelivery`; inspect `status` (`success` or `failed`) and `error`, since a completed delivery attempt returns HTTP 200 even when the destination rejects it. SMTP and HTTP delivery use bounded network timeouts. Stored secrets and credential-bearing URL paths/queries remain redacted in responses, records, and audits.
+API: `POST /api/admin/resources/notification-channels/{channel_id}/test` with administrator authentication and no request body. It returns an `AlertDelivery`; inspect `status` (`success` or `failed`) and `error`, since a completed delivery attempt returns HTTP 200 even when the destination rejects it. SMTP and HTTP delivery use bounded network timeouts. Stored secrets and credential-bearing URL paths/queries remain redacted in responses, records, and audits. SMTP errors from password-reset emails and user imports are also redacted before being returned or stored in audit records.
 
 ## Email Notification Channels
 

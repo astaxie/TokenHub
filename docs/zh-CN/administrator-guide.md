@@ -428,7 +428,7 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 通知投递不跟随 HTTP 重定向，请直接配置最终目标 URL。SMTP 服务器在 DATA 结束后接受邮件即视为投递成功，之后 QUIT 失败或超时不会改变结果。这些接收判定规则同时适用于测试和正式通知。
 
-API：`POST /api/admin/resources/notification-channels/{channel_id}/test`，使用管理员认证，无需请求体。返回 `AlertDelivery`，请检查 `status`（`success` 或 `failed`）和 `error`：即使目标拒绝投递，已完成的尝试仍返回 HTTP 200。SMTP 和 HTTP 投递均设有网络超时。响应、记录与审计中的已存储凭据以及 URL 路径／查询参数继续脱敏。
+API：`POST /api/admin/resources/notification-channels/{channel_id}/test`，使用管理员认证，无需请求体。返回 `AlertDelivery`，请检查 `status`（`success` 或 `failed`）和 `error`：即使目标拒绝投递，已完成的尝试仍返回 HTTP 200。SMTP 和 HTTP 投递均设有网络超时。响应、记录与审计中的已存储凭据以及 URL 路径／查询参数继续脱敏。密码重置邮件和用户导入中的 SMTP 错误也会先脱敏，再返回或写入审计记录。
 
 ## 邮件通知渠道
 

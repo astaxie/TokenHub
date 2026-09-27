@@ -28,7 +28,7 @@ func TestNotificationEmailUsesSavedCredentials(t *testing.T) {
 			server := New(store)
 			t.Cleanup(func() { _ = server.Shutdown(t.Context()) })
 			app := server.Handler()
-			host, port, messages := notificationCredentialSMTPServer(t, scenario.password)
+			host, port, messages := notificationCredentialSMTPServer(t, scenario.password, false)
 			storedPassword := scenario.password
 			if scenario.encrypted {
 				var err error
@@ -85,7 +85,7 @@ func TestNotificationEmailUsesSavedCredentials(t *testing.T) {
 	}
 }
 
-func notificationCredentialSMTPServer(t *testing.T, password string) (string, string, <-chan string) {
+func notificationCredentialSMTPServer(t *testing.T, password string, reject bool) (string, string, <-chan string) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -124,6 +124,10 @@ func notificationCredentialSMTPServer(t *testing.T, password string) (string, st
 						response = "535 Authentication failed"
 						if authenticated {
 							response = "235 Authenticated"
+							if reject {
+								authenticated = false
+								response = "535 Rejected password " + password
+							}
 						}
 					case command == "QUIT":
 						_ = peer.PrintfLine("221 Bye")
