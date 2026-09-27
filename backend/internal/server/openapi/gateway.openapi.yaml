@@ -611,6 +611,8 @@ paths:
         multipart files, repeated form fields, and response formats are preserved.
         Requests use the configured multimodal size limit. Responses are buffered up to
         128 MiB before delivery. Only upstream-reported token usage is billed.
+        stream_format: "sse" selects SSE admission and provider hooks without requiring
+        stream: true. Request hooks cannot change the effective streaming mode.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: false
       requestBody:

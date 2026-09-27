@@ -13,7 +13,7 @@ func routedResponsesGuardrailTargets(call CallContext, request *ResponsesRequest
 		return targets
 	}
 	appendMediaResponseTextTargets(&targets, request.Input, "input", func(value any) { request.Input = value })
-	for _, name := range []string{"prompt", "negative_prompt", "text", "lyrics", "clone_prompt"} {
+	for _, name := range []string{"prompt", "negative_prompt", "text", "lyrics", "clone_prompt", "multi_prompt"} {
 		var value any
 		if err := decodeResponsesJSON(request.raw[name], &value); err != nil {
 			continue

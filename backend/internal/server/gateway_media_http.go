@@ -149,7 +149,7 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 	if err := decodeGatewayHookRequestPatch(data, &fields); err != nil {
 		return err
 	}
-	patched := mediaRequest{Fields: fields, Multipart: m.Multipart}
+	patched := mediaRequest{Fields: fields, Multipart: m.Multipart, Path: m.Path}
 	if err := patched.validateStream(); err != nil {
 		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid media stream mode")
 	}

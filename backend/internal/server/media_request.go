@@ -19,6 +19,7 @@ type mediaRequest struct {
 	Fields    map[string]json.RawMessage
 	Files     []mediaFile
 	Multipart bool
+	Path      string
 }
 type mediaFile struct {
 	Header textproto.MIMEHeader
@@ -31,6 +32,13 @@ func (m mediaRequest) model() string {
 	return strings.TrimSpace(v)
 }
 func (m mediaRequest) stream() bool {
+	if m.Path == "/v1/audio/speech" {
+		var format string
+		_ = json.Unmarshal(m.Fields["stream_format"], &format)
+		if format == "sse" {
+			return true
+		}
+	}
 	var value bool
 	if m.Multipart {
 		var text string
@@ -43,6 +51,12 @@ func (m mediaRequest) stream() bool {
 }
 
 func (m mediaRequest) validateStream() error {
+	if raw, exists := m.Fields["stream_format"]; exists && m.Path == "/v1/audio/speech" {
+		var format *string
+		if json.Unmarshal(raw, &format) != nil || format == nil || *format == "" {
+			return errors.New("stream_format must be a single non-empty text field")
+		}
+	}
 	raw, exists := m.Fields["stream"]
 	if !exists {
 		return nil
@@ -63,8 +77,12 @@ func (m mediaRequest) validateStream() error {
 	return nil
 }
 
+func (m mediaRequest) isControlField(name string) bool {
+	return name == "model" || name == "stream" || name == "stream_format" && m.Path == "/v1/audio/speech"
+}
+
 func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (mediaRequest, error) {
-	request := mediaRequest{Fields: map[string]json.RawMessage{}}
+	request := mediaRequest{Fields: map[string]json.RawMessage{}, Path: r.URL.Path}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	contentType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
@@ -104,8 +122,8 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 				break
 			}
 			if part.FileName() != "" {
-				if part.FormName() == "model" || part.FormName() == "stream" {
-					err = errors.New("model and stream must be text fields")
+				if request.isControlField(part.FormName()) {
+					err = errors.New("media control fields must be text fields")
 					break
 				}
 				request.Files = append(request.Files, mediaFile{Header: part.Header, Data: data})
@@ -121,8 +139,8 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 			for name, values := range fields {
 				if len(values) == 1 {
 					request.Fields[name], _ = json.Marshal(values[0])
-				} else if name == "model" || name == "stream" {
-					err = errors.New("model and stream must occur at most once")
+				} else if request.isControlField(name) {
+					err = errors.New("media control fields must occur at most once")
 				} else {
 					request.Fields[name], _ = json.Marshal(values)
 				}
