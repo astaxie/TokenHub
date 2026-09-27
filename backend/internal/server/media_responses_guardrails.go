@@ -13,7 +13,7 @@ func routedResponsesGuardrailTargets(call CallContext, request *ResponsesRequest
 		return targets
 	}
 	appendMediaResponseTextTargets(&targets, request.Input, "input", func(value any) { request.Input = value })
-	for _, name := range []string{"prompt", "negative_prompt", "text", "lyrics", "clone_prompt", "multi_prompt"} {
+	for _, name := range []string{"prompt", "negative_prompt", "text", "lyrics", "clone_prompt", "multi_prompt", "parameters"} {
 		var value any
 		if err := decodeResponsesJSON(request.raw[name], &value); err != nil {
 			continue
@@ -49,7 +49,7 @@ func appendMediaResponseTextTargets(targets *[]guardrailTextTarget, value any, i
 		if kind != "" && kind != "message" && kind != "text" && kind != "input_text" && kind != "output_text" {
 			return
 		}
-		for _, name := range []string{"messages", "content", "text", "prompt", "negative_prompt", "lyrics", "prompt_text"} {
+		for _, name := range []string{"input", "messages", "content", "text", "prompt", "negative_prompt", "lyrics", "prompt_text"} {
 			if child, exists := typed[name]; exists {
 				appendMediaResponseTextTargets(targets, child, id+"."+name, func(next any) {
 					typed[name] = next

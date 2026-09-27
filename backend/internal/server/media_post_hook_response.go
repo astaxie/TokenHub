@@ -26,7 +26,22 @@ func encodeMediaPostHookResponse(payload any, jsonResponse bool, limit int) ([]b
 		return nil, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must preserve a string data_base64 field")
 	}
 	encoded := *wrapped.Data
-	encodedBytes := len(encoded) - strings.Count(encoded, "\r") - strings.Count(encoded, "\n")
+	encodedBytes, padded := 0, false
+	for index := 0; index < len(encoded); index++ {
+		switch encoded[index] {
+		case '\r', '\n':
+			continue
+		case '=':
+			padded = true
+		default:
+			// The streaming decoder may accept another segment after padding
+			// across read boundaries. Require one base64 value, as DecodeString does.
+			if padded {
+				return nil, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must return valid base64 data")
+			}
+		}
+		encodedBytes++
+	}
 	// DecodedLen includes at most two padding bytes. Reject clearly oversized
 	// output before decoding, then enforce the exact bound on decoded bytes.
 	if base64.StdEncoding.DecodedLen(encodedBytes) > limit+2 {
