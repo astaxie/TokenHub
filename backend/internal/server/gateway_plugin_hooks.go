@@ -96,7 +96,7 @@ func sanitizedGatewayHookHeaders(headers http.Header) map[string][]string {
 
 func sensitiveGatewayHookHeader(key string) bool {
 	switch http.CanonicalHeaderKey(key) {
-	case "Authorization", "Cookie", "Set-Cookie", "Proxy-Authorization", "X-Api-Key":
+	case "Authorization", "Cookie", "Set-Cookie", "Proxy-Authorization", "X-Api-Key", "X-Goog-Api-Key":
 		return true
 	default:
 		return false
