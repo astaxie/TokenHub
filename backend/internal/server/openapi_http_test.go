@@ -398,7 +398,7 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireSchemaEnum(t, document, "ResponsesReasoning", "effort", []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"})
 	requireSchemaRequired(t, document, "ResponseTool", []string{"type"})
 	requireSchemaPropertyNoConst(t, document, "ResponseTool", "type")
-	requireArrayItemsRef(t, document, "ResponsesResponse", "output", "#/components/schemas/ResponseOutputItem")
+	requireOneOfContainsRef(t, document, "ResponsesResponse", "output", "#/components/schemas/ResponseOutputItem")
 	requireArrayItemsRef(t, document, "ChatCompletionResponse", "choices", "#/components/schemas/ChatCompletionChoice")
 	requireOperationSecuritySchemes(t, document, "/v1/chat/completions", "post", []string{"TokenHubProjectKey"})
 	requireOperationSecuritySchemes(t, document, "/v1beta/models/{model}:generateContent", "post", []string{"TokenHubProjectKey", "TokenHubGoogleAPIKey"})
@@ -952,6 +952,9 @@ func requireOneOfContainsRef(t *testing.T, document map[string]any, schemaName s
 	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
 	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
 	propertySchema := asMap(t, properties[property], "components.schemas."+schemaName+".properties."+property)
+	if reference, ok := propertySchema["$ref"].(string); ok {
+		propertySchema = asMap(t, localRefValue(document, strings.TrimPrefix(reference, "#/")), reference)
+	}
 	for _, rawOption := range asSlice(t, propertySchema["oneOf"], "oneOf") {
 		option := asMap(t, rawOption, "oneOf option")
 		if got := option["$ref"]; got == want {

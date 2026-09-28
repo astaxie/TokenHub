@@ -112,6 +112,13 @@ func TestMediaOpenAPIPreservesStandardItemValidation(t *testing.T) {
 		{"ResponseOutputItem", `{"type":"message","role":"user","content":[{"type":"output_text","text":"Wrong role"}]}`},
 		{"ChatContentPart", `{"type":"input_audio","input_audio":{}}`},
 		{"ResponseJob", `{"id":9007199254740993,"status":"completed"}`},
+		{"ResponsesOutput", `[{"type":"message","role":"user","content":[{"type":"output_text","text":"Wrong role"}]}]`},
+		{"ResponsesOutput", `"Not an output object or array"`},
+		{"ResponsesOutput", `null`},
+		{"ResponseJob", `{"status":"completed","output":{"choices":[]}}`},
+		{"ResponseJob", `{"id":"job_fixture","output":{"choices":[]}}`},
+		{"ResponseJob", `{"id":"job_fixture","status":"invalid","output":{"choices":[]}}`},
+		{"ResponseJob", `{"id":9007199254740993,"status":"completed","output":{"choices":[]}}`},
 	} {
 		t.Run(tc.schema, func(t *testing.T) {
 			components := asMap(t, document["components"], "components")

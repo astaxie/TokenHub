@@ -29,6 +29,8 @@ TokenHub 支持 [DMXAPI 文档](https://doc.dmxapi.cn/jichu.html)使用的媒体
 
 调用 Gemini 原生媒体接口时，为公开模型配置媒体模态或输出模态，然后调用 `/v1beta/models/{model}:generateContent` 或 `:streamGenerateContent?alt=sse`。这些请求跳过缓存，保留原生 `generationConfig`（包括 `responseModalities` 和 `imageConfig`）、内嵌媒体及思考签名；上游模型由路由选择。原生 JSON/SSE 响应保留生成的媒体，并按 `usageMetadata` 统计 Token。两种响应均在 128 MiB 媒体上限内缓冲交付，执行鉴权、文本策略、作用域钩子和受保护的出站传输。
 
+Gemini 原生媒体流会拒绝终止错误事件名、`type:"error"` 或 `*.failed` 数据，以及非 null 的嵌套 `response.error`，供应商钩子输出同样适用。即使候选结果已报告结束原因，这些错误仍会记为失败；保留已知 Token 用量和插件显式用量覆盖，且不返回错误中的供应商凭证。嵌套 `response.error:null` 仍允许作为成功事件返回。
+
 托管的 `gpt-image-2`、Codex 订阅及插件图片配置继续使用原有校验、单图任务、素材存储和 `Prefer: respond-async`。如果上游模型与托管公开模型同名，又需要完整供应商 Images 参数，请发布另一个公开别名（如 `vendor-gpt-image`），映射到该上游 ID。普通图片路由直接返回供应商结果；本地任务查询和 TokenHub 签名图片链接仅适用于托管任务。直通图片请求接受供应商自定义的 `response_format` 字符串，例如 Qwen Image 的 `base64`；内置托管图片仍仅接受 `url` 或 `b64_json`，托管插件模型按其配置校验格式。
 
 对 `/v1/responses` 设置 `background:true` 时，响应正文的 `id` 标识 TokenHub 本地请求任务。媒体任务完成后的查询响应通过 `x-tokenhub-upstream-response-id` 返回供应商原始根 ID，可将其用于供应商的辅助查询模型。本地任务完成表示上游 API 调用结束，供应商的生成任务可能仍需继续轮询。字符串和数字 ID 保持精确；非标量 ID、含控制字符或首尾空白、超过 2048 字节的值不会写入该响应头。
@@ -70,7 +72,7 @@ multipart 的 `model` 和 `stream` 必须是单个文本字段。`/v1/audio/spee
 
 匹配的 `provider_call` 钩子会在直通媒体适配器之前执行，可以拒绝、跳过或接管路由。直通图片钩子按实际接口协议（`images/generations`、`images/edits` 或 `images/variations`）匹配作用域；托管图片任务仍使用 `images/generations`。非流式钩子返回供应商 JSON 响应，或包含字符串 `data_base64` 和 `content_type` 的二进制封装。流式钩子返回 `stream_events`，交付仍采用缓冲方式。处理二进制或文本响应的响应/护栏钩子必须保留有效的 `data_base64`；格式错误的修改会报错，不会返回空的成功响应。Base64 允许换行，但填充符之后不能追加编码数据。128 MiB 响应上限同样适用于响应钩子处理后的结果，按序列化 JSON 或解码后的二进制字节计算；超限的替换结果会报错，但保留已报告的用量。
 
-Responses 的 OpenAPI 定义要求提供 `model`；`input` 是否必填取决于所选供应商模型。例如 DMX 的歌词/音乐生成可以省略 `input`，在没有用户提示词的情况下生成。省略的输入会原样转发，不自动补空值。
+Responses 的 OpenAPI 定义要求提供 `model`；`input` 是否必填取决于所选供应商模型。例如 DMX 的歌词/音乐生成可以省略 `input`，在没有用户提示词的情况下生成。省略的输入会原样转发，不自动补空值。Responses 的 `output` 支持标准条目数组或供应商自定义对象，例如 Qwen Image 3.0 的图片结果位于 `output.choices[].message.content[].image`；已完成的后台任务响应也支持这些结构。
 
 JSON 响应处理识别 `application/json` 和带 `+json` 后缀的 MIME 类型，并支持参数及大小写差异。这些响应使用相同的校验、Token 用量提取和 JSON 钩子数据格式，同时保留原始内容类型。已识别的 JSON 基础类型即使参数格式错误或重复，也仍会接受校验。参数中出现 `application/json` 字样不会把文本或二进制响应误判为 JSON。
 

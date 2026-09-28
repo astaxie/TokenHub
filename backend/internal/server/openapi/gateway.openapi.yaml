@@ -2512,15 +2512,21 @@ components:
         status:
           type: string
         output:
-          type: array
-          items:
-            $ref: "#/components/schemas/ResponseOutputItem"
+          $ref: "#/components/schemas/ResponsesOutput"
         usage:
           $ref: "#/components/schemas/Usage"
         error:
           oneOf:
             - $ref: "#/components/schemas/ErrorObject"
             - type: "null"
+    ResponsesOutput:
+      description: Standard Responses output items or a provider-specific media output object, such as Qwen Image choices.
+      oneOf:
+        - type: array
+          items:
+            $ref: "#/components/schemas/ResponseOutputItem"
+        - type: object
+          additionalProperties: true
     ResponseOutputItem:
       anyOf:
         - $ref: "#/components/schemas/ResponseOutputMessage"
@@ -2616,9 +2622,7 @@ components:
         model:
           type: string
         output:
-          type: array
-          items:
-            $ref: "#/components/schemas/ResponseOutputItem"
+          $ref: "#/components/schemas/ResponsesOutput"
         completed_at:
           type: integer
         usage:

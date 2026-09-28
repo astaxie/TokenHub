@@ -26,6 +26,15 @@ func inspectGeminiMediaResponse(result mediaResponse, stream bool) (Usage, error
 		if payload["error"] != nil {
 			return NewHTTPError(502, "provider_error", "Gemini media provider returned an error response")
 		}
+		if stream {
+			// Reuse the decoded payload for shared SSE error shapes without
+			// parsing and allocating large inline media a second time.
+			eventType, _ := payload["type"].(string)
+			response, _ := payload["response"].(map[string]any)
+			if sseEventNameIsError(eventType) || response["error"] != nil {
+				return NewHTTPError(502, "provider_stream_error", "Gemini media provider reported a failed stream")
+			}
+		}
 		if geminiPromptBlockReason(payload) != "" {
 			blocked = true
 		}
