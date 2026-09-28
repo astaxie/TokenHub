@@ -52,6 +52,7 @@ func (s *Server) newGatewayStreamTransformWriter(ctx context.Context, call CallC
 }
 
 func (s *Server) streamChatRouteWithGatewayTransforms(ctx context.Context, call CallContext, route RouteSelection, req ChatCompletionRequest, headers http.Header, writer io.Writer) (Usage, error) {
+	ctx = withMediaChatStreamLimit(ctx, call.Model)
 	streamWriter := writer
 	var transformer *gatewayStreamTransformWriter
 	if s.hasGatewayStreamTransformHooksForRoute(route, providerRouteProtocolChatCompletions) {

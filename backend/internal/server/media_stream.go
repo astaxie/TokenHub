@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -38,8 +39,10 @@ func inspectMediaStream(body []byte, provider Provider) (Usage, error) {
 		if err != nil {
 			return usage, err
 		}
-		probe := probeProviderStreamEvent(event.Data)
-		if parsed, ok := usageFromProbedFrame(event, probe); ok {
+		var probe providerStreamEventProbe
+		data := strings.TrimSpace(event.Data)
+		invalid := data != "" && data != "[DONE]" && (decodeResponsesJSON([]byte(data), &probe) != nil || probe == nil)
+		if parsed, ok := probe.usage(); ok {
 			usage = parsed
 		} else {
 			var response providerStreamEventProbe
@@ -48,6 +51,10 @@ func inspectMediaStream(body []byte, provider Provider) (Usage, error) {
 					usage = parsed
 				}
 			}
+		}
+		if invalid {
+			usage.MeteringInvalid = true
+			return usage, NewHTTPError(http.StatusBadGateway, "invalid_media_response", "Media provider returned an invalid JSON stream event")
 		}
 		if sseEventNameIsError(event.Event) || probe.isError() {
 			if failure, ok := openAIErrorFrame(event, provider); ok {
@@ -88,6 +95,9 @@ func (s *Server) finishMediaStreamHooks(ctx context.Context, call CallContext, r
 			}
 		}
 		result.Body = output.Bytes()
+		if _, err := inspectMediaStream(result.Body, route.Provider); err != nil {
+			return result, usage, invalidMediaProviderHookResponse()
+		}
 	}
 	if len(s.gatewayRouteHooksForRoute(pluginmeta.StageUsageAttribution, route, call.RouteProtocol, true)) == 0 {
 		return result, usage, nil

@@ -250,7 +250,7 @@ func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider,
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsageForProvider(w, resp.Body, provider)
+	return copyOpenAIStreamAndUsageWithLimit(w, resp.Body, provider, mediaChatStreamLimit(ctx))
 }
 
 func (c openAICompatibleCore) embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -1048,7 +1048,12 @@ func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
 }
 
 func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider Provider) (Usage, error) {
+	return copyOpenAIStreamAndUsageWithLimit(w, body, provider, 0)
+}
+
+func copyOpenAIStreamAndUsageWithLimit(w io.Writer, body io.Reader, provider Provider, eventLimit int) (Usage, error) {
 	events := newSSEDecoder(body)
+	events.assembler.limit = eventLimit
 	var usage Usage
 	for {
 		event, err := events.Next()
