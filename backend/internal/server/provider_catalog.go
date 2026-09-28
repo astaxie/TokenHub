@@ -859,7 +859,9 @@ func normalizeModelModality(value string) string {
 		return "embedding"
 	case strings.Contains(value, "image"):
 		return "image"
-	case strings.Contains(value, "audio"):
+	case strings.Contains(value, "video"):
+		return "video"
+	case strings.Contains(value, "audio") || value == "music":
 		return "audio"
 	default:
 		return "chat"

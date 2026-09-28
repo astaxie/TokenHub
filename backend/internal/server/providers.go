@@ -250,7 +250,7 @@ func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider,
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsageForProvider(w, resp.Body, provider)
+	return copyOpenAIStreamAndUsageWithLimit(w, resp.Body, provider, mediaChatStreamLimit(ctx))
 }
 
 func (c openAICompatibleCore) embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -336,7 +336,14 @@ func (a OpenAICompatibleAdapter) Responses(ctx context.Context, provider Provide
 	req.Model = providerModel
 	req = normalizedResponsesReasoning(req)
 	var body map[string]any
-	if err := a.doJSON(ctx, provider, http.MethodPost, "/responses", req, &body); err != nil {
+	response, err := a.doRaw(ctx, provider, http.MethodPost, "/responses", req, false)
+	if err != nil {
+		return nil, Usage{}, err
+	}
+	defer response.Body.Close()
+	decoder := json.NewDecoder(response.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(&body); err != nil {
 		return nil, Usage{}, err
 	}
 	return body, usageFromMap(body), nil
@@ -978,7 +985,7 @@ func geminiUsage(body map[string]any) Usage {
 
 func usageFromMap(body map[string]any) Usage {
 	usageMap, _ := body["usage"].(map[string]any)
-	inputDetails, _ := firstNonNil(usageMap["prompt_tokens_details"], usageMap["input_tokens_details"]).(map[string]any)
+	inputDetails, _ := firstNonNil(usageMap["prompt_tokens_details"], usageMap["input_tokens_details"], usageMap["input_token_details"]).(map[string]any)
 	outputDetails, _ := firstNonNil(usageMap["completion_tokens_details"], usageMap["output_tokens_details"]).(map[string]any)
 	usage := Usage{
 		PromptTokens: int64FromAny(firstNonNil(usageMap["prompt_tokens"], usageMap["input_tokens"])),
@@ -1041,7 +1048,12 @@ func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
 }
 
 func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider Provider) (Usage, error) {
+	return copyOpenAIStreamAndUsageWithLimit(w, body, provider, 0)
+}
+
+func copyOpenAIStreamAndUsageWithLimit(w io.Writer, body io.Reader, provider Provider, eventLimit int) (Usage, error) {
 	events := newSSEDecoder(body)
+	events.assembler.limit = eventLimit
 	var usage Usage
 	for {
 		event, err := events.Next()

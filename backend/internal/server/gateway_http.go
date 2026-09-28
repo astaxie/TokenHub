@@ -302,7 +302,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, responsesGuardrailTargets(&req))
+	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, routedResponsesGuardrailTargets(call, &req))
 	auditPayload := guardrailRequestAuditPayload(req.Model, decision, req)
 	if err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
@@ -754,6 +754,7 @@ func executeRoutedWithStore[T any](
 				route = prepared
 			}
 			resp, usage, err := call(leaseCtx, route, omitReasoningEffort, len(attempts)+1)
+			usage, err = classifyMediaAttemptFailure(routed.Call, usage, err)
 			cumulativeTokens = saturatingAddNonNegative(cumulativeTokens, retrievalAttemptQuotaTokens(routed.Call, usage))
 			usage.RateLimitTokens = cumulativeTokens
 			attemptEndedAt := time.Now()
@@ -774,6 +775,7 @@ func executeRoutedWithStore[T any](
 			retryWithoutEffort := allowReasoningEffortFallback &&
 				!omitReasoningEffort &&
 				disposition != ProviderErrorStreamCommitted &&
+				disposition != ProviderErrorOutcomeUnknown &&
 				!clientDisconnected(leaseCtx, err) &&
 				isReasoningEffortRejection(err)
 			if !retryWithoutEffort {
@@ -1337,7 +1339,7 @@ func shouldFailoverRoutedError(err error, routeIsBound bool) bool {
 		return false
 	}
 	switch providerErrorDisposition(err) {
-	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted, ProviderErrorEgress:
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorStreamCommitted, ProviderErrorEgress, ProviderErrorOutcomeUnknown:
 		return false
 	case ProviderErrorTransientSame:
 		return !routeIsBound

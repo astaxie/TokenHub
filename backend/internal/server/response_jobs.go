@@ -146,6 +146,7 @@ func (s *Server) writeResponseJob(w http.ResponseWriter, r *http.Request, job Re
 			return NewHTTPError(http.StatusInternalServerError, "response_result_unreadable", "Response result could not be read")
 		}
 		job.ResultJSON = resultJSON
+		s.writeMediaBackgroundResponseID(w.Header(), job)
 	}
 	w.Header().Set("x-request-id", firstNonEmpty(job.RequestID, job.ID))
 	writeJSON(w, http.StatusOK, responseJobAPIObject(job))
@@ -155,7 +156,7 @@ func (s *Server) writeResponseJob(w http.ResponseWriter, r *http.Request, job Re
 func responseJobAPIObject(job ResponseJob) map[string]any {
 	if job.Status == responseJobStatusSucceeded && len(job.ResultJSON) > 0 {
 		var result map[string]any
-		if json.Unmarshal(job.ResultJSON, &result) == nil && result != nil {
+		if decodeResponsesJSON(job.ResultJSON, &result) == nil && result != nil {
 			result["id"] = job.ID
 			result["object"] = "response"
 			result["status"] = "completed"
@@ -493,7 +494,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, guardrailAuditSummary{Model: request.Model}, resultTTL)
 		return
 	}
-	decision, err := s.evaluateOutboundGuardrails(ctx, call.Project.ID, responsesGuardrailTargets(&request))
+	decision, err := s.evaluateOutboundGuardrails(ctx, call.Project.ID, routedResponsesGuardrailTargets(call, &request))
 	auditPayload := guardrailRequestAuditPayload(request.Model, decision, request)
 	if err != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
