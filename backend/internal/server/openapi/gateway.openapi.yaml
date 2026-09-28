@@ -889,6 +889,9 @@ paths:
         results, URLs, and Base64 payloads. Managed gpt-image-2 and subscription
         image models retain the existing image-job contract; only those models
         accept `Prefer: respond-async` or `x-tokenhub-async: true` for local jobs.
+        Ordinary models pass `response_format` through to the provider. Built-in
+        managed image models accept `url` or `b64_json`; managed plugin models
+        enforce their configured response formats.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       parameters:
@@ -2903,7 +2906,12 @@ components:
           type: string
         response_format:
           type: string
-          enum: [url, b64_json]
+          description: >-
+            Provider-specific response format for ordinary models, including
+            `base64` for Qwen Image. Built-in managed image models accept only
+            `url` or `b64_json`; managed plugin models enforce their configured
+            response formats.
+          examples: [url, b64_json, base64]
     ImageEditRequest:
       type: object
       required: [model, image, prompt]

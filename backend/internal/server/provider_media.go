@@ -56,9 +56,11 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes+1))
 	contentType = response.Header.Get("Content-Type")
 	usage := Usage{}
-	var streamErr error
+	var responseErr error
 	if mediaResponseIsSSE(contentType) {
-		usage, streamErr = inspectMediaStream(body, provider)
+		usage, responseErr = inspectMediaStream(body, provider)
+	} else if strings.Contains(strings.ToLower(contentType), "application/json") {
+		usage, responseErr = inspectMediaJSON(body)
 	}
 	usage.ServedModel, usage.UpstreamRequestID, usage.Transport = model, response.Header.Get("x-request-id"), "http_media"
 	if err != nil || len(body) > maxMediaResponseBytes {
@@ -68,15 +70,8 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 		}
 		return mediaResponse{}, usage, uncertainMediaSubmission(NewHTTPError(502, "invalid_media_response", "Unable to read the complete media response within the size limit"))
 	}
-	if streamErr != nil {
-		return mediaResponse{}, usage, uncertainMediaSubmission(streamErr)
-	}
-	if strings.Contains(strings.ToLower(contentType), "application/json") {
-		usage, err = inspectMediaJSON(body)
-		usage.ServedModel, usage.UpstreamRequestID, usage.Transport = model, response.Header.Get("x-request-id"), "http_media"
-		if err != nil {
-			return mediaResponse{}, usage, uncertainMediaSubmission(err)
-		}
+	if responseErr != nil {
+		return mediaResponse{}, usage, uncertainMediaSubmission(responseErr)
 	}
 	return mediaResponse{Body: body, ContentType: contentType, Status: response.StatusCode}, usage, nil
 }
@@ -86,6 +81,9 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 func uncertainMediaSubmission(err error) error {
 	if errors.Is(err, context.Canceled) {
 		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorClient}
+	}
+	if egressErr := providerEgressFailure(err); egressErr != nil {
+		return egressErr
 	}
 	return &ProviderInvocationError{Err: err, Disposition: ProviderErrorOutcomeUnknown}
 }
