@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 )
 
 const maxMediaResponseBytes = 128 << 20
@@ -59,7 +58,7 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 	var responseErr error
 	if mediaResponseIsSSE(contentType) {
 		usage, responseErr = inspectMediaStream(body, provider)
-	} else if strings.Contains(strings.ToLower(contentType), "application/json") {
+	} else if mediaResponseIsJSON(contentType) {
 		usage, responseErr = inspectMediaJSON(body)
 	}
 	usage.ServedModel, usage.UpstreamRequestID, usage.Transport = model, response.Header.Get("x-request-id"), "http_media"

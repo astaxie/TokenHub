@@ -59,7 +59,7 @@ func (s *Server) invokeMediaRouteWithStreamLimit(ctx context.Context, call CallC
 			if streamErr != nil {
 				return mediaResponse{}, usage, uncertainMediaSubmission(streamErr)
 			}
-		} else if strings.Contains(strings.ToLower(response.ContentType), "application/json") {
+		} else if mediaResponseIsJSON(response.ContentType) {
 			parsed, jsonErr := inspectMediaJSON(response.Body)
 			if !usageReported {
 				usage = parsed

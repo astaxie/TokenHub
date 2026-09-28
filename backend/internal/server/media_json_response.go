@@ -4,8 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
+	"strings"
 )
+
+func mediaResponseIsJSON(contentType string) bool {
+	// ParseMediaType retains a valid base type when only parameters are invalid.
+	// Broken parameters must not bypass JSON validation or metering.
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
+}
 
 // Direct media JSON must contain one complete object. Retain independently
 // reported usage if trailing data makes an otherwise complete response invalid.

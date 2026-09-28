@@ -205,7 +205,7 @@ func (s *Server) finishMediaHooks(ctx context.Context, call CallContext, route R
 	if !hasHooks {
 		return result, usage, nil
 	}
-	jsonResponse := strings.Contains(strings.ToLower(result.ContentType), "application/json")
+	jsonResponse := mediaResponseIsJSON(result.ContentType)
 	var payload any
 	if jsonResponse {
 		payload = json.RawMessage(result.Body)

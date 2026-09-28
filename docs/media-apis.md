@@ -70,6 +70,8 @@ Matching `provider_call` hooks run before direct media adapters and can deny, sk
 
 The Responses OpenAPI schema requires `model`; `input` requirements depend on the chosen provider model. For example, DMX lyric/music generation can omit `input` to generate without a supplied prompt. Omitted input is forwarded without adding an empty value.
 
+JSON response handling recognizes `application/json` and MIME types with a `+json` suffix, including parameters and case variations. These responses receive the same validation, token metering, and JSON hook payloads; their original content type is preserved. A recognized JSON base type still receives validation when its parameters are malformed. A parameter containing the text `application/json` does not turn a text or binary response into JSON.
+
 Direct media JSON containing a non-null top-level `error` is a failure even when the upstream HTTP status is 200. This also applies to provider-hook output and final response/guardrail-hook replacements. Failures return a generic message without upstream credentials, retain reported token usage, and do not resubmit generation; `error:null` remains compatible with successful responses.
 
 Direct media SSE requires each non-empty event payload other than `[DONE]` to be one complete JSON object. Malformed upstream or provider-hook events fail before buffered delivery and retain known usage, including a complete leading object with invalid trailing data. Response and stream hooks cannot turn valid events into malformed payloads or successful error streams; final validation retains the original upstream usage.
