@@ -17,17 +17,17 @@ func (s *Server) routeSupportsMedia(call CallContext, route RouteSelection) bool
 }
 
 func (s *Server) invokeMediaRoute(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest) (mediaResponse, Usage, error) {
-	return s.invokeMediaRouteWithStreamLimit(ctx, call, route, endpoint, request, maxMediaResponseBytes)
+	return s.invokeMediaRouteWithResponseLimit(ctx, call, route, endpoint, request, maxMediaResponseBytes)
 }
 
-func (s *Server) invokeMediaRouteWithStreamLimit(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest, streamLimit int) (mediaResponse, Usage, error) {
+func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest, responseLimit int) (mediaResponse, Usage, error) {
 	var payload any
 	var usage Usage
 	var handled, usageReported bool
 	var err error
 	var stream mediaHookStreamBuffer
 	if call.Stream {
-		stream.limit = streamLimit
+		stream.limit = responseLimit
 		payload, usage, handled, err = s.runGatewayProviderCallHooksOutputWithUsagePresence(ctx, call, route, request.Fields, call.RouteProtocol, &stream, &usageReported)
 	} else {
 		payload, usage, handled, err = s.runGatewayProviderCallHooksOutputWithUsagePresence(ctx, call, route, request.Fields, call.RouteProtocol, nil, &usageReported)
@@ -46,8 +46,15 @@ func (s *Server) invokeMediaRouteWithStreamLimit(ctx context.Context, call CallC
 	if handled {
 		response := mediaResponse{Body: stream.Bytes(), ContentType: "text/event-stream", Status: http.StatusOK}
 		if !call.Stream {
-			response, err = mediaProviderHookResponse(payload)
+			response, err = mediaProviderHookResponse(payload, responseLimit)
 			if err != nil {
+				// Hook output is already decoded; retain known usage when its
+				// media exceeds the bound without parsing the large body again.
+				if !usageReported {
+					fields, _ := payload.(map[string]any)
+					usage = usageFromMap(fields)
+				}
+				usage.MeteringInvalid = true
 				return mediaResponse{}, usage, err
 			}
 		}
@@ -79,7 +86,7 @@ func (s *Server) invokeMediaRouteWithStreamLimit(ctx context.Context, call CallC
 
 // Non-JSON media returned by provider_call hooks uses an explicit envelope.
 // JSON model responses remain unwrapped, including vendor extension fields.
-func mediaProviderHookResponse(payload any) (mediaResponse, error) {
+func mediaProviderHookResponse(payload any, limit int) (mediaResponse, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return mediaResponse{}, invalidMediaProviderHookResponse()
@@ -98,7 +105,7 @@ func mediaProviderHookResponse(payload any) (mediaResponse, error) {
 		if strings.ContainsAny(contentType, "\r\n") {
 			return mediaResponse{}, invalidMediaProviderHookResponse()
 		}
-		if _, _, err := mime.ParseMediaType(contentType); err != nil || base64.StdEncoding.DecodedLen(len(*encoded)) > maxMediaResponseBytes+2 {
+		if _, _, err := mime.ParseMediaType(contentType); err != nil || base64.StdEncoding.DecodedLen(len(*encoded)) > limit+2 {
 			return mediaResponse{}, invalidMediaProviderHookResponse()
 		}
 		data, err = base64.StdEncoding.DecodeString(*encoded)
@@ -106,7 +113,7 @@ func mediaProviderHookResponse(payload any) (mediaResponse, error) {
 			return mediaResponse{}, invalidMediaProviderHookResponse()
 		}
 	}
-	if len(data) > maxMediaResponseBytes {
+	if len(data) > limit {
 		return mediaResponse{}, invalidMediaProviderHookResponse()
 	}
 	return mediaResponse{Body: data, ContentType: contentType, Status: http.StatusOK}, nil

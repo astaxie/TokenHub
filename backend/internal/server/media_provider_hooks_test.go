@@ -183,7 +183,7 @@ func TestMediaProviderHookCapabilityMatchesScopeAndMode(t *testing.T) {
 
 func TestMediaProviderHookRejectsInvalidBinaryEnvelope(t *testing.T) {
 	for _, raw := range []string{`null`, `[]`, `{"data_base64":"YQ=="}`, `{"data_base64":null,"content_type":"audio/mpeg"}`, `{"data_base64":42,"content_type":"audio/mpeg"}`, `{"data_base64":"YQ==","content_type":null}`, `{"data_base64":"!","content_type":"audio/mpeg"}`, `{"data_base64":"YQ==","content_type":"audio/mpeg\r\nX-Injected: true"}`, `{"data_base64":"YQ==","content_type":""}`} {
-		_, err := mediaProviderHookResponse(json.RawMessage(raw))
+		_, err := mediaProviderHookResponse(json.RawMessage(raw), maxMediaResponseBytes)
 		if err == nil || providerErrorDisposition(err) != ProviderErrorPolicy {
 			t.Errorf("invalid hook response accepted: %s, err=%v", raw, err)
 		}

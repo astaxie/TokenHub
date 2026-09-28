@@ -2258,6 +2258,11 @@ components:
             - type: array
               items:
                 $ref: "#/components/schemas/ResponseInputItem"
+            - type: array
+              minItems: 1
+              description: Image URLs or encoded images for provider-specific workflows such as Vidu start/end frames.
+              items:
+                type: string
             - type: object
               additionalProperties: true
         stream:
@@ -2534,6 +2539,23 @@ components:
         - $ref: "#/components/schemas/ResponseReasoningItem"
         - $ref: "#/components/schemas/MediaResponseOutputMessage"
         - $ref: "#/components/schemas/ResponseImageGenerationCall"
+        - $ref: "#/components/schemas/MediaResponseImageURLItem"
+    MediaResponseImageURLItem:
+      type: object
+      required: [type, image_url]
+      additionalProperties: true
+      description: Seedream image edits and fusion may return image URLs directly in the output array.
+      properties:
+        type:
+          type: string
+          const: image_url
+        image_url:
+          type: object
+          required: [url]
+          additionalProperties: true
+          properties:
+            url:
+              type: string
     MediaResponseOutputMessage:
       type: object
       required: [content]

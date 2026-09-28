@@ -126,11 +126,15 @@ func (s *Server) handleGeminiMedia(w http.ResponseWriter, r *http.Request, call 
 }
 
 func (s *Server) invokeGeminiMedia(ctx context.Context, call CallContext, route RouteSelection, payload map[string]any) (mediaResponse, Usage, error) {
+	return s.invokeGeminiMediaWithResponseLimit(ctx, call, route, payload, maxMediaResponseBytes)
+}
+
+func (s *Server) invokeGeminiMediaWithResponseLimit(ctx context.Context, call CallContext, route RouteSelection, payload map[string]any, responseLimit int) (mediaResponse, Usage, error) {
 	var output any
 	var usage Usage
 	var handled, reported bool
 	var err error
-	stream := mediaHookStreamBuffer{limit: maxMediaResponseBytes}
+	stream := mediaHookStreamBuffer{limit: responseLimit}
 	if call.Stream {
 		output, usage, handled, err = s.runGatewayProviderCallHooksOutputWithUsagePresence(ctx, call, route, payload, providerRouteProtocolGemini, &stream, &reported)
 	} else {
@@ -148,8 +152,13 @@ func (s *Server) invokeGeminiMedia(ctx context.Context, call CallContext, route 
 	}
 	if handled {
 		if !call.Stream {
-			result, err = mediaProviderHookResponse(output)
+			result, err = mediaProviderHookResponse(output, responseLimit)
 			if err != nil {
+				if !reported {
+					fields, _ := output.(map[string]any)
+					usage = geminiUsage(fields)
+				}
+				usage.MeteringInvalid = true
 				return mediaResponse{}, usage, err
 			}
 		}

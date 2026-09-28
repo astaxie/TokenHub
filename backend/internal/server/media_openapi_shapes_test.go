@@ -106,6 +106,9 @@ func TestMediaOpenAPIPreservesStandardItemValidation(t *testing.T) {
 	for _, tc := range []struct{ schema, value string }{
 		{"ResponsesRequest", `{"input":"Missing model"}`},
 		{"ResponsesRequest", `{"model":"public-media","input":true}`},
+		{"ResponsesRequest", `{"model":"public-media","input":42}`},
+		{"ResponsesRequest", `{"model":"public-media","input":[42]}`},
+		{"ResponsesRequest", `{"model":"public-media","input":["https://example.com/image.png",{"type":"message","content":"Missing role"}]}`},
 		{"ResponsesRequest", `{"model":"public-media","input":[{"type":"message","content":"Missing role"}]}`},
 		{"ResponseInputItem", `{"type":"message","content":"Missing role"}`},
 		{"ResponseInputItem", `{"type":"function_call","name":"Missing call ID"}`},
@@ -119,6 +122,11 @@ func TestMediaOpenAPIPreservesStandardItemValidation(t *testing.T) {
 		{"ResponseJob", `{"id":"job_fixture","output":{"choices":[]}}`},
 		{"ResponseJob", `{"id":"job_fixture","status":"invalid","output":{"choices":[]}}`},
 		{"ResponseJob", `{"id":9007199254740993,"status":"completed","output":{"choices":[]}}`},
+		{"ResponseOutputItem", `{"type":"image_url"}`},
+		{"ResponseOutputItem", `{"image_url":{"url":"https://example.com/image.png"}}`},
+		{"ResponseOutputItem", `{"type":"image_url","image_url":{}}`},
+		{"ResponseOutputItem", `{"type":"image_url","image_url":{"url":42}}`},
+		{"ResponseOutputItem", `{"type":"image_url","image_url":"https://example.com/image.png"}`},
 	} {
 		t.Run(tc.schema, func(t *testing.T) {
 			components := asMap(t, document["components"], "components")

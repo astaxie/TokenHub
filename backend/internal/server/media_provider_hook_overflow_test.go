@@ -54,7 +54,7 @@ func TestMediaProviderHookOverflowRetainsKnownUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, _, usage, attempts, err := executeRoutedWithStore(request.Context(), store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (mediaResponse, Usage, error) {
-				return server.invokeMediaRouteWithStreamLimit(ctx, call, route, "/audio/speech", mediaRequest{Fields: map[string]json.RawMessage{"model": json.RawMessage(`"classified-model"`)}}, 128)
+				return server.invokeMediaRouteWithResponseLimit(ctx, call, route, "/audio/speech", mediaRequest{Fields: map[string]json.RawMessage{"model": json.RawMessage(`"classified-model"`)}}, 128)
 			})
 			if err == nil || providerErrorDisposition(err) != ProviderErrorPolicy || AsHTTPError(err).Code != "gateway_hook_response_invalid" || hookCalls != 1 {
 				t.Fatalf("overflow failure changed or retried: calls=%d error=%v", hookCalls, err)
