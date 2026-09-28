@@ -20,5 +20,10 @@ func inspectMediaJSON(body []byte) (Usage, error) {
 		usage.MeteringInvalid = true
 		return usage, NewHTTPError(http.StatusBadGateway, "invalid_media_response", "Provider returned invalid JSON")
 	}
+	// A successful HTTP status cannot make an OpenAI error envelope successful.
+	// Keep the message generic because upstream errors may echo provider secrets.
+	if payload["error"] != nil {
+		return usage, NewHTTPError(http.StatusBadGateway, "provider_error", "Media provider returned an error response")
+	}
 	return usage, nil
 }

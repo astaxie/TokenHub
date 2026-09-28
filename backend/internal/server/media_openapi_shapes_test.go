@@ -14,6 +14,8 @@ import (
 func TestMediaDocumentedShapesMatchOpenAPIAndRuntime(t *testing.T) {
 	document := mediaOpenAPIDocument(t)
 	for _, tc := range []struct{ name, path, request, response string }{
+		{"lyrics without input", "/v1/responses", `{"model":"public-media","mode":"write_full_song"}`, `{"song_title":"A fixture song","lyrics":"A quiet morning"}`},
+		{"music without input", "/v1/responses", `{"model":"public-media","lyrics":"A quiet morning","output_format":"url"}`, `{"data":{"audio":"https://example.com/music.mp3","status":2}}`},
 		{"wan image", "/v1/responses", `{"model":"public-media","input":{"messages":[{"role":"user","content":[{"text":"A landscape"}]}]}}`, `{"output":[{"type":"message","content":[{"type":"image","text":"https://example.com/image.png"}]}]}`},
 		{"minimax voice upload", "/v1/responses", `{"model":"public-media","input":[{"purpose":"prompt_audio"}],"dataf":"YXVkaW8="}`, `{"file":{"file_id":9007199254740993,"purpose":"prompt_audio"},"base_resp":{"status_code":0}}`},
 		{"seedance video", "/v1/responses", `{"model":"public-media","input":[{"type":"text","text":"A landscape"},{"type":"image_url","image_url":{"url":"https://example.com/frame.png"}}]}`, `{"id":"vendor_task_fixture"}`},
@@ -37,6 +39,11 @@ func TestMediaDocumentedShapesMatchOpenAPIAndRuntime(t *testing.T) {
 				decoder.UseNumber()
 				if err := decoder.Decode(&actual); err != nil {
 					t.Fatal(err)
+				}
+				if _, present := expected["input"]; tc.path == "/v1/responses" && !present {
+					if _, introduced := actual["input"]; introduced {
+						t.Errorf("omitted input was introduced: %v", actual["input"])
+					}
 				}
 				for name, want := range expected {
 					if name == "model" {
@@ -97,6 +104,9 @@ func TestMediaBackgroundOutputMatchesOpenAPI(t *testing.T) {
 func TestMediaOpenAPIPreservesStandardItemValidation(t *testing.T) {
 	document := mediaOpenAPIDocument(t)
 	for _, tc := range []struct{ schema, value string }{
+		{"ResponsesRequest", `{"input":"Missing model"}`},
+		{"ResponsesRequest", `{"model":"public-media","input":true}`},
+		{"ResponsesRequest", `{"model":"public-media","input":[{"type":"message","content":"Missing role"}]}`},
 		{"ResponseInputItem", `{"type":"message","content":"Missing role"}`},
 		{"ResponseInputItem", `{"type":"function_call","name":"Missing call ID"}`},
 		{"ResponseOutputItem", `{"type":"message","role":"user","content":[{"type":"output_text","text":"Wrong role"}]}`},

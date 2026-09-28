@@ -17,18 +17,30 @@ func (s *Server) routeSupportsMedia(call CallContext, route RouteSelection) bool
 }
 
 func (s *Server) invokeMediaRoute(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest) (mediaResponse, Usage, error) {
+	return s.invokeMediaRouteWithStreamLimit(ctx, call, route, endpoint, request, maxMediaResponseBytes)
+}
+
+func (s *Server) invokeMediaRouteWithStreamLimit(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest, streamLimit int) (mediaResponse, Usage, error) {
 	var payload any
 	var usage Usage
 	var handled, usageReported bool
 	var err error
 	var stream mediaHookStreamBuffer
 	if call.Stream {
-		stream.limit = maxMediaResponseBytes
+		stream.limit = streamLimit
 		payload, usage, handled, err = s.runGatewayProviderCallHooksOutputWithUsagePresence(ctx, call, route, request.Fields, call.RouteProtocol, &stream, &usageReported)
 	} else {
 		payload, usage, handled, err = s.runGatewayProviderCallHooksOutputWithUsagePresence(ctx, call, route, request.Fields, call.RouteProtocol, nil, &usageReported)
 	}
 	if err != nil {
+		if call.Stream && handled {
+			// A buffer limit can fail after complete billable events were written.
+			// Preserve their usage without replacing the original plugin failure.
+			if !usageReported {
+				usage, _ = inspectMediaStream(stream.Bytes(), route.Provider)
+			}
+			usage.MeteringInvalid = true
+		}
 		return mediaResponse{}, usage, err
 	}
 	if handled {

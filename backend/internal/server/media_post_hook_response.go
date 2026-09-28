@@ -18,7 +18,7 @@ func encodeMediaPostHookResponse(payload any, jsonResponse bool, limit int) ([]b
 			return nil, mediaPostHookResponseTooLarge()
 		}
 		if _, err := inspectMediaJSON(data); err != nil {
-			return nil, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must preserve a JSON object")
+			return nil, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must preserve a successful JSON object")
 		}
 		return data, nil
 	}

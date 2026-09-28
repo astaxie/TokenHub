@@ -2242,13 +2242,17 @@ components:
             $ref: "#/components/schemas/ChatToolCallDelta"
     ResponsesRequest:
       type: object
-      required: [model, input]
+      required: [model]
       additionalProperties: true
       properties:
         model:
           type: string
         input:
-          description: Standard Responses input, or provider-specific objects and media/file items for published media models.
+          description: >-
+            Standard Responses input, or provider-specific objects and media/file
+            items for published media models. Whether input is required depends
+            on the upstream model and operation; lyric and music generation may
+            omit it. When present, input must use one of the supported shapes.
           oneOf:
             - type: string
             - type: array
