@@ -161,6 +161,9 @@ paths:
       description: |
         Accepts OpenAI-compatible Responses requests. Set `stream: true` for SSE streaming, or
         `background: true` to create a persistent response job that can be retrieved or cancelled.
+        Published media models also accept vendor input objects and media/file item arrays.
+        Their responses preserve vendor task/file envelopes and media output items; background
+        jobs retain local string IDs and expose a safe vendor root ID in the polling header.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       requestBody:
@@ -205,7 +208,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ResponsesResponse"
                   - $ref: "#/components/schemas/ResponseJob"
             text/event-stream:
@@ -2009,6 +2012,26 @@ components:
         - $ref: "#/components/schemas/ChatTextContentPart"
         - $ref: "#/components/schemas/ChatImageURLContentPart"
         - $ref: "#/components/schemas/ResponseInputImagePart"
+        - $ref: "#/components/schemas/ChatInputAudioContentPart"
+    ChatInputAudioContentPart:
+      type: object
+      required: [type, input_audio]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: input_audio
+        input_audio:
+          type: object
+          required: [data]
+          additionalProperties: true
+          properties:
+            data:
+              type: string
+              description: Provider-supported audio URL, Base64 data URL, or Base64 audio bytes.
+            format:
+              type: string
+              description: Provider-specific audio format; optional for Qwen Omni URL or data URL inputs.
     ChatTextContentPart:
       type: object
       required: [type, text]
@@ -2225,11 +2248,14 @@ components:
         model:
           type: string
         input:
+          description: Standard Responses input, or provider-specific objects and media/file items for published media models.
           oneOf:
             - type: string
             - type: array
               items:
                 $ref: "#/components/schemas/ResponseInputItem"
+            - type: object
+              additionalProperties: true
         stream:
           type: boolean
         background:
@@ -2287,6 +2313,20 @@ components:
         - $ref: "#/components/schemas/ResponseFunctionCallOutput"
         - $ref: "#/components/schemas/ResponseFunctionCall"
         - $ref: "#/components/schemas/ResponseReasoningItem"
+        - $ref: "#/components/schemas/MediaResponseInputItem"
+    MediaResponseInputItem:
+      type: object
+      additionalProperties: true
+      description: >-
+        Provider-specific media, task, or file input, such as Seedance text/image
+        items and MiniMax purpose/file_id items. Vendor fields are preserved and
+        validated by the upstream. Standard Responses item types use their
+        respective schemas instead.
+      properties:
+        type:
+          type: string
+          not:
+            enum: [message, function_call_output, function_call, reasoning]
     ResponseInputMessage:
       type: object
       required: [type, role, content]
@@ -2461,7 +2501,8 @@ components:
       additionalProperties: true
       properties:
         id:
-          type: string
+          type: [string, number]
+          description: Standard response ID or a vendor media task ID; numeric IDs are preserved exactly.
         object:
           type: string
         status:
@@ -2477,10 +2518,64 @@ components:
             - $ref: "#/components/schemas/ErrorObject"
             - type: "null"
     ResponseOutputItem:
-      oneOf:
+      anyOf:
         - $ref: "#/components/schemas/ResponseOutputMessage"
         - $ref: "#/components/schemas/ResponseFunctionCall"
         - $ref: "#/components/schemas/ResponseReasoningItem"
+        - $ref: "#/components/schemas/MediaResponseOutputMessage"
+        - $ref: "#/components/schemas/ResponseImageGenerationCall"
+    MediaResponseOutputMessage:
+      type: object
+      required: [content]
+      additionalProperties: true
+      description: Media providers may omit message type or role and return image/audio content directly.
+      properties:
+        type:
+          type: string
+          const: message
+        role:
+          type: string
+          const: assistant
+        content:
+          type: array
+          items:
+            oneOf:
+              - $ref: "#/components/schemas/ResponseContentPart"
+              - $ref: "#/components/schemas/MediaResponseTextPart"
+              - $ref: "#/components/schemas/MediaResponseAudioPart"
+    MediaResponseTextPart:
+      type: object
+      required: [type, text]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          enum: [text, image]
+        text:
+          type: string
+          description: Provider text or an image URL.
+    MediaResponseAudioPart:
+      type: object
+      required: [type, audio]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: output_audio
+        audio:
+          type: string
+          description: Provider audio URL or encoded audio.
+    ResponseImageGenerationCall:
+      type: object
+      required: [type, result]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          const: image_generation_call
+        result:
+          type: string
+          description: Provider image URL or encoded image.
     ResponseOutputMessage:
       type: object
       required: [type, role, content]

@@ -31,7 +31,11 @@ func consumeMediaResponsesStream(provider Provider, body io.Reader, destination 
 			return response, "", usage, err
 		}
 		var payload map[string]any
-		_ = decodeResponsesJSON([]byte(event.Data), &payload)
+		data := strings.TrimSpace(event.Data)
+		invalid := false
+		if data != "" && data != "[DONE]" {
+			invalid = decodeResponsesJSON([]byte(data), &payload) != nil || payload == nil
+		}
 		if reported, ok := payload["usage"].(map[string]any); ok && len(reported) > 0 {
 			usage = usageFromMap(payload)
 		}
@@ -42,6 +46,10 @@ func consumeMediaResponsesStream(provider Provider, body io.Reader, destination 
 			}
 		} else if payload != nil {
 			response = payload
+		}
+		if invalid {
+			usage.MeteringInvalid = true
+			return response, "", usage, NewHTTPError(http.StatusBadGateway, "invalid_media_response", "Media provider returned an invalid JSON stream event")
 		}
 		failed := providerStreamEventIsError(event)
 		output := event.Raw

@@ -18,7 +18,7 @@ TokenHub 支持 [DMXAPI 文档](https://doc.dmxapi.cn/jichu.html)使用的媒体
 | `POST /v1/chat/completions` | MiMo 语音合成/音色设计/克隆、Qwen Omni 音频描述与多模态音频、Recraft 绘图 |
 | `POST /v1beta/models/{model}:generateContent` 和 `:streamGenerateContent` | Gemini 原生绘图、图片编辑和多模态输出 |
 
-以具体模型的上游文档为准。DMXAPI 视频示例通过 `/v1/responses` 提交和查询，不需要新增 `/v1/videos`。现有 Chat、Responses 和 Gemini 接口保留流式能力与供应商扩展字段。
+以具体模型的上游文档为准。DMXAPI 视频示例通过 `/v1/responses` 提交和查询，不需要新增 `/v1/videos`。现有 Chat、Responses 和 Gemini 接口保留流式能力与供应商扩展字段。OpenAPI 契约包含 Chat 的 `input_audio` 内容，以及 Wan 消息、MiniMax 语音上传等供应商自定义 Responses 输入/输出对象；媒体字段由供应商按自身规则校验。
 
 ## 配置供应商和模型
 
@@ -70,7 +70,7 @@ multipart 的 `model` 和 `stream` 必须是单个文本字段。`/v1/audio/spee
 
 SSE 响应在缓冲交付前逐事件执行 `stream_transform`、`response_post` 和 `guardrail_post`。即使后续流式错误或策略阻止结果交付，上游已报告的 Token 用量仍被保留。终止流的错误会记为失败且不会触发再次生成，错误消息中的供应商凭证会被脱敏。客户端取消请求和已识别的出站代理故障不会计入供应商健康故障；代理故障也不会触发故障切换。插件生成的 SSE 同样接受错误和用量检查；插件显式提供的用量（包括零值）优先于事件用量。插件生成的 JSON 未显式提供用量时，同样使用响应体中的 Token 用量；显式零值仍优先。JSON 响应必须包含一个完整对象，不能尾随其他值或垃圾数据。响应/护栏钩子处理后的最终 JSON 也必须保持对象结构，拒绝 null、数组或标量替换。无效响应会报错且不重新提交，并保留首个完整对象报告的用量，即使随后读取响应失败或超出大小限制。不完整的 JSON 对象不会被虚构用量。用量归因钩子失败时保留原始上游用量。归因成功后若最终响应校验失败，请求和路由尝试仍保留一致的归因用量。直通媒体接口收到 HTTP 408 时不会自动再次提交。审计记录保留脱敏后的策略决定，不保存替换文本或媒体内容。
 
-媒体模型的流式 Responses API 识别标准 Responses 完成事件、Wan 的 `[DONE]` 标记和 MiniMax 的 `data.status=2` 完成帧。顶层和嵌套的 Token 用量均被保留；未收到完成标记就结束的流记为失败。单个媒体事件上限为 128 MiB。文本模型 Responses 保留原有完成判定规则。
+媒体模型的流式 Responses API 识别标准 Responses 完成事件、Wan 的 `[DONE]` 标记和 MiniMax 的 `data.status=2` 完成帧。顶层和嵌套的 Token 用量均被保留；未收到完成标记就结束的流记为失败。除 `[DONE]` 外，非空事件数据必须是一个完整 JSON 对象。格式损坏的事件在转发前被拒绝，已知用量仍会保留，且不会被误判为成功完成；心跳和合法供应商事件保持原样。单个媒体事件上限为 128 MiB。文本模型 Responses 保留原有完成判定规则。
 
 Token 计费使用上游返回的用量。语音转录的 JSON 和 SSE 用量保留 `input_token_details.audio_tokens` 中报告的音频 Token 明细。二进制音频、字幕文本或未返回 Token 的供应商不会被虚构 Token 成本；请求数/并发限制和请求日志仍生效。按秒、按图、按字符的费用不转换成 Token 单价。为返回 Token 的模型配置价格，其他费用与供应商账单核对。
 
