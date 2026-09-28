@@ -51,7 +51,9 @@ func consumeMediaResponsesStream(provider Provider, body io.Reader, destination 
 			usage.MeteringInvalid = true
 			return response, "", usage, NewHTTPError(http.StatusBadGateway, "invalid_media_response", "Media provider returned an invalid JSON stream event")
 		}
-		failed := providerStreamEventIsError(event)
+		// MiniMax music also reports terminal failures as status/message events.
+		status, _ := payload["status"].(string)
+		failed := providerStreamEventIsError(event) || status == "failed"
 		output := event.Raw
 		if failed {
 			output = redactProviderStreamEventSecrets(event, provider)
