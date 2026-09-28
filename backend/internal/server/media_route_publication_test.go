@@ -75,7 +75,7 @@ func TestMediaImageOnlyModelsCanBePublishedAndInvoked(t *testing.T) {
 						t.Fatal(err)
 					}
 					hookCalls := 0
-					registerMediaProviderTestHook(t, server, pluginmeta.GatewayHookDescriptor{HookID: "image-scope", Scope: pluginmeta.GatewayHookScope{RouteProtocols: []string{providerRouteProtocolImageGeneration}}}, func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+					registerMediaProviderTestHook(t, server, pluginmeta.GatewayHookDescriptor{HookID: "image-scope", Scope: pluginmeta.GatewayHookScope{RouteProtocols: []string{endpoint}}}, func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
 						hookCalls++
 						return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionContinue}, nil
 					})
@@ -105,7 +105,7 @@ func TestMediaImageOnlyModelsCanBePublishedAndInvoked(t *testing.T) {
 						t.Fatalf("published image request failed: status=%d calls=%d body=%s", recorder.Code, upstreamCalls, recorder.Body)
 					}
 					if hookCalls != 1 {
-						t.Fatalf("existing image hook scope was bypassed: calls=%d", hookCalls)
+						t.Fatalf("image endpoint hook scope was bypassed: calls=%d", hookCalls)
 					}
 					if usage := store.ListUsageRecords(); len(usage) != 1 || usage[0].TotalTokens != 10 {
 						t.Fatalf("published image usage not recorded: %+v", usage)

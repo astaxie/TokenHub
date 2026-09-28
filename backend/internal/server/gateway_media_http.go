@@ -83,6 +83,7 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 		writeError(w, r, err)
 		return
 	}
+	call.RouteProtocol = strings.TrimPrefix(r.URL.Path, "/v1/")
 	err = s.runMediaPreflight(r, &call, &request)
 	if err == nil {
 		audit.Guardrail, err = s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, mediaGuardrailTargets(request.Fields))
