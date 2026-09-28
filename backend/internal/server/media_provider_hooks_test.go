@@ -164,7 +164,7 @@ func TestMediaProviderHookCapabilityMatchesScopeAndMode(t *testing.T) {
 					calls++
 					value := json.RawMessage(`{"text":"hook output"}`)
 					if stream {
-						value = json.RawMessage(`[{"data":"hook output"}]`)
+						value = json.RawMessage(`[{"data":"{\"text\":\"hook output\"}"}]`)
 					}
 					return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionShortCircuit, Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{outputs[0]: {Value: value}}}, nil
 				})
