@@ -24,7 +24,7 @@ func TestMediaProviderHookJSONOverflowRetainsKnownUsage(t *testing.T) {
 		} {
 			t.Run(protocol+"/"+tc.name, func(t *testing.T) {
 				providerType, path := ProviderOpenAICompatible, "/v1/audio/speech"
-				body := map[string]any{"usage": map[string]any{"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}}
+				body := map[string]any{"usage": map[string]any{"prompt_tokens": 5, "completion_tokens": 0, "output_tokens": 10, "total_tokens": 15}}
 				if protocol == providerRouteProtocolGemini {
 					providerType, path = ProviderGemini, "/v1beta/models/classified-model:generateContent"
 					if err := decodeResponsesJSON([]byte(geminiMediaFixtureResponse), &body); err != nil {

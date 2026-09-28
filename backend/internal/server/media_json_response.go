@@ -29,7 +29,7 @@ func inspectMediaJSON(body []byte) (Usage, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	err := decoder.Decode(&payload)
-	usage := usageFromMap(payload)
+	usage := mediaUsageFromMap(payload)
 	var extra any
 	if err != nil || payload == nil || decoder.Decode(&extra) != io.EOF {
 		usage.MeteringInvalid = true

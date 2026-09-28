@@ -37,12 +37,12 @@ func consumeMediaResponsesStream(provider Provider, body io.Reader, destination 
 			invalid = decodeResponsesJSON([]byte(data), &payload) != nil || payload == nil
 		}
 		if reported, ok := payload["usage"].(map[string]any); ok && len(reported) > 0 {
-			usage = usageFromMap(payload)
+			usage = mediaUsageFromMap(payload)
 		}
 		if nested, ok := payload["response"].(map[string]any); ok {
 			response = nested
 			if reported, ok := nested["usage"].(map[string]any); ok && len(reported) > 0 {
-				usage = usageFromMap(nested)
+				usage = mediaUsageFromMap(nested)
 			}
 		} else if payload != nil {
 			response = payload

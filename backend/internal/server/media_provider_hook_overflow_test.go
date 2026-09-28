@@ -27,7 +27,7 @@ func TestMediaProviderHookOverflowRetainsKnownUsage(t *testing.T) {
 			registerMediaProviderTestHook(t, server, pluginmeta.GatewayHookDescriptor{HookID: "overflow", Writes: []pluginmeta.GatewayDataClass{pluginmeta.DataStreamEvents, pluginmeta.DataUsage}}, func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
 				hookCalls++
 				events, err := json.Marshal([]gatewayStreamEventView{
-					{Data: `{"usage":{"output_tokens":7,"total_tokens":7}}`},
+					{Data: `{"usage":{"completion_tokens":0,"output_tokens":7,"total_tokens":7}}`},
 					{Data: `{"audio":"` + strings.Repeat("a", 1024) + `"}`},
 				})
 				if err != nil {
@@ -59,7 +59,7 @@ func TestMediaProviderHookOverflowRetainsKnownUsage(t *testing.T) {
 			if err == nil || providerErrorDisposition(err) != ProviderErrorPolicy || AsHTTPError(err).Code != "gateway_hook_response_invalid" || hookCalls != 1 {
 				t.Fatalf("overflow failure changed or retried: calls=%d error=%v", hookCalls, err)
 			}
-			if usage.TotalTokens != tc.wantTokens || !usage.MeteringInvalid {
+			if usage.TotalTokens != tc.wantTokens || usage.CompletionTokens != tc.wantTokens || !usage.MeteringInvalid {
 				t.Fatalf("overflow metering = %+v, want %d known tokens and invalid metering", usage, tc.wantTokens)
 			}
 			server.finishFailedRoutedCall(request, routed, attempts, usage, err, nil)
@@ -71,7 +71,7 @@ func TestMediaProviderHookOverflowRetainsKnownUsage(t *testing.T) {
 			if err := store.db.Find(&logged).Error; err != nil {
 				t.Fatal(err)
 			}
-			if tokens != tc.wantTokens || len(logged) != 1 || logged[0].TotalTokens != tc.wantTokens {
+			if tokens != tc.wantTokens || len(logged) != 1 || logged[0].TotalTokens != tc.wantTokens || logged[0].OutputTokens != tc.wantTokens {
 				t.Fatalf("overflow usage lost in accounting: tokens=%d attempts=%+v", tokens, logged)
 			}
 			for _, id := range []string{"rsrc_classified_0", "rsrc_classified_1"} {

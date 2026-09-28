@@ -40,12 +40,12 @@ func inspectMediaStream(body []byte, provider Provider) (Usage, error) {
 		var probe providerStreamEventProbe
 		data := strings.TrimSpace(event.Data)
 		invalid := data != "" && data != "[DONE]" && (decodeResponsesJSON([]byte(data), &probe) != nil || probe == nil)
-		if parsed, ok := probe.usage(); ok {
+		if parsed, ok := mediaUsageFromProbe(probe); ok {
 			usage = parsed
 		} else {
 			var response providerStreamEventProbe
 			if json.Unmarshal(probe["response"], &response) == nil {
-				if parsed, ok := response.usage(); ok {
+				if parsed, ok := mediaUsageFromProbe(response); ok {
 					usage = parsed
 				}
 			}

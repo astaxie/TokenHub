@@ -68,7 +68,7 @@ curl https://tokenhub.example/v1/responses \
 
 multipart 的 `model` 和 `stream` 必须是单个文本字段。`/v1/audio/speech` 的 `stream_format:"sse"` 同样会选择流式准入和供应商钩子；`stream_format` 必须是单个非空文本值，请求钩子不能改变实际流式模式。JSON 的 `stream` 必须是布尔值，multipart 的 `stream` 必须是布尔值文本。有歧义的控制字段会在路由前被拒绝，请求钩子的修改也接受同样的校验。文本策略检查 `input`、`instructions`、`prompt`、`negative_prompt` 和 `text` 的每个值，包括重复的 multipart 字段，同时保留 `timestamp_granularities[]` 等重复选项。
 
-接口执行鉴权、模型白名单、配额、作用域路由、供应商资源容量限制、文本前置策略、响应钩子和用量归属。请求钩子接收 JSON/文本字段，multipart 文件字节保持不透明。媒体 Responses 的文本策略也检查供应商提示词、Kling `multi_prompt[].prompt` 分镜描述、歌词和 Wan 嵌套消息或 `input.input.prompt` 封装及 `parameters.negative_prompt`，同时保留不透明的素材/任务 ID。直通媒体审计记录模型、脱敏后的策略决定、内容类型和字节数，不保存上传或生成的媒体。客户端 Cookie 和鉴权头不转发，使用已配置供应商凭证及受保护的出站传输。结果不确定的媒体提交失败不会自动换路由再次生成，包括通过 Chat/Responses 调用的媒体模型；明确的鉴权或限流拒绝仍可触发故障切换。
+接口执行鉴权、模型白名单、配额、作用域路由、供应商资源容量限制、文本前置策略、响应钩子和用量归属。请求钩子接收 JSON/文本字段，multipart 文件字节保持不透明。请求头钩子数据会脱敏客户端鉴权值，包括 Gemini 的 `X-Goog-Api-Key`；上游调用使用配置的供应商凭证。媒体 Responses 的文本策略也检查供应商提示词、Kling `multi_prompt[].prompt` 分镜描述、歌词和 Wan 嵌套消息或 `input.input.prompt` 封装及 `parameters.negative_prompt`，同时保留不透明的素材/任务 ID。直通媒体审计记录模型、脱敏后的策略决定、内容类型和字节数，不保存上传或生成的媒体。客户端 Cookie 和鉴权头不转发，使用已配置供应商凭证及受保护的出站传输。结果不确定的媒体提交失败不会自动换路由再次生成，包括通过 Chat/Responses 调用的媒体模型；明确的鉴权或限流拒绝仍可触发故障切换。
 
 匹配的 `provider_call` 钩子会在直通媒体适配器之前执行，可以拒绝、跳过或接管路由。直通图片钩子按实际接口协议（`images/generations`、`images/edits` 或 `images/variations`）匹配作用域；托管图片任务仍使用 `images/generations`。非流式钩子返回供应商 JSON 响应，或包含字符串 `data_base64` 和 `content_type` 的二进制封装。流式钩子返回 `stream_events`，交付仍采用缓冲方式。处理二进制或文本响应的响应/护栏钩子必须保留有效的 `data_base64`；格式错误的修改会报错，不会返回空的成功响应。供应商钩子和响应钩子均允许 Base64 中的 CR/LF 换行，但填充符之后不能追加编码数据。128 MiB 响应上限适用于两类钩子的输出，按序列化 JSON 或解码后的二进制字节计算，不计入 Base64 换行；超限的替换结果会报错，但保留已报告的用量。
 
@@ -90,6 +90,6 @@ SSE 响应在缓冲交付前逐事件执行 `stream_transform`、`response_post`
 
 配置了媒体输出的模型通过 OpenAI 兼容 Chat 接口返回流时，单事件同样支持最多 128 MiB，可接收供应商一次性返回的完整生成音频。文本模型的 Chat 流仍限制单事件 8 MiB，客户端仅添加音频字段不会提高上限。
 
-Token 计费使用上游返回的用量。语音转录的 JSON 和 SSE 用量保留 `input_token_details.audio_tokens` 中报告的音频 Token 明细。二进制音频、字幕文本或未返回 Token 的供应商不会被虚构 Token 成本；请求数/并发限制和请求日志仍生效。按秒、按图、按字符的费用不转换成 Token 单价。为返回 Token 的模型配置价格，其他费用与供应商账单核对。
+Token 计费使用上游返回的用量。直通 Images/Audio 和流式媒体 Responses 的计量会保留非零 `output_tokens`，即使 `completion_tokens` 为零占位值，例如 Seedream 的响应。这两个别名不会相加；插件显式用量（包括零）仍优先。语音转录的 JSON 和 SSE 用量保留 `input_token_details.audio_tokens` 中报告的音频 Token 明细。二进制音频、字幕文本或未返回 Token 的供应商不会被虚构 Token 成本；请求数/并发限制和请求日志仍生效。按秒、按图、按字符的费用不转换成 Token 单价。为返回 Token 的模型配置价格，其他费用与供应商账单核对。
 
 回归测试使用本地 HTTP 模拟供应商及合成请求，覆盖文件上传、二进制/文本响应、绘图扩展参数、视频异步请求结构、声音素材、大整数、权限拒绝、钩子和缓存跳过。测试不消耗付费生成额度；具体供应商和模型的可用性需使用实际账户验证。

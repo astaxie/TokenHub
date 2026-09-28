@@ -51,7 +51,7 @@ func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call Cal
 				// media exceeds the bound without parsing the large body again.
 				if !usageReported {
 					fields, _ := payload.(map[string]any)
-					usage = usageFromMap(fields)
+					usage = mediaUsageFromMap(fields)
 				}
 				usage.MeteringInvalid = true
 				return mediaResponse{}, usage, err
