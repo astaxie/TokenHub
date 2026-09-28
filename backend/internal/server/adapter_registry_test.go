@@ -48,7 +48,7 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	},
 	ProviderGemini: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
-		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
+		AdapterCapabilityEmbeddings, AdapterCapabilityGeminiMedia, AdapterCapabilityProbe,
 	},
 	ProviderDify: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,

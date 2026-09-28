@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
-	"mime"
 	"net/http"
 	"strings"
 
@@ -22,8 +21,7 @@ func newMediaSSEDecoder(body []byte) *sseDecoder {
 }
 
 func mediaResponseIsSSE(contentType string) bool {
-	parsed, _, err := mime.ParseMediaType(contentType)
-	return err == nil && parsed == "text/event-stream"
+	return mediaResponseMIMEType(contentType) == "text/event-stream"
 }
 
 // Inspect the original event bytes before plugins can transform or drop them.

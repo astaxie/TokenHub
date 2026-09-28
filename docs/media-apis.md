@@ -22,10 +22,12 @@ Use the endpoint specified for the particular model in the upstream documentatio
 
 ## Provider and model setup
 
-1. Add an **OpenAI-compatible** provider with base URL `https://www.dmxapi.cn/v1` and its credential. Native Gemini examples require a **Gemini** provider using the documented base URL and the same upstream account.
+1. Add an **OpenAI-compatible** provider with base URL `https://www.dmxapi.cn/v1` and its credential. Native Gemini examples require a **Gemini** provider with base URL `https://www.dmxapi.cn/v1beta` and the same upstream account.
 2. Publish the public model and map its route to the exact upstream model ID. Select `image`, `video`, or `audio` as its modality (music uses `audio`), or include those output modalities for a multimodal chat model. These Chat/Responses requests bypass response caches so generation is not reused and task status remains fresh.
 3. Publish auxiliary models too, for example `seedance-2-0-get`, `MiniMax-Hailuo-query`, `MiniMax-Hailuo-get`, and voice/asset upload models. Grant the project key access to every model needed in the workflow.
 4. Pin generation and auxiliary routes to the same provider account/resource. Provider task/file IDs are passed through unchanged, including large JSON integers. TokenHub does not translate these into local background jobs or automatically bind vendor task ownership. Use separate upstream accounts for tenants needing isolated vendor task namespaces.
+
+For native Gemini media, configure a media modality or output modality on the published model and call its `/v1beta/models/{model}:generateContent` or `:streamGenerateContent?alt=sse` endpoint. These requests bypass caches and preserve native `generationConfig` (including `responseModalities` and `imageConfig`), inline media, and thought signatures. The provider model is selected by the route. Native JSON/SSE responses preserve generated media and use `usageMetadata` for token accounting. Both responses are buffered under the 128 MiB media limit; authentication, text policies, scoped hooks, and guarded transport apply.
 
 The managed `gpt-image-2`, Codex subscription, and plugin image profiles retain their existing validation, one-image job flow, stored assets, and `Prefer: respond-async` support. To use a provider's full Images contract for an upstream model with a managed public name, publish a separate public alias (for example `vendor-gpt-image`) mapped to that upstream ID. Ordinary image routes return the provider's response directly; local job polling and signed TokenHub image URLs apply only to managed jobs. Direct image requests accept provider-specific `response_format` strings, such as Qwen Image `base64`; built-in managed images still accept only `url` or `b64_json`, while managed plugin models enforce their configured formats.
 
@@ -70,9 +72,11 @@ Matching `provider_call` hooks run before direct media adapters and can deny, sk
 
 The Responses OpenAPI schema requires `model`; `input` requirements depend on the chosen provider model. For example, DMX lyric/music generation can omit `input` to generate without a supplied prompt. Omitted input is forwarded without adding an empty value.
 
-JSON response handling recognizes `application/json` and MIME types with a `+json` suffix, including parameters and case variations. These responses receive the same validation, token metering, and JSON hook payloads; their original content type is preserved. A recognized JSON base type still receives validation when its parameters are malformed. A parameter containing the text `application/json` does not turn a text or binary response into JSON.
+JSON response handling recognizes `application/json` and MIME types with a `+json` suffix, including parameters and case variations. These responses receive the same validation, token metering, and JSON hook payloads; their original content type is preserved. A recognized JSON base type still receives validation when its parameters are malformed or duplicated. A parameter containing the text `application/json` does not turn a text or binary response into JSON.
 
 Direct media JSON containing a non-null top-level `error` is a failure even when the upstream HTTP status is 200. This also applies to provider-hook output and final response/guardrail-hook replacements. Failures return a generic message without upstream credentials, retain reported token usage, and do not resubmit generation; `error:null` remains compatible with successful responses.
+
+SSE response handling recognizes the `text/event-stream` MIME base type even when its parameters are malformed or duplicated, so invalid parameters cannot bypass event validation, token metering, or event hooks. A parameter containing `text/event-stream` does not turn a text or binary response into SSE.
 
 Direct media SSE requires each non-empty event payload other than `[DONE]` to be one complete JSON object. Malformed upstream or provider-hook events fail before buffered delivery and retain known usage, including a complete leading object with invalid trailing data. Response and stream hooks cannot turn valid events into malformed payloads or successful error streams; final validation retains the original upstream usage.
 

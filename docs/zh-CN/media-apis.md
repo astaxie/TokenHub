@@ -22,10 +22,12 @@ TokenHub 支持 [DMXAPI 文档](https://doc.dmxapi.cn/jichu.html)使用的媒体
 
 ## 配置供应商和模型
 
-1. 添加 **OpenAI-compatible** 供应商，基础地址为 `https://www.dmxapi.cn/v1`，填入供应商凭证。原生 Gemini 示例使用 **Gemini** 类型，按文档设置基础地址并使用同一上游账户。
+1. 添加 **OpenAI-compatible** 供应商，基础地址为 `https://www.dmxapi.cn/v1`，填入供应商凭证。原生 Gemini 示例使用 **Gemini** 类型，基础地址为 `https://www.dmxapi.cn/v1beta`，使用同一上游账户。
 2. 发布公开模型，将路由映射到准确的上游模型 ID。模态选择 `image`、`video` 或 `audio`（音乐使用 `audio`），多模态对话模型也可配置这些输出模态。这些 Chat/Responses 请求跳过响应缓存，避免复用生成结果或读到过期任务状态。
 3. 同时发布辅助模型，例如 `seedance-2-0-get`、`MiniMax-Hailuo-query`、`MiniMax-Hailuo-get` 和声音/素材上传模型。项目密钥必须获准访问整个流程所需的模型。
 4. 将生成和辅助模型的路由固定到同一个供应商账户/资源。供应商任务 ID、文件 ID 和大整数原样传递。TokenHub 不将它们转换成本地后台任务，也不自动绑定供应商任务归属；需要隔离任务命名空间的租户应使用独立上游账户。
+
+调用 Gemini 原生媒体接口时，为公开模型配置媒体模态或输出模态，然后调用 `/v1beta/models/{model}:generateContent` 或 `:streamGenerateContent?alt=sse`。这些请求跳过缓存，保留原生 `generationConfig`（包括 `responseModalities` 和 `imageConfig`）、内嵌媒体及思考签名；上游模型由路由选择。原生 JSON/SSE 响应保留生成的媒体，并按 `usageMetadata` 统计 Token。两种响应均在 128 MiB 媒体上限内缓冲交付，执行鉴权、文本策略、作用域钩子和受保护的出站传输。
 
 托管的 `gpt-image-2`、Codex 订阅及插件图片配置继续使用原有校验、单图任务、素材存储和 `Prefer: respond-async`。如果上游模型与托管公开模型同名，又需要完整供应商 Images 参数，请发布另一个公开别名（如 `vendor-gpt-image`），映射到该上游 ID。普通图片路由直接返回供应商结果；本地任务查询和 TokenHub 签名图片链接仅适用于托管任务。直通图片请求接受供应商自定义的 `response_format` 字符串，例如 Qwen Image 的 `base64`；内置托管图片仍仅接受 `url` 或 `b64_json`，托管插件模型按其配置校验格式。
 
@@ -70,9 +72,11 @@ multipart 的 `model` 和 `stream` 必须是单个文本字段。`/v1/audio/spee
 
 Responses 的 OpenAPI 定义要求提供 `model`；`input` 是否必填取决于所选供应商模型。例如 DMX 的歌词/音乐生成可以省略 `input`，在没有用户提示词的情况下生成。省略的输入会原样转发，不自动补空值。
 
-JSON 响应处理识别 `application/json` 和带 `+json` 后缀的 MIME 类型，并支持参数及大小写差异。这些响应使用相同的校验、Token 用量提取和 JSON 钩子数据格式，同时保留原始内容类型。已识别的 JSON 基础类型即使参数格式错误，也仍会接受校验。参数中出现 `application/json` 字样不会把文本或二进制响应误判为 JSON。
+JSON 响应处理识别 `application/json` 和带 `+json` 后缀的 MIME 类型，并支持参数及大小写差异。这些响应使用相同的校验、Token 用量提取和 JSON 钩子数据格式，同时保留原始内容类型。已识别的 JSON 基础类型即使参数格式错误或重复，也仍会接受校验。参数中出现 `application/json` 字样不会把文本或二进制响应误判为 JSON。
 
 直通媒体 JSON 的顶层 `error` 非 null 时，即使上游返回 HTTP 200，也会记为失败。供应商钩子输出和响应/护栏钩子修改后的最终结果同样适用。失败返回不含上游凭证的通用消息，保留已报告的 Token 用量，且不重新提交生成；`error:null` 仍允许作为成功响应返回。
+
+SSE 响应按 `text/event-stream` MIME 基础类型识别，即使参数格式错误或重复也会执行事件校验、Token 计量和事件钩子，避免这些处理被绕过。参数中出现 `text/event-stream` 字样不会把文本或二进制响应误判为 SSE。
 
 直通媒体 SSE 中，除 `[DONE]` 外的非空事件数据必须是一个完整 JSON 对象。上游或供应商钩子产生的畸形事件会在缓冲交付前报错，并保留已知用量，包括尾随无效数据之前完整对象中的用量。响应和流式钩子不能把合法事件改成畸形数据或被记为成功的错误流；最终校验保留原始上游用量。
 

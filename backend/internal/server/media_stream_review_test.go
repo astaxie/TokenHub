@@ -72,7 +72,7 @@ func TestMediaSSEPreservesLargeImageEvents(t *testing.T) {
 }
 
 func TestMediaSSEHooksProcessEventsBeforeDelivery(t *testing.T) {
-	for _, source := range []string{"adapter", "provider hook"} {
+	for _, source := range []string{"adapter", "adapter malformed MIME parameters", "provider hook"} {
 		for _, stage := range []pluginmeta.GatewayHookStage{pluginmeta.StageStreamTransform, pluginmeta.StageResponsePost, pluginmeta.StageGuardrailPost} {
 			for _, deny := range []bool{false, true} {
 				t.Run(source+"/"+string(stage)+map[bool]string{false: "/rewrite", true: "/deny"}[deny], func(t *testing.T) {
@@ -80,7 +80,11 @@ func TestMediaSSEHooksProcessEventsBeforeDelivery(t *testing.T) {
 						if source == "provider hook" {
 							t.Error("provider hook reached the adapter")
 						}
-						w.Header().Set("Content-Type", "text/event-stream")
+						contentType := "text/event-stream"
+						if source == "adapter malformed MIME parameters" {
+							contentType += "; charset="
+						}
+						w.Header().Set("Content-Type", contentType)
 						_, _ = io.WriteString(w, "data: {\"text\":\"private\",\"usage\":{\"total_tokens\":5,\"output_tokens\":5}}\n\n")
 					}, "audio")
 					if source == "provider hook" {

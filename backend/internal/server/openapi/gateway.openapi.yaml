@@ -1182,7 +1182,7 @@ paths:
       operationId: generateGeminiContent
       tags: [Gemini Native]
       summary: Generate Gemini content.
-      description: Native Gemini `generateContent` route translated through TokenHub routing and authentication. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
+      description: Native Gemini `generateContent` route with TokenHub routing and authentication. Models configured with media output use native Gemini providers and preserve media configuration and generated parts; text models retain the Responses compatibility bridge. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       security:
@@ -1235,7 +1235,7 @@ paths:
       operationId: streamGeminiContent
       tags: [Gemini Native]
       summary: Stream Gemini content.
-      description: Native Gemini streaming route. Use `?alt=sse` for SSE framing. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
+      description: Native Gemini streaming route. Use `?alt=sse` for SSE framing. Models configured with media output preserve native Gemini events, buffered up to 128 MiB before delivery. Gemini-compatible clients may send the TokenHub project API key in `x-goog-api-key`.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       security:

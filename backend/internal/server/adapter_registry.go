@@ -28,6 +28,7 @@ const (
 	AdapterCapabilityWebSocket      AdapterCapability = "responses_websocket"
 	AdapterCapabilityImageGenerate  AdapterCapability = "image_generation"
 	AdapterCapabilityMedia          AdapterCapability = "media"
+	AdapterCapabilityGeminiMedia    AdapterCapability = "gemini_media"
 )
 
 type AdapterDescriptor struct {

@@ -276,6 +276,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			[]string{"gemini-2.5-pro", "gemini-2.5-flash"},
 		),
 		capabilities: []AdapterCapability{
+			AdapterCapabilityGeminiMedia,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityEmbeddings,

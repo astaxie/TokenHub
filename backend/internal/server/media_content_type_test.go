@@ -24,6 +24,8 @@ func TestMediaStructuredJSONUsesValidationAndMetering(t *testing.T) {
 			{"trailing value", `{"usage":{"output_tokens":7,"total_tokens":7}}{}`, "", http.StatusBadGateway},
 			{"invalid JSON parameters", `{"error":{"message":"upstream-fixture-secret"},"usage":{"output_tokens":7,"total_tokens":7}}`, "application/json; charset=", http.StatusBadGateway},
 			{"invalid structured JSON parameters", `{"error":{"message":"upstream-fixture-secret"},"usage":{"output_tokens":7,"total_tokens":7}}`, "application/vnd.fixture+json; charset=", http.StatusBadGateway},
+			{"duplicate JSON parameters", `{"error":{"message":"upstream-fixture-secret"},"usage":{"output_tokens":7,"total_tokens":7}}`, "application/json; charset=utf-8; charset=ascii", http.StatusBadGateway},
+			{"duplicate structured JSON parameters", `{"error":{"message":"upstream-fixture-secret"},"usage":{"output_tokens":7,"total_tokens":7}}`, "application/vnd.fixture+json; charset=utf-8; charset=ascii", http.StatusBadGateway},
 		} {
 			if source == "provider hook" && tc.contentType != "" {
 				// Provider hooks reject malformed MIME types at envelope validation.
@@ -115,4 +117,49 @@ func serveMediaContentTypeRequest(handler http.Handler, key string) responseBody
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	return responseBody{Code: recorder.Code, Body: recorder.Body.String(), Header: recorder.Header()}
+}
+
+func TestMediaSSEContentTypePreservesValidationAndMetering(t *testing.T) {
+	const event = "data: {\"text\":\"fixture\",\"usage\":{\"output_tokens\":7,\"total_tokens\":7}}\n\n"
+	const failure = "event: error\ndata: {\"error\":{\"message\":\"upstream-fixture-secret\"}}\n\n"
+	for _, tc := range []struct {
+		name, contentType, suffix string
+		status                    int
+		tokens                    int64
+	}{
+		{"mixed case", "Text/Event-Stream; charset=utf-8", "", http.StatusOK, 7},
+		{"empty charset success", "text/event-stream; charset=", "", http.StatusOK, 7},
+		{"empty charset error", "text/event-stream; charset=", failure, http.StatusBadGateway, 7},
+		{"duplicate charset error", "text/event-stream; charset=utf-8; charset=ascii", failure, http.StatusBadGateway, 7},
+		{"invalid quote and event", `text/event-stream; charset="`, "data: {}{}\n\n", http.StatusBadGateway, 7},
+		{"SSE parameter in text", `text/plain; profile="text/event-stream"`, "", http.StatusOK, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, calls := event+tc.suffix, 0
+			server, store, key := newMediaGatewayFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				w.Header().Set("Content-Type", tc.contentType)
+				_, _ = io.WriteString(w, body)
+			}, "audio")
+			store.AddRoute(ModelRoute{ID: "fallback-sse-content-type", ModelName: "public-media", ProviderID: "media-provider", ProviderModel: "other-media", Status: StatusActive, Priority: 2, Weight: 100})
+			response := serveMediaContentTypeRequest(server.Handler(), key)
+			if response.Code != tc.status || calls != 1 {
+				t.Errorf("SSE outcome: status=%d want=%d calls=%d body=%s", response.Code, tc.status, calls, response.Body)
+			}
+			if tc.status == http.StatusOK && (response.Body != body || response.Header.Get("Content-Type") != tc.contentType) {
+				t.Error("successful response bytes or content type changed")
+			}
+			logs, _ := json.Marshal(store.ListRequestLogs())
+			if strings.Contains(response.Body+string(logs), "upstream-fixture-secret") {
+				t.Error("SSE error leaked provider credentials")
+			}
+			records := store.ListUsageRecords()
+			if tc.tokens == 0 && len(records) == 0 {
+				return
+			}
+			if len(records) != 1 || records[0].TotalTokens != tc.tokens {
+				t.Errorf("incorrect SSE usage: %+v, want %d tokens", records, tc.tokens)
+			}
+		})
+	}
 }
