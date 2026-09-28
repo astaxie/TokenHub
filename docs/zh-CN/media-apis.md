@@ -70,7 +70,7 @@ multipart 的 `model` 和 `stream` 必须是单个文本字段。`/v1/audio/spee
 
 接口执行鉴权、模型白名单、配额、作用域路由、供应商资源容量限制、文本前置策略、响应钩子和用量归属。请求钩子接收 JSON/文本字段，multipart 文件字节保持不透明。媒体 Responses 的文本策略也检查供应商提示词、Kling `multi_prompt[].prompt` 分镜描述、歌词和 Wan 嵌套消息或 `input.input.prompt` 封装及 `parameters.negative_prompt`，同时保留不透明的素材/任务 ID。直通媒体审计记录模型、脱敏后的策略决定、内容类型和字节数，不保存上传或生成的媒体。客户端 Cookie 和鉴权头不转发，使用已配置供应商凭证及受保护的出站传输。结果不确定的媒体提交失败不会自动换路由再次生成，包括通过 Chat/Responses 调用的媒体模型；明确的鉴权或限流拒绝仍可触发故障切换。
 
-匹配的 `provider_call` 钩子会在直通媒体适配器之前执行，可以拒绝、跳过或接管路由。直通图片钩子按实际接口协议（`images/generations`、`images/edits` 或 `images/variations`）匹配作用域；托管图片任务仍使用 `images/generations`。非流式钩子返回供应商 JSON 响应，或包含字符串 `data_base64` 和 `content_type` 的二进制封装。流式钩子返回 `stream_events`，交付仍采用缓冲方式。处理二进制或文本响应的响应/护栏钩子必须保留有效的 `data_base64`；格式错误的修改会报错，不会返回空的成功响应。Base64 允许换行，但填充符之后不能追加编码数据。128 MiB 响应上限同样适用于响应钩子处理后的结果，按序列化 JSON 或解码后的二进制字节计算；超限的替换结果会报错，但保留已报告的用量。
+匹配的 `provider_call` 钩子会在直通媒体适配器之前执行，可以拒绝、跳过或接管路由。直通图片钩子按实际接口协议（`images/generations`、`images/edits` 或 `images/variations`）匹配作用域；托管图片任务仍使用 `images/generations`。非流式钩子返回供应商 JSON 响应，或包含字符串 `data_base64` 和 `content_type` 的二进制封装。流式钩子返回 `stream_events`，交付仍采用缓冲方式。处理二进制或文本响应的响应/护栏钩子必须保留有效的 `data_base64`；格式错误的修改会报错，不会返回空的成功响应。供应商钩子和响应钩子均允许 Base64 中的 CR/LF 换行，但填充符之后不能追加编码数据。128 MiB 响应上限适用于两类钩子的输出，按序列化 JSON 或解码后的二进制字节计算，不计入 Base64 换行；超限的替换结果会报错，但保留已报告的用量。
 
 非流式供应商钩子的 JSON 超过响应大小上限时，请求和路由尝试记录仍会保留已报告的 Token 用量，包括 Gemini 原生 `usageMetadata`。插件显式用量（包括零）优先。响应仍记为失败，不重试，也不扣减供应商健康状态。
 

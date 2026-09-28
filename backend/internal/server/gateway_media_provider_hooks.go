@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"mime"
 	"net/http"
@@ -105,10 +104,10 @@ func mediaProviderHookResponse(payload any, limit int) (mediaResponse, error) {
 		if strings.ContainsAny(contentType, "\r\n") {
 			return mediaResponse{}, invalidMediaProviderHookResponse()
 		}
-		if _, _, err := mime.ParseMediaType(contentType); err != nil || base64.StdEncoding.DecodedLen(len(*encoded)) > limit+2 {
+		if _, _, err := mime.ParseMediaType(contentType); err != nil {
 			return mediaResponse{}, invalidMediaProviderHookResponse()
 		}
-		data, err = base64.StdEncoding.DecodeString(*encoded)
+		data, err = decodeMediaBase64(*encoded, limit)
 		if err != nil {
 			return mediaResponse{}, invalidMediaProviderHookResponse()
 		}

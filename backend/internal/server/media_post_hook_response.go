@@ -28,7 +28,10 @@ func encodeMediaPostHookResponse(payload any, jsonResponse bool, limit int) ([]b
 	if err := json.Unmarshal(data, &wrapped); err != nil || wrapped.Data == nil {
 		return nil, NewHTTPError(http.StatusBadGateway, "gateway_hook_response_invalid", "Media response hooks must preserve a string data_base64 field")
 	}
-	encoded := *wrapped.Data
+	return decodeMediaBase64(*wrapped.Data, limit)
+}
+
+func decodeMediaBase64(encoded string, limit int) ([]byte, error) {
 	encodedBytes, padded := 0, false
 	for index := 0; index < len(encoded); index++ {
 		switch encoded[index] {
@@ -51,7 +54,7 @@ func encodeMediaPostHookResponse(payload any, jsonResponse bool, limit int) ([]b
 		return nil, mediaPostHookResponseTooLarge()
 	}
 	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded))
-	data, err = io.ReadAll(io.LimitReader(decoder, int64(limit)+1))
+	data, err := io.ReadAll(io.LimitReader(decoder, int64(limit)+1))
 	if len(data) > limit {
 		return nil, mediaPostHookResponseTooLarge()
 	}
