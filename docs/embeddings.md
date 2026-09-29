@@ -48,3 +48,18 @@ The model directory displays the embedding rate rather than the chat input rate.
 Explicitly confirmed free embeddings remain zero-priced even if a legacy chat input rate or adapter-reported charge is present. Provider costs and token counters are retained. The directory displays confirmed free retrieval rates as zero and unconfigured rates as unknown. Deployment identity changes invalidate prior embedding cache entries; no database migration is required.
 
 Token-ID inputs reserve TPM using the exact sum of token IDs, including batches. Global pre-routing hooks may rewrite text before cache binding; route-scoped request transforms cannot change embedding input. The cache namespace changes so entries created under the previous transform contract become misses. Before execution, non-mock routes must still have a matching text-embedding inventory entry and configured supplier price, even if inventory or public model settings changed after publication.
+
+## Diagnosing rejected routes
+
+When runtime filtering rejects every candidate, the API retains HTTP `501` and `provider_capability_not_supported` for compatibility. The response and saved request-log response include an actionable `error.message` and `error.details` with `stage="route_selection"`, `upstream_attempted=false`, and a `reasons` array. Each entry includes a stable `code`, a remediation `message`, and `route_count`. The count reflects candidate routes, not upstream attempts; only the first blocking reason per candidate is reported. Multiple reasons are sorted by code. No provider identifiers, endpoints, credentials, or exact costs are included.
+
+| Reason code | Check |
+| --- | --- |
+| `provider_capability_or_protocol_unsupported` | Provider adapter and Embedding protocol support |
+| `tenant_price_not_configured` | Public model Embedding price or explicit free-price confirmation |
+| `upstream_model_inventory_missing` | Matching provider inventory entry and route upstream model name |
+| `upstream_model_modality_mismatch` | Inventory model type must be `embedding` |
+| `upstream_text_input_unsupported` | Inventory must support text input |
+| `provider_price_not_configured` | Inventory input cost or explicit free-price confirmation; zero alone is insufficient |
+
+No upstream request has been sent in this case, so an empty route-attempt list is expected. Filling in `/embeddings` cannot resolve an inventory or pricing rejection. Startup may backfill missing inventory from existing routes; a backfilled zero cost without free-price confirmation is reported as `provider_price_not_configured`. Earlier public-model admission failures remain `400 embedding_model_not_configured`; other failures such as vector-space conflicts retain their existing errors. Valid candidates continue normally when only some routes are rejected.

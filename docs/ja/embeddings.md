@@ -48,3 +48,18 @@ OpenAI SDK は `client.embeddings.create` を使用します。Dify、LangChain/
 無料と明示確認した Embedding は旧チャット入力単価やアダプターの報告費用が残っていてもテナント料金をゼロに保ち、上流原価と token 数は維持します。一覧では確認済み無料をゼロ、未設定を不明として表示します。識別変更により旧キャッシュは無効になり、DB 移行は不要です。
 
 token ID 入力の TPM はバッチを含む ID 数の合計で予約します。全体のルーティング前フックはキャッシュ識別前にテキストを変更できますが、ルート単位の request_transform は埋め込み入力を変更できません。旧契約のキャッシュは名前空間変更で無効になります。実行前に非 mock ルートの上流在庫、テキスト能力、供給元料金を再検証し、公開後の設定変更も反映します。
+
+## ルート拒否の診断
+
+実行時のフィルタリングですべての候補が除外された場合、互換性のため HTTP `501` と `provider_capability_not_supported` を維持します。API 応答とリクエストログに保存される応答には、対処方法を示す `error.message` と `error.details` が含まれます。詳細は `stage="route_selection"`、`upstream_attempted=false`、`reasons` 配列です。各要素は原因 `code`、対処方法 `message`、候補ルート数 `route_count` を持ちます。この数は上流への試行回数ではありません。候補ごとに最初の拒否理由を報告し、複数の理由はコード順に並べます。Provider の識別子、URL、認証情報、具体的な原価は公開しません。
+
+| 原因コード | 確認事項 |
+| --- | --- |
+| `provider_capability_or_protocol_unsupported` | Provider アダプターと Embedding プロトコルの対応状況 |
+| `tenant_price_not_configured` | 公開モデルの Embedding 料金、または明示的な無料確認 |
+| `upstream_model_inventory_missing` | ルートの上流モデル名に一致する在庫エントリー |
+| `upstream_model_modality_mismatch` | 在庫モデルの種別が `embedding` であること |
+| `upstream_text_input_unsupported` | 在庫モデルのテキスト入力対応 |
+| `provider_price_not_configured` | 在庫の入力原価、または明示的な無料確認。ゼロだけでは確認になりません |
+
+この場合、上流リクエストは送信されていないため、ルート試行一覧が空なのは正常です。`/embeddings` の入力では在庫や料金の問題は解決しません。起動時に既存ルートから在庫を補完する場合があり、補完した原価がゼロで無料確認がない場合は `provider_price_not_configured` になります。それ以前の公開モデルの受け入れ検証は引き続き `400 embedding_model_not_configured` を返し、ベクトル空間の競合なども既存のエラーを維持します。一部のみが拒否された場合は、有効な候補を通常どおり実行します。

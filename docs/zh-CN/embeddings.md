@@ -48,3 +48,18 @@ OpenAI SDK 使用 `client.embeddings.create`。Dify、LangChain/LlamaIndex 使�
 明确确认免费的 Embedding 即使保留旧聊天输入价或适配器返回费用，也按零租户费用结算；供应商成本与 token 计数仍保留。模型目录将确认免费显示为零，未配置显示为未知。部署身份变化会使旧向量缓存失效，无需数据库迁移。
 
 token ID 输入按实际 ID 数量（包含批次总和）预留 TPM。全局路由前插件可在缓存绑定前改写文本；路由级 request_transform 不得改变向量输入。缓存命名空间已更新，旧变换契约生成的缓存将失效。执行前重新检查非 mock 路由的上游库存类型、文本能力和供应商价格，覆盖发布后的配置变化。
+
+## 排查路由被拒绝
+
+运行时筛选排除全部候选线路时，为兼容客户端，API 保留 HTTP `501` 和 `provider_capability_not_supported`。响应及请求日志中保存的响应包含可操作的 `error.message`，以及 `error.details`：`stage="route_selection"`、`upstream_attempted=false` 和 `reasons` 数组。每项包含稳定的原因 `code`、处理建议 `message`、候选线路数 `route_count`。该数量不是上游尝试次数；每条候选线路只报告首先遇到的阻断原因，多种原因按代码排序。不返回渠道标识、地址、凭据或具体成本金额。
+
+| 原因代码 | 检查项 |
+| --- | --- |
+| `provider_capability_or_protocol_unsupported` | 渠道适配器及 Embedding 协议是否支持 |
+| `tenant_price_not_configured` | 对外模型 Embedding 价格或明确免费确认 |
+| `upstream_model_inventory_missing` | 渠道库存是否存在与路由上游模型名匹配的记录 |
+| `upstream_model_modality_mismatch` | 库存模型类型须为 `embedding` |
+| `upstream_text_input_unsupported` | 库存是否支持文本输入 |
+| `provider_price_not_configured` | 库存输入成本或明确免费确认；仅填 0 不代表已确认免费 |
+
+此时尚未发送上游请求，路由尝试列表为空属于预期结果。补填 `/embeddings` 无法解决库存或价格问题。启动时可能根据已有路由补建库存；若补建的成本为零且未确认免费，会报告 `provider_price_not_configured`。更早的对外模型准入失败仍返回 `400 embedding_model_not_configured`，向量空间冲突等其他失败也保留原有错误。仅部分线路被排除时，合格线路继续正常执行。
