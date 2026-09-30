@@ -429,6 +429,7 @@ export function APIKeyWizardModal({
     if (!canContinue(0) || !canContinue(1) || !canContinue(2)) return;
     onCreate({
       ...values,
+      model_access_mode: modelScope === "all" ? "inherit" : "restricted",
       allowed_models: modelScope === "all" ? "" : values.allowed_models,
       status: "active",
     });

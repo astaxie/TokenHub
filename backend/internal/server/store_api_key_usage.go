@@ -323,8 +323,11 @@ func (s *GormStore) apiKeyQuotaSnapshot(tx *gorm.DB, key APIKey, project Project
 	if err != nil {
 		return APIKeyQuotaSnapshot{}, err
 	}
-	day := dayBucket(now)
-	month := monthBucket(now)
+	periods, err := currentQuotaPeriods(tx, now)
+	if err != nil {
+		return APIKeyQuotaSnapshot{}, err
+	}
+	day, month := periods.Day, periods.Month
 	dayCounter, err := readQuotaCounter(tx, key.ID, "day", day)
 	if err != nil {
 		return APIKeyQuotaSnapshot{}, err

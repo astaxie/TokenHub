@@ -621,22 +621,22 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 				return err
 			}
 		}
-		// Admission counted this request on the buckets derived from
-		// call.StartedAt, the database clock reading StartCall took. Deriving
-		// them from the completion clock instead would post the tokens and cost
-		// to a different period whenever the two disagree across a day or month
-		// boundary — the request would be counted in one period and charged to
-		// another, leaving the first under-enforced. The response job rollback
-		// already settles against its own admission reading for the same reason.
+		// Use the durable admission buckets so a timezone change or a completion
+		// across midnight cannot move tokens and cost away from the request count.
+		// Legacy admissions without a snapshot retain their original UTC buckets.
 		admittedAt := call.StartedAt
 		if admittedAt.IsZero() {
 			admittedAt = now
 		}
-		dayCounter, err := s.quotaBucketForUpdate(tx, call.Key.ID, "day", dayBucket(admittedAt))
+		periods, err := admittedQuotaPeriods(tx, call.RequestID, admittedAt)
 		if err != nil {
 			return err
 		}
-		monthCounter, err := s.quotaBucketForUpdate(tx, call.Key.ID, "month", monthBucket(admittedAt))
+		dayCounter, err := s.quotaBucketForUpdate(tx, call.Key.ID, "day", periods.Day)
+		if err != nil {
+			return err
+		}
+		monthCounter, err := s.quotaBucketForUpdate(tx, call.Key.ID, "month", periods.Month)
 		if err != nil {
 			return err
 		}
@@ -652,8 +652,8 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 			scope  string
 			bucket string
 		}{
-			{scope: "day", bucket: dayBucket(admittedAt)},
-			{scope: "month", bucket: monthBucket(admittedAt)},
+			{scope: "day", bucket: periods.Day},
+			{scope: "month", bucket: periods.Month},
 		} {
 			if err := s.addAttributedQuotaUsage(tx, call.Key.ID, period.scope, period.bucket, attributedUserID, quotaUsage); err != nil {
 				return err
@@ -665,11 +665,11 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 			}
 		}
 		if call.UserQuotaEnabled {
-			userDayCounter, err := s.quotaBucketForUpdate(tx, call.UserQuotaID, "day", dayBucket(admittedAt), attributedUserID)
+			userDayCounter, err := s.quotaBucketForUpdate(tx, call.UserQuotaID, "day", periods.Day, attributedUserID)
 			if err != nil {
 				return err
 			}
-			userMonthCounter, err := s.quotaBucketForUpdate(tx, call.UserQuotaID, "month", monthBucket(admittedAt), attributedUserID)
+			userMonthCounter, err := s.quotaBucketForUpdate(tx, call.UserQuotaID, "month", periods.Month, attributedUserID)
 			if err != nil {
 				return err
 			}
@@ -1013,6 +1013,10 @@ func (s *GormStore) rollbackImageJobAdmission(tx *gorm.DB, job ImageJob) error {
 		return err
 	}
 	admittedAt := *job.AdmittedAt
+	periods, err := admittedQuotaPeriods(tx, job.RequestID, admittedAt)
+	if err != nil {
+		return err
+	}
 	if job.RedisBillingAdmitted {
 		s.rollbackRedisBilling("image job", imageJobAdmissionCall(job))
 	} else if job.MinuteRequestHeld {
@@ -1058,9 +1062,9 @@ func (s *GormStore) rollbackImageJobAdmission(tx *gorm.DB, job ImageJob) error {
 	}
 
 	for _, period := range []string{"day", "month"} {
-		bucketName := dayBucket(admittedAt)
+		bucketName := periods.Day
 		if period == "month" {
-			bucketName = monthBucket(admittedAt)
+			bucketName = periods.Month
 		}
 		bucket, err := s.quotaBucketForUpdate(tx, job.APIKeyID, period, bucketName)
 		if err != nil {

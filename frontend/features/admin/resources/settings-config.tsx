@@ -6,7 +6,7 @@ import { boolLabel, dataScopeLabel, identityProviderDefaultGrantLabel, identityP
 import { formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { genericResourceConfig } from "./generic-config";
 import { adminUserConfig, alertDeliveryConfig, alertEventConfig, alertRuleConfig, approvalConfig, approvalFlowConfig, costCenterConfig, downloadSQLiteBackup, reportConfig, restoreSQLiteBackup } from "./governance-config";
-import { adminDelete, adminFetch, adminMutate, identityProviderPayload, notificationChannelPayload } from "./payloads";
+import { adminDelete, adminFetch, adminMutate, readAdminError, identityProviderPayload, notificationChannelPayload } from "./payloads";
 import { apiKeyConfig, projectConfig, projectMemberConfig } from "./project-key-config";
 import { modelConfig, providerConfig, routeConfig } from "./provider-model-config";
 import { routingPolicyConfig } from "./routing-policy-config";
@@ -123,6 +123,7 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
     { key: "default_timeout", label: "默认超时", help: "网关转发上游请求的默认等待时间，例如 120s。" },
     { key: "audit_retention", label: "审计保留", help: "请求和响应正文的保留周期，范围为 1d 至 3650d；请求元数据不会被清理。" },
     { key: "dashboard_timezone", label: "用量看板时区", placeholder: "UTC", help: "用于当天用量和使用趋势的自然日边界。请填写 IANA 时区，例如 UTC、Asia/Shanghai 或 America/New_York。" },
+    { key: "quota_timezone", label: "配额时区", placeholder: "UTC", help: "每日和每月配额按此时区的零点重置，默认 UTC。可填写 Asia/Shanghai 等 IANA 时区。修改不会重新归属历史用量。" },
     { key: "plugin_marketplace_url", label: "插件市场地址", placeholder: "", help: "插件管理页右上角打开的插件市场网站地址。必须使用 HTTP 或 HTTPS。" },
     { key: "api_key_prefix", label: "API Key 前缀", placeholder: "sk_", help: "新建和轮换 Key 时使用；建议以 _ 结尾，例如 sk_。" },
     { key: "api_key_random_length", label: "API Key 随机长度", type: "number", placeholder: "48", help: "前缀后面的随机字符数，系统会限制在 24-128 之间。" },
@@ -208,6 +209,7 @@ export function systemSettingConfig(): ResourceConfig<AdminResource> {
     remove: undefined,
     toForm: (item) => ({
       ...(base.toForm?.(item) ?? {}),
+      quota_timezone: stringifyValue(item.fields?.quota_timezone) || "UTC",
       dashboard_timezone: stringifyValue(item.fields?.dashboard_timezone) || "UTC",
       plugin_marketplace_url: stringifyValue(item.fields?.plugin_marketplace_url) || "",
     }),
@@ -398,6 +400,20 @@ export function notificationChannelConfig(): ResourceConfig<AdminResource> {
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
       { key: "updated_at", label: "更新时间", render: (item) => formatTime(item.updated_at ?? "") },
     ],
+    actions: [{
+      label: "发送测试通知",
+      pendingMessage: "测试通知发送中…",
+      title: "使用已保存的配置向目标发送一条测试通知",
+      run: async (ctx, item) => {
+        const resp = await adminFetch(ctx, `/api/admin/resources/notification-channels/${encodeURIComponent(item.id)}/test`, { method: "POST" });
+        if (!resp.ok) throw new Error(await readAdminError(resp, tx("测试通知发送失败")));
+        const delivery = await resp.json() as { status: string; error?: string };
+        if (delivery.status !== "success") {
+          throw new Error(formatTranslationTemplate(tx("测试通知发送失败：{error}"), { error: delivery.error || tx("操作失败") }));
+        }
+      },
+      doneMessage: () => tx("测试通知已提交，请到收件箱或目标渠道确认接收。"),
+    }],
     create: (ctx, values) => adminMutate(ctx, "/api/admin/resources/notification-channels", "POST", notificationChannelPayload(values)),
     update: (ctx, item, values) => adminMutate(ctx, `/api/admin/resources/notification-channels/${item.id}`, "PATCH", notificationChannelPayload(values, item)),
     toForm: (item) => ({

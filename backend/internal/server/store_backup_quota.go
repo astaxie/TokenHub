@@ -427,6 +427,10 @@ func (s *GormStore) GetQuotaPolicyUsage(scope string, scopeID string) (QuotaPoli
 	if err != nil {
 		return QuotaPolicyUsage{}, false, err
 	}
+	periods, err := currentQuotaPeriods(s.db, now)
+	if err != nil {
+		return QuotaPolicyUsage{}, false, err
+	}
 	usage := QuotaPolicyUsage{}
 	lookupAttribution := unattributedQuotaUserID
 	if scope == "user" {
@@ -437,8 +441,8 @@ func (s *GormStore) GetQuotaPolicyUsage(scope string, scopeID string) (QuotaPoli
 		bucket  string
 		counter *QuotaCounter
 	}{
-		{scope: "day", bucket: dayBucket(now), counter: &usage.Daily},
-		{scope: "month", bucket: monthBucket(now), counter: &usage.Monthly},
+		{scope: "day", bucket: periods.Day, counter: &usage.Daily},
+		{scope: "month", bucket: periods.Month, counter: &usage.Monthly},
 	} {
 		var item QuotaBucket
 		attributionQuery := "attributed_user_id = ?"

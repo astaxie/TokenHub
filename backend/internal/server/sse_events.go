@@ -27,7 +27,7 @@ const maxSSEEventBytes = 8 << 20
 
 // sseEventAssembler turns SSE lines into events. Both the pull-mode decoder and
 // the push-mode writer below delegate framing to it, so every stream the gateway
-// parses shares one set of field rules and one size limit.
+// parses shares one set of field rules and a bounded event size.
 type sseEventAssembler struct {
 	event serverSentEvent
 	data  []string
@@ -37,11 +37,17 @@ type sseEventAssembler struct {
 	// are a complete keepalive, but inside a frame they belong to it.
 	fields bool
 	size   int
+	// A zero limit retains the default bound used by incremental streams.
+	limit int
 }
 
 // remaining reports how many more bytes the event being assembled may consume.
 func (a *sseEventAssembler) remaining() int {
-	return maxSSEEventBytes - a.size
+	limit := a.limit
+	if limit <= 0 {
+		limit = maxSSEEventBytes
+	}
+	return limit - a.size
 }
 
 // charge books bytes against the current event's budget. Callers charge before
@@ -49,7 +55,7 @@ func (a *sseEventAssembler) remaining() int {
 // rather than after it has already been allocated.
 func (a *sseEventAssembler) charge(n int) error {
 	a.size += n
-	if a.size > maxSSEEventBytes {
+	if a.remaining() < 0 {
 		// The frame is being abandoned, so its bytes must not reach a client:
 		// forwarding them is exactly what the limit exists to prevent.
 		a.raw = nil

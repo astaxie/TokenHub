@@ -168,7 +168,7 @@ function UsageRangeToolbar({ rangeOption, customFrom, customTo, error, onPreset,
         <label><span>{tx("结束日期")}</span><input aria-label={tx("结束日期")} type="date" value={customTo} onChange={(event) => onCustomTo(event.target.value)} /></label>
         <button className="secondary-button" type="button" onClick={onApply}>{tx("应用")}</button>
       </div>
-      {error ? <span className="status-line error">{error}</span> : <small>{tx("统计和额度周期均以 UTC 为准")}</small>}
+      {error ? <span className="status-line error">{error}</span> : <small>{tx("统计日期以 UTC 为准，额度周期使用系统配置的配额时区")}</small>}
     </div>
   );
 }

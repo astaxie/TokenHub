@@ -86,6 +86,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			[]string{"gpt-5", "gpt-5-mini", "gpt-4.1-mini", "text-embedding-3-small"},
 		),
 		capabilities: []AdapterCapability{
+			AdapterCapabilityMedia,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityResponses,
@@ -105,6 +106,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		reasoningConfigurable:      boolPointer(true),
 		managedHeaders:             []string{"api-key", "x-api-key", "openai-organization", "openai-project"},
 		capabilities: []AdapterCapability{
+			AdapterCapabilityMedia,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityResponses,
@@ -274,6 +276,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			[]string{"gemini-2.5-pro", "gemini-2.5-flash"},
 		),
 		capabilities: []AdapterCapability{
+			AdapterCapabilityGeminiMedia,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityEmbeddings,

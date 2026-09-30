@@ -104,6 +104,10 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 	if err != nil {
 		return admission, err
 	}
+	periods, err := currentQuotaPeriods(tx, now)
+	if err != nil {
+		return admission, err
+	}
 	measuredAt := time.Now()
 	attributedUserID := usageAttributionUserID(privateKey, privateProject)
 	minuteCounter := QuotaCounter{}
@@ -146,33 +150,33 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 			}
 		}
 	}
-	dayCounter, err := s.quotaBucketForUpdate(tx, privateKey.ID, "day", dayBucket(now))
+	dayCounter, err := s.quotaBucketForUpdate(tx, privateKey.ID, "day", periods.Day)
 	if err != nil {
 		return admission, err
 	}
 	userDayCounter := QuotaBucket{}
 	userMonthCounter := QuotaBucket{}
 	if userPolicy.Enabled() {
-		userDayCounter, err = s.quotaBucketForUpdate(tx, userQuotaID, "day", dayBucket(now), userPolicy.UserID)
+		userDayCounter, err = s.quotaBucketForUpdate(tx, userQuotaID, "day", periods.Day, userPolicy.UserID)
 		if err != nil {
 			return admission, err
 		}
-		userMonthCounter, err = s.quotaBucketForUpdate(tx, userQuotaID, "month", monthBucket(now), userPolicy.UserID)
+		userMonthCounter, err = s.quotaBucketForUpdate(tx, userQuotaID, "month", periods.Month, userPolicy.UserID)
 		if err != nil {
 			return admission, err
 		}
-		historicalDay, err := s.aggregateUserQuotaCounter(tx, userPolicy.UserID, "day", dayBucket(now))
+		historicalDay, err := s.aggregateUserQuotaCounter(tx, userPolicy.UserID, "day", periods.Day)
 		if err != nil {
 			return admission, err
 		}
-		historicalMonth, err := s.aggregateUserQuotaCounter(tx, userPolicy.UserID, "month", monthBucket(now))
+		historicalMonth, err := s.aggregateUserQuotaCounter(tx, userPolicy.UserID, "month", periods.Month)
 		if err != nil {
 			return admission, err
 		}
 		mergeQuotaCounterMax(&userDayCounter.QuotaCounter, historicalDay)
 		mergeQuotaCounterMax(&userMonthCounter.QuotaCounter, historicalMonth)
 	}
-	monthCounter, err := s.quotaBucketForUpdate(tx, privateKey.ID, "month", monthBucket(now))
+	monthCounter, err := s.quotaBucketForUpdate(tx, privateKey.ID, "month", periods.Month)
 	if err != nil {
 		return admission, err
 	}
@@ -293,7 +297,7 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 	if effectiveLimits.TokenLimitTPM > 0 || userPolicy.Enabled() {
 		admission.call.ReservedTokens = maxInt64(tokenReservation, 0)
 	}
-	if err := s.captureMeteringRequest(tx, admission.call); err != nil {
+	if err := s.captureMeteringRequest(tx, admission.call, periods); err != nil {
 		return admission, err
 	}
 	return admission, nil
