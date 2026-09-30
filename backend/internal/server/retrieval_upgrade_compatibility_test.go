@@ -15,14 +15,18 @@ import (
 // Upstream procurement evidence must not decide whether an existing route runs.
 func TestRetrievalUpgradeKeepsPublishedLocalModelsCallable(t *testing.T) {
 	for _, tc := range []struct {
-		name, modality, protocol string
-		cost                     float64
+		name, modality, protocol, kind, catalog string
+		cost                                    float64
 	}{
-		{"embedding_auto_zero_cost", "embedding", "", 0},
-		{"embedding_explicit_zero_cost", "embedding", "openai", 0},
-		{"rerank_explicit_zero_cost", "rerank", "jina", 0},
-		{"rerank_auto_paid_cost", "rerank", "", 1},
-		{"rerank_auto_zero_cost", "rerank", "", 0},
+		{"embedding_auto_zero_cost", "embedding", "", ProviderOpenAICompatible, "", 0},
+		{"embedding_explicit_zero_cost", "embedding", "openai", ProviderOpenAICompatible, "", 0},
+		{"rerank_explicit_zero_cost", "rerank", "jina", ProviderOpenAICompatible, "", 0},
+		{"rerank_auto_paid_cost", "rerank", "", ProviderOpenAICompatible, "", 1},
+		{"rerank_auto_zero_cost", "rerank", "", ProviderOpenAICompatible, "", 0},
+		// The console persists custom rather than an empty catalog ID.
+		{"rerank_custom_catalog_auto", "rerank", "", ProviderOpenAICompatible, "custom", 0},
+		{"rerank_local_custom_catalog_auto", "rerank", "", "local", "custom", 0},
+		{"rerank_local_catalog_auto", "rerank", "", "local", "local", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var upstreamCalls atomic.Int64
@@ -55,7 +59,7 @@ func TestRetrievalUpgradeKeepsPublishedLocalModelsCallable(t *testing.T) {
 			store := NewMemoryStore()
 			project := store.CreateProject(Project{Name: "upgrade", Status: StatusActive})
 			store.AddModel(Model{Name: name, Modality: tc.modality, Status: StatusActive, EmbeddingPriceUSDPer1M: 1, InputPriceUSDPer1M: 1})
-			provider := store.AddProvider(Provider{ID: "local-provider", Type: ProviderOpenAICompatible, BaseURL: upstream.URL + "/v1", Healthy: true, Status: StatusActive, Options: map[string]string{tc.modality + "_protocol": tc.protocol}})
+			provider := store.AddProvider(Provider{ID: "local-provider", Type: tc.kind, BaseURL: upstream.URL + "/v1", Healthy: true, Status: StatusActive, Options: map[string]string{tc.modality + "_protocol": tc.protocol, "catalog_id": tc.catalog}})
 			inventory := store.AddProviderModel(ProviderModel{ProviderID: provider.ID, UpstreamModel: upstreamName, Modality: tc.modality, InputPriceUSDPer1M: tc.cost, Status: StatusActive})
 			store.AddRoute(ModelRoute{ID: "published-local-route", ProviderID: provider.ID, ProviderModel: upstreamName, ModelName: name, Status: StatusActive, Weight: 100})
 			_, key, err := store.CreateAPIKey(project.ID, APIKey{Name: "upgrade", Status: StatusActive, Allowed: []string{name}}, "thk_synthetic_upgrade_test")
@@ -132,16 +136,20 @@ func TestRetrievalUpgradeKeepsPublishedLocalModelsCallable(t *testing.T) {
 
 func TestRerankAutoProtocolPreservesCatalogAndExplicitSelection(t *testing.T) {
 	for _, tc := range []struct{ name, kind, catalog, configured, want string }{
-		{"custom_auto", ProviderOpenAICompatible, "", "", "jina"},
+		{"compatible_auto", ProviderOpenAICompatible, "", "", "jina"},
+		{"custom_auto", ProviderOpenAICompatible, "custom", "", "jina"},
+		{"local_custom_auto", "local", "custom", "", "jina"},
 		{"local_auto", "local", "", "", "jina"},
 		{"local_catalog", "local", "local", "", "jina"},
 		{"compatible_catalog", ProviderOpenAICompatible, ProviderOpenAICompatible, "", "jina"},
 		{"cohere_catalog", ProviderOpenAICompatible, "cohere", "", "cohere"},
 		{"voyage_catalog", ProviderOpenAICompatible, "voyage", "", "voyage"},
 		{"unknown_catalog", ProviderOpenAICompatible, "unrecognized-vendor", "", ""},
-		{"unsupported_adapter", "anthropic", "", "", ""},
-		{"explicit_native", ProviderOpenAICompatible, "", "dashscope", "dashscope"},
-		{"explicit_invalid", ProviderOpenAICompatible, "", "invalid", "invalid"},
+		{"local_unknown_catalog", "local", "unrecognized-vendor", "", ""},
+		{"unsupported_adapter", "anthropic", "custom", "", ""},
+		{"explicit_native", ProviderOpenAICompatible, "custom", "dashscope", "dashscope"},
+		{"explicit_local", "local", "custom", "tei", "tei"},
+		{"explicit_invalid", ProviderOpenAICompatible, "custom", "invalid", "invalid"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Provider{Type: tc.kind, Options: map[string]string{"catalog_id": tc.catalog, "rerank_protocol": tc.configured}}

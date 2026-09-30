@@ -27,7 +27,7 @@ func providerRerankProtocol(p Provider) string {
 	// Custom and local compatible endpoints use the common /rerank contract.
 	// Named catalogs and explicit protocol selections retain their own semantics.
 	catalog := strings.TrimSpace(p.Options["catalog_id"])
-	if (p.Type == ProviderOpenAICompatible || p.Type == "local") && (catalog == "" || catalog == "local" || catalog == ProviderOpenAICompatible) {
+	if (p.Type == ProviderOpenAICompatible || p.Type == "local") && (catalog == "" || catalog == "custom" || catalog == "local" || catalog == ProviderOpenAICompatible) {
 		return "jina"
 	}
 	return ""
