@@ -122,6 +122,11 @@ func validateSemanticEvaluator(policy *SemanticRoutingPolicy) error {
 			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "Classifier model settings require the model evaluator")
 		}
 	case semanticEvaluatorModel:
+		// Legacy overlays without explicit candidates only know TypeSafe; a model
+		// evaluator there would silently send the text to TypeSafe instead.
+		if len(policy.Candidates) == 0 {
+			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The model evaluator requires explicit candidates")
+		}
 		if strings.TrimSpace(policy.ClassifierModel) == "" || len(policy.ClassifierModel) > 200 {
 			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The model evaluator requires a classifier model")
 		}

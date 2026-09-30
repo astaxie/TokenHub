@@ -4,6 +4,7 @@ import { formatTranslationTemplate, tx } from "../i18n/runtime";
 export const semanticRoutingMetadataKey = "tokenhub_semantic_routing";
 export const defaultJevInstructions = "Choose the candidate whose configured criteria best match the latest user task.";
 export const defaultClassifierTimeoutMS = 3000;
+const defaultMinConfidence = 0.65;
 
 export function readSemanticRoutingPolicy(model: Model): SemanticRoutingPolicy {
   const fallback: SemanticRoutingPolicy = { mode: "off", min_confidence: 0.65 };
@@ -89,7 +90,11 @@ export function SemanticRoutingFields({ value, routes, data, disabled, onChange 
     delete typesafe.evaluator;
     delete typesafe.classifier_model;
     delete typesafe.classifier_timeout_ms;
-    onChange(evaluator === "model" ? { ...typesafe, evaluator: "model", classifier_model: "", classifier_timeout_ms: defaultClassifierTimeoutMS } : typesafe);
+    // The model classifier hides the threshold, which the API still requires: an
+    // invalid value would otherwise block saving with nothing left to correct.
+    const validConfidence = Number.isFinite(value.min_confidence) && value.min_confidence >= 0 && value.min_confidence <= 1;
+    const min_confidence = validConfidence ? value.min_confidence : defaultMinConfidence;
+    onChange(evaluator === "model" ? { ...typesafe, min_confidence, evaluator: "model", classifier_model: "", classifier_timeout_ms: defaultClassifierTimeoutMS } : typesafe);
   }
   const name = (candidate: SemanticRoutingCandidate) => `${candidate.provider_model} · ${data.providers.find(provider => provider.id === candidate.provider_id)?.name ?? candidate.provider_id}`;
   function toggle(candidate: SemanticRoutingCandidate, checked: boolean) {

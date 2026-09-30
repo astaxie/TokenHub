@@ -37,7 +37,8 @@ func (c Config) validateSemanticRouting() error {
 // Failover uses the resulting slice without invoking this evaluator again.
 func (s *Server) applyLegacySemanticRouting(ctx context.Context, routed *RoutedCall, req ChatCompletionRequest, headers http.Header) {
 	policy := modelSemanticRoutingPolicy(routed.Call.Model)
-	if !s.config.SemanticRoutingEnabled || policy.Mode == "off" || s.semanticRouter == nil || strings.TrimSpace(s.config.TypeSafeAPIKey) == "" || !slices.Contains(s.config.SemanticRoutingProjects, routed.Call.Project.ID) {
+	// The legacy overlay only asks TypeSafe; never for a policy that chose another classifier.
+	if policy.usesModelEvaluator() || !s.config.SemanticRoutingEnabled || policy.Mode == "off" || s.semanticRouter == nil || strings.TrimSpace(s.config.TypeSafeAPIKey) == "" || !slices.Contains(s.config.SemanticRoutingProjects, routed.Call.Project.ID) {
 		return
 	}
 	started := time.Now()

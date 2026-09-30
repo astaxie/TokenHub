@@ -115,7 +115,7 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 	if policy.usesModelEvaluator() {
 		timeout = policy.classifierTimeout()
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errSemanticRoutingTimeout)
 	defer cancel()
 	if policy.Mode != "enforce" || len(policy.Candidates) == 0 {
 		return NewHTTPError(503, "jev_policy_unavailable", "Jev routing requires a configured model policy")

@@ -630,3 +630,83 @@ func TestSemanticStrategyClassifierCannotUseSemanticRouting(t *testing.T) {
 		t.Fatalf("classifier with semantic routing was used: %s calls=%d", status, upstream.calls.Load())
 	}
 }
+
+// A legacy overlay (no explicit candidates) only knows TypeSafe, so it cannot
+// carry a model evaluator: saving one is refused, and a stored one never sends
+// the caller's text to TypeSafe.
+func TestModelEvaluatorRejectedOnLegacyOverlay(t *testing.T) {
+	upstream := newClassifierUpstream(t, "2")
+	server, _, _, policy := modelEvaluatorFixture(t, upstream)
+	typesafeCalls := 0
+	server.semanticRouter = semanticTestEvaluator(func(context.Context, string, []semanticCandidate, string) (semanticDecision, error) {
+		typesafeCalls++
+		return semanticDecision{Choice: "no_preference"}, nil
+	})
+	legacy := SemanticRoutingPolicy{Mode: "enforce", MinConfidence: 0.65, Evaluator: semanticEvaluatorModel, ClassifierModel: classifierModelName}
+	policy.Strategy = RouteStrategyQuality
+	policy.SemanticRouting = &legacy
+	if result := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/model-routing-policies/auto-chat", policy, ""); result.Code != http.StatusBadRequest {
+		t.Fatalf("model evaluator on a legacy overlay accepted: %d %s", result.Code, result.Body)
+	}
+
+	// A policy stored some other way is read as disabled and never reaches TypeSafe.
+	store := server.store.(*GormStore)
+	encoded, _ := json.Marshal(legacy)
+	routed := mustModel(t, server, "auto-chat")
+	routed.Metadata = map[string]string{semanticRoutingMetadataKey: string(encoded)}
+	if err := store.db.Model(&routed).Select("Metadata").Updates(&routed).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Model(&ModelRoute{}).Where("model_name = ?", "auto-chat").Update("strategy", RouteStrategyQuality).Error; err != nil {
+		t.Fatal(err)
+	}
+	chatThroughGateway(t, server, "legacy task")
+	if typesafeCalls != 0 {
+		t.Fatalf("legacy overlay with a model evaluator sent the text to TypeSafe %d times", typesafeCalls)
+	}
+}
+
+// A caller that goes away mid-classification, or whose own deadline passes
+// first, says nothing about the classifier's health: other requests of the
+// project keep asking it.
+func TestJevModelEvaluatorCallerCancellationDoesNotRest(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		context func(upstream *classifierUpstream) (context.Context, context.CancelFunc)
+	}{
+		{"caller cancelled", func(upstream *classifierUpstream) (context.Context, context.CancelFunc) {
+			ctx, cancel := context.WithCancel(context.Background())
+			var once sync.Once
+			upstream.onCall = func() { once.Do(cancel) }
+			return ctx, cancel
+		}},
+		{"caller deadline first", func(upstream *classifierUpstream) (context.Context, context.CancelFunc) {
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			upstream.onCall = func() { <-ctx.Done() }
+			return ctx, cancel
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := newClassifierUpstream(t, "2")
+			server, routed, req, _ := modelEvaluatorFixture(t, upstream)
+			ctx, cancel := test.context(upstream)
+			defer cancel()
+			cancelled := routed
+			cancelled.Routes = append([]RouteSelection(nil), routed.Routes...)
+			_ = server.applySemanticRouting(ctx, &cancelled, req, nil)
+			if status, _ := lastSemanticAudit(t, server); status != "evaluator_unavailable" {
+				t.Fatalf("interrupted classification: %s", status)
+			}
+			upstream.onCall = nil
+			calls := upstream.calls.Load()
+			fresh := routed
+			fresh.Routes = append([]RouteSelection(nil), routed.Routes...)
+			if err := server.applySemanticRouting(context.Background(), &fresh, req, nil); err != nil {
+				t.Fatal(err)
+			}
+			if status, _ := lastSemanticAudit(t, server); status != "applied" || upstream.calls.Load() == calls {
+				t.Fatalf("caller interruption put a healthy classifier in cooldown: %s calls=%d", status, upstream.calls.Load())
+			}
+		})
+	}
+}

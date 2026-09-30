@@ -37,7 +37,7 @@ TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS=1000
 
 ## モデル分類器
 
-TypeSafe Jev（`evaluator` が `jev`、既定値）の代わりに、TokenHub 自身の公開モデルにタスクを分類させることができます。`evaluator` を `model` に、`classifier_model` を公開モデル名に設定します。`classifier_timeout_ms` は分類の所要時間の上限で、100～10000、既定は 3000 です。コンソールでは「分類器 → TokenHub モデル」を選択します。
+TypeSafe Jev（`evaluator` が `jev`、既定値）の代わりに、TokenHub 自身の公開モデルにタスクを分類させることができます。`evaluator` を `model` に、`classifier_model` を公開モデル名に設定します。`classifier_timeout_ms` は分類の所要時間の上限で、100～10000、既定は 3000 です。コンソールでは「分類器 → TokenHub モデル」を選択します。モデル分類器には明示的な候補が必要です。候補のない旧追加設定は TypeSafe のみを使用するため、そこにモデル分類器を設定すると拒否されます。
 
 ```json
 {"mode":"enforce","min_confidence":0.65,"instructions":"Choose using the configured task criteria.","default_candidate_id":"fast","evaluator":"model","classifier_model":"router-small","classifier_timeout_ms":3000,"candidates":[...]}
@@ -48,7 +48,7 @@ TypeSafe Jev（`evaluator` が `jev`、既定値）の代わりに、TokenHub �
 - プロンプトには、番号付きの候補の適用条件、選択の指示、JSON 文字列としてエンコードした最新のユーザーテキストだけを含めます。候補 ID とモデル名は送信しません。リクエストは `temperature` 0、`max_tokens` 8 を使用します。回答は選択肢の番号ちょうど一つでなければならず、`0` は明確な優先なし、それ以外の回答は不正な決定として扱います。拡張推論を行わない高速なモデルを選択してください。
 - モデル分類器は信頼度を返しません。`min_confidence` は API 上は必須ですが適用されず、監査イベントにも信頼度と確率は記録しません。
 - サーバー設定とプロジェクト許可リストは TypeSafe と同様に適用されますが、TypeSafe キーは不要です。分類モデルの上流は最新のユーザーテキストを受け取るため、その Provider がこのデータの処理を承認されている分類モデルを選択してください。適用条件はルーティングの目安であり、認可やデータ所在の境界にはなりません。
-- タイムアウト、または上流が 502、503、504 を返した場合、そのプロジェクトの分類器を 30 秒間停止します（`evaluator_cooldown`）。ローカルでの拒否や不正な回答では停止しません。タイムアウトは受付と上流呼び出しを対象とし、分類リクエストの精算が完了してからルーティングを続けます。各プロセスは同時に 8 件まで分類します。
+- タイムアウト、または上流が 502、503、504 を返した場合、そのプロジェクトの分類器を 30 秒間停止します（`evaluator_cooldown`）。ローカルでの拒否、不正な回答、呼び出し元の切断では停止しません。タイムアウトは受付と上流呼び出しを対象とし、分類リクエストの精算が完了してからルーティングを続けます。各プロセスは同時に 8 件まで分類します。
 
 ## 選択とフォールバック
 

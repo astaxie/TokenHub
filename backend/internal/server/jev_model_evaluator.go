@@ -34,8 +34,11 @@ const (
 )
 
 var (
-	errJevEvaluatorCooldown = errors.New("classifier_cooldown")
-	errJevInvalidAnswer     = errors.New("invalid_answer")
+	// errSemanticRoutingTimeout is the cause of the evaluation deadline, which
+	// tells the classifier's own slowness apart from the caller going away.
+	errSemanticRoutingTimeout = errors.New("semantic routing timeout")
+	errJevEvaluatorCooldown   = errors.New("classifier_cooldown")
+	errJevInvalidAnswer       = errors.New("invalid_answer")
 )
 
 // classifierPrincipal is the already-authenticated caller a classifier request
@@ -124,8 +127,12 @@ func (s *Server) classifyWithModel(ctx context.Context, call CallContext, policy
 	s.mux.ServeHTTP(recorder, req)
 	decision.RequestID = recorder.Header().Get("x-request-id")
 	if ctx.Err() != nil {
-		classifier.rest(restKey, time.Now())
-		return decision, fmt.Errorf("classifier timed out: %w", ctx.Err())
+		// Only the classifier's own deadline rests it for the project; a caller that
+		// disconnected says nothing about the classifier's health.
+		if errors.Is(context.Cause(ctx), errSemanticRoutingTimeout) {
+			classifier.rest(restKey, time.Now())
+		}
+		return decision, fmt.Errorf("classifier did not answer: %w", context.Cause(ctx))
 	}
 	switch recorder.Code {
 	case http.StatusOK:

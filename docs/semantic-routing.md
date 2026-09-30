@@ -37,7 +37,7 @@ The project allowlist contains exact IDs separated by commas. An empty list perm
 
 ## Model evaluator
 
-Instead of TypeSafe Jev (`evaluator` `jev`, the default), a policy can ask one of TokenHub's own public models to classify the task. Set `evaluator` to `model` and `classifier_model` to a public model name. `classifier_timeout_ms` bounds the classification (100–10000, default 3000). In the console, choose **Classifier → TokenHub model**.
+Instead of TypeSafe Jev (`evaluator` `jev`, the default), a policy can ask one of TokenHub's own public models to classify the task. Set `evaluator` to `model` and `classifier_model` to a public model name. `classifier_timeout_ms` bounds the classification (100–10000, default 3000). In the console, choose **Classifier → TokenHub model**. The model evaluator needs explicit candidates; legacy overlays without candidates only use TypeSafe, so a model evaluator on one is rejected.
 
 ```json
 {"mode":"enforce","min_confidence":0.65,"instructions":"Choose using the configured task criteria.","default_candidate_id":"fast","evaluator":"model","classifier_model":"router-small","classifier_timeout_ms":3000,"candidates":[...]}
@@ -48,7 +48,7 @@ Instead of TypeSafe Jev (`evaluator` `jev`, the default), a policy can ask one o
 - The prompt lists only the candidates' criteria as numbered options, the selection instructions, and the latest user text encoded as a JSON string. Candidate identifiers and model names are not sent. The request uses `temperature` 0 and `max_tokens` 8. The answer must be exactly one option number; `0` means no preference, and any other answer is an invalid decision. Choose a fast model without extended reasoning.
 - The model evaluator reports no confidence. `min_confidence` is still required by the API but does not apply, and the audit event omits confidence and probabilities.
 - The server gate and project allowlist apply as for TypeSafe; the TypeSafe key is not needed. The classifier's upstream receives the latest user text, so choose a classifier model whose providers are approved for that data. Criteria are advisory routing hints, never an authorization or data-residency boundary.
-- A timeout or an upstream 502, 503 or 504 pauses the classifier for that project for 30 seconds (`evaluator_cooldown`). Local rejections and invalid answers do not. The timeout bounds admission and the upstream call; the classifier request still settles before routing continues. Each process runs at most eight classifications at once.
+- A timeout or an upstream 502, 503 or 504 pauses the classifier for that project for 30 seconds (`evaluator_cooldown`). Local rejections, invalid answers and callers that disconnect do not. The timeout bounds admission and the upstream call; the classifier request still settles before routing continues. Each process runs at most eight classifications at once.
 
 ## Selection and fallback
 

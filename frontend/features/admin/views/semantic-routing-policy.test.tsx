@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import type { Model, ModelRoute, SemanticRoutingPolicy } from "../core/types";
@@ -155,5 +155,17 @@ describe("Smart routing strategy", () => {
     fireEvent.change(screen.getByLabelText("分类模型"), { target: { value: "router-small" } });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "应用策略" })).toBeEnabled();
+  });
+  it("normalizes an invalid hidden confidence when switching to the model classifier", () => {
+    for (const invalid of ["", "1.5"]) {
+      const save = renderSavedEvaluator(policy);
+      fireEvent.change(screen.getByLabelText("最低置信度"), { target: { value: invalid } });
+      fireEvent.change(screen.getByLabelText("分类器"), { target: { value: "model" } });
+      fireEvent.change(screen.getByLabelText("分类模型"), { target: { value: "router-small" } });
+      expect(screen.getByRole("button", { name: "应用策略" })).toBeEnabled();
+      fireEvent.click(screen.getByRole("button", { name: "应用策略" }));
+      expect(save).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ semantic_routing: expect.objectContaining({ evaluator: "model", min_confidence: 0.65 }) }));
+      cleanup();
+    }
   });
 });

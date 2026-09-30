@@ -37,7 +37,7 @@ TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS=1000
 
 ## 模型分类器
 
-策略可以不使用 TypeSafe Jev（`evaluator` 为 `jev`，即默认值），改由 TokenHub 自身的统一模型判断任务类型。将 `evaluator` 设为 `model`，并将 `classifier_model` 设为统一模型名称。`classifier_timeout_ms` 限定分类耗时，取值 100–10000，默认 3000。在控制台中选择「分类器 → TokenHub 模型」。
+策略可以不使用 TypeSafe Jev（`evaluator` 为 `jev`，即默认值），改由 TokenHub 自身的统一模型判断任务类型。将 `evaluator` 设为 `model`，并将 `classifier_model` 设为统一模型名称。`classifier_timeout_ms` 限定分类耗时，取值 100–10000，默认 3000。在控制台中选择「分类器 → TokenHub 模型」。模型分类器需要明确的候选模型；没有候选的旧版附加配置只能使用 TypeSafe，因此在这类配置上设置模型分类器会被拒绝。
 
 ```json
 {"mode":"enforce","min_confidence":0.65,"instructions":"Choose using the configured task criteria.","default_candidate_id":"fast","evaluator":"model","classifier_model":"router-small","classifier_timeout_ms":3000,"candidates":[...]}
@@ -48,7 +48,7 @@ TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS=1000
 - 提示词只包含以编号列出的候选适用条件、选择指令，以及编码为 JSON 字符串的最近一条用户文本，不发送候选标识和模型名。请求使用 `temperature` 0 和 `max_tokens` 8。回答必须恰好是一个选项编号；`0` 表示无明确偏好，其他回答视为无效决策。建议选择不启用深度推理的快速模型。
 - 模型分类器不提供置信度。API 仍要求提供 `min_confidence`，但它不生效，审计事件也不记录置信度和概率分布。
 - 服务端开关和项目白名单与 TypeSafe 相同，但不需要 TypeSafe 密钥。分类模型的上游会收到最近一条用户文本，应选择其 Provider 已获准处理此类数据的分类模型。适用条件只是路由提示，不构成授权或数据驻留边界。
-- 超时或上游返回 502、503、504 时，该项目的分类器暂停 30 秒（`evaluator_cooldown`）。本地拒绝和无效回答不会触发暂停。超时限定准入与上游调用；分类请求的结算完成后才继续路由。每个进程最多同时进行 8 次分类。
+- 超时或上游返回 502、503、504 时，该项目的分类器暂停 30 秒（`evaluator_cooldown`）。本地拒绝、无效回答和调用方断开连接不会触发暂停。超时限定准入与上游调用；分类请求的结算完成后才继续路由。每个进程最多同时进行 8 次分类。
 
 ## 选择与回退
 
