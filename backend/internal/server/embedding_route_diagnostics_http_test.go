@@ -21,14 +21,14 @@ func TestEmbeddingRouteDiagnosticsHTTP(t *testing.T) {
 		confirmed, missing             bool
 		want                           int
 	}{
-		{"zero_unconfirmed_default_path", "embedding", "", "openai", 0, false, false, 501},
-		{"zero_unconfirmed_explicit_path", "embedding", "/embeddings", "openai", 0, false, false, 501},
+		{"zero_unconfirmed_default_path", "embedding", "", "openai", 0, false, false, 200},
+		{"zero_unconfirmed_explicit_path", "embedding", "/embeddings", "openai", 0, false, false, 200},
 		{"zero_confirmed_default_path", "embedding", "", "openai", 0, true, false, 200},
 		{"paid_default_path", "embedding", "", "openai", 1, false, false, 200},
 		{"wrong_inventory_modality", "chat", "", "openai", 1, false, false, 501},
-		{"missing_inventory_backfilled", "embedding", "", "openai", 1, false, true, 501},
+		{"missing_inventory_backfilled", "embedding", "", "openai", 1, false, true, 200},
 		{"missing_inventory_after_start", "embedding", "", "openai", 1, false, true, 501},
-		{"jina_zero_unconfirmed", "embedding", "", "jina", 0, false, false, 501},
+		{"jina_zero_unconfirmed", "embedding", "", "jina", 0, false, false, 200},
 		{"jina_zero_confirmed", "embedding", "", "jina", 0, true, false, 200},
 		{"invalid_protocol", "embedding", "", "unsupported", 1, false, false, 501},
 		{"non_text_inventory", "embedding", "", "openai", 1, false, false, 501},
@@ -112,7 +112,7 @@ func TestEmbeddingRouteDiagnosticsHTTP(t *testing.T) {
 				t.Fatalf("want status=%d calls=%d", want, wantCalls)
 			}
 			if want == 501 {
-				expectedReason := "provider_price_not_configured"
+				expectedReason := ""
 				switch tc.name {
 				case "wrong_inventory_modality":
 					expectedReason = "upstream_model_modality_mismatch"
@@ -161,9 +161,6 @@ func TestEmbeddingRouteDiagnosticsHTTP(t *testing.T) {
 				}
 				if !strings.Contains(result.Error.Message, "No upstream request was sent") {
 					t.Fatal("missing preflight explanation")
-				}
-				if expectedReason == "provider_price_not_configured" && !strings.Contains(result.Error.Message, "zero price alone") {
-					t.Fatal("missing zero-price remediation")
 				}
 			}
 		})

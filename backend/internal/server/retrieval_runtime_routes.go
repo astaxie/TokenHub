@@ -40,11 +40,10 @@ func (s *Server) retrievalRoutesWithDiagnostics(call CallContext, routes []Route
 				rejected["upstream_text_input_unsupported"]++
 				break
 			}
-			if retrievalPriceConfigured(providerModelCostModel(upstream), search, true) {
-				result = append(result, route)
-			} else {
-				rejected["provider_price_not_configured"]++
-			}
+			// Procurement prices are accounting evidence, not execution capability.
+			// Keep published routes callable after upgrades; missing costs remain
+			// unknown in the metering snapshot. Publication still validates prices.
+			result = append(result, route)
 			break
 		}
 		if !found {

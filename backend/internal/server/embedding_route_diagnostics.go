@@ -21,7 +21,6 @@ func embeddingRouteSelectionError(rejected map[string]int) *HTTPError {
 		"upstream_model_inventory_missing":            "The route has no matching upstream model inventory entry; ask an administrator to import or add the model and match the route's upstream model name.",
 		"upstream_model_modality_mismatch":            "The upstream inventory model type is not embedding; ask an administrator to correct its model type.",
 		"upstream_text_input_unsupported":             "The upstream inventory model does not declare text input support; ask an administrator to verify its input capabilities.",
-		"provider_price_not_configured":               "The upstream model cost is not configured; ask an administrator to configure its input price or explicitly confirm that it is free. A zero price alone does not confirm free usage.",
 	}
 	codes := make([]string, 0, len(rejected))
 	for code := range rejected {

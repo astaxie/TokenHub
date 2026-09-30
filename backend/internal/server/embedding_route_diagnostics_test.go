@@ -13,17 +13,16 @@ func TestEmbeddingRouteDiagnosticsAggregateWithoutLeakingConfiguration(t *testin
 	app := New(store)
 	defer func() { _ = app.Shutdown(context.Background()) }()
 	provider := Provider{ID: "private-provider-id", Type: ProviderOpenAICompatible, BaseURL: "https://private.example/v1", APIKey: "private-credential"}
-	store.AddProviderModel(ProviderModel{ProviderID: provider.ID, UpstreamModel: "private-unpriced-model", Modality: "embedding"})
 	store.AddProviderModel(ProviderModel{ProviderID: provider.ID, UpstreamModel: "private-chat-model", Modality: "chat", InputPriceUSDPer1M: 1})
 	store.AddProviderModel(ProviderModel{ProviderID: provider.ID, UpstreamModel: "private-valid-model", Modality: "embedding", InputPriceUSDPer1M: 1})
 	call := CallContext{Model: Model{Modality: "embedding", EmbeddingPriceUSDPer1M: 1}}
 	routes := []RouteSelection{
-		{Provider: provider, ProviderModel: "private-unpriced-model"},
+		{Provider: provider, ProviderModel: "private-missing-model"},
 		{Provider: provider, ProviderModel: "private-chat-model"},
-		{Provider: provider, ProviderModel: "private-unpriced-model"},
+		{Provider: provider, ProviderModel: "private-missing-model"},
 	}
 	filtered, reasons := app.retrievalRoutesWithDiagnostics(call, routes, "embedding", providerRouteProtocolEmbeddings)
-	if len(filtered) != 0 || !reflect.DeepEqual(reasons, map[string]int{"provider_price_not_configured": 2, "upstream_model_modality_mismatch": 1}) {
+	if len(filtered) != 0 || !reflect.DeepEqual(reasons, map[string]int{"upstream_model_inventory_missing": 2, "upstream_model_modality_mismatch": 1}) {
 		t.Fatalf("unexpected filtering: %v %v", filtered, reasons)
 	}
 	err := embeddingRouteSelectionError(reasons)
