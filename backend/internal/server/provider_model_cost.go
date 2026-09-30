@@ -92,6 +92,11 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 	if cost, known := nativeRetrievalCost(providerModelCostModel(providerModel), usage); known {
 		return cost
 	}
+	if evidence := usage.RetrievalEvidence; evidence != nil && evidence.Unit == "search_unit" {
+		// Auxiliary token counters cannot price an unknown native-unit cost.
+		// The metering snapshot preserves why this legacy amount is unknown.
+		return 0
+	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
