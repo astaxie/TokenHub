@@ -47,4 +47,32 @@ OpenAI SDK 使用 `client.embeddings.create`。Dify、LangChain/LlamaIndex 使�
 
 明确确认免费的 Embedding 即使保留旧聊天输入价或适配器返回费用，也按零租户费用结算；供应商成本与 token 计数仍保留。模型目录将确认免费显示为零，未配置显示为未知。部署身份变化会使旧向量缓存失效，无需数据库迁移。
 
-token ID 输入按实际 ID 数量（包含批次总和）预留 TPM。全局路由前插件可在缓存绑定前改写文本；路由级 request_transform 不得改变向量输入。缓存命名空间已更新，旧变换契约生成的缓存将失效。执行前重新检查非 mock 路由的上游库存类型、文本能力和供应商价格，覆盖发布后的配置变化。
+token ID 输入按实际 ID 数量（包含批次总和）预留 TPM。全局路由前插件可在缓存绑定前改写文本；路由级 request_transform 不得改变向量输入。缓存命名空间已更新，旧变换契约生成的缓存将失效。执行前重新检查非 mock 路由的上游库存类型和文本能力，覆盖发布后的配置变化。
+
+## 排查路由被拒绝
+
+运行时筛选排除全部候选线路时，为兼容客户端，API 保留 HTTP `501` 和 `provider_capability_not_supported`。响应及请求日志中保存的响应包含可操作的 `error.message`，以及 `error.details`：`stage="route_selection"`、`upstream_attempted=false` 和 `reasons` 数组。每项包含稳定的原因 `code`、处理建议 `message`、候选线路数 `route_count`。该数量不是上游尝试次数；每条候选线路只报告首先遇到的阻断原因，多种原因按代码排序。不返回渠道标识、地址、凭据或具体成本金额。
+
+| 原因代码 | 检查项 |
+| --- | --- |
+| `provider_capability_or_protocol_unsupported` | 渠道适配器及 Embedding 协议是否支持 |
+| `tenant_price_not_configured` | 对外模型 Embedding 价格或明确免费确认 |
+| `upstream_model_inventory_missing` | 渠道库存是否存在与路由上游模型名匹配的记录 |
+| `upstream_model_modality_mismatch` | 库存模型类型须为 `embedding` |
+| `upstream_text_input_unsupported` | 库存是否支持文本输入 |
+
+此时尚未发送上游请求，路由尝试列表为空属于预期结果。补填 `/embeddings` 无法解决库存或租户价格问题。启动时可能根据已有路由补建库存；补建记录中未确认的零成本不再阻断已有线路。更早的对外模型准入失败仍返回 `400 embedding_model_not_configured`，向量空间冲突等其他失败也保留原有错误。仅部分线路被排除时，合格线路继续正常执行。
+
+## 本地 Embedding 线路升级
+
+已发布线路不会仅因上游输入成本为零或尚未确认而停止调用，保留 v0.8 对自托管模型的调用行为。未知采购成本不会自动标为免费；用量和租户费用照常记录，缺失的上游成本证据在计量中保持待确认，不视为已确认的零费用。管理员可在渠道库存保存实际成本，包括明确确认的零成本。新线路发布仍要求配置租户及供应商价格；模型类型、文本能力、权限和向量空间检查继续生效。
+
+若本地 OpenAI 兼容接口为 `http://model-host:8000/v1/embeddings`，Base URL 填 `http://model-host:8000/v1`，Embedding 协议选“自动选择”或 `openai`，接口路径留空或填 `/embeddings`。路径追加到 Base URL，不填完整 URL。升级无需重写数据库，也不会自动确认免费。
+
+### 控制台配置提示
+
+高级设置显示当前生效协议及该协议的默认路径。路径留空即使用默认值；渠道地址预览把路径追加到 Base URL，不会改写已保存的配置。展开配置示例可查看 Base URL、路径和拼接结果。资源账号可覆盖连接配置，预览不是连通性测试。应填写以 `/` 开头的接口路径，不填完整 URL 或文件系统路径；Embedding 与重排配置互相独立。
+
+请求详情在原始响应上方直接显示保存的错误信息；路由检查拒绝会明确说明尚未发送上游请求。没有用量记录时金额显示横线，不把缺少记录显示为零费用。渠道库存区分未确认的零输入成本与明确免费；保存成本表示确认所填值，包括零。搜索单元采购价缺失时成本保持未知，不会用辅助 token 数和 token 单价代替。
+
+编辑兼容渠道时，控制台保留已保存的运行时目录及自动协议默认值，模型发现或导入使用的目录模板不会静默改写它们。管理接口 PATCH 可通过 `preserve_catalog: true` 启用此行为：仅在渠道类型未变时保留 `catalog_id`、`catalog_source` 和 `doc_url`。创建请求、显式修改渠道类型或不传该标志的客户端保持原有行为。完整 URL 等非法接口路径、格式错误的向量空间 JSON 会在保存前被控制台拦截，即使已经切换离开高级页签也会检查。

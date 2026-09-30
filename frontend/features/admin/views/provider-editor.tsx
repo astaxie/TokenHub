@@ -1,3 +1,4 @@
+import { preserveRetrievalCatalog } from "../domain/retrieval-settings";
 import { AlertCircle, Ban, Check, Copy, Plus, Search, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
@@ -295,7 +296,6 @@ export function ProviderUpsertModal({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the explicit catalog and connection keys are the request identity; form setters must not refetch.
   }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id, selectedCatalogDiscoveryRouteID, selectedCatalogIsAccountProvider, selectedCatalogUsesDiscoveryPreview]);
-
   useEffect(() => {
     if (!usesAccountCatalog || mode === "edit") return;
     const resource = accountResources.find((item) => item.status === "active") ?? accountResources[0];
@@ -967,7 +967,7 @@ export function ProviderUpsertModal({
       });
       const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
         method: mode === "edit" ? "PATCH" : "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(mode === "edit" && provider ? preserveRetrievalCatalog(payload, provider) : payload),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, `${mode === "edit" ? tx("更新") : tx("创建")} ${tx("Provider 渠道")}`));
       const result = (await resp.json()) as { imported_models?: number; provider?: Provider };
@@ -1409,7 +1409,7 @@ export function ProviderUpsertModal({
               <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
-              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} />
+              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={{ ...values, catalog_id: values.type === provider?.type ? provider.options?.catalog_id ?? "" : catalogID }} onUpdate={update} providerTypeOptions={providerTypeOptions} />
                 <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" provider={provider} values={values} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerAdapters={providerAdapters} providerTypeOptions={providerTypeOptions} plugins={plugins} resources={resources} /> : null}
@@ -1535,7 +1535,7 @@ export function ProviderUpsertModal({
               <ProviderResourceProbePanel api={api} accountCatalogErrors={accountCatalogErrors} accountCatalogLoading={accountCatalogLoading} accountResources={accountResources} pluginActions={pluginActions} providerType={values.type} selectedAccountCatalog={selectedAccountCatalog} selectedAccountID={selectedAccountID} selectedAccountResources={selectedAccountResources} />
             ) : null}
             {mode === "create" && createStep === 1 && !quickAPIConnect ? (
-              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} creating idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" values={values} /></>
+              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} creating idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} values={{ ...values, catalog_id: catalogID }} onUpdate={update} providerTypeOptions={providerTypeOptions} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" values={values} /></>
             ) : null}
 
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (

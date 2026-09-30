@@ -705,11 +705,28 @@ func (s *Server) serveAdminProviderPatch(w http.ResponseWriter, r *http.Request,
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found"))
 		return
 	}
+	// Snapshot before merging: omitted request options can alias current.Options.
+	catalogMetadata := map[string]string{}
+	for _, key := range []string{"catalog_id", "catalog_source", "doc_url"} {
+		if value, exists := current.Options[key]; exists {
+			catalogMetadata[key] = value
+		}
+	}
 	mergeProviderPatchRequest(&req, current)
+	preserveCatalog := req.PreserveCatalog && req.Type == current.Type
 	provider, catalog, catalogSource, err := s.providerFromCreateRequest(r.Context(), req)
 	if err != nil {
 		writeError(w, r, err)
 		return
+	}
+	if preserveCatalog {
+		for _, key := range []string{"catalog_id", "catalog_source", "doc_url"} {
+			if value, exists := catalogMetadata[key]; exists {
+				provider.Options[key] = value
+			} else {
+				delete(provider.Options, key)
+			}
+		}
 	}
 	if err := validateSelectedProviderModelCosts(catalog, req.SelectedModels); err != nil {
 		writeError(w, r, err)

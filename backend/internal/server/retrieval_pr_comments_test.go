@@ -71,7 +71,9 @@ func TestPRRetrievalQuotaRetainsUnknownTokenReservation(t *testing.T) {
 
 func TestPRRetrievalResourcePublicationAndInventory(t *testing.T) {
 	store := NewMemoryStore()
-	provider := store.AddProvider(Provider{ID: "p", Type: ProviderOpenAICompatible, Status: StatusActive, Healthy: true})
+	// A named native catalog still requires a protocol; local auto defaults must
+	// not hide a resource-only capability or invent a different parent protocol.
+	provider := store.AddProvider(Provider{ID: "p", Type: ProviderOpenAICompatible, Status: StatusActive, Healthy: true, Options: map[string]string{"catalog_id": "qwen"}})
 	resource, err := store.AddProviderResource(ProviderResource{ProviderID: "p", Name: "only-resource", ResourceType: "api_key", Group: "retrieval", Status: StatusActive, Healthy: true, Options: map[string]string{"rerank_protocol": "cohere"}})
 	if err != nil {
 		t.Fatal(err)
@@ -86,6 +88,12 @@ func TestPRRetrievalResourcePublicationAndInventory(t *testing.T) {
 	}
 	if err := app.validateRetrievalRoute(route, &model, provider); err != nil {
 		t.Fatal(err)
+	}
+	// A custom auto parent has a Jina fallback, so a search-unit-only tenant
+	// price must not authorize that token-metered fallback at publication.
+	provider.Options = nil
+	if err := app.validateRetrievalRoute(route, &model, provider); err == nil {
+		t.Fatal("automatic token fallback accepted without tenant token price")
 	}
 	// A token-priced parent cannot mask a search-unit resource's missing prices.
 	provider.Options = map[string]string{"rerank_protocol": "jina"}

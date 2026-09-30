@@ -81,8 +81,8 @@ func TestRetrievalRuntimeRejectsChangedInventory(t *testing.T) {
 		if _, err := store.UpdateProviderModel(upstream.ID, upstream); err != nil {
 			t.Fatal(err)
 		}
-		if len(filter()) != 0 {
-			t.Fatal("missing provider price admitted")
+		if len(filter()) != 1 {
+			t.Fatal("unknown provider cost blocked a published route")
 		}
 		upstream.Metadata = map[string]string{"retrieval_pricing_confirmed": "true"}
 		if _, err := store.UpdateProviderModel(upstream.ID, upstream); err != nil {
