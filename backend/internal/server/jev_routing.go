@@ -16,7 +16,7 @@ func usesJevStrategy(call CallContext, routes []RouteSelection) bool {
 		return true
 	}
 	for _, route := range routes {
-		if routeStrategy(route.Route) == RouteStrategyJev {
+		if isSemanticStrategy(routeStrategy(route.Route)) {
 			return true
 		}
 	}
@@ -207,7 +207,7 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 	decision := semanticDecision{}
 	defer func() {
 		snapshot := map[string]any{
-			"project_id": routed.Call.Project.ID, "model": routed.Call.Model.Name, "strategy": RouteStrategyJev, "protocol": routed.Call.RouteProtocol, "selected_candidate_id": selected, "selected_model": routed.Routes[0].ProviderModel, "confidence": decision.Confidence, "min_confidence": policy.MinConfidence, "probabilities": decision.Probabilities, "prompt_version": semanticRoutingPromptVersion, "evaluator_model": decision.Model, "input_tokens": decision.InputTokens, "output_tokens": decision.OutputTokens, "latency_ms": time.Since(started).Milliseconds(),
+			"project_id": routed.Call.Project.ID, "model": routed.Call.Model.Name, "strategy": semanticStrategyOf(routed.Routes), "protocol": routed.Call.RouteProtocol, "selected_candidate_id": selected, "selected_model": routed.Routes[0].ProviderModel, "confidence": decision.Confidence, "min_confidence": policy.MinConfidence, "probabilities": decision.Probabilities, "prompt_version": semanticRoutingPromptVersion, "evaluator_model": decision.Model, "input_tokens": decision.InputTokens, "output_tokens": decision.OutputTokens, "latency_ms": time.Since(started).Milliseconds(),
 		}
 		if policy.usesModelEvaluator() {
 			// The model evaluator reports no confidence; the classifier's own usage
@@ -217,7 +217,7 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 			delete(snapshot, "probabilities")
 			snapshot["evaluator"], snapshot["prompt_version"], snapshot["classifier_request_id"] = semanticEvaluatorModel, classifierPromptVersion, decision.RequestID
 		}
-		s.store.RecordAuditEvent(AuditEvent{Action: "routing.semantic", ResourceType: "gateway_request", ResourceID: routed.Call.RequestID, Status: reason, Message: "Jev model selection", AfterSnapshot: auditSnapshotJSON(snapshot)})
+		s.store.RecordAuditEvent(AuditEvent{Action: "routing.semantic", ResourceType: "gateway_request", ResourceID: routed.Call.RequestID, Status: reason, Message: "Smart routing model selection", AfterSnapshot: auditSnapshotJSON(snapshot)})
 	}()
 	if !s.config.SemanticRoutingEnabled || !slices.Contains(s.config.SemanticRoutingProjects, routed.Call.Project.ID) ||
 		!policy.usesModelEvaluator() && (s.semanticRouter == nil || s.config.TypeSafeAPIKey == "") {

@@ -794,7 +794,7 @@ export type ModelRoute = {
   last_used_at?: string;
 };
 
-export type ModelRouteStrategy = "jev" | "priority_weighted" | "adaptive" | "quality" | "cost" | "priority_only" | "balanced";
+export type ModelRouteStrategy = "semantic" | "jev" | "priority_weighted" | "adaptive" | "quality" | "cost" | "priority_only" | "balanced";
 
 export type ModelRoutePolicyRoute = {
   route_id: string;

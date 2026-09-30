@@ -11,7 +11,7 @@ export function readSemanticRoutingPolicy(model: Model): SemanticRoutingPolicy {
     const parsed = JSON.parse(model.metadata?.[semanticRoutingMetadataKey] ?? "null");
     if (parsed?.instructions !== undefined && typeof parsed.instructions !== "string") return fallback;
     if (parsed?.default_candidate_id !== undefined && typeof parsed.default_candidate_id !== "string") return fallback;
-    if (parsed?.evaluator !== undefined && !["typesafe", "model"].includes(parsed.evaluator)) return fallback;
+    if (parsed?.evaluator !== undefined && !["jev", "model"].includes(parsed.evaluator)) return fallback;
     if (parsed?.classifier_model !== undefined && typeof parsed.classifier_model !== "string") return fallback;
     if (parsed?.classifier_timeout_ms !== undefined && !Number.isInteger(parsed.classifier_timeout_ms)) return fallback;
     if (parsed?.candidates !== undefined && (!Array.isArray(parsed.candidates) || !parsed.candidates.every((candidate: unknown) => {
@@ -49,7 +49,7 @@ export function jevClassifierModels(data: AppData, routedModel: string) {
   return data.models.filter(model => model.name !== routedModel && model.status === "active"
     && readSemanticRoutingPolicy(model).mode === "off"
     && data.routes.some(route => route.model_name === model.name && route.status === "active")
-    && !data.routes.some(route => route.model_name === model.name && route.status === "active" && route.strategy === "jev")).map(model => model.name);
+    && !data.routes.some(route => route.model_name === model.name && route.status === "active" && (route.strategy === "jev" || route.strategy === "semantic"))).map(model => model.name);
 }
 
 function validClassifier(value: SemanticRoutingPolicy, classifierModels?: string[]) {
@@ -98,29 +98,29 @@ export function SemanticRoutingFields({ value, routes, data, disabled, onChange 
   }
   return (
     <fieldset className="semantic-routing-fields" disabled={disabled}>
-      <legend>{tx("Jev 智能路由设置")}</legend>
+      <legend>{tx("智能路由设置")}</legend>
       <p>{tx("根据请求内容选择候选模型，再由 TokenHub 调用目标模型。适用于 Chat Completions 和 Responses，支持流式输出。")}</p>
-      <div className="form-grid">
+      <label className="field">
+        <span>{tx("分类器")}</span>
+        <select value={usesModel ? "model" : "jev"} onChange={event => selectEvaluator(event.target.value)}>
+          <option value="jev">{tx("TypeSafe Jev（外部服务）")}</option>
+          <option value="model">{tx("TokenHub 模型")}</option>
+        </select>
+      </label>
+      {usesModel ? <div className="form-grid">
         <label className="field">
-          <span>{tx("分类器")}</span>
-          <select value={usesModel ? "model" : "typesafe"} onChange={event => selectEvaluator(event.target.value)}>
-            <option value="typesafe">{tx("TypeSafe Jev（外部服务）")}</option>
-            <option value="model">{tx("TokenHub 模型")}</option>
-          </select>
-        </label>
-        {usesModel ? <label className="field">
           <span>{tx("分类模型")}</span>
           <select value={value.classifier_model ?? ""} onChange={event => onChange({ ...value, classifier_model: event.target.value })}>
             <option value="">{tx("请选择分类模型")}</option>
             {staleClassifier ? <option value={value.classifier_model}>{formatTranslationTemplate(tx("{model}（不可用）"), { model: value.classifier_model ?? "" })}</option> : null}
             {classifierModels.map(model => <option key={model} value={model}>{model}</option>)}
           </select>
-        </label> : null}
-        {usesModel ? <label className="field">
+        </label>
+        <label className="field">
           <span>{tx("分类超时（毫秒）")}</span>
           <input type="number" min="100" max="10000" step="100" value={value.classifier_timeout_ms ?? ""} onChange={event => onChange({ ...value, classifier_timeout_ms: event.target.value === "" ? undefined : Number(event.target.value) })} />
-        </label> : null}
-      </div>
+        </label>
+      </div> : null}
       {staleClassifier ? <p role="alert">{tx("所选分类模型已停用、没有可用线路或自身使用了智能路由，请重新选择。")}</p> : null}
       {usesModel ? <p>{tx("分类模型以同一项目和 API Key 的普通请求调用，计入配额与账单；只需回答候选编号，建议选择快速的非推理模型。")}</p> : null}
       <label className="field">
@@ -154,7 +154,7 @@ export function SemanticRoutingFields({ value, routes, data, disabled, onChange 
         })}
       </div>
       <p>{tx("候选模型来自当前统一模型的已有线路。同一 Provider 下同一模型的多个账号合并为一个选项。")}</p>
-      <p>{usesModel ? tx("服务端须开启 Jev 并允许当前项目发送用于分类的用户文本。已有会话绑定和 Responses 续接优先保持原线路。") : tx("服务端须开启 Jev 并允许当前项目向 TypeSafe 发送必要的用户文本。已有会话绑定和 Responses 续接优先保持原线路。")}</p>
+      <p>{usesModel ? tx("服务端须开启智能路由并允许当前项目发送用于分类的用户文本。已有会话绑定和 Responses 续接优先保持原线路。") : tx("服务端须开启 Jev 并允许当前项目向 TypeSafe 发送必要的用户文本。已有会话绑定和 Responses 续接优先保持原线路。")}</p>
     </fieldset>
   );
 }

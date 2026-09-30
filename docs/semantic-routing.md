@@ -1,11 +1,11 @@
-# Jev model routing strategy
+# Smart routing strategy
 
-Jev is a routing strategy alongside fixed weights, adaptive, quality, cost, primary/backup, and balanced routing. A client sends an ordinary public model name to TokenHub. TokenHub asks Jev to classify the latest user task and choose a configured model, then calls that model through its existing Provider adapter. Jev does not generate the answer and does not need to be registered as a Provider.
+Smart routing (strategy `semantic`) is a routing strategy alongside fixed weights, adaptive, quality, cost, primary/backup, and balanced routing. A client sends an ordinary public model name to TokenHub. TokenHub asks a classifier to classify the latest user task and choose a configured model, then calls that model through its existing Provider adapter. The classifier is either TypeSafe Jev or one of TokenHub's own public models (see [Model evaluator](#model-evaluator)). The classifier does not generate the answer, and Jev does not need to be registered as a Provider. The strategy was first named `jev`; that value is still accepted and behaves identically.
 
 ## Configure and call
 
-1. Create a public model, for example `auto-chat`, and add routes to the approved upstream models. This is an ordinary model alias: any name can use any routing strategy; the name does not activate Jev.
-2. In **Routing → Model routing policy**, select **Jev Smart Routing**.
+1. Create a public model, for example `auto-chat`, and add routes to the approved upstream models. This is an ordinary model alias: any name can use any routing strategy; the name does not activate smart routing.
+2. In **Routing → Model routing policy**, select **Smart Routing**.
 3. Choose the classifier: TypeSafe Jev, or a TokenHub model (see [Model evaluator](#model-evaluator)). Select candidate models from the existing routes, describe each model's task criteria, enter the selection instructions, and choose a default model. TypeSafe also needs a minimum confidence. Apply the strategy.
 4. Call `/v1/chat/completions` or `/v1/responses` with that public model name. Both endpoints support streaming. Tools and other generation parameters remain in the target-model request.
 
@@ -37,7 +37,7 @@ The project allowlist contains exact IDs separated by commas. An empty list perm
 
 ## Model evaluator
 
-Instead of TypeSafe, a policy can ask one of TokenHub's own public models to classify the task. Set `evaluator` to `model` and `classifier_model` to a public model name. `classifier_timeout_ms` bounds the classification (100–10000, default 3000). In the console, choose **Classifier → TokenHub model**.
+Instead of TypeSafe Jev (`evaluator` `jev`, the default), a policy can ask one of TokenHub's own public models to classify the task. Set `evaluator` to `model` and `classifier_model` to a public model name. `classifier_timeout_ms` bounds the classification (100–10000, default 3000). In the console, choose **Classifier → TokenHub model**.
 
 ```json
 {"mode":"enforce","min_confidence":0.65,"instructions":"Choose using the configured task criteria.","default_candidate_id":"fast","evaluator":"model","classifier_model":"router-small","classifier_timeout_ms":3000,"candidates":[...]}
@@ -82,7 +82,7 @@ Audit action `routing.semantic` records selection/fallback, strategy, protocol, 
 
 ```json
 {
-  "strategy": "jev",
+  "strategy": "semantic",
   "routes": [
     {"route_id":"route_fast","weight":100,"quality_score":50,"cost_score":50},
     {"route_id":"route_deep","weight":100,"quality_score":50,"cost_score":50}
@@ -100,9 +100,9 @@ Audit action `routing.semantic` records selection/fallback, strategy, protocol, 
 }
 ```
 
-The Jev strategy requires `enforce`, explicit instructions, 1–32 distinct Provider/model candidates, nonempty criteria, a default in that set, and an explicit finite threshold between 0 and 1. The threshold stays required with the model evaluator for API compatibility, which ignores it. Instructions are limited to 4096 bytes and each criterion to 2048 bytes. Candidate IDs must be unique and cannot be `no_preference`. Every candidate must reference the public model's routes; invalid settings roll back the entire update.
+The smart routing strategy (`semantic`, or its original name `jev`) requires `enforce`, explicit instructions, 1–32 distinct Provider/model candidates, nonempty criteria, a default in that set, and an explicit finite threshold between 0 and 1. The threshold stays required with the model evaluator for API compatibility, which ignores it. Instructions are limited to 4096 bytes and each criterion to 2048 bytes. Candidate IDs must be unique and cannot be `no_preference`. Every candidate must reference the public model's routes; invalid settings roll back the entire update.
 
-Policy remains in `Model.metadata.tokenhub_semantic_routing`. Ordinary model edits and catalog imports preserve it. Previously saved `off`/`shadow`/`enforce` overlays without explicit candidates retain the old Chat-only, same-priority behavior until reconfigured. The console identifies such legacy settings. Applying an ordinary strategy disables the overlay; applying Jev replaces it with explicit candidates. Omission of `semantic_routing` preserves legacy overlays; switching an explicit Jev policy to an ordinary strategy disables classification even when this field is omitted. Choosing `jev` requires the full policy. The server-managed `response_binding_required` flag remains true once the alias uses Jev: future Responses on that alias still save and validate bindings after strategy changes, and unknown, foreign or expired continuations remain rejected. Clients cannot clear this flag through policy updates.
+Policy remains in `Model.metadata.tokenhub_semantic_routing`. Ordinary model edits and catalog imports preserve it. Previously saved `off`/`shadow`/`enforce` overlays without explicit candidates retain the old Chat-only, same-priority behavior until reconfigured. The console identifies such legacy settings. Applying an ordinary strategy disables the overlay; applying Jev replaces it with explicit candidates. Omission of `semantic_routing` preserves legacy overlays; switching an explicit Jev policy to an ordinary strategy disables classification even when this field is omitted. Choosing `semantic` or `jev` requires the full policy; the console saves `semantic`. The server-managed `response_binding_required` flag remains true once the alias uses Jev: future Responses on that alias still save and validate bindings after strategy changes, and unknown, foreign or expired continuations remain rejected. Clients cannot clear this flag through policy updates.
 
 Schema migration 6 adds the durable `jev_response_bindings` table and expiry index. Startup applies this additive migration before admitting requests; no baseline schema is rewritten. Roll back routing behavior by selecting an ordinary strategy, or disable external evaluation with the server gate. Neither removes existing continuation bindings. Binary rollback must satisfy the database compatibility manifest; do not delete migration history or the binding table to force it.
 

@@ -1,11 +1,11 @@
-# Jev 模型路由策略
+# 智能路由策略
 
-Jev 与固定比例、自适应、质量优先、成本优先、主备顺序和综合评分并列，是一种路由策略。客户端向 TokenHub 请求普通的对外模型名称；TokenHub 调用 Jev 对最近一条用户任务进行分类，选择已配置的模型，再通过现有 Provider 适配器调用目标模型。Jev 不生成最终回答，也不需要注册为 Provider。
+智能路由（策略值 `semantic`）与固定比例、自适应、质量优先、成本优先、主备顺序和综合评分并列，是一种路由策略。客户端向 TokenHub 请求普通的对外模型名称；TokenHub 调用分类器对最近一条用户任务进行分类，选择已配置的模型，再通过现有 Provider 适配器调用目标模型。分类器可以是 TypeSafe Jev，也可以是 TokenHub 自身的统一模型（参见[模型分类器](#模型分类器)）。分类器不生成最终回答，Jev 也不需要注册为 Provider。该策略最初名为 `jev`，这个值仍然有效，行为完全相同。
 
 ## 配置与调用
 
-1. 创建对外模型，例如 `auto-chat`，并添加指向已批准上游模型的线路。这是普通模型别名：任何名称都可以采用任意路由策略，名称本身不会启用 Jev。
-2. 在「路由策略 → 模型级路由策略」中选择「Jev 智能路由」。
+1. 创建对外模型，例如 `auto-chat`，并添加指向已批准上游模型的线路。这是普通模型别名：任何名称都可以采用任意路由策略，名称本身不会启用智能路由。
+2. 在「路由策略 → 模型级路由策略」中选择「智能路由」。
 3. 选择分类器：TypeSafe Jev，或 TokenHub 模型（参见[模型分类器](#模型分类器)）。从已有线路中选择候选模型，填写各模型的适用条件、模型选择指令和默认模型；使用 TypeSafe 时还需填写最低置信度。然后应用策略。
 4. 使用该对外模型名称调用 `/v1/chat/completions` 或 `/v1/responses`。两个接口均支持流式输出；工具和其他生成参数保留在目标模型请求中。
 
@@ -37,7 +37,7 @@ TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS=1000
 
 ## 模型分类器
 
-策略可以不使用 TypeSafe，改由 TokenHub 自身的统一模型判断任务类型。将 `evaluator` 设为 `model`，并将 `classifier_model` 设为统一模型名称。`classifier_timeout_ms` 限定分类耗时，取值 100–10000，默认 3000。在控制台中选择「分类器 → TokenHub 模型」。
+策略可以不使用 TypeSafe Jev（`evaluator` 为 `jev`，即默认值），改由 TokenHub 自身的统一模型判断任务类型。将 `evaluator` 设为 `model`，并将 `classifier_model` 设为统一模型名称。`classifier_timeout_ms` 限定分类耗时，取值 100–10000，默认 3000。在控制台中选择「分类器 → TokenHub 模型」。
 
 ```json
 {"mode":"enforce","min_confidence":0.65,"instructions":"Choose using the configured task criteria.","default_candidate_id":"fast","evaluator":"model","classifier_model":"router-small","classifier_timeout_ms":3000,"candidates":[...]}
@@ -82,7 +82,7 @@ TypeSafe 分类器只接收最近一条符合条件的用户文本、选择指�
 
 ```json
 {
-  "strategy": "jev",
+  "strategy": "semantic",
   "routes": [
     {"route_id":"route_fast","weight":100,"quality_score":50,"cost_score":50},
     {"route_id":"route_deep","weight":100,"quality_score":50,"cost_score":50}
@@ -100,9 +100,9 @@ TypeSafe 分类器只接收最近一条符合条件的用户文本、选择指�
 }
 ```
 
-Jev 策略要求 `enforce`、明确的选择指令、1–32 个不同 Provider 和模型组合、非空适用条件、候选集中的默认模型，以及显式提供的 0 到 1 之间有限置信度。为保持 API 兼容，使用模型分类器时仍须提供该阈值，但不会生效。指令上限为 4096 字节，每个适用条件上限为 2048 字节。候选 ID 必须唯一且不能为 `no_preference`。每个候选必须属于当前对外模型的已有线路；任一设置无效时，整个更新回滚。
+智能路由策略（`semantic`，或其原名 `jev`）要求 `enforce`、明确的选择指令、1–32 个不同 Provider 和模型组合、非空适用条件、候选集中的默认模型，以及显式提供的 0 到 1 之间有限置信度。为保持 API 兼容，使用模型分类器时仍须提供该阈值，但不会生效。指令上限为 4096 字节，每个适用条件上限为 2048 字节。候选 ID 必须唯一且不能为 `no_preference`。每个候选必须属于当前对外模型的已有线路；任一设置无效时，整个更新回滚。
 
-配置仍存储在 `Model.metadata.tokenhub_semantic_routing`，普通模型编辑和目录导入会保留它。旧版没有显式候选的 `off`、`shadow`、`enforce` 附加配置，在重新配置前保留原来的 Chat 同优先级行为，控制台会显示提示。应用普通策略会关闭旧配置；应用 Jev 则替换为显式候选。省略 `semantic_routing` 会保留旧版附加配置；显式 Jev 策略切换为普通策略时，即使省略该字段也会关闭分类。选择 `jev` 必须提供完整配置。别名使用过 Jev 后，服务端管理的 `response_binding_required` 标记持续为 true：切换策略后，新 Responses 仍保存并校验绑定，未知、跨 Key 或过期的续接仍被拒绝。客户端不能通过策略更新清除此标记。
+配置仍存储在 `Model.metadata.tokenhub_semantic_routing`，普通模型编辑和目录导入会保留它。旧版没有显式候选的 `off`、`shadow`、`enforce` 附加配置，在重新配置前保留原来的 Chat 同优先级行为，控制台会显示提示。应用普通策略会关闭旧配置；应用 Jev 则替换为显式候选。省略 `semantic_routing` 会保留旧版附加配置；显式 Jev 策略切换为普通策略时，即使省略该字段也会关闭分类。选择 `semantic` 或 `jev` 必须提供完整配置；控制台保存为 `semantic`。别名使用过 Jev 后，服务端管理的 `response_binding_required` 标记持续为 true：切换策略后，新 Responses 仍保存并校验绑定，未知、跨 Key 或过期的续接仍被拒绝。客户端不能通过策略更新清除此标记。
 
 Schema 迁移 6 新增持久化表 `jev_response_bindings` 和过期索引。启动时先完成这项增量迁移，再接收请求，不重写基线 Schema。选择普通策略可回退路由行为，服务端开关可停止外部评估；两者都不会删除已有续接绑定。二进制版本回滚必须满足数据库兼容性声明，不应删除迁移记录或绑定表来强制回滚。
 

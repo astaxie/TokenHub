@@ -13,11 +13,11 @@ import (
 
 const semanticRoutingMetadataKey = "tokenhub_semantic_routing"
 
-// Jev evaluators. TypeSafe is the external decision API; the model evaluator asks
-// a TokenHub public model through the gateway itself.
+// Smart routing evaluators. Jev is TypeSafe's external decision API; the model
+// evaluator asks a TokenHub public model through the gateway itself.
 const (
-	semanticEvaluatorTypeSafe = "typesafe"
-	semanticEvaluatorModel    = "model"
+	semanticEvaluatorJev   = "jev"
+	semanticEvaluatorModel = "model"
 
 	defaultClassifierTimeoutMS = 3000
 	minClassifierTimeoutMS     = 100
@@ -33,11 +33,25 @@ type SemanticRoutingPolicy struct {
 	Instructions            string                     `json:"instructions,omitempty"`
 	DefaultCandidateID      string                     `json:"default_candidate_id,omitempty"`
 	Candidates              []SemanticRoutingCandidate `json:"candidates,omitempty"`
-	// Evaluator is "" or "typesafe" for the TypeSafe decision API, or "model" for
+	// Evaluator is "" or "jev" for the TypeSafe Jev decision API, or "model" for
 	// ClassifierModel, a public model called through the gateway.
 	Evaluator           string `json:"evaluator,omitempty"`
 	ClassifierModel     string `json:"classifier_model,omitempty"`
 	ClassifierTimeoutMS int    `json:"classifier_timeout_ms,omitempty"`
+}
+
+func isSemanticStrategy(strategy string) bool {
+	return strategy == RouteStrategySemantic || strategy == RouteStrategyJev
+}
+
+// semanticStrategyOf is the strategy name the model's routes were saved with.
+func semanticStrategyOf(routes []RouteSelection) string {
+	for _, route := range routes {
+		if strategy := routeStrategy(route.Route); isSemanticStrategy(strategy) {
+			return strategy
+		}
+	}
+	return RouteStrategySemantic
 }
 
 func (p SemanticRoutingPolicy) usesModelEvaluator() bool {
@@ -103,7 +117,7 @@ func validateSemanticRoutingPolicy(policy *SemanticRoutingPolicy) error {
 
 func validateSemanticEvaluator(policy *SemanticRoutingPolicy) error {
 	switch policy.Evaluator {
-	case "", semanticEvaluatorTypeSafe:
+	case "", semanticEvaluatorJev:
 		if policy.ClassifierModel != "" || policy.ClassifierTimeoutMS != 0 {
 			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "Classifier model settings require the model evaluator")
 		}
@@ -115,13 +129,13 @@ func validateSemanticEvaluator(policy *SemanticRoutingPolicy) error {
 			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The classifier timeout must be between 100 and 10000 milliseconds")
 		}
 	default:
-		return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The Jev evaluator must be typesafe or model")
+		return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The smart routing evaluator must be jev or model")
 	}
 	return nil
 }
 
 func validateJevStrategyPolicy(policy ModelRoutePolicy, routes []ModelRoute) error {
-	if policy.Strategy != RouteStrategyJev {
+	if !isSemanticStrategy(policy.Strategy) {
 		return nil
 	}
 	p := policy.SemanticRouting

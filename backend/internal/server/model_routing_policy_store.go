@@ -24,7 +24,7 @@ func (s *GormStore) UpdateModelRoutePolicy(modelName string, policy ModelRoutePo
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model, "name = ?", modelName).Error; err != nil {
 			return notFound(err, "model_not_found", "Model not found")
 		}
-		if policy.Strategy != RouteStrategyJev {
+		if !isSemanticStrategy(policy.Strategy) {
 			saved := modelSemanticRoutingPolicy(model)
 			if policy.SemanticRouting != nil {
 				saved = *policy.SemanticRouting
@@ -44,13 +44,13 @@ func (s *GormStore) UpdateModelRoutePolicy(modelName string, policy ModelRoutePo
 		if err := validateJevStrategyPolicy(policy, routes); err != nil {
 			return err
 		}
-		if policy.Strategy == RouteStrategyJev {
+		if isSemanticStrategy(policy.Strategy) {
 			if err := validateJevClassifierModel(tx, modelName, *policy.SemanticRouting); err != nil {
 				return err
 			}
 		}
 		previous := modelSemanticRoutingPolicy(model)
-		if previous.ResponseBindingRequired || len(previous.Candidates) > 0 || policy.Strategy == RouteStrategyJev {
+		if previous.ResponseBindingRequired || len(previous.Candidates) > 0 || isSemanticStrategy(policy.Strategy) {
 			if policy.SemanticRouting == nil {
 				policy.SemanticRouting = &previous
 			}
@@ -123,7 +123,7 @@ func validateJevClassifierModel(tx *gorm.DB, modelName string, policy SemanticRo
 		return invalid("The classifier model is not active")
 	}
 	if modelSemanticRoutingPolicy(classifier).Mode != "off" {
-		return invalid("The classifier model must not use semantic routing")
+		return invalid("The classifier model must not use smart routing")
 	}
 	var routes []ModelRoute
 	if err := tx.Where("model_name = ? AND status = ?", classifier.Name, StatusActive).Find(&routes).Error; err != nil {
@@ -133,8 +133,8 @@ func validateJevClassifierModel(tx *gorm.DB, modelName string, policy SemanticRo
 		return invalid("The classifier model has no active route")
 	}
 	for _, route := range routes {
-		if route.Strategy == RouteStrategyJev {
-			return invalid("The classifier model must not use Jev routing")
+		if route.Status == StatusActive && isSemanticStrategy(routeStrategy(route)) {
+			return invalid("The classifier model must not use smart routing")
 		}
 	}
 	return nil

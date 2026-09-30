@@ -383,7 +383,7 @@ func TestJevModelEvaluatorPolicyValidation(t *testing.T) {
 		{"timeout too short", func(p *SemanticRoutingPolicy) { p.ClassifierTimeoutMS = 99 }},
 		{"timeout too long", func(p *SemanticRoutingPolicy) { p.ClassifierTimeoutMS = 10001 }},
 		{"unknown evaluator", func(p *SemanticRoutingPolicy) { p.Evaluator = "oracle" }},
-		{"classifier settings on TypeSafe", func(p *SemanticRoutingPolicy) { p.Evaluator = semanticEvaluatorTypeSafe }},
+		{"classifier settings on TypeSafe", func(p *SemanticRoutingPolicy) { p.Evaluator = semanticEvaluatorJev }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			policy := base
@@ -583,5 +583,50 @@ func TestClassifierPrincipalCannotBeClaimedOverHTTP(t *testing.T) {
 	server.Handler().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusUnauthorized || upstream.calls.Load() != 0 {
 		t.Fatalf("unauthenticated classifier-looking request admitted: %d %s", recorder.Code, recorder.Body)
+	}
+}
+
+// "semantic" is the generic name of the smart routing strategy; "jev" stays an
+// accepted alias with identical behaviour.
+func TestSemanticStrategyRoutesLikeJev(t *testing.T) {
+	upstream := newClassifierUpstream(t, "2")
+	server, _, _, policy := modelEvaluatorFixture(t, upstream)
+	policy.Strategy = RouteStrategySemantic
+	if result := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/model-routing-policies/auto-chat", policy, ""); result.Code != http.StatusOK {
+		t.Fatalf("semantic strategy rejected: %d %s", result.Code, result.Body)
+	}
+	for _, route := range server.store.ListRoutes() {
+		if route.ModelName == "auto-chat" && route.Strategy != RouteStrategySemantic {
+			t.Fatalf("route saved with strategy %q", route.Strategy)
+		}
+	}
+	chatThroughGateway(t, server, "task")
+	if status, audit := lastSemanticAudit(t, server); status != "applied" || audit["selected_model"] != "model_1" || audit["strategy"] != RouteStrategySemantic {
+		t.Fatalf("semantic strategy did not route like Jev: %s %v", status, audit)
+	}
+
+	// Leaving the strategy keeps the policy but turns classification off, as for Jev.
+	policy.Strategy = RouteStrategyQuality
+	policy.SemanticRouting = nil
+	if result := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/model-routing-policies/auto-chat", policy, ""); result.Code != http.StatusOK {
+		t.Fatalf("switch away from semantic: %d %s", result.Code, result.Body)
+	}
+	if saved := modelSemanticRoutingPolicy(mustModel(t, server, "auto-chat")); saved.Mode != "off" || saved.ClassifierModel != classifierModelName {
+		t.Fatalf("policy not kept and disabled: %+v", saved)
+	}
+}
+
+func TestSemanticStrategyClassifierCannotUseSemanticRouting(t *testing.T) {
+	upstream := newClassifierUpstream(t, "2")
+	server, _, _, policy := modelEvaluatorFixture(t, upstream)
+	if err := server.store.(*GormStore).db.Model(&ModelRoute{}).Where("id = ?", "route_router").Update("strategy", RouteStrategySemantic).Error; err != nil {
+		t.Fatal(err)
+	}
+	if result := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/model-routing-policies/auto-chat", policy, ""); result.Code != http.StatusBadRequest {
+		t.Fatalf("classifier with semantic routing accepted: %d %s", result.Code, result.Body)
+	}
+	chatThroughGateway(t, server, "task")
+	if status, _ := lastSemanticAudit(t, server); status != "evaluator_unavailable" || upstream.calls.Load() != 0 {
+		t.Fatalf("classifier with semantic routing was used: %s calls=%d", status, upstream.calls.Load())
 	}
 }

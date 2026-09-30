@@ -88,7 +88,7 @@ func (s *Server) jevResponseKey(call CallContext, id string) string {
 }
 
 func (s *Server) pendingJevResponseBinding(call CallContext, route RouteSelection, response any, alias string) (*pendingJevResponseBinding, error) {
-	if routeStrategy(route.Route) != RouteStrategyJev && !call.JevResponseBound {
+	if !isSemanticStrategy(routeStrategy(route.Route)) && !call.JevResponseBound {
 		return nil, nil
 	}
 	data, err := json.Marshal(response)

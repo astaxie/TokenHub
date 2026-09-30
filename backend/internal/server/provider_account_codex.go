@@ -456,7 +456,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 		tracker.ensureStarted()
 		streamWriter := io.Writer(tracker)
 		var transformer *gatewayStreamTransformWriter
-		if routed.Call.JevResponseBound || routeStrategy(prepared.Route) == RouteStrategyJev || s.hasGatewayStreamTransformHooksForRoute(prepared, providerRouteProtocolResponses) {
+		if routed.Call.JevResponseBound || isSemanticStrategy(routeStrategy(prepared.Route)) || s.hasGatewayStreamTransformHooksForRoute(prepared, providerRouteProtocolResponses) {
 			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, tracker)
 			streamWriter = transformer
 		}

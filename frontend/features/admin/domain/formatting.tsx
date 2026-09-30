@@ -446,6 +446,8 @@ export function routeStrategyLabel(value?: string) {
     cost: "成本优先",
     priority_weighted: "优先级 + 权重",
     priority_only: "仅优先级",
+    semantic: "智能路由",
+    jev: "智能路由",
   };
   return tx(labels[value || "balanced"] ?? value ?? "平衡");
 }

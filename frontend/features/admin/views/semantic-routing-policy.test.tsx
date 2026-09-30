@@ -27,22 +27,22 @@ function renderSavedEvaluator(saved: SemanticRoutingPolicy) {
   return save;
 }
 
-describe("Jev model routing strategy", () => {
+describe("Smart routing strategy", () => {
   it("selects Jev as a strategy and saves explicit model criteria", () => {
     const save = renderEditor();
     expect(screen.queryByLabelText("模型选择指令")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Jev 智能路由" }));
+    fireEvent.click(screen.getByRole("tab", { name: "智能路由" }));
     expect(screen.getByLabelText("模型选择指令")).toHaveValue(defaultJevInstructions);
     expect(screen.getByRole("button", { name: "应用策略" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("upstream-0 · p0 的适用条件"), { target: { value: "Simple extraction" } });
     fireEvent.change(screen.getByLabelText("upstream-1 · p1 的适用条件"), { target: { value: "Complex analysis" } });
     fireEvent.change(screen.getByLabelText("默认模型"), { target: { value: "r1" } });
     fireEvent.click(screen.getByRole("button", { name: "应用策略" }));
-    expect(save).toHaveBeenCalledWith(model, expect.objectContaining({ strategy: "jev", semantic_routing: { mode: "enforce", min_confidence: 0.65, instructions: defaultJevInstructions, default_candidate_id: "r1", candidates: [expect.objectContaining({ id: "r0", criteria: "Simple extraction" }), expect.objectContaining({ id: "r1", criteria: "Complex analysis" })] } }));
+    expect(save).toHaveBeenCalledWith(model, expect.objectContaining({ strategy: "semantic", semantic_routing: { mode: "enforce", min_confidence: 0.65, instructions: defaultJevInstructions, default_candidate_id: "r1", candidates: [expect.objectContaining({ id: "r0", criteria: "Simple extraction" }), expect.objectContaining({ id: "r1", criteria: "Complex analysis" })] } }));
   });
   it("loads a saved strategy and validates criteria, instructions, and confidence", () => {
     renderEditor({ ...model, metadata: { tokenhub_semantic_routing: JSON.stringify(policy) } }, routes.map(route => ({ ...route, strategy: "jev" })));
-    expect(screen.getByRole("tab", { name: "Jev 智能路由" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "智能路由" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("默认模型")).toHaveValue("r1");
     for (const invalid of ["", "1.5", "-0.1"]) {
       fireEvent.change(screen.getByLabelText("最低置信度"), { target: { value: invalid } });
@@ -55,8 +55,8 @@ describe("Jev model routing strategy", () => {
   });
   it("keeps provider accounts grouped and restricts the default to selected candidates", () => {
     renderEditor(model, [...routes, { ...routes[0], id: "duplicate-account" }]);
-    fireEvent.click(screen.getByRole("tab", { name: "Jev 智能路由" }));
-    const panel = screen.getByRole("group", { name: "Jev 智能路由设置" });
+    fireEvent.click(screen.getByRole("tab", { name: "智能路由" }));
+    const panel = screen.getByRole("group", { name: "智能路由设置" });
     expect(within(panel).getAllByRole("checkbox")).toHaveLength(2);
     fireEvent.click(within(panel).getByRole("checkbox", { name: "upstream-0 · p0" }));
     expect(screen.getByLabelText("默认模型")).toHaveValue("r1");
@@ -70,6 +70,13 @@ describe("Jev model routing strategy", () => {
     fireEvent.change(screen.getByLabelText("最低置信度"), { target: { value: "0.8" } });
     fireEvent.click(screen.getByRole("button", { name: "应用策略" }));
     expect(save.mock.calls[0][1].semantic_routing.candidates).toEqual(ordered);
+    // A model saved under the original "jev" name is written back as "semantic".
+    expect(save.mock.calls[0][1].strategy).toBe("semantic");
+  });
+  it("shows routes saved as semantic under smart routing", () => {
+    renderEditor({ ...model, metadata: { tokenhub_semantic_routing: JSON.stringify(policy) } }, routes.map(route => ({ ...route, strategy: "semantic" })));
+    expect(screen.getByRole("tab", { name: "智能路由" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "应用策略" })).toBeDisabled();
   });
   it("removes missing routes without reordering the remaining saved candidates", () => {
     const saved = { ...policy, candidates: [...policy.candidates!].reverse() };
@@ -111,7 +118,7 @@ describe("Jev model routing strategy", () => {
     fireEvent.change(screen.getByLabelText("分类超时（毫秒）"), { target: { value: "2500" } });
     fireEvent.click(screen.getByRole("button", { name: "应用策略" }));
     expect(save).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ semantic_routing: expect.objectContaining({ evaluator: "model", classifier_model: "router-small", classifier_timeout_ms: 2500 }) }));
-    fireEvent.change(screen.getByLabelText("分类器"), { target: { value: "typesafe" } });
+    fireEvent.change(screen.getByLabelText("分类器"), { target: { value: "jev" } });
     expect(screen.getByLabelText("最低置信度")).toHaveValue(0.7);
     fireEvent.change(screen.getByLabelText("模型选择指令"), { target: { value: "Updated criteria." } });
     fireEvent.click(screen.getByRole("button", { name: "应用策略" }));

@@ -512,14 +512,14 @@ Set request body and streaming timeouts high enough for long model responses.
 
 Use `/livez` for liveness and `/readyz` for readiness. `/readyz` and the backwards-compatible `/healthz` return `503` when the database is unavailable or the database evolution state is not servable: a dirty or unverifiable migration ledger, or an incomplete blocking data backfill. Pending online data backfills do not affect readiness.
 
-## Optional Jev semantic routing
+## Optional smart routing
 
-See [Jev semantic routing](semantic-routing.md) for rollout, request eligibility, external text handling, audit fields, and rollback. The server settings below must be combined with model-level Observe or Enable mode.
+See [Smart routing](semantic-routing.md) for rollout, request eligibility, external text handling, audit fields, and rollback. The server settings below must be combined with a model-level smart routing policy.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `TOKENHUB_SEMANTIC_ROUTING_ENABLED` | `false` | Enable the independent Jev decision client. |
+| `TOKENHUB_SEMANTIC_ROUTING_ENABLED` | `false` | Enable smart routing classification, with either TypeSafe Jev or a TokenHub model as the classifier. |
 | `TOKENHUB_SEMANTIC_ROUTING_PROJECTS` | empty | Exact project IDs allowed to send user text, comma-separated; empty denies all. |
-| `TOKENHUB_TYPESAFE_API_KEY` | empty | Server-only TypeSafe credential. |
+| `TOKENHUB_TYPESAFE_API_KEY` | empty | Server-only TypeSafe credential, needed only by the Jev classifier. |
 | `TOKENHUB_TYPESAFE_MODEL` | `jev-1.13.0` | Concrete evaluator model version. |
-| `TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS` | `1000` | Catalog lookup and evaluation timeout, 1–10000 ms. |
+| `TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS` | `1000` | Jev catalog lookup and evaluation timeout, 1–10000 ms. A TokenHub model classifier uses its policy's `classifier_timeout_ms`. |

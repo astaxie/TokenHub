@@ -15,7 +15,11 @@ const (
 	StatusDisabled = "disabled"
 	StatusRevoked  = "revoked"
 
+	// RouteStrategySemantic is smart routing whose classifier is chosen by the
+	// policy (TypeSafe Jev or a TokenHub model). RouteStrategyJev is its original
+	// name and stays accepted with identical behaviour.
 	RouteStrategyJev              = "jev"
+	RouteStrategySemantic         = "semantic"
 	RouteStrategyBalanced         = "balanced"
 	RouteStrategyAdaptive         = "adaptive"
 	RouteStrategyCost             = "cost"
