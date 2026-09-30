@@ -15,10 +15,10 @@ import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, Status
 export function providerConfig(): ResourceConfig<Provider> {
   return {
     view: "providers",
-    title: "Provider 渠道",
-    eyebrow: "Provider 列表",
-    description: "Provider 是上游渠道实例；先选择并引入它实际提供的模型，再分别维护渠道成本、对外模型和路由。",
-    createLabel: "新增 Provider",
+    title: "供应商",
+    eyebrow: "供应商列表",
+    description: "选择供应商，配置连接并引入它提供的模型。",
+    createLabel: "添加供应商",
     columns: [
       { key: "name", label: "名称", render: (item, ctx) => providerDisplayName(item, ctx.providerResources) },
       { key: "type", label: "类型", render: (item, ctx) => providerTypeLabelFromData(ctx, providerDisplayType(item, ctx.providerResources)) },

@@ -84,6 +84,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [settingsTab, setSettingsTab] = useState<SettingsTabKey>("settings");
   const [securityPolicyTab, setSecurityPolicyTab] = useState<"access" | "content">("access");
   const [modal, setModal] = useState<ModalState<any> | null>(null);
+  const [modalSaveError, setModalSaveError] = useState<{ source: typeof modal; message: string } | null>(null);
   const [projectWorkspace, setProjectWorkspace] = useState<{ mode: ProjectWorkspaceMode; projectID?: string } | null>(null);
   const [providerCreateOpen, setProviderCreateOpen] = useState(false);
   const [providerEditItem, setProviderEditItem] = useState<Provider | null>(null);
@@ -658,6 +659,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (!modal) return;
     setLoading(true);
     setError("");
+    setModalSaveError(null);
     try {
       if (modal.item) {
         await modal.config.update?.(api, modal.item, values, data);
@@ -668,7 +670,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       await load();
     } catch (err) {
       if (isAuthExpiredError(err)) return;
-      setError(err instanceof Error ? err.message : tx("保存失败"));
+      const message = err instanceof Error ? err.message : tx("保存失败");
+      setModalSaveError({ source: modal, message });
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -1080,6 +1084,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             </div>
           ) : activeView === "routes" && activeConfig ? (
             <RouteStrategyView
+              onClearError={() => setError("")}
+              error={error}
               config={activeConfig as ResourceConfig<ModelRoute>}
               data={data}
               initialQuery={routeModelQuery}
@@ -1189,6 +1195,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       {modal ? (
         <EditModal
           state={modal}
+          submitError={modalSaveError?.source === modal ? modalSaveError.message : ""}
           data={data}
           api={api}
           currentUser={currentUser}
@@ -1209,6 +1216,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           mode="create"
           api={api}
           catalog={data.providerCatalog}
+          existingProviders={data.providers}
           providerModels={data.providerModels}
           resources={data.providerResources}
           providerAdapters={data.providerAdapters}
@@ -1234,6 +1242,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           provider={providerEditItem}
           api={api}
           catalog={data.providerCatalog}
+          existingProviders={data.providers}
           providerModels={data.providerModels}
           routes={data.routes}
           resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}

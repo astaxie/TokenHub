@@ -29,6 +29,18 @@ Language: [English](../administrator-guide.md) | [简体中文](../zh-CN/adminis
 
 Anthropic Provider は既定で `x-api-key` 認証を使用します。Anthropic 互換の上流サービスが `Authorization: Bearer` を要求する場合は、Provider の **詳細** タブを開き、**Provider タイプ**を **Claude / Anthropic** にしたまま、**Anthropic 認証方式**で **Authorization Bearer** を選択します。TokenHub は暗号化して保存された Provider API Key から選択した Header を生成し、認証 Header は 1 種類だけ送信します。カスタム Header に同じ認証情報を重複して設定しないでください。
 
+## プロバイダー、モデル、ルートの管理
+
+「プロバイダーを追加」をクリックすると、プロバイダーカードを直接選択できます。インストール済みカタログを検索するか、カスタム接続を選択してください。接続済みのプロバイダーでも、別のアカウント、リージョン、環境用にインスタンスを追加できます。API 接続では認証情報とモデル選択を同じ画面に表示します。アカウント接続では認可画面が開き、既定のチャネルを要約表示します。手動の認証情報と接続の上書きは詳細設定に残ります。保存は上流モデルの取り込みのみで、クライアント向けモデルは公開しません。
+
+プロバイダー一覧では、設定上の有効状態と観測された健全性を分けて表示します。観測記録がない場合は観測待ちと表示します。「可用性モニタリング」では、従来のプローブ、性能、アカウントのクォータと更新操作を利用できます。切り替えても検索と分類条件は保持されます。
+
+「モデルディレクトリ」では「モデルを追加」が主な操作です。カタログのテンプレートを選び、クライアント向けモデル ID、取り込み済みの上流モデルと料金を確認します。テンプレートのメタデータは詳細設定に要約し、カスタムモデルや検証エラーでは必要な項目を展開します。公開状態とルートの可用性は別々に表示します。請求明細、公開・非公開と削除は「その他」から利用できます。プロバイダー原価と統一されたクライアント向け料金は独立しており、不明な料金と明示的な無料料金も区別します。 モデル名をクリックすると、すべての機能、対応プロトコルとパラメーターを確認できます。管理者はすべての上流マッピングとプロジェクトスコープも確認できます。読み取り専用ユーザーにはモデル詳細のみが表示され、上流情報は表示されません。
+
+「ルーティングポリシー」は外部モデルごとに要約を一行表示し、既定では設定済みモデルを表示します。「設定」を開くと、そのモデルのポリシーをダイアログで編集できます。七つの戦略、ルートごとのリソース割り当て、プロジェクト範囲、プラグイン項目はすべて利用できます。戦略の混在を明示し、保存失敗時は下書きを保持します。変更したポリシーから離れる前に破棄を確認します。品質・コスト戦略は管理者が維持するスコアに基づき、自動ベンチマークや市場の実勢価格ではありません。
+
+合成データによる画面例：[プロバイダー選択](../assets/screenshots/admin-management/provider-picker.png)、[プロバイダー一覧](../assets/screenshots/admin-management/providers.png)、[API 接続](../assets/screenshots/admin-management/provider-connection.png)、[モデル一覧](../assets/screenshots/admin-management/models.png)、[モデル作成](../assets/screenshots/admin-management/model-create.png)、[ルート概要](../assets/screenshots/admin-management/routes.png)、[ルート設定](../assets/screenshots/admin-management/route-editor.png)、[モバイルのルート一覧](../assets/screenshots/admin-management/mobile-routes.png)。
+
 ## プラグイン管理
 
 **Plugin Management** では、組み込みおよびインストール済みプラグインの統一リストを Provider Integration、Request Pipeline、UI Template、Automation ごとに参照できます。各詳細ページはプラグインの用途とパッケージファイルを表示し、実装済みの宣言的設定画面だけに設定ページを表示します。Marketplace またはローカルパッケージからのインストールは checksum で検証され、`TOKENHUB_PLUGIN_DIR` に書き込まれ、ランタイムのホットリロードで評価されます。宣言的な画面パッケージは有効化できます。バックエンドコマンドを持つ有効な外部パッケージは、現行リリースで外部実行を利用できないため **Startup Failed** と表示され、インストール済みで検査可能なまま Provider、Hook、ジョブ、Action を登録しません。組み込みプラグインは有効化または無効化できますがアンインストールできません。外部パッケージは更新とアンインストールもできます。
@@ -438,4 +450,4 @@ API：`POST /api/admin/resources/notification-channels/{channel_id}/test`。管�
 
 ## スクリーンショット
 
-![Routing policies](../assets/screenshots/routes-en.png)
+![Routing policies](../assets/screenshots/admin-management/routes.png)

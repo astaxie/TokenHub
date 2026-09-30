@@ -1,0 +1,61 @@
+.route-management { min-width: 0; }
+.route-management .model-filterbar { flex-wrap: wrap; }
+.route-category-filter { min-height: 36px; max-width: 180px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.route-summary-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+.route-summary-table { width: 100%; border-collapse: collapse; text-align: left; }
+.route-summary-table th { padding: 12px 16px; color: var(--muted); background: var(--surface-soft); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.route-summary-table td { padding: 18px 16px; border-top: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+.route-summary-table td:first-child { width: 26%; overflow-wrap: anywhere; }
+.route-summary-table td:nth-child(3) { max-width: 280px; overflow-wrap: anywhere; }
+.route-summary-table td:last-child { width: 100px; }
+.route-summary-table small { display: block; color: var(--muted); font-size: 11px; margin-top: 6px; }
+.route-summary-table .route-summary-warning { color: var(--warn); }
+.route-summary-table .secondary-button { white-space: nowrap; }
+.route-configuration-dialog { width: min(1200px, 100%); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; overflow: hidden; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-lg); outline: none; }
+.route-configuration-header { display: flex; justify-content: space-between; gap: 16px; padding: 22px 24px 16px; border-bottom: 1px solid var(--border); }
+.route-configuration-header > div { min-width: 0; }
+.route-configuration-header span { font-size: 12px; color: var(--muted); }
+.route-configuration-header h2 { font-size: 21px; margin: 6px 0 0; overflow-wrap: anywhere; }
+.route-configuration-header .icon-button { flex-shrink: 0; }
+.route-configuration-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding: 16px 24px; }
+.route-configuration-toolbar label { display: grid; gap: 6px; min-width: 0; font-size: 12px; color: var(--muted); }
+.route-configuration-toolbar select { width: min(420px, 100%); min-height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--surface); color: var(--ink); }
+.route-configuration-toolbar .secondary-button { flex-shrink: 0; }
+.route-configuration-body { min-height: 0; overflow: auto; padding: 0 24px 24px; overscroll-behavior: contain; }
+.route-configuration-body .route-strategy-tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: visible; }
+.route-configuration-body .route-strategy-tab { min-width: 0; padding: 8px 4px; white-space: normal; }
+.route-configuration-error { margin: 0 24px 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; color: var(--danger, #b42318); background: var(--surface-soft); font-size: 13px; overflow-wrap: anywhere; }
+
+@media (max-width: 1000px) {
+  .route-configuration-body .route-strategy-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .route-configuration-body .route-provider-row.route-policy-row { grid-template-columns: 26px 44px minmax(0, 1fr) auto; }
+  .route-configuration-body .route-provider-main { grid-column: 3 / 5; }
+  .route-configuration-body .route-upstream-model { grid-column: 3 / 5; }
+  .route-configuration-body .route-policy-parameters,
+  .route-configuration-body .route-policy-order-value { grid-column: 3 / 5; }
+  .route-configuration-body .route-policy-row > .pill { grid-column: 3; }
+  .route-configuration-body .route-row-actions { grid-column: 4; }
+}
+
+@media (max-width: 600px) {
+  .route-management .model-catalog-actions { width: 100%; flex-wrap: wrap; }
+  .route-management .model-search { flex: 1; min-width: 150px; }
+  .route-category-filter { max-width: 130px; }
+  .route-summary-table { min-width: 0; }
+  .route-summary-table, .route-summary-table tbody { display: block; }
+  .route-summary-table thead { display: none; }
+  .route-summary-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 16px; border-top: 1px solid var(--border); gap: 14px; }
+  .route-summary-table tr:first-child { border-top: 0; }
+  .route-summary-table td { border: 0; padding: 0; min-width: 0; }
+  .route-summary-table td:first-child, .route-summary-table td:nth-child(2), .route-summary-table td:nth-child(3) { grid-column: 1 / -1; width: auto; max-width: none; }
+  .route-summary-table td[data-label]::before { display: block; content: attr(data-label); font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .route-summary-table td:last-child { width: auto; }
+  .route-configuration-backdrop { padding: 8px; }
+  .route-configuration-dialog { max-height: calc(100dvh - 16px); border-radius: 12px; }
+  .route-configuration-header { padding: 16px; }
+  .route-configuration-toolbar { padding: 12px 16px; }
+  .route-configuration-body { padding: 0 16px 16px; }
+  .route-configuration-body .route-strategy-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .route-configuration-error { margin: 0 16px 12px; }
+  .route-configuration-body .model-route-policy-head { align-items: flex-start; }
+}

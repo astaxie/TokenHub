@@ -1,5 +1,5 @@
-import { Boxes, ChevronRight, CircleCheck, Info, Search, SlidersHorizontal, X } from "lucide-react";
-import { type Dispatch, type FormEvent, type SetStateAction, useMemo, useState } from "react";
+import { Boxes, ChevronDown, ChevronRight, CircleCheck, Info, Search, SlidersHorizontal, X } from "lucide-react";
+import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { type AdminUser, type AppData, type FieldConfig, type Model, type ResourceConfig } from "../core/types";
 import { modelCategory, modelCategoryLabel, priceMetric } from "../domain/catalog";
 import { customModelTemplateID, externalModelTemplateValues, filterReferenceModelTemplates, referenceModelTemplates } from "../domain/model-create-wizard";
@@ -7,7 +7,10 @@ import { compactNumber } from "../domain/formatting";
 import { initialModelRoutes } from "../domain/provider-model-selection";
 import { modelCatalogTemplatesHintText, tx } from "../i18n/runtime";
 import { FieldInput } from "../shared/ui";
+import { useModalFocus } from "../shared/modal-focus";
 import { ModelBrandIcon } from "./model-catalog";
+
+const advancedFieldKeys = ["category", "family", "modality", "input_modalities", "context_window", "status", "capabilities", "supported_parameters"];
 
 export function ModelCreateModal({
   config,
@@ -18,6 +21,7 @@ export function ModelCreateModal({
   loading,
   onClose,
   onSave,
+  submitError = "",
 }: {
   config: ResourceConfig<Model>;
   data: AppData;
@@ -27,11 +31,18 @@ export function ModelCreateModal({
   loading: boolean;
   onClose: () => void;
   onSave: (values: Record<string, string>) => void;
+  submitError?: string;
 }) {
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [selectedTemplate, setSelectedTemplate] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [focusField, setFocusField] = useState("");
+  const [validationError, setValidationError] = useState("");
+  const focus = useModalFocus<HTMLFormElement>(loading ? undefined : onClose);
+  const form = focus.ref;
+  const errorSummary = useRef<HTMLParagraphElement>(null);
   const templates = useMemo(() => referenceModelTemplates(data.models), [data.models]);
   const filteredTemplates = useMemo(
     () => filterReferenceModelTemplates(data.models, query, category, (model) => modelCategory(model, data)),
@@ -47,11 +58,29 @@ export function ModelCreateModal({
   }, [data, templates]);
   const selectedModel = templates.find((model) => model.name === selectedTemplate);
   const hasInitialRoute = initialModelRoutes(values.initial_provider_models).length > 0;
+  const showAdvanced = advancedOpen || Boolean(submitError);
+  const missingAdvancedField = config.fields.find((field) => advancedFieldKeys.includes(field.key) && field.required && (field.visible?.(values, data, currentUser) ?? true) && !values[field.key]?.trim());
+
+  useEffect(() => {
+    if (submitError) errorSummary.current?.focus();
+  }, [submitError]);
+
+  useEffect(() => {
+    if (step !== 1 || !focusField) return;
+    form.current?.querySelector<HTMLElement>(`[data-model-field="${focusField}"] input, [data-model-field="${focusField}"] select, [data-model-field="${focusField}"] textarea`)?.focus();
+  }, [focusField, form, step]);
+
+  function continueToConfiguration() {
+    if (!selectedTemplate) return;
+    if (selectedTemplate === customModelTemplateID || missingAdvancedField) setAdvancedOpen(true);
+    setFocusField(selectedTemplate === customModelTemplateID ? "name" : missingAdvancedField?.key ?? "");
+    setStep(1);
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (step === 0) {
-      if (selectedTemplate) setStep(1);
+      continueToConfiguration();
       return;
     }
     if (!hasInitialRoute) return;
@@ -62,6 +91,7 @@ export function ModelCreateModal({
     const next = model?.name ?? customModelTemplateID;
     if (selectedTemplate === next) return;
     setSelectedTemplate(next);
+    setAdvancedOpen(next === customModelTemplateID);
     setValues((current) => ({
       ...current,
       ...externalModelTemplateValues(model ?? { name: "", family: "", modality: "chat" }),
@@ -69,6 +99,7 @@ export function ModelCreateModal({
   }
 
   function update(key: string, value: string) {
+    setValidationError("");
     setValues((current) => ({ ...current, [key]: value }));
   }
 
@@ -81,8 +112,8 @@ export function ModelCreateModal({
     const field = fieldConfig(key, override);
     if (!field || !(field.visible?.(values, data, currentUser) ?? true)) return null;
     return (
-      <FieldInput
-        key={key}
+      <div className="model-create-field" data-model-field={key} key={key}>
+        <FieldInput
         field={field}
         data={data}
         currentUser={currentUser}
@@ -90,13 +121,21 @@ export function ModelCreateModal({
         value={values[key] ?? ""}
         editing={false}
         onChange={(value) => update(key, value)}
-      />
+        />
+      </div>
     );
   }
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <form className="modal model-create-modal" onSubmit={submit}>
+      <form className="modal model-create-modal" role="dialog" aria-modal="true" aria-label={tx("新建对外模型")} {...focus} onSubmit={submit} onInvalid={(event) => {
+        event.preventDefault();
+        const target = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+        if (target !== form.current?.querySelector("input:invalid, select:invalid, textarea:invalid")) return;
+        setValidationError(target.validationMessage);
+        if (target.closest(".model-create-advanced-fields")) setAdvancedOpen(true);
+        requestAnimationFrame(() => target.focus());
+      }}>
         <div className="modal-header">
           <div>
             <p className="eyebrow">{tx("新建对外模型")}</p>
@@ -110,7 +149,7 @@ export function ModelCreateModal({
             <span>{step > 0 ? <CircleCheck size={15} /> : "1"}</span>
             <strong>{tx("选择目录模型")}</strong>
           </button>
-          <button className={`wizard-step ${step === 1 ? "active" : ""}`} disabled={!selectedTemplate} onClick={() => setStep(1)} type="button">
+          <button className={`wizard-step ${step === 1 ? "active" : ""}`} disabled={!selectedTemplate} onClick={continueToConfiguration} type="button">
             <span>2</span>
             <strong>{tx("选择 Provider 模型并定价")}</strong>
           </button>
@@ -155,6 +194,7 @@ export function ModelCreateModal({
           </div>
         ) : (
           <div className="model-create-config-step">
+            {submitError || validationError ? <p className="inline-notice error" ref={errorSummary} role="alert" tabIndex={-1}>{submitError || validationError}</p> : null}
             <section className="model-create-selection-summary">
               <div>{selectedModel ? <ModelBrandIcon category={modelCategory(selectedModel, data)} label={selectedModel.name} data={data} /> : <span className="model-create-custom-icon"><SlidersHorizontal size={18} /></span>}</div>
               <div><span>{tx(selectedModel ? "已选择目录模型" : "自定义模型")}</span><strong>{selectedModel?.name || values.name || tx("尚未命名")}</strong><small>{tx("模型名可以作为对外别名调整；能力和价格不会随 Provider 线路变化。")}</small></div>
@@ -171,18 +211,23 @@ export function ModelCreateModal({
             </section>
 
             <section className="model-create-section">
-              <div className="model-create-section-head"><div><strong>{tx("对外模型设置")}</strong><span>{tx("确认客户端使用的名称、能力和状态。")}</span></div></div>
+              <div className="model-create-section-head"><div><strong>{tx("对外模型设置")}</strong><span>{tx("客户端使用此模型 ID 发起请求。")}</span></div></div>
               <div className="model-create-form-grid">
                 {renderField("name", { label: "对外模型 ID" })}
                 {renderField("display_name")}
-                {renderField("category")}
-                {renderField("family")}
-                {renderField("modality")}
-                {renderField("input_modalities")}
-                {renderField("context_window")}
-                {renderField("status")}
-                {renderField("capabilities")}
-                {renderField("supported_parameters")}
+              </div>
+              <div className="model-create-capability-summary" aria-label={tx("模型能力摘要")}>
+                <span>{values.modality || "chat"}</span>
+                {values.family ? <span>{values.family}</span> : null}
+                {Number(values.context_window) > 0 ? <span>{compactNumber(Number(values.context_window))} ctx</span> : null}
+                {values.capabilities ? <span>{values.capabilities}</span> : null}
+                <span>{tx(values.status === "disabled" ? "已下线" : "已启用")}</span>
+              </div>
+              <button aria-controls="model-create-advanced-fields" aria-expanded={showAdvanced} className="text-button model-create-advanced-toggle" disabled={Boolean(submitError)} onClick={() => setAdvancedOpen(!advancedOpen)} type="button">
+                {showAdvanced ? <ChevronDown size={15} /> : <ChevronRight size={15} />}{tx("高级模型设置")}
+              </button>
+              <div className="model-create-form-grid model-create-advanced-fields" hidden={!showAdvanced} id="model-create-advanced-fields">
+                {advancedFieldKeys.map((key) => renderField(key))}
               </div>
             </section>
 

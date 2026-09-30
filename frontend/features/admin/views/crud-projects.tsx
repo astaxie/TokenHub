@@ -17,6 +17,7 @@ import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
 import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
 import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent } from "./provider-account-ui";
+import { ProviderManagementTable } from "./provider-management-table";
 import { latencyDisplay, requestLogFailed } from "./overview";
 import { PaginationControls, type PaginationState } from "../shared/pagination";
 import { APIKeyFlowHint, EntityTable, ResourceEmptyState, resultCountLabel, RouteStrategyHint, TableSkeleton } from "./settings-table";
@@ -98,9 +99,9 @@ export function CrudView<T>({
       <DataSection title={config.eyebrow}>
         <ModelGovernanceEmptyState
           stage="providers"
-          title="还没有 Provider 渠道"
-          description="先添加一个上游 Provider，并选择要引入的模型。Provider 模型价格用于记录真实成本与审计。"
-          actionLabel={config.createLabel ?? "新增 Provider"}
+          title="还没有供应商"
+          description="先添加供应商并引入模型，再到模型页面配置对外调用。"
+          actionLabel={config.createLabel ?? "添加供应商"}
           onAction={onCreate}
         />
       </DataSection>
@@ -282,6 +283,7 @@ export function ProviderChannelTable({
   onDelete: (provider: Provider) => void;
   onEdit: (provider: Provider) => void;
 }) {
+  const [view, setView] = useState<"manage" | "monitoring">("manage");
   const [quotaOverrides, setQuotaOverrides] = useState<Record<string, ProviderQuotaSummary>>({});
   const [quotaRefreshing, setQuotaRefreshing] = useState<Record<string, boolean>>({});
 
@@ -328,7 +330,12 @@ export function ProviderChannelTable({
   const rows = providers.map((provider) => rowsByID.get(provider.id) ?? providerMonitorRow(data, provider));
   const summary = providerMonitorSummary(summaryRows);
   return (
-    <section className="provider-channel-list" aria-label={tx("Provider 可用性监控")}>
+    <section className="provider-channel-list" aria-label={tx("供应商管理")}>
+      <div className="provider-management-tabs" role="group" aria-label={tx("供应商管理")}>
+        <button className={view === "manage" ? "active" : ""} aria-pressed={view === "manage"} onClick={() => setView("manage")} type="button">{tx("供应商列表")}</button>
+        <button className={view === "monitoring" ? "active" : ""} aria-pressed={view === "monitoring"} onClick={() => setView("monitoring")} type="button">{tx("可用性监控")}</button>
+      </div>
+      {view === "manage" ? <ProviderManagementTable rows={rows} data={data} config={config} currentUser={currentUser} onAction={onAction} onEdit={onEdit} onDelete={onDelete} /> : <>
       <div className="provider-monitor-head">
         <div>
           <p className="eyebrow">{tx("上游可用性")}</p>
@@ -454,6 +461,7 @@ export function ProviderChannelTable({
         <span><i className="warning" />{tx("降级/慢响应")}</span>
         <span><i className="failure" />{tx("故障")}</span>
       </div>
+      </>}
     </section>
   );
 }

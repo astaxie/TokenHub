@@ -1,16 +1,16 @@
-// 该文件保留模型分类/通知渠道页签、路由策略视图与模型品牌图标；
-// 模型目录本身已由 model-directory.tsx 的 ModelDirectoryView 渲染。
+// Shared catalog tabs, route management, and model brand icons.
+// The model directory is rendered by model-directory.tsx.
 import { Boxes, Gauge, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { type AppData, type Model, type ModelRoute, type ModelRoutePolicy, type ResourceConfig, type ViewKey } from "../core/types";
 import { modelCatalogFilterLabel, modelCategory, modelCategoryInitial, modelCategoryLabel, modelCategoryTabs, notificationChannelTabs } from "../domain/catalog";
 import { filterRouteModels, modelIsInDirectory, modelRoutesFor, reorderRoutes, routeModelCategories } from "../domain/entities";
-import { countRatioWithUnit, countWithLabel, tx } from "../i18n/runtime";
+import { countRatioWithUnit, tx } from "../i18n/runtime";
 import { DataSection, StatusPill } from "../shared/ui";
 import { modelBrandIconSource } from "./database-model-pricing";
 import { ModelRoutingPolicyEditor, modelRoutePolicySignature } from "./model-routing-policy";
 import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
-import { RouteStrategyHint } from "./settings-table";
+import { RouteConfigurationDialog, RouteSummaryTable } from "./route-management";
 
 export function ModelCategoryTabs({
   data,
@@ -76,6 +76,8 @@ export function RouteStrategyView({
   data,
   initialQuery = "",
   loading,
+  error,
+  onClearError,
   onCreate,
   onOpenModels,
   onOpenProviders,
@@ -88,6 +90,8 @@ export function RouteStrategyView({
   data: AppData;
   initialQuery?: string;
   loading: boolean;
+  error?: string;
+  onClearError?: () => void;
   onCreate: (model: Model) => void;
   onOpenModels: () => void;
   onOpenProviders: () => void;
@@ -97,11 +101,16 @@ export function RouteStrategyView({
   onSavePolicy: (model: Model, policy: ModelRoutePolicy) => void;
 }) {
   const [category, setCategory] = useState("all");
-  const [scope, setScope] = useState<"configured" | "all">("all");
+  const [scope, setScope] = useState<"configured" | "all">(initialQuery ? "all" : "configured");
   const [query, setQuery] = useState(initialQuery);
   const [draggedRouteID, setDraggedRouteID] = useState("");
+  const [selectedModelName, setSelectedModelName] = useState("");
+  const selectedModel = data.models.find((model) => model.name === selectedModelName);
   const categories = routeModelCategories(data);
-  useEffect(() => setQuery(initialQuery), [initialQuery]);
+  useEffect(() => {
+    setQuery(initialQuery);
+    if (initialQuery) setScope("all");
+  }, [initialQuery]);
   const filtered = useMemo(
     () => filterRouteModels(data, category, scope, query),
     [data, category, scope, query],
@@ -147,30 +156,7 @@ export function RouteStrategyView({
 
   return (
     <DataSection title={config.eyebrow}>
-      <RouteStrategyHint data={data} />
-      <div className="route-matrix">
-        <aside className="model-catalog-sidebar">
-          <div className="model-catalog-sidebar-head">
-            <strong>{tx("统一模型")}</strong>
-            <span>{countWithLabel(configuredCount, "个已配置路由")}</span>
-          </div>
-          <div className="model-provider-list">
-            {categories.map((item) => (
-              <button
-                className={category === item.key ? "model-provider-filter active" : "model-provider-filter"}
-                key={item.key}
-                onClick={() => setCategory(item.key)}
-                type="button"
-              >
-                <span className="model-provider-icon">{modelCategoryInitial(item.key, item.label)}</span>
-                <strong>{tx(item.label)}</strong>
-                <em>{item.count}</em>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="model-catalog-main">
+      <div className="route-management">
           <div className="model-filterbar">
             <div className="model-capability-tabs" role="tablist" aria-label={tx("路由显示范围")}>
               <button
@@ -197,6 +183,9 @@ export function RouteStrategyView({
               </button>
             </div>
             <div className="model-catalog-actions">
+              <select className="route-category-filter" aria-label={tx("模型分类")} value={category} onChange={(event) => setCategory(event.target.value)}>
+                {categories.map((item) => <option key={item.key} value={item.key}>{tx(item.label)}</option>)}
+              </select>
               <div className="search-box model-search">
                 <Search size={16} />
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tx("搜索模型或 Provider")} />
@@ -213,32 +202,46 @@ export function RouteStrategyView({
           {filtered.length === 0 ? (
             <div className="empty model-catalog-empty">{tx("没有匹配的模型路由")}</div>
           ) : (
-            <div className="route-model-list">
-              {filtered.map((model) => (
-                <RouteModelCard
-                  key={model.name}
-                  model={model}
-                  data={data}
-                  loading={loading}
-                  draggedRouteID={draggedRouteID}
-                  onDragStart={setDraggedRouteID}
-                  onDragEnd={() => setDraggedRouteID("")}
-                  onDrop={(targetRouteID) => {
-                    const routes = modelRoutesFor(model, data);
-                    const reordered = reorderRoutes(routes, draggedRouteID, targetRouteID);
-                    setDraggedRouteID("");
-                    if (reordered !== routes) onReorder(model, reordered);
-                  }}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onCreate={() => onCreate(model)}
-                  onSavePolicy={onSavePolicy}
-                />
-              ))}
-            </div>
+            <RouteSummaryTable models={filtered} data={data} loading={loading} onConfigure={(model) => { onClearError?.(); setSelectedModelName(model.name); }} />
           )}
-        </section>
       </div>
+      {selectedModel ? (
+        <RouteConfigurationDialog
+          key={selectedModel.name}
+          model={selectedModel}
+          models={data.models.filter((model) => modelIsInDirectory(model, data))}
+          loading={loading}
+          error={error}
+          onClose={() => setSelectedModelName("")}
+          onSelect={(model) => { onClearError?.(); setSelectedModelName(model.name); }}
+          onCreate={() => onCreate(selectedModel)}
+        >
+          {({ onDirtyChange, guard, revision }) => {
+            const routes = modelRoutesFor(selectedModel, data);
+            return routes.length === 0 ? <div className="empty route-empty">{tx("该统一模型还没有 Provider 线路")}</div> : (
+              <ModelRoutingPolicyEditor
+                key={`${revision}:${modelRoutePolicySignature(routes)}:${selectedModel.metadata?.tokenhub_semantic_routing ?? ""}`}
+                model={selectedModel}
+                routes={routes}
+                data={data}
+                loading={loading}
+                draggedRouteID={draggedRouteID}
+                onDragStart={setDraggedRouteID}
+                onDragEnd={() => setDraggedRouteID("")}
+                onDrop={(targetRouteID) => {
+                  const reordered = reorderRoutes(routes, draggedRouteID, targetRouteID);
+                  setDraggedRouteID("");
+                  if (reordered !== routes) onReorder(selectedModel, reordered);
+                }}
+                onEdit={(route) => guard(() => onEdit(route))}
+                onDelete={(route) => guard(() => onDelete(route))}
+                onSave={onSavePolicy}
+                onDirtyChange={onDirtyChange}
+              />
+            );
+          }}
+        </RouteConfigurationDialog>
+      ) : null}
     </DataSection>
   );
 }

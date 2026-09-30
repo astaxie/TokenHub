@@ -1,5 +1,5 @@
 import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
 import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
@@ -118,6 +118,8 @@ export function ProviderAPIQuickConnect({
   onUpdate,
   providerTypeOptions = [],
   pluginActions = [],
+  connectionFields,
+  advancedFields,
 }: {
   api: ApiContext;
   catalogID: string;
@@ -138,6 +140,8 @@ export function ProviderAPIQuickConnect({
   onUpdate: (key: string, value: string) => void;
   providerTypeOptions?: ProviderTypeOption[];
   pluginActions?: PluginActionDescriptor[];
+  connectionFields?: ReactNode;
+  advancedFields?: ReactNode;
 }) {
   const [showKey, setShowKey] = useState(false);
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
@@ -145,7 +149,6 @@ export function ProviderAPIQuickConnect({
   const custom = catalogID === "custom";
   const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
   const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions, values.type);
-  const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
   const connectionReady = Boolean(values.base_url?.trim() && (!apiKeyRequired || values.api_key?.trim()));
 
   function updateConnectionValue(key: string, value: string) {
@@ -191,6 +194,7 @@ export function ProviderAPIQuickConnect({
         latencyMS: Math.max(0, result.latency_ms),
         message: tx(apiKeyRequired ? "API Key 配置有效" : "连接测试通过"),
       });
+      onReloadModels();
     } catch (err) {
       if (connectionTestRun.current !== run || isAuthExpiredError(err)) return;
       setConnectionTest({
@@ -203,22 +207,6 @@ export function ProviderAPIQuickConnect({
 
   return (
     <section className="provider-api-quick-connect">
-      <div className="provider-api-quick-hero">
-        <div>
-          <span>{tx("直接 API Key")}</span>
-          <h3>{name}</h3>
-          <p>{values.base_url || tx("填写 Base URL 后连接上游")}</p>
-        </div>
-        <strong>{countWithUnit(selectedModelCount, "个待引入模型", "model to import", "件の取り込み予定モデル", "models to import")}</strong>
-      </div>
-
-      <div className="provider-editor-tabs provider-quick-tabs" role="tablist" aria-label={tx("Provider 编辑区")}>
-        <button aria-selected={activeTab === "connect"} className={activeTab === "connect" ? "active" : ""} onClick={() => onTabChange("connect")} role="tab" type="button">{tx("连接")}</button>
-        <button aria-selected={activeTab === "models"} className={activeTab === "models" ? "active" : ""} onClick={() => onTabChange("models")} role="tab" type="button">{tx("模型")}</button>
-        <button aria-selected={activeTab === "advanced"} className={activeTab === "advanced" ? "active" : ""} onClick={() => onTabChange("advanced")} role="tab" type="button">{tx("高级")}</button>
-      </div>
-
-      {activeTab === "connect" ? (
         <div className="provider-quick-tab-panel">
           <div className="provider-api-quick-intro">
             <span><KeyRound size={18} /></span>
@@ -286,12 +274,12 @@ export function ProviderAPIQuickConnect({
             ) : null}
           </div>
         </div>
-      ) : null}
+      {connectionFields}
 
-      {activeTab === "models" ? (
-        <div className="provider-quick-tab-panel">
+        <div className="provider-quick-tab-panel provider-onboarding-models">
+          <p className="provider-onboarding-model-hint">{tx("勾选模型后保存到供应商；发布给客户端请继续前往模型目录。")}</p>
           {custom && !values.base_url?.trim() ? (
-            <p className="provider-quick-custom-note">{tx("先在“连接”中填写 Base URL，这里会加载自定义渠道的上游模型。")}</p>
+            <p className="provider-quick-custom-note">{tx("填写上方连接信息后加载模型，勾选要引入的模型。")}</p>
           ) : (
             <>
               <div className="provider-quick-model-summary">
@@ -335,9 +323,8 @@ export function ProviderAPIQuickConnect({
             </>
           )}
         </div>
-      ) : null}
-
-      {activeTab === "advanced" ? (
+      <details className="provider-onboarding-advanced" open={activeTab === "advanced"} onToggle={event => { const next = event.currentTarget.open ? "advanced" : "connect"; if (next !== activeTab) onTabChange(next); }}>
+        <summary>{tx("高级连接设置")}</summary>
         <div className="provider-quick-tab-panel">
           <div className="provider-form-grid provider-quick-advanced-grid">
             <label className="field">
@@ -376,8 +363,9 @@ export function ProviderAPIQuickConnect({
             onChange={(value) => onUpdate("custom_headers", value)}
             value={values.custom_headers ?? "[]"}
           />
+          {advancedFields}
         </div>
-      ) : null}
+      </details>
     </section>
   );
 }

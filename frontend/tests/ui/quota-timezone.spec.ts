@@ -26,7 +26,7 @@ for (const scenario of ["default", "saved", "invalid"] as const) {
     await timezone.fill(scenario === "invalid" ? "Nope/Nowhere" : "America/New_York");
     await page.getByRole("button", { name: "保存", exact: true }).click();
     if (scenario === "invalid") {
-      await expect(page.getByText("quota_timezone must be a valid IANA timezone", { exact: true })).toBeVisible();
+      await expect(page.getByRole("dialog", { name: "系统设置", exact: true }).getByRole("alert")).toHaveText("quota_timezone must be a valid IANA timezone");
       await expect(timezone).toHaveValue("Nope/Nowhere");
     } else {
       await expect(timezone).toHaveCount(0);

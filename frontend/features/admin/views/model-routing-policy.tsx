@@ -1,5 +1,5 @@
 import { Activity, AlertTriangle, BarChart3, CircleDollarSign, CircleHelp, Gauge, GripVertical, ListOrdered, Save, Scale, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { type AppData, type Model, type ModelRoute, type ModelRoutePolicy, type ModelRoutePolicyRoute, type ModelRouteStrategy } from "../core/types";
 import { priceMetric } from "../domain/catalog";
 import { findProvider, routeProjectScopeSummary } from "../domain/entities";
@@ -129,6 +129,7 @@ export function ModelRoutingPolicyEditor({
   onEdit,
   onDelete,
   onSave,
+  onDirtyChange,
 }: {
   model: Model;
   routes: ModelRoute[];
@@ -141,6 +142,7 @@ export function ModelRoutingPolicyEditor({
   onEdit: (route: ModelRoute) => void;
   onDelete: (route: ModelRoute) => void;
   onSave: (model: Model, policy: ModelRoutePolicy) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const persistedStrategies = useMemo(() => new Set(routes.map((route) => normalizeStrategy(route.strategy))), [routes]);
   const persistedStrategy = persistedStrategies.values().next().value ?? "priority_weighted";
@@ -157,10 +159,12 @@ export function ModelRoutingPolicyEditor({
   const selectedOption = strategyOptions.find((option) => option.value === strategy) ?? strategyOptions[0];
   const guideToggleLabel = tx(guideOpen ? "收起当前策略说明" : "查看当前策略说明");
   const mixedStrategies = persistedStrategies.size > 1;
-  const dirty = legacySemantic || semanticNeedsReconciliation || JSON.stringify(semantic) !== JSON.stringify(persistedSemantic) || mixedStrategies || strategy !== persistedStrategy || routes.some((route) => {
+  const userDirty = JSON.stringify(semantic) !== JSON.stringify(persistedSemantic) || strategy !== persistedStrategy || routes.some((route) => {
     const draft = drafts[route.id];
     return !draft || draft.weight !== positiveOr(route.weight, 100) || draft.quality_score !== positiveOr(route.quality_score, 50) || draft.cost_score !== positiveOr(route.cost_score, 50);
   });
+  const dirty = userDirty || legacySemantic || semanticNeedsReconciliation || mixedStrategies;
+  useEffect(() => { onDirtyChange?.(userDirty); }, [onDirtyChange, userDirty]);
   const invalid = (strategy === "jev" && !validJevPolicy(semantic)) || routes.some((route) => {
     const draft = drafts[route.id];
     return !draft || !Number.isFinite(draft.weight) || !Number.isFinite(draft.quality_score) || !Number.isFinite(draft.cost_score) || draft.weight < 1 || draft.quality_score < 1 || draft.quality_score > 100 || draft.cost_score < 1 || draft.cost_score > 100;
@@ -272,6 +276,9 @@ export function ModelRoutingPolicyEditor({
 
       {strategy === "priority_weighted" || strategy === "adaptive" ? (
         <div className="route-policy-share-note">{tx("项目作用域过滤后将按可用 Provider 重新计算占比。")}</div>
+      ) : null}
+      {strategy === "quality" || strategy === "cost" || strategy === "balanced" ? (
+        <div className="route-policy-share-note">{tx("质量和成本评分由管理员维护，不会自动读取实时价格或模型评测。")}</div>
       ) : null}
 
       {legacySemantic ? <p className="muted">{tx("此模型仍使用旧版 Jev 附加配置。应用当前策略后将替换旧配置；选择 Jev 智能路由可配置明确的候选模型。")}</p> : null}

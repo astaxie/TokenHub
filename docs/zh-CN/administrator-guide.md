@@ -29,6 +29,18 @@ Language: [English](../administrator-guide.md) | 简体中文 | [日本語](../j
 
 Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上游要求 `Authorization: Bearer`，请打开 Provider 的「高级」页签，保持「渠道商类型」为「Claude / Anthropic」，并在「Anthropic 认证方式」中选择「Authorization Bearer」。TokenHub 会从加密保存的 Provider API Key 生成对应 Header，并且只发送所选的认证 Header；不要在自定义 Headers 中重复填写凭据。
 
+## 管理供应商、模型和路由
+
+点击「添加供应商」即可直接选择供应商卡片。可以搜索已安装的目录或选择自定义接入；已经接入的供应商仍可添加新实例，用于其他账号、地域或环境。API 接入将凭据和模型选择放在同一页面；账号接入直接打开授权，默认通道以摘要展示，高级设置保留手动凭据及连接覆盖配置。保存供应商只会引入上游模型库存，不会发布对外模型。
+
+供应商默认列表分别展示配置启用状态和观测健康状态。没有观测记录时显示「待观测」。进入「可用性监控」可查看原有探测、性能、账号额度和刷新操作；搜索与分类条件在切换时保留。
+
+「模型目录」以「新增模型」为主操作。先选择目录模板，再确认对外模型 ID、已引入的上游模型和价格。模板元数据收进高级设置并显示摘要；自定义模型及校验错误会展开必要字段。发布状态与线路可用性仍分别呈现。账单、发布/下线和删除位于「更多」中。供应商成本与统一对外价格保持独立，未知价格与明确免费也继续区分。 点击模型名称可查看完整能力、支持协议和参数；管理员还可查看全部上游映射及其项目作用域。只读用户可以查看模型详情，但不会看到上游信息。
+
+「路由策略」按对外模型显示一行摘要，默认只看已配置模型。点击「配置」在弹层中编辑该模型的策略。七种策略仍全部可见，单线路资源绑定、项目范围和插件字段也继续保留。策略混合时明确提示不一致；保存失败保留草稿，离开有修改的策略前需要确认放弃。质量与成本策略仍依据管理员维护的评分，不代表自动模型评测或实时市场价格。
+
+使用合成数据的界面截图：[供应商选择](../assets/screenshots/admin-management/provider-picker.png)、[供应商列表](../assets/screenshots/admin-management/providers.png)、[API 连接](../assets/screenshots/admin-management/provider-connection.png)、[模型目录](../assets/screenshots/admin-management/models.png)、[创建模型](../assets/screenshots/admin-management/model-create.png)、[路由摘要](../assets/screenshots/admin-management/routes.png)、[路由编辑器](../assets/screenshots/admin-management/route-editor.png)和[移动端路由](../assets/screenshots/admin-management/mobile-routes.png)。
+
 ## 插件管理
 
 打开「插件管理」，可以按 Provider 集成、请求链路、UI 模板或自动化分类浏览统一的内置与已安装插件列表。每个详情页都会说明插件用途并展示插件包文件；只有已经实现的声明式设置界面才会显示设置页。从插件市场或本地包安装时，系统会校验 checksum，将包写入 `TOKENHUB_PLUGIN_DIR`，并通过运行时热加载评估。声明式界面包可以生效。带后端命令的启用外部包则会显示为「启动失败」，保持已安装且可检查，并且不会注册 Provider、Hook、任务或 Action，因为当前版本尚不支持外部执行。内置插件可以启用或禁用，但不能卸载；外部包还可以更新或卸载。
@@ -438,4 +450,4 @@ API：`POST /api/admin/resources/notification-channels/{channel_id}/test`，使�
 
 ## 截图
 
-![Routing policies](../assets/screenshots/routes-en.png)
+![Routing policies](../assets/screenshots/admin-management/routes.png)
