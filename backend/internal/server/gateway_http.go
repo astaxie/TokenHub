@@ -452,6 +452,7 @@ func (s *Server) admitRoutedCall(w http.ResponseWriter, r *http.Request, project
 	call, err := s.store.StartCall(r.Context(), project, key, model, tokenReservation)
 	call.Stream = stream
 	call.RouteProtocol = gatewayRequestProtocol(r.URL.Path)
+	call.clientIP = s.clientIP(r)
 	if err != nil {
 		return CallContext{}, err
 	}
@@ -1435,6 +1436,9 @@ func (s *Server) writeRouteHeaders(w http.ResponseWriter, call CallContext, rout
 }
 
 func (s *Server) authenticate(r *http.Request) (Project, APIKey, error) {
+	if principal, ok := classifierPrincipalFrom(r.Context()); ok {
+		return principal.project, principal.key, nil
+	}
 	auth := r.Header.Get("authorization")
 	if auth != "" {
 		const prefix = "Bearer "

@@ -336,6 +336,9 @@ func statusAndCode(err error) (int, string) {
 }
 
 func (s *Server) clientIP(r *http.Request) string {
+	if principal, ok := classifierPrincipalFrom(r.Context()); ok {
+		return principal.clientIP
+	}
 	remoteIP := requestRemoteIP(r)
 	if !ipMatchesTrustedProxy(remoteIP, s.config.TrustedProxyCIDRs) {
 		return remoteIP

@@ -13,4 +13,8 @@ export type SemanticRoutingPolicy = {
   instructions?: string;
   default_candidate_id?: string;
   candidates?: SemanticRoutingCandidate[];
+  /** Omitted for the TypeSafe evaluator; "model" asks a TokenHub public model. */
+  evaluator?: "typesafe" | "model";
+  classifier_model?: string;
+  classifier_timeout_ms?: number;
 };

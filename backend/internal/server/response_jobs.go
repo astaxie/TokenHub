@@ -427,6 +427,7 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, rejectedCall, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, request, resultTTL)
 		return
 	}
+	call.clientIP = envelope.ClientIP
 	if !retained {
 		return
 	}

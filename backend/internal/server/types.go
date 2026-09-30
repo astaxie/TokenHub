@@ -1356,6 +1356,9 @@ type CallContext struct {
 	StreamFailed   bool
 	Affinity       *RequestAffinity
 	requestContext context.Context
+	// clientIP is the resolved client address the call was admitted for; a Jev
+	// model evaluator attributes its internal classifier request to it.
+	clientIP string
 }
 
 // measuredStart reports when the call began, on the clock its duration is

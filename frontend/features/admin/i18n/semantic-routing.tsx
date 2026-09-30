@@ -26,7 +26,18 @@ export const semanticRoutingTranslations = {
     "启用：按建议选择线路": "Enable: select the suggested route",
     "最低置信度": "Minimum confidence",
     "仅在当前模型的同优先级候选中选择；失败或低置信度时沿用基础策略。置信度不代表任务成功率。": "Select only among candidates with the same priority for this model. Failures or low confidence keep the base strategy. Confidence does not measure task success.",
-    "仅适用于无工具、无会话绑定的纯文本 Chat Completions。服务端须开启功能并允许当前项目向 TypeSafe 发送用户文本；观察模式同样会发送文本。": "Applies to plain-text Chat Completions without tools or session binding. The server must enable this feature and allow this project to send user text to TypeSafe. Observe mode also sends text."
+    "仅适用于无工具、无会话绑定的纯文本 Chat Completions。服务端须开启功能并允许当前项目向 TypeSafe 发送用户文本；观察模式同样会发送文本。": "Applies to plain-text Chat Completions without tools or session binding. The server must enable this feature and allow this project to send user text to TypeSafe. Observe mode also sends text.",
+    "分类器": "Classifier",
+    "TypeSafe Jev（外部服务）": "TypeSafe Jev (external service)",
+    "TokenHub 模型": "TokenHub model",
+    "分类模型": "Classifier model",
+    "请选择分类模型": "Select a classifier model",
+    "分类超时（毫秒）": "Classifier timeout (ms)",
+    "分类模型以同一项目和 API Key 的普通请求调用，计入配额与账单；只需回答候选编号，建议选择快速的非推理模型。": "The classifier model is called as an ordinary request of the same project and API key, and counts toward quotas and billing. It only answers with a candidate number, so choose a fast model without reasoning.",
+    "分类失败、超时或无明确选择时使用默认模型；默认模型不可用时按候选列表顺序回退。": "Failures, timeouts, and answers without a clear choice use the default model. If the default model is unavailable, routing falls back in candidate list order.",
+    "服务端须开启 Jev 并允许当前项目发送用于分类的用户文本。已有会话绑定和 Responses 续接优先保持原线路。": "The server must enable Jev and allow this project to send user text for classification. Existing session bindings and Responses continuations retain their routes.",
+    "{model}（不可用）": "{model} (unavailable)",
+    "所选分类模型已停用、没有可用线路或自身使用了智能路由，请重新选择。": "The selected classifier model is disabled, has no active route, or uses smart routing itself. Select another model."
   },
   ja: {
     "此模型仍使用旧版 Jev 附加配置。应用当前策略后将替换旧配置；选择 Jev 智能路由可配置明确的候选模型。": "このモデルは旧 Jev 追加設定を使用しています。現在の戦略を適用すると旧設定を置き換えます。明示的な候補モデルを設定するには Jev スマートルーティングを選択してください。",
@@ -55,7 +66,18 @@ export const semanticRoutingTranslations = {
     "启用：按建议选择线路": "有効：提案されたルートを選択",
     "最低置信度": "最小信頼度",
     "仅在当前模型的同优先级候选中选择；失败或低置信度时沿用基础策略。置信度不代表任务成功率。": "このモデルの同じ優先度の候補からのみ選択します。失敗時や信頼度が低い場合は基本戦略を維持します。信頼度はタスクの成功率を表しません。",
-    "仅适用于无工具、无会话绑定的纯文本 Chat Completions。服务端须开启功能并允许当前项目向 TypeSafe 发送用户文本；观察模式同样会发送文本。": "ツールやセッション固定のないテキストのみの Chat Completions が対象です。サーバー側で機能を有効にし、このプロジェクトから TypeSafe へのユーザーテキストの送信を許可する必要があります。観察モードでもテキストを送信します。"
+    "仅适用于无工具、无会话绑定的纯文本 Chat Completions。服务端须开启功能并允许当前项目向 TypeSafe 发送用户文本；观察模式同样会发送文本。": "ツールやセッション固定のないテキストのみの Chat Completions が対象です。サーバー側で機能を有効にし、このプロジェクトから TypeSafe へのユーザーテキストの送信を許可する必要があります。観察モードでもテキストを送信します。",
+    "分类器": "分類器",
+    "TypeSafe Jev（外部服务）": "TypeSafe Jev（外部サービス）",
+    "TokenHub 模型": "TokenHub モデル",
+    "分类模型": "分類モデル",
+    "请选择分类模型": "分類モデルを選択してください",
+    "分类超时（毫秒）": "分類タイムアウト（ミリ秒）",
+    "分类模型以同一项目和 API Key 的普通请求调用，计入配额与账单；只需回答候选编号，建议选择快速的非推理模型。": "分類モデルは同じプロジェクトと API キーの通常リクエストとして呼び出され、クォータと請求の対象になります。候補番号だけを返すため、推論なしの高速なモデルを選択してください。",
+    "分类失败、超时或无明确选择时使用默认模型；默认模型不可用时按候选列表顺序回退。": "分類の失敗、タイムアウト、明確な選択がない場合は既定モデルを使用します。既定モデルを利用できない場合は候補リストの順にフォールバックします。",
+    "服务端须开启 Jev 并允许当前项目发送用于分类的用户文本。已有会话绑定和 Responses 续接优先保持原线路。": "サーバーで Jev を有効にし、このプロジェクトから分類用のユーザーテキスト送信を許可してください。既存のセッション固定と Responses の継続は元のルートを維持します。",
+    "{model}（不可用）": "{model}（利用不可）",
+    "所选分类模型已停用、没有可用线路或自身使用了智能路由，请重新选择。": "選択した分類モデルは無効化されているか、有効なルートがないか、それ自体がスマートルーティングを使用しています。別のモデルを選択してください。"
   },
   ru: {
     "Jev 智能路由": "Умная маршрутизация Jev",
@@ -65,6 +87,17 @@ export const semanticRoutingTranslations = {
     "启用：按建议选择线路": "Включено: выбирать маршрут по рекомендациям",
     "最低置信度": "Минимальная достоверность",
     "仅在当前模型的同优先级候选中选择；失败或低置信度时沿用基础策略。置信度不代表任务成功率。": "Выбор только среди кандидатов с одинаковым приоритетом для этой модели; при сбое или низкой достоверности используется базовая стратегия. Уровень достоверности не отражает вероятность успешного выполнения задачи.",
-    "仅适用于无工具、无会话绑定的纯文本 Chat Completions。服务端须开启功能并允许当前项目向 TypeSafe 发送用户文本；观察模式同样会发送文本。": "Применяется только к текстовым Chat Completions без инструментов и привязки к сессиям. На сервере должна быть включена эта функция и разрешена отправка пользовательского текста проекта в TypeSafe; в режиме наблюдения текст также отправляется."
+    "仅适用于无工具、无会话绑定的纯文本 Chat Completions。服务端须开启功能并允许当前项目向 TypeSafe 发送用户文本；观察模式同样会发送文本。": "Применяется только к текстовым Chat Completions без инструментов и привязки к сессиям. На сервере должна быть включена эта функция и разрешена отправка пользовательского текста проекта в TypeSafe; в режиме наблюдения текст также отправляется.",
+    "分类器": "Классификатор",
+    "TypeSafe Jev（外部服务）": "TypeSafe Jev (внешний сервис)",
+    "TokenHub 模型": "Модель TokenHub",
+    "分类模型": "Модель-классификатор",
+    "请选择分类模型": "Выберите модель-классификатор",
+    "分类超时（毫秒）": "Тайм-аут классификации (мс)",
+    "分类模型以同一项目和 API Key 的普通请求调用，计入配额与账单；只需回答候选编号，建议选择快速的非推理模型。": "Модель-классификатор вызывается обычным запросом того же проекта и API-ключа и учитывается в квотах и счетах. Она отвечает только номером кандидата, поэтому выбирайте быструю модель без рассуждений.",
+    "分类失败、超时或无明确选择时使用默认模型；默认模型不可用时按候选列表顺序回退。": "При сбое, тайм-ауте или отсутствии явного выбора используется модель по умолчанию. Если она недоступна, выбор идёт по порядку списка кандидатов.",
+    "服务端须开启 Jev 并允许当前项目发送用于分类的用户文本。已有会话绑定和 Responses 续接优先保持原线路。": "На сервере должен быть включен Jev и разрешена отправка пользовательского текста проекта для классификации. Привязки сессий и продолжения Responses сохраняют исходные маршруты.",
+    "{model}（不可用）": "{model} (недоступна)",
+    "所选分类模型已停用、没有可用线路或自身使用了智能路由，请重新选择。": "Выбранная модель-классификатор отключена, не имеет активного маршрута или сама использует умную маршрутизацию. Выберите другую модель."
   }
 };

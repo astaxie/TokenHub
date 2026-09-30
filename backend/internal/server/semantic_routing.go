@@ -18,11 +18,10 @@ type semanticModelReader interface {
 }
 
 func (c Config) validateSemanticRouting() error {
+	// The TypeSafe key is evaluator-specific: a deployment that only uses the
+	// model evaluator runs without it, and TypeSafe policies then fall back.
 	if !c.SemanticRoutingEnabled {
 		return nil
-	}
-	if strings.TrimSpace(c.TypeSafeAPIKey) == "" {
-		return fmt.Errorf("TOKENHUB_TYPESAFE_API_KEY is required when semantic routing is enabled")
 	}
 	if len(c.SemanticRoutingProjects) == 0 {
 		return fmt.Errorf("TOKENHUB_SEMANTIC_ROUTING_PROJECTS must explicitly allow at least one project")

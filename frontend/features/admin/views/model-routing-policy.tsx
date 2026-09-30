@@ -7,7 +7,7 @@ import { providerTypeLabelFromData } from "../domain/labels";
 import { tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 
-import { readSemanticRoutingPolicy, initialJevPolicy, validJevPolicy, SemanticRoutingFields } from "./semantic-routing-policy";
+import { readSemanticRoutingPolicy, initialJevPolicy, validJevPolicy, jevClassifierModels, SemanticRoutingFields } from "./semantic-routing-policy";
 
 const strategyOptions: Array<{
   value: ModelRouteStrategy;
@@ -161,7 +161,7 @@ export function ModelRoutingPolicyEditor({
     const draft = drafts[route.id];
     return !draft || draft.weight !== positiveOr(route.weight, 100) || draft.quality_score !== positiveOr(route.quality_score, 50) || draft.cost_score !== positiveOr(route.cost_score, 50);
   });
-  const invalid = (strategy === "jev" && !validJevPolicy(semantic)) || routes.some((route) => {
+  const invalid = (strategy === "jev" && !validJevPolicy(semantic, jevClassifierModels(data, model.name))) || routes.some((route) => {
     const draft = drafts[route.id];
     return !draft || !Number.isFinite(draft.weight) || !Number.isFinite(draft.quality_score) || !Number.isFinite(draft.cost_score) || draft.weight < 1 || draft.quality_score < 1 || draft.quality_score > 100 || draft.cost_score < 1 || draft.cost_score > 100;
   });
