@@ -302,6 +302,7 @@ type ProviderCreateRequest struct {
 	SensitiveHeaders            []string          `json:"sensitive_headers"`
 	Options                     map[string]string `json:"options"`
 	CatalogID                   string            `json:"catalog_id"`
+	PreserveCatalog             bool              `json:"preserve_catalog,omitempty"`
 	ModelCategory               string            `json:"model_category"`
 	SystemPromptTransformPolicy *string           `json:"system_prompt_transform_policy,omitempty"`
 	// ClaudeCodeAttributionPolicy is a legacy write-only alias for system prompt transform policy.

@@ -28,3 +28,16 @@
 .request-metrics.metrics { margin-bottom: 0; }
 .request-metrics .metric { min-height: 0; padding: 12px 16px; }
 .request-detail-panel > .request-detail-grid { gap: 6px 12px; }
+
+.retrieval-connection-guide { min-width: 0; }
+.retrieval-endpoint-preview { display: grid; gap: 6px; margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.retrieval-endpoint-preview > span, .retrieval-endpoint-preview small, .retrieval-examples { font-size: 12px; color: var(--ink-2); }
+.retrieval-endpoint-preview code, .retrieval-examples code { overflow-wrap: anywhere; white-space: normal; color: var(--text); }
+.retrieval-examples > summary { cursor: pointer; padding: 6px 0; }
+.retrieval-examples dl { display: grid; grid-template-columns: minmax(110px, .35fr) minmax(0, 1fr); gap: 6px 12px; }
+.retrieval-examples dd { margin: 0; min-width: 0; }
+.request-error-box p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
+@media (max-width: 480px) { .retrieval-examples dl { grid-template-columns: minmax(0, 1fr); } }
+.request-detail-panel { grid-template-columns: minmax(0, 1fr); }
+.request-detail-panel > *, .request-detail-panel .request-subsection, .request-detail-panel [role="tabpanel"], .request-detail-panel .payload-block { min-width: 0; }
+.request-detail-panel .payload-block code { white-space: pre-wrap; overflow-wrap: anywhere; }
