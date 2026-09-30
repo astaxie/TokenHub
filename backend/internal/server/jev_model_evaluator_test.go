@@ -14,6 +14,9 @@ import (
 
 // classifierUpstream is a fake OpenAI-compatible provider serving the classifier
 // model. It answers with whatever reply returns and records each request body.
+// A handler can outlive the gateway call that sent it (a cancelled classifier
+// request returns first), so reply and onCall are only touched under mu: tests
+// change them through setReply and setOnCall.
 type classifierUpstream struct {
 	*httptest.Server
 	calls  atomic.Int32
@@ -21,6 +24,18 @@ type classifierUpstream struct {
 	bodies []map[string]any
 	reply  func() (int, string)
 	onCall func()
+}
+
+func (u *classifierUpstream) setReply(reply func() (int, string)) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.reply = reply
+}
+
+func (u *classifierUpstream) setOnCall(onCall func()) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.onCall = onCall
 }
 
 func newClassifierUpstream(t *testing.T, answer string) *classifierUpstream {
@@ -37,7 +52,10 @@ func newClassifierUpstream(t *testing.T, answer string) *classifierUpstream {
 		if onCall != nil {
 			onCall()
 		}
-		status, content := upstream.reply()
+		upstream.mu.Lock()
+		reply := upstream.reply
+		upstream.mu.Unlock()
+		status, content := reply()
 		if status != http.StatusOK {
 			writeJSON(w, status, map[string]any{"error": map[string]any{"message": "synthetic upstream failure", "type": "server_error"}})
 			return
@@ -217,7 +235,7 @@ func TestJevModelEvaluatorFallsBackToDefault(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			upstream := newClassifierUpstream(t, test.answer)
-			upstream.reply = func() (int, string) { return test.status, test.answer }
+			upstream.setReply(func() (int, string) { return test.status, test.answer })
 			server, _, _, _ := modelEvaluatorFixture(t, upstream)
 			chatThroughGateway(t, server, "synthetic task")
 			status, audit := lastSemanticAudit(t, server)
@@ -230,7 +248,7 @@ func TestJevModelEvaluatorFallsBackToDefault(t *testing.T) {
 
 func TestJevModelEvaluatorCooldownAfterUpstreamFailureOnly(t *testing.T) {
 	upstream := newClassifierUpstream(t, "2")
-	upstream.reply = func() (int, string) { return http.StatusInternalServerError, "" }
+	upstream.setReply(func() (int, string) { return http.StatusInternalServerError, "" })
 	server, _, _, _ := modelEvaluatorFixture(t, upstream)
 
 	chatThroughGateway(t, server, "first task")
@@ -500,12 +518,12 @@ func TestJevModelEvaluatorRoutesStreamingChat(t *testing.T) {
 func TestJevModelEvaluatorTimeoutFallsBackAndRests(t *testing.T) {
 	upstream := newClassifierUpstream(t, "2")
 	release := make(chan struct{})
-	upstream.onCall = func() {
+	upstream.setOnCall(func() {
 		select {
 		case <-release:
 		case <-time.After(2 * time.Second):
 		}
-	}
+	})
 	t.Cleanup(func() { close(release) })
 	server, _, _, policy := modelEvaluatorFixture(t, upstream)
 	updateModelEvaluatorPolicy(t, server, policy, func(p *SemanticRoutingPolicy) { p.ClassifierTimeoutMS = minClassifierTimeoutMS })
@@ -527,13 +545,14 @@ func TestJevModelEvaluatorTimeoutFallsBackAndRests(t *testing.T) {
 
 func TestJevModelEvaluatorCooldownIsPerProject(t *testing.T) {
 	upstream := newClassifierUpstream(t, "2")
-	failing := true
-	upstream.reply = func() (int, string) {
-		if failing {
+	var failing atomic.Bool
+	failing.Store(true)
+	upstream.setReply(func() (int, string) {
+		if failing.Load() {
 			return http.StatusInternalServerError, ""
 		}
 		return http.StatusOK, "2"
-	}
+	})
 	server, _, _, _ := modelEvaluatorFixture(t, upstream)
 	store := server.store.(*GormStore)
 	other := store.CreateProject(Project{ID: "prj_semantic_other", Name: "Other", Status: StatusActive})
@@ -548,7 +567,7 @@ func TestJevModelEvaluatorCooldownIsPerProject(t *testing.T) {
 		t.Fatalf("first project not resting: %s", status)
 	}
 	// Reset provider health so the other project's request reaches the upstream.
-	failing = false
+	failing.Store(false)
 	if err := store.db.Model(&Provider{}).Where("id = ?", "provider_router").Updates(map[string]any{"healthy": true}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -677,12 +696,12 @@ func TestJevModelEvaluatorCallerCancellationDoesNotRest(t *testing.T) {
 		{"caller cancelled", func(upstream *classifierUpstream) (context.Context, context.CancelFunc) {
 			ctx, cancel := context.WithCancel(context.Background())
 			var once sync.Once
-			upstream.onCall = func() { once.Do(cancel) }
+			upstream.setOnCall(func() { once.Do(cancel) })
 			return ctx, cancel
 		}},
 		{"caller deadline first", func(upstream *classifierUpstream) (context.Context, context.CancelFunc) {
 			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-			upstream.onCall = func() { <-ctx.Done() }
+			upstream.setOnCall(func() { <-ctx.Done() })
 			return ctx, cancel
 		}},
 	} {
@@ -697,7 +716,7 @@ func TestJevModelEvaluatorCallerCancellationDoesNotRest(t *testing.T) {
 			if status, _ := lastSemanticAudit(t, server); status != "evaluator_unavailable" {
 				t.Fatalf("interrupted classification: %s", status)
 			}
-			upstream.onCall = nil
+			upstream.setOnCall(nil)
 			calls := upstream.calls.Load()
 			fresh := routed
 			fresh.Routes = append([]RouteSelection(nil), routed.Routes...)
