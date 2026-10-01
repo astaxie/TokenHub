@@ -425,6 +425,7 @@ export function ProviderUpsertModal({
     if (quickAPIConnect && selectedCatalogRequiresAPIKey && !values.api_key?.trim()) return;
     if (loadedCustomConnection.current === customConnectionKey) return;
     const timer = window.setTimeout(() => {
+      if (loadedCustomConnection.current === customConnectionKey) return;
       loadedCustomConnection.current = customConnectionKey;
       preserveCatalogValuesOnReload.current = true;
       setCatalogReloadKey((current) => current + 1);

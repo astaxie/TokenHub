@@ -1,5 +1,6 @@
 import type { AdapterDescriptor, PluginDescriptor, Provider, ProviderCatalogEntry } from "../../features/admin/core/types";
 import { test, expect, capture } from "./harness";
+import { fixedTime } from "./fixtures/shell";
 import type { MockAPI } from "./network";
 
 const direct: ProviderCatalogEntry = { id: "ui-direct", name: "UI Direct Service", display_name: "UI Direct Service", type: "openai_compatible", base_url: "https://api.example.test/v1", categories: ["openai"], models_count: 2, source: "ui-fixture" };
@@ -69,6 +70,35 @@ function installProviderFixtures(api: MockAPI, state: string) {
 }
 
 for (const viewport of ["desktop", "mobile"] as const) {
+  test(`provider-onboarding manual discovery preserves selection ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    installProviderFixtures(api, "custom");
+    await page.clock.install({ time: new Date(fixedTime) });
+    await page.clock.pauseAt(new Date(new Date(fixedTime).getTime() + 1000));
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    await editor.getByRole("button", { name: /自定义供应商/ }).click();
+    await editor.getByRole("combobox", { name: "渠道商类型", exact: true }).selectOption(alternate.type);
+    await editor.getByLabel("渠道名称", { exact: true }).fill(customConnection.name);
+    await editor.getByLabel("Base URL", { exact: true }).fill(customConnection.base_url);
+    await editor.getByLabel("API Key", { exact: true }).fill(customConnection.api_key);
+    const discoveryCalls = () => api.calls.filter(call => call.method === "POST" && call.path === "/api/admin/provider-catalog/custom");
+    expect(discoveryCalls()).toHaveLength(0);
+    await editor.getByRole("button", { name: "重新加载", exact: true }).click();
+    await editor.getByRole("switch", { name: "引入 UI Chat" }).click();
+    const selected = editor.getByRole("switch", { name: "移除 UI Chat" });
+    await expect(selected).toHaveAttribute("aria-checked", "true");
+    expect(discoveryCalls()).toHaveLength(1);
+
+    await page.clock.runFor(1000);
+    await expect(selected).toHaveAttribute("aria-checked", "true");
+    expect(discoveryCalls()).toHaveLength(1);
+    await page.clock.resume();
+    await selected.scrollIntoViewIfNeeded();
+    await capture(page, testInfo, editor, `provider-onboarding-manual-discovery-${viewport}`, "手动加载后自动发现不重复请求，保留已选模型", "viewport");
+  });
+
   test(`provider-onboarding custom-draft ${viewport}`, async ({ page, api }, testInfo) => {
     if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
     installProviderFixtures(api, "custom");
