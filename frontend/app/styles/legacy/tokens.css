@@ -33,6 +33,13 @@
   --blue: var(--accent);
   --green: var(--pos);
   --amber: var(--warn);
+  --danger: var(--red);
+  --neg: var(--red);
+  --success: var(--pos);
+  --warning: var(--warn);
+  --primary: var(--accent);
+  --accent-soft: var(--accent-weak);
+  --text-muted: var(--muted);
   --shadow: var(--shadow-md);
 }
 
@@ -70,6 +77,13 @@
   --blue: var(--accent);
   --green: var(--pos);
   --amber: var(--warn);
+  --danger: var(--red);
+  --neg: var(--red);
+  --success: var(--pos);
+  --warning: var(--warn);
+  --primary: var(--accent);
+  --accent-soft: var(--accent-weak);
+  --text-muted: var(--muted);
   --shadow: var(--shadow-md);
 }
 
