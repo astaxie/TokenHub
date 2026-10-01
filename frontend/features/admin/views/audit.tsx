@@ -1,3 +1,4 @@
+import { RequestErrorSummary, requestErrorInfo } from "./request-error-summary";
 import { Activity, AlertCircle, Check, Copy, Gauge, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { canViewAdminAudit } from "../core/navigation";
@@ -486,9 +487,7 @@ export function RequestDetailPanel({
 
 
       {log.error_code ? (
-        <div className="request-error-box">
-          <strong>{log.error_code}</strong>
-        </div>
+        <RequestErrorSummary code={log.error_code} responseBody={detail.payload?.response_body} />
       ) : null}
 
       <div className="request-subsection">
@@ -497,9 +496,9 @@ export function RequestDetailPanel({
           <strong>{detail.usage.length ? countWithUnit(detail.usage.length, "条记录", "record", "件の記録") : tx("暂无记录")}</strong>
         </div>
         <div className="request-usage-total">
-          <UsageStat label="总量" value={formatNumber(usageTotals.total_tokens)} />
-          <UsageStat label="对外计费" value={`$${formatMoney(usageTotals.estimated_cost_usd)}`} />
-          {showProviderCost ? <UsageStat label="渠道真实成本" value={`$${formatMoney(usageTotals.provider_cost_usd)}`} /> : null}
+          <UsageStat label="总量" value={detail.usage.length ? formatNumber(usageTotals.total_tokens) : "—"} />
+          <UsageStat label="对外计费" value={detail.usage.length ? `$${formatMoney(usageTotals.estimated_cost_usd)}` : "—"} />
+          {showProviderCost ? <UsageStat label="渠道真实成本" value={detail.usage.length ? `$${formatMoney(usageTotals.provider_cost_usd)}` : "—"} /> : null}
         </div>
       </div>
 
@@ -546,7 +545,7 @@ export function RequestDetailPanel({
           <strong>{routeAttemptCountText(detail.attempts.length)}</strong>
         </div>
         {detail.attempts.length === 0 ? (
-          <div className="compact-empty">{tx("没有记录到路由尝试")}</div>
+          <div className="compact-empty">{requestErrorInfo(detail.payload?.response_body)?.beforeUpstream ? tx("请求在路由检查阶段被拒绝，尚未发送到上游。") : tx("没有记录到路由尝试")}</div>
         ) : (
           <div className="attempt-timeline">
             {detail.attempts.map((attempt) => (

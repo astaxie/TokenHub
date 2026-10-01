@@ -47,4 +47,32 @@ The model directory displays the embedding rate rather than the chat input rate.
 
 Explicitly confirmed free embeddings remain zero-priced even if a legacy chat input rate or adapter-reported charge is present. Provider costs and token counters are retained. The directory displays confirmed free retrieval rates as zero and unconfigured rates as unknown. Deployment identity changes invalidate prior embedding cache entries; no database migration is required.
 
-Token-ID inputs reserve TPM using the exact sum of token IDs, including batches. Global pre-routing hooks may rewrite text before cache binding; route-scoped request transforms cannot change embedding input. The cache namespace changes so entries created under the previous transform contract become misses. Before execution, non-mock routes must still have a matching text-embedding inventory entry and configured supplier price, even if inventory or public model settings changed after publication.
+Token-ID inputs reserve TPM using the exact sum of token IDs, including batches. Global pre-routing hooks may rewrite text before cache binding; route-scoped request transforms cannot change embedding input. The cache namespace changes so entries created under the previous transform contract become misses. Before execution, non-mock routes must still have a matching text-embedding inventory entry, even if inventory or public model settings changed after publication.
+
+## Diagnosing rejected routes
+
+When runtime filtering rejects every candidate, the API retains HTTP `501` and `provider_capability_not_supported` for compatibility. The response and saved request-log response include an actionable `error.message` and `error.details` with `stage="route_selection"`, `upstream_attempted=false`, and a `reasons` array. Each entry includes a stable `code`, a remediation `message`, and `route_count`. The count reflects candidate routes, not upstream attempts; only the first blocking reason per candidate is reported. Multiple reasons are sorted by code. No provider identifiers, endpoints, credentials, or exact costs are included.
+
+| Reason code | Check |
+| --- | --- |
+| `provider_capability_or_protocol_unsupported` | Provider adapter and Embedding protocol support |
+| `tenant_price_not_configured` | Public model Embedding price or explicit free-price confirmation |
+| `upstream_model_inventory_missing` | Matching provider inventory entry and route upstream model name |
+| `upstream_model_modality_mismatch` | Inventory model type must be `embedding` |
+| `upstream_text_input_unsupported` | Inventory must support text input |
+
+No upstream request has been sent in this case, so an empty route-attempt list is expected. Filling in `/embeddings` cannot resolve an inventory or tenant-pricing rejection. Startup may backfill missing inventory from existing routes; its unconfirmed zero procurement cost no longer blocks an existing route. Earlier public-model admission failures remain `400 embedding_model_not_configured`; other failures such as vector-space conflicts retain their existing errors. Valid candidates continue normally when only some routes are rejected.
+
+## Upgrading local embedding routes
+
+Published routes remain callable when the upstream input cost is zero or not yet confirmed. This preserves the v0.8 behavior for self-hosted models without claiming that an unknown procurement cost is free. Usage and tenant charges are still recorded; missing provider-cost evidence stays pending in metering and is not a confirmed zero. Administrators can save the actual cost (including an explicitly confirmed zero) in the provider inventory. New route publication still requires tenant and provider price configuration. Model type, text capability, authorization and vector-space checks remain enforced.
+
+For an OpenAI-compatible local endpoint at `http://model-host:8000/v1/embeddings`, set Base URL to `http://model-host:8000/v1`, select automatic or `openai` for Embedding, and leave its path empty or enter `/embeddings`. The path is appended to Base URL; it is not a full URL. No database rewrite or automatic free-price confirmation is performed.
+
+### Console guidance
+
+The advanced settings show the effective protocol and protocol-specific default path. An empty path uses that default; the provider endpoint preview appends it to Base URL without changing the saved configuration. Expand the inline example for the Base URL, path, and resulting URL. Resource-account overrides may change the actual connection; a preview is not a connectivity test. Enter a path beginning with `/`, not a full URL or a filesystem path. Embedding and rerank settings are independent.
+
+Request details show the saved error message directly above the payload. A route-selection rejection explicitly states that no upstream request was sent; requests without usage records display a dash rather than fabricated zero amounts. Provider inventory distinguishes an unconfirmed zero embedding input cost from confirmed free usage. Saving costs confirms the entered values, including zero. Native search-unit procurement costs remain unknown when their native price is missing; auxiliary token counts never substitute for that price.
+
+When editing a compatible provider, the console keeps the saved runtime catalog (and therefore automatic protocol defaults) separate from the catalog template used to discover or import models. The admin provider PATCH request can opt into this behavior with `preserve_catalog: true`; it preserves `catalog_id`, `catalog_source`, and `doc_url` only when the provider type is unchanged. Create requests, explicit type changes, and callers that omit the flag retain their previous behavior. Invalid endpoint paths and malformed embedding-space JSON are rejected by the console before saving, including when the advanced tab is closed.

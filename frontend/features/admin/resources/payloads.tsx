@@ -1,3 +1,4 @@
+import { retrievalSettings, validEmbeddingSpaces } from "../domain/retrieval-settings";
 import { rerankOptions } from "../domain/provider-rerank-options";
 import { embeddingOptions } from "../domain/provider-embedding-options";
 import { providerBlockedAddressMessage } from "./provider-network-errors";
@@ -26,6 +27,8 @@ import { handleApprovalOrJSON } from "./governance-config";
 import { projectQuotaFields, type ProjectQuotaValues } from "../domain/project-quota";
 
 export function providerPayload(values: Record<string, string>, data?: Pick<AppData, "plugins" | "providerCatalog" | "providerAdapters" | "providers">) {
+  if (retrievalSettings(values, "embedding").invalidPath || retrievalSettings(values, "rerank").invalidPath) throw new Error(tx("填写以 / 开头的接口路径，不要填写完整 URL、查询参数或父级路径。"));
+  if (!validEmbeddingSpaces(values.embedding_spaces)) throw new Error(tx("向量空间映射应为模型名到非空空间标识的 JSON 对象；单一上游可留空。"));
   const providerTypeOptions = data ? providerTypeOptionsFromData(data, values) : [];
   const authMode = providerAuthMode(values, providerTypeOptions);
   return {
