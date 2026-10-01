@@ -1,5 +1,7 @@
 import type { SemanticRoutingPolicy } from "./semantic-routing-types";
 export type { SemanticRoutingPolicy, SemanticRoutingCandidate } from "./semantic-routing-types";
+import type { RequestHealthBucket } from "./request-health-types";
+export type { RequestHealthBucket } from "./request-health-types";
 import { Activity } from "lucide-react";
 import type { ResourceAction } from "./resource-action";
 
@@ -1444,6 +1446,7 @@ export type AppData = {
   breakdown: UsageBreakdown;
   dailyUsage: UsageDaily;
   timeseries: UsagePoint[];
+  requestHealth: RequestHealthBucket[];
   resources: Record<string, AdminResource[]>;
   providerCatalog: ProviderCatalogEntry[];
   providerAdapters: AdapterDescriptor[];

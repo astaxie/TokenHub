@@ -219,3 +219,38 @@ type requestLogUsageScope struct {
 	ProjectID string
 	APIKeyID  string
 }
+
+// requestLogSlowLatencyMS is the latency at which a successful request counts as a
+// warning in the request health timeline.
+const requestLogSlowLatencyMS = 5000
+
+// RequestHealthCount holds the requests in one UTC hour, split by the outcome
+// classes the admin console uses for request health. Bucket is the hour's start
+// formatted as RFC 3339.
+type RequestHealthCount struct {
+	Bucket  string
+	Total   int64
+	Warning int64
+	Failure int64
+}
+
+func (s *GormStore) CountRequestHealth(query RequestLogQuery) ([]RequestHealthCount, error) {
+	failed := "(status_code >= 400 OR COALESCE(error_code, '') <> '')"
+	bucket := s.requestLogHourBucketExpression()
+	var counts []RequestHealthCount
+	err := requestLogBaseQuery(s.db, query).Select(
+		bucket+" AS bucket, "+
+			"COUNT(*) AS total, "+
+			"COALESCE(SUM(CASE WHEN "+failed+" THEN 0 WHEN status_code >= 300 OR latency_ms >= ? THEN 1 ELSE 0 END), 0) AS warning, "+
+			"COALESCE(SUM(CASE WHEN "+failed+" THEN 1 ELSE 0 END), 0) AS failure",
+		requestLogSlowLatencyMS,
+	).Group(bucket).Scan(&counts).Error
+	return counts, err
+}
+
+func (s *GormStore) requestLogHourBucketExpression() string {
+	if s.dbDriver == "postgres" {
+		return `to_char(date_trunc('hour', created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:00:00"Z"')`
+	}
+	return `strftime('%Y-%m-%dT%H:00:00Z', created_at)`
+}

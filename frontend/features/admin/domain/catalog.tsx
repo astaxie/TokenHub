@@ -27,6 +27,7 @@ export function emptyData(): AppData {
     breakdown: { projects: [], models: [], members: [], providers: [], provider_resources: [], cost_centers: [] },
     dailyUsage: emptyDailyUsage(),
     timeseries: [],
+    requestHealth: [],
     resources: {},
     providerCatalog: [],
     providerAdapters: [],

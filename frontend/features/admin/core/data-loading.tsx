@@ -17,6 +17,7 @@ export type LoadPlan = {
   dailyUsage: boolean;
   breakdown: boolean;
   timeseries: boolean;
+  requestHealth: boolean;
   users: boolean;
   providerCatalog: boolean;
   providerAdapters: boolean;
@@ -56,6 +57,7 @@ export function emptyLoadPlan(): LoadPlan {
     dailyUsage: false,
     breakdown: false,
     timeseries: false,
+    requestHealth: false,
     users: false,
     providerCatalog: false,
     providerAdapters: false,
@@ -97,6 +99,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.pluginActions = true;
       plan.pluginBackgroundJobs = true;
       plan.logs = can("audit");
+      plan.requestHealth = can("audit");
       plan.users = appRole(user.role) === "team_leader";
       if (appRole(user.role) === "team_leader") {
         addResourceDependency(plan, "teams");
@@ -305,6 +308,7 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     breakdown: loaded.breakdown ?? current.breakdown,
     dailyUsage: loaded.dailyUsage ?? current.dailyUsage,
     timeseries: loaded.timeseries ?? current.timeseries,
+    requestHealth: loaded.requestHealth ?? current.requestHealth,
     keys: loaded.keys ?? current.keys,
     providerCatalog: loaded.providerCatalog ?? current.providerCatalog,
     providerAdapters: loaded.providerAdapters ?? current.providerAdapters,

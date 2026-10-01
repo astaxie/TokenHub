@@ -151,6 +151,10 @@ export const usageTranslations = {
     "当前对账操作不受支持": "This reconciliation operation is not supported",
     "账期时间格式无效": "The period time format is invalid",
     "所选时区中不存在该本地时间": "This local time does not exist in the selected timezone",
+    "请求健康时间线": "Request Health Timeline",
+    "无请求": "No requests",
+    "最近 7 天按小时汇总成功、告警和失败请求": "Successful, warning, and failed requests per hour over the last 7 days",
+    "{start} · 请求 {total} · 成功 {success} · 告警 {warning} · 失败 {failure}": "{start} · Requests {total} · Success {success} · Warning {warning} · Failed {failure}",
   },
   ja: {
     "配额时区": "クォータのタイムゾーン",
@@ -304,5 +308,9 @@ export const usageTranslations = {
     "当前对账操作不受支持": "この照合操作はサポートされていません",
     "账期时间格式无效": "請求期間の時刻形式が無効です",
     "所选时区中不存在该本地时间": "選択したタイムゾーンにこのローカル時刻は存在しません",
+    "请求健康时间线": "リクエストヘルスタイムライン",
+    "无请求": "リクエストなし",
+    "最近 7 天按小时汇总成功、告警和失败请求": "過去 7 日間の成功・警告・失敗リクエストを 1 時間ごとに集計",
+    "{start} · 请求 {total} · 成功 {success} · 告警 {warning} · 失败 {failure}": "{start} · リクエスト {total} · 成功 {success} · 警告 {warning} · 失敗 {failure}",
   },
 } satisfies Record<"en" | "ja", Record<string, string>>;
