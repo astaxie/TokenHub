@@ -282,6 +282,17 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       break;
   }
 
+  // Every plugin endpoint requires the providers permission, which only admins
+  // have. Requesting them without it fails the whole view load with a 403.
+  if (!can("providers")) {
+    plan.plugins = false;
+    plan.pluginMarketplace = false;
+    plan.pluginChain = false;
+    plan.pluginUI = false;
+    plan.pluginActions = false;
+    plan.pluginBackgroundJobs = false;
+  }
+
   return plan;
 }
 
