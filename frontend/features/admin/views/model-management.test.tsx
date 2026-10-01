@@ -9,7 +9,23 @@ import { modelConfig } from "../resources/provider-model-config";
 import { ModelCreateModal } from "./model-create-modal";
 import { ModelDirectoryView } from "./model-directory";
 
-const template: Model = { id: "template", name: "qwen-template", category: "qwen", family: "qwen", modality: "chat", status: "active", context_window: 32000, capabilities: ["chat", "tools"], input_price_usd_per_1m: 1, output_price_usd_per_1m: 2, metadata: { source: "tokenhub-standard-catalog" } };
+const template: Model = {
+  id: "template",
+  name: "qwen-template",
+  category: "qwen",
+  family: "qwen",
+  modality: "chat",
+  status: "active",
+  context_window: 32000,
+  capabilities: ["chat", "tools"],
+  input_price_usd_per_1m: 1,
+  cache_write_price_usd_per_1m: 0,
+  cache_write_5m_price_usd_per_1m: 0,
+  cache_write_1h_price_usd_per_1m: 0,
+  output_price_usd_per_1m: 2,
+  pricing_periods: [{ timezone: "UTC", start_time: "00:00", end_time: "08:00", input_price_usd_per_1m: 0.5 }],
+  metadata: { source: "tokenhub-standard-catalog" },
+};
 
 function fixture() {
   const data = emptyData();
@@ -43,14 +59,60 @@ describe("Model creation progressive disclosure", () => {
     expect(screen.getByLabelText("系列")).not.toBeVisible();
     expect(screen.getByLabelText("对外模型 ID")).toBeVisible();
     expect(screen.getByLabelText(/^对外输入价 USD\/1M/)).toBeVisible();
-    expect(screen.getByLabelText(/^对外缓存写价 USD\/1M/)).toBeVisible();
-    expect(screen.getByLabelText(/^对外 5 分钟缓存写价 USD\/1M/)).toBeVisible();
-    expect(screen.getByLabelText(/^对外 1 小时缓存写价 USD\/1M/)).toBeVisible();
-    expect(screen.getByLabelText(/^分时价格配置（JSON）/)).toBeVisible();
+    expect(screen.getByLabelText(/^对外缓存写价 USD\/1M/)).not.toBeVisible();
+    expect(screen.getByLabelText(/^对外 5 分钟缓存写价 USD\/1M/)).not.toBeVisible();
+    expect(screen.getByLabelText(/^对外 1 小时缓存写价 USD\/1M/)).not.toBeVisible();
+    expect(screen.getByLabelText(/^分时价格配置（JSON）/)).not.toBeVisible();
     expect(screen.getByRole("button", { name: "创建对外模型" })).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: "Test Provider / upstream-model" }));
     await user.click(screen.getByRole("button", { name: "创建对外模型" }));
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: "qwen-template", family: "qwen", modality: "chat", context_window: "32000", capabilities: "chat, tools", input_price_usd_per_1m: "1", initial_provider_models: "p|upstream-model" }));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      name: "qwen-template",
+      family: "qwen",
+      modality: "chat",
+      context_window: "32000",
+      capabilities: "chat, tools",
+      input_price_usd_per_1m: "1",
+      cache_write_price_usd_per_1m: "0",
+      cache_write_5m_price_usd_per_1m: "0",
+      cache_write_1h_price_usd_per_1m: "0",
+      pricing_periods: JSON.stringify(template.pricing_periods, null, 2),
+      initial_provider_models: "p|upstream-model",
+    }));
+  });
+
+  it("allows advanced billing fields to be edited and saved after collapsing them again", async () => {
+    const save = vi.fn();
+    render(<CreateHarness save={save} />);
+    const user = await selectTemplate();
+    await user.click(screen.getByRole("button", { name: "高级模型设置" }));
+    const priceEdits = [
+      { label: /^对外缓存写价 USD\/1M/, value: "0.25" },
+      { label: /^对外 5 分钟缓存写价 USD\/1M/, value: "0.5" },
+      { label: /^对外 1 小时缓存写价 USD\/1M/, value: "1" },
+    ];
+    const pricingPeriods = screen.getByLabelText(/^分时价格配置（JSON）/);
+    expect(pricingPeriods).toHaveValue(JSON.stringify(template.pricing_periods, null, 2));
+    for (const { label, value } of priceEdits) {
+      const field = screen.getByLabelText(label);
+      expect(field).toBeVisible();
+      expect(field).toHaveValue(0);
+      await user.clear(field);
+      await user.type(field, value);
+    }
+    const periods = JSON.stringify([{ timezone: "UTC", start_time: "09:00", end_time: "17:00", input_price_usd_per_1m: 2 }]);
+    await user.clear(pricingPeriods);
+    await user.paste(periods);
+    await user.click(screen.getByRole("button", { name: "高级模型设置" }));
+    expect(pricingPeriods).not.toBeVisible();
+    await user.click(screen.getByRole("checkbox", { name: "Test Provider / upstream-model" }));
+    await user.click(screen.getByRole("button", { name: "创建对外模型" }));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      cache_write_price_usd_per_1m: "0.25",
+      cache_write_5m_price_usd_per_1m: "0.5",
+      cache_write_1h_price_usd_per_1m: "1",
+      pricing_periods: periods,
+    }));
   });
 
   it("opens custom configuration and focuses the external model ID", async () => {

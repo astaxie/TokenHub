@@ -746,13 +746,12 @@ export function ProviderUpsertModal({
     setCredentialMode("provider_api_key");
     setModelCategory("all");
     selectCustomCatalog();
-    // A custom channel must start from a direct protocol, even when the
-    // operator arrived here after selecting an account-backed provider.
-    // Otherwise the previous catalog type silently becomes the custom
-    // channel's protocol and is submitted unless Advanced settings are opened.
-    const directTypes = providerTypeOptions?.filter(option => !accountProviderCatalogOptions.some(entry => entry.type === option.value));
-    const type = defaultProviderTypeValue(directTypes);
-    setValues(current => ({ ...current, type, [providerAuthModeField]: providerAuthMode({ type }, directTypes), system_prompt_transform_policy: defaultProviderSystemPromptTransformPolicy(type, "custom", directTypes) }));
+    // Initialize a new custom connection without overwriting an existing draft.
+    if (catalogID !== "custom") {
+      const directTypes = providerTypeOptions?.filter(option => !accountProviderCatalogOptions.some(entry => entry.type === option.value));
+      const type = defaultProviderTypeValue(directTypes);
+      setValues(current => ({ ...current, type, [providerAuthModeField]: providerAuthMode({ type }, directTypes), system_prompt_transform_policy: defaultProviderSystemPromptTransformPolicy(type, "custom", directTypes) }));
+    }
     setCreateStep(1);
     setError("");
   }

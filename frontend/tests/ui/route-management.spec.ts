@@ -1,4 +1,4 @@
-import type { Model, ModelRoute, Provider, ProviderModel } from "../../features/admin/core/types";
+import type { Model, ModelRoute, ModelRoutePolicy, Provider, ProviderModel } from "../../features/admin/core/types";
 import { test, expect, capture } from "./harness";
 import { model, project, shellResponses } from "./fixtures/shell";
 import type { MockAPI } from "./network";
@@ -91,3 +91,61 @@ test("route-management opens-unmapped-model-from-directory", async ({ page, api 
   await expect(child).toHaveCount(0);
   await expect(dialog.getByText(route.provider_model, { exact: true })).toBeVisible();
 });
+
+for (const state of ["unknown-desktop", "unknown-mobile", "mixed-known-unknown"] as const) {
+  test(`route-management ${state}`, async ({ page, api }, testInfo) => {
+    if (state === "unknown-mobile") await page.setViewportSize({ width: 390, height: 844 });
+    installRouteFixtures(api);
+    const unknown: ModelRoute = { ...route, id: "route_ui_unknown", priority: 2, weight: 23, quality_score: 71, cost_score: 84, strategy: "future-strategy" };
+    const routes: ModelRoute[] = state === "mixed-known-unknown"
+      ? [{ ...route, weight: 75, quality_score: 62, cost_score: 39, strategy: "quality" }, unknown]
+      : [unknown];
+    api.replaceResponse("GET", "/api/admin/routing-rules", { data: routes });
+    const saved: ModelRoutePolicy[] = [];
+    api.define("PATCH", `/api/admin/model-routing-policies/${model.name}`, input => {
+      const policy = input.body as ModelRoutePolicy;
+      expect(policy.strategy).toBe("balanced");
+      expect(policy.routes).toEqual(routes.map(item => ({ route_id: item.id, weight: item.weight, quality_score: item.quality_score, cost_score: item.cost_score })));
+      saved.push(policy);
+      const updated = routes.map(item => ({ ...item, strategy: policy.strategy, priority: 1 }));
+      api.replaceResponse("GET", "/api/admin/routing-rules", { data: updated });
+      return { json: { strategy: policy.strategy, data: updated, semantic_routing: policy.semantic_routing } };
+    });
+    await page.goto("/routes");
+    await expect(page.getByRole("cell", { name: state === "mixed-known-unknown" ? "策略不一致" : "future-strategy" })).toBeVisible();
+    await page.getByRole("button", { name: "配置", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "配置模型路由", exact: true });
+    const tabs = dialog.getByRole("tablist", { name: "模型路由策略", exact: true }).getByRole("tab");
+    await expect(tabs).toHaveCount(7);
+    for (const tab of await tabs.all()) {
+      await expect(tab).toBeVisible();
+      await expect(tab).toHaveAttribute("aria-selected", "false");
+    }
+    const warning = dialog.getByText("此模型包含未知路由策略：future-strategy。请选择受支持的策略后再保存。", { exact: true });
+    await expect(warning).toBeVisible();
+    await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "查看当前策略说明", exact: true })).toHaveCount(0);
+    if (state === "mixed-known-unknown") await expect(dialog.getByText("当前 Provider 线路策略不一致，应用后将统一为所选模型策略。", { exact: true })).toBeVisible();
+    const apply = dialog.getByRole("button", { name: "应用策略", exact: true });
+    await expect(apply).toBeDisabled();
+    await capture(page, testInfo, dialog, `route-management-${state}-warning`, "未知路由策略：明确选择前不显示默认策略参数", "viewport");
+
+    await dialog.getByRole("tab", { name: "综合评分", exact: true }).click();
+    await expect(dialog.getByRole("tab", { name: "综合评分", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(warning).toHaveCount(0);
+    for (const [index, item] of routes.entries()) {
+      await expect(dialog.getByRole("spinbutton", { name: "权重", exact: true }).nth(index)).toHaveValue(String(item.weight));
+      await expect(dialog.getByRole("spinbutton", { name: "质量", exact: true }).nth(index)).toHaveValue(String(item.quality_score));
+      await expect(dialog.getByRole("spinbutton", { name: "成本", exact: true }).nth(index)).toHaveValue(String(item.cost_score));
+    }
+    await expect(apply).toBeEnabled();
+    if (state === "unknown-mobile") await dialog.getByRole("spinbutton", { name: "权重", exact: true }).scrollIntoViewIfNeeded();
+    await capture(page, testInfo, dialog, `route-management-${state}-selected`, "明确选择综合评分后保留原有权重和评分", "viewport");
+    await apply.click();
+    await expect.poll(() => saved.length).toBe(1);
+    await expect(apply).toBeDisabled();
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("cell", { name: "综合评分" })).toBeVisible();
+  });
+}

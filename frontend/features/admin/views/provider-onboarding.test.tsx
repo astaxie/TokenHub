@@ -111,6 +111,58 @@ describe("Provider onboarding", () => {
     expect(providerWrites).toEqual([expect.objectContaining({ name: "Enterprise Proxy", type: "alternate-compatible", base_url: proxyURL, selected_models: ["proxy-chat"] })]);
   });
 
+  it("initializes custom connections from a direct default and preserves the same custom draft", async () => {
+    const user = userEvent.setup();
+    const alternate = { ...catalog, id: "ui-alternate", name: "Alternate Service", display_name: "Alternate Service", type: "alternate-compatible" };
+    const discovery: Array<Record<string, unknown>> = [];
+    const providerWrites: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (url.includes("/provider-catalog/custom")) {
+        discovery.push(body);
+        return new Response(JSON.stringify({ data: { ...catalog, id: "custom", type: body.type } }));
+      }
+      if (url.includes("/provider-catalog/")) return new Response(JSON.stringify({ data: url.endsWith(alternate.id) ? alternate : catalog }));
+      if (url.endsWith("/api/admin/providers")) {
+        providerWrites.push(body);
+        return new Response(JSON.stringify({ provider: { id: "created-provider" }, imported_models: 1 }), { status: 201 });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    const { onSaved } = renderProvider({
+      catalog: [catalog, alternate],
+      providerTypeOptions: [...options, { ...options[0], value: alternate.type, label: "Alternate API", defaultCatalogProviderType: false, authModes: ["x-api-key", "bearer"] }],
+    });
+    await user.click(screen.getByRole("button", { name: /Alternate Service/ }));
+    await user.click(screen.getByRole("button", { name: "更换供应商" }));
+    await user.click(screen.getByRole("button", { name: /自定义供应商/ }));
+    expect(screen.getByLabelText("渠道商类型")).toHaveValue("openai_compatible");
+    await user.selectOptions(screen.getByLabelText("渠道商类型"), alternate.type);
+    fireEvent.change(screen.getByLabelText("渠道名称"), { target: { value: "Custom Draft" } });
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://custom.example.test/v1" } });
+    fireEvent.change(screen.getByLabelText("API Key", { exact: true }), { target: { value: "synthetic-key" } });
+    await user.click(screen.getByText("高级连接设置"));
+    await user.selectOptions(screen.getByLabelText(/^认证方式/), "bearer");
+    await user.selectOptions(screen.getByLabelText(/^系统提示词转换/), "preserve");
+    await waitFor(() => expect(discovery.at(-1)).toMatchObject({ type: alternate.type, provider_auth_mode: "bearer", api_key: "synthetic-key" }));
+    await user.click(await screen.findByRole("switch", { name: "引入 UI Chat" }));
+    const loadedCatalogs = discovery.length;
+    await user.click(screen.getByRole("button", { name: "更换供应商" }));
+    await user.click(screen.getByRole("button", { name: /自定义供应商/ }));
+    expect(screen.getByLabelText("渠道商类型")).toHaveValue(alternate.type);
+    expect(screen.getByLabelText("渠道名称")).toHaveValue("Custom Draft");
+    expect(screen.getByLabelText("Base URL")).toHaveValue("https://custom.example.test/v1");
+    expect(screen.getByLabelText("API Key", { exact: true })).toHaveValue("synthetic-key");
+    expect(screen.getByLabelText(/^认证方式/)).toHaveValue("bearer");
+    expect(screen.getByLabelText(/^系统提示词转换/)).toHaveValue("preserve");
+    expect(screen.getByRole("switch", { name: "移除 UI Chat" })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("button", { name: "添加供应商并引入模型" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(discovery).toHaveLength(loadedCatalogs);
+    expect(providerWrites).toEqual([expect.objectContaining({ type: alternate.type, selected_models: ["ui-chat"], system_prompt_transform_policy: "preserve" })]);
+  });
+
   it("clears account credentials between service cards and restores an API adapter for custom connections", async () => {
     const user = userEvent.setup();
     const accounts = ["alpha", "beta"].map(name => ({ ...catalog, id: name, name: `UI ${name}`, display_name: `UI ${name}`, type: `${name}_subscription`, models: [], models_count: 0 }));

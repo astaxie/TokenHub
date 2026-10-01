@@ -61,13 +61,15 @@ for (const mobile of [false, true]) {
 }
 
 test("models create-template-save-failure", async ({ page, api }, info) => {
+  const pricedTemplate: Model = { ...template, cache_write_price_usd_per_1m: 0, cache_write_5m_price_usd_per_1m: 0, cache_write_1h_price_usd_per_1m: 0, pricing_periods: [{ timezone: "UTC", start_time: "00:00", end_time: "08:00", input_price_usd_per_1m: 0.5 }] };
   const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
-  api.replaceResponse("GET", "/api/admin/overview", { ...overview, models: [template], providers: [provider] });
+  api.replaceResponse("GET", "/api/admin/overview", { ...overview, models: [pricedTemplate], providers: [provider] });
   api.replaceResponse("GET", "/api/admin/provider-models", { data: [inventory] });
   api.respond("GET", "/api/admin/routing-rules", { data: [] });
   api.respond("GET", "/api/admin/provider-catalog", { data: [] });
   api.define("POST", "/api/admin/models", input => {
     expect(input.body).toMatchObject({ name: "ui-reviewed-alias", family: template.family, modality: template.modality, context_window: template.context_window, capabilities: template.capabilities, routes: [{ provider_id: provider.id, provider_model: inventory.upstream_model, status: "active" }] });
+    expect(input.body).toMatchObject({ cache_write_price_usd_per_1m: 0, cache_write_price_configured: true, cache_write_5m_price_usd_per_1m: 0, cache_write_5m_price_configured: true, cache_write_1h_price_usd_per_1m: 0, cache_write_1h_price_configured: true, pricing_periods: pricedTemplate.pricing_periods });
     return { status: 422, json: { error: { message: "Synthetic model validation failure" } } };
   });
   await page.goto("/models");
@@ -76,6 +78,7 @@ test("models create-template-save-failure", async ({ page, api }, info) => {
   await editor.getByRole("button", { name: new RegExp(template.name) }).click();
   await editor.getByRole("button", { name: "下一步：选择 Provider 模型" }).click();
   await expect(editor.getByRole("button", { name: "高级模型设置" })).toHaveAttribute("aria-expanded", "false");
+  for (const label of [/^对外缓存写价 USD\/1M/, /^对外 5 分钟缓存写价 USD\/1M/, /^对外 1 小时缓存写价 USD\/1M/, /^分时价格配置（JSON）/]) await expect(editor.getByLabel(label)).not.toBeVisible();
   await editor.getByLabel("对外模型 ID", { exact: true }).fill("ui-reviewed-alias");
   await editor.getByRole("checkbox", { name: `${provider.name} / ${inventory.upstream_model}` }).check();
   await capture(page, info, editor, "models-create-template", "从模板创建模型：必填字段与定价", "viewport");
@@ -85,4 +88,9 @@ test("models create-template-save-failure", async ({ page, api }, info) => {
   await expect(editor.getByRole("button", { name: "高级模型设置" })).toHaveAttribute("aria-expanded", "true");
   await expect(editor.getByLabel("对外模型 ID", { exact: true })).toHaveValue("ui-reviewed-alias");
   await capture(page, info, editor, "models-create-template-error", "创建模型失败：保留输入并展开设置", "viewport");
+  const pricingPeriods = editor.getByLabel(/^分时价格配置（JSON）/);
+  await pricingPeriods.scrollIntoViewIfNeeded();
+  await expect(pricingPeriods).toHaveValue(JSON.stringify(pricedTemplate.pricing_periods, null, 2));
+  for (const label of [/^对外缓存写价 USD\/1M/, /^对外 5 分钟缓存写价 USD\/1M/, /^对外 1 小时缓存写价 USD\/1M/]) await expect(editor.getByLabel(label)).toHaveValue("0");
+  await capture(page, info, editor, "models-create-advanced-pricing", "高级模型设置：缓存写入费用与分时价格", "viewport");
 });

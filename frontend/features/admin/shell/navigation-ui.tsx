@@ -283,7 +283,7 @@ export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
   switch (view) {
     case "providers":
       return [
-        { label: "健康 Provider", value: `${data.providers.filter((item) => item.healthy).length}/${data.providers.length}` },
+        { label: "已启用供应商", value: `${formatNumber(data.providers.filter((item) => item.status === "active").length)}/${formatNumber(data.providers.length)}` },
         { label: "资源实例", value: formatNumber(data.providerResources.length) },
       ];
     case "models":

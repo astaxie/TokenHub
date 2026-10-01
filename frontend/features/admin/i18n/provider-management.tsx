@@ -1,5 +1,6 @@
 export const providerManagementTranslations = {
   en: {
+    "已启用供应商": "Enabled providers",
     "供应商": "Provider",
     "已引入模型": "Imported models",
     "更多": "More",
@@ -15,6 +16,7 @@ export const providerManagementTranslations = {
     "更多操作": "More actions",
   },
   ja: {
+    "已启用供应商": "有効なプロバイダー",
     "供应商": "プロバイダー",
     "已引入模型": "取り込み済みモデル",
     "更多": "その他",
@@ -30,6 +32,7 @@ export const providerManagementTranslations = {
     "更多操作": "その他の操作",
   },
   ru: {
+    "已启用供应商": "Включённые провайдеры",
     "供应商": "Провайдер",
     "已引入模型": "Импортированные модели",
     "更多": "Ещё",

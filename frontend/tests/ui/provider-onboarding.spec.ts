@@ -3,6 +3,8 @@ import { test, expect, capture } from "./harness";
 import type { MockAPI } from "./network";
 
 const direct: ProviderCatalogEntry = { id: "ui-direct", name: "UI Direct Service", display_name: "UI Direct Service", type: "openai_compatible", base_url: "https://api.example.test/v1", categories: ["openai"], models_count: 2, source: "ui-fixture" };
+const alternate: ProviderCatalogEntry = { ...direct, id: "ui-alternate", name: "UI Alternate Service", display_name: "UI Alternate Service", type: "ui_alternate" };
+const customConnection = { name: "UI Custom Draft", base_url: "https://custom.example.test/v1", type: alternate.type, api_key: "synthetic-ui-key" };
 const subscription: ProviderCatalogEntry = { id: "ui-subscription", name: "UI Subscription", display_name: "UI Subscription", type: "ui_subscription", base_url: "https://account.example.test", categories: ["openai"], models_count: 1, source: "plugin" };
 const catalogModel = { id: "ui-chat", name: "UI Chat", category: "openai", family: "test", type: "chat", input_price_usd_per_1m: 1, output_price_usd_per_1m: 2 };
 const subscriptionPlugin: PluginDescriptor = { id: "tokenhub.provider.ui-subscription", name: "UI Subscription", version: "1", source: "built_in", kinds: ["provider"], placements: [], capabilities: [{ kind: "provider_resource_type", name: "ui_subscription_account", subject: "ui_subscription" }] };
@@ -12,10 +14,11 @@ const adapters: AdapterDescriptor[] = [
 ];
 
 function installProviderFixtures(api: MockAPI, state: string) {
+  const custom = state === "custom";
   const providers: Provider[] = state.startsWith("catalog") ? [{ id: "prv_ui_existing", name: "Existing UI Service", type: direct.type, base_url: direct.base_url, priority: 10, healthy: true, status: "active", options: { catalog_id: direct.id } }] : [];
   const extraCatalog = state === "catalog-many" ? Array.from({ length: 8 }, (_, index) => ({ ...direct, id: `ui-catalog-${index}`, name: `UI Service ${index + 2}`, display_name: index === 3 ? "UI Enterprise Service With a Long Regional Deployment Name" : `UI Service ${index + 2}`, base_url: `https://region-${index + 2}.example.test/enterprise/compatible/v1` })) : [];
   api.respond("GET", "/api/admin/providers", { data: providers });
-  api.respond("GET", "/api/admin/provider-catalog", { data: [direct, ...extraCatalog, subscription] });
+  api.respond("GET", "/api/admin/provider-catalog", { data: [direct, ...extraCatalog, ...(custom ? [alternate] : []), subscription] });
   let catalogFailed = state === "model-failure";
   api.define("GET", "/api/admin/provider-catalog/ui-direct", () => catalogFailed
     ? { status: 503, json: { error: { message: "Synthetic catalog unavailable" } } }
@@ -23,7 +26,16 @@ function installProviderFixtures(api: MockAPI, state: string) {
     expect(query.size === 0 || (query.size === 1 && query.get("refresh") === "true")).toBe(true);
     if (query.get("refresh") === "true") catalogFailed = false;
   });
-  api.respond("GET", "/api/admin/provider-adapters", { data: adapters });
+  const customAdapters: AdapterDescriptor[] = custom ? [{ type: alternate.type, capabilities: ["chat"], provider_policy: { supports_custom_headers: true, api_key_required: true, auth_modes: ["x-api-key", "bearer"] } }] : [];
+  api.respond("GET", "/api/admin/provider-adapters", { data: [...adapters, ...customAdapters] });
+  if (custom) {
+    api.respond("GET", "/api/admin/provider-catalog/ui-alternate", { data: { ...alternate, models: [catalogModel] } });
+    api.define("POST", "/api/admin/provider-catalog/custom", input => {
+      expect(input.body).toMatchObject(customConnection);
+      expect(["x-api-key", "bearer"]).toContain((input.body as { provider_auth_mode: string }).provider_auth_mode);
+      return { json: { data: { ...direct, ...customConnection, id: "custom", models_count: 1, models: [catalogModel] } } };
+    });
+  }
   api.respond("GET", "/api/admin/plugins", { data: [subscriptionPlugin] });
   api.respond("GET", "/api/admin/plugin-marketplace", { data: { available: true, plugins: [] } });
   api.respond("GET", "/api/admin/plugin-background-jobs", { data: [], runs: [] });
@@ -37,12 +49,65 @@ function installProviderFixtures(api: MockAPI, state: string) {
     return state === "connection-failure" ? { status: 502, json: { error: { message: "Synthetic provider rejected the key" } } } : { json: { healthy: true, latency_ms: 35 } };
   });
   api.define("POST", "/api/admin/providers", input => {
-    expect(input.body).toMatchObject({ catalog_id: direct.id, name: direct.name, type: direct.type, api_key: "synthetic-ui-key", selected_models: [catalogModel.id] });
+    const connection = custom ? customConnection : direct;
+    const catalogID = custom ? "custom" : direct.id;
+    expect(input.body).toMatchObject({ catalog_id: catalogID, name: connection.name, type: connection.type, api_key: "synthetic-ui-key", selected_models: [catalogModel.id] });
+    if (custom) expect(input.body).toMatchObject({ base_url: customConnection.base_url, system_prompt_transform_policy: "preserve", custom_models: [expect.objectContaining({ id: catalogModel.id })] });
     if (state === "save-failure") return { status: 500, json: { error: { message: "Synthetic provider save failed" } } };
-    const provider: Provider = { id: "prv_ui_created", name: direct.name, type: direct.type, base_url: direct.base_url, priority: 10, healthy: true, status: "active", options: { catalog_id: direct.id } };
+    const provider: Provider = { id: "prv_ui_created", name: connection.name, type: connection.type, base_url: connection.base_url, priority: 10, healthy: true, status: "active", options: { catalog_id: catalogID } };
     api.replaceResponse("GET", "/api/admin/providers", { data: [provider] });
     api.replaceResponse("GET", "/api/admin/provider-models", { data: [{ id: "pm_ui_created", provider_id: provider.id, upstream_model: catalogModel.id, status: "active" }] });
     return { status: 201, json: { provider, imported_models: 1 } };
+  });
+}
+
+for (const viewport of ["desktop", "mobile"] as const) {
+  test(`provider-onboarding custom-draft ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    installProviderFixtures(api, "custom");
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    await editor.getByRole("button", { name: /UI Alternate Service/ }).click();
+    await expect(editor.getByLabel("Base URL", { exact: true })).toHaveValue(alternate.base_url!);
+    await editor.getByRole("button", { name: "更换供应商" }).click();
+    await editor.getByRole("button", { name: /自定义供应商/ }).click();
+    const protocol = editor.getByRole("combobox", { name: "渠道商类型", exact: true });
+    await expect(protocol).toBeVisible();
+    await expect(protocol).toHaveAttribute("required", "");
+    await expect(protocol).toHaveValue(direct.type);
+    await expect(editor.locator("details.provider-onboarding-advanced")).not.toHaveAttribute("open", "");
+    await protocol.scrollIntoViewIfNeeded();
+    await capture(page, testInfo, editor, `provider-onboarding-custom-required-${viewport}`, "自定义供应商：名称、地址与必填协议直接可见", "viewport");
+
+    await protocol.selectOption(alternate.type);
+    await editor.getByLabel("渠道名称", { exact: true }).fill(customConnection.name);
+    await editor.getByLabel("Base URL", { exact: true }).fill(customConnection.base_url);
+    await editor.getByLabel("API Key", { exact: true }).fill(customConnection.api_key);
+    await editor.getByText("高级连接设置", { exact: true }).click();
+    await editor.getByRole("combobox", { name: /^认证方式/ }).selectOption("bearer");
+    await editor.getByRole("combobox", { name: /^系统提示词转换/ }).selectOption("preserve");
+    const discoveryCalls = () => api.calls.filter(call => call.method === "POST" && call.path === "/api/admin/provider-catalog/custom");
+    await expect.poll(() => discoveryCalls().at(-1)?.body).toMatchObject({ ...customConnection, provider_auth_mode: "bearer" });
+    await editor.getByRole("switch", { name: "引入 UI Chat" }).click();
+    const loadedCatalogs = discoveryCalls().length;
+    await editor.getByRole("button", { name: "更换供应商" }).click();
+    await editor.getByRole("button", { name: /自定义供应商/ }).click();
+    await expect(protocol).toHaveValue(alternate.type);
+    await expect(editor.getByLabel("渠道名称", { exact: true })).toHaveValue(customConnection.name);
+    await expect(editor.getByLabel("Base URL", { exact: true })).toHaveValue(customConnection.base_url);
+    await expect(editor.getByLabel("API Key", { exact: true })).toHaveValue(customConnection.api_key);
+    await expect(editor.getByRole("combobox", { name: /^认证方式/ })).toHaveValue("bearer");
+    await expect(editor.getByRole("combobox", { name: /^系统提示词转换/ })).toHaveValue("preserve");
+    const selectedModel = editor.getByRole("switch", { name: "移除 UI Chat" });
+    await expect(selectedModel).toHaveAttribute("aria-checked", "true");
+    await selectedModel.scrollIntoViewIfNeeded();
+    await capture(page, testInfo, editor, `provider-onboarding-custom-restored-${viewport}`, "返回同一自定义供应商：保留连接草稿与已选模型", "viewport");
+    await editor.getByRole("button", { name: "添加供应商并引入模型" }).click();
+    await expect(editor).toHaveCount(0);
+    expect(discoveryCalls()).toHaveLength(loadedCatalogs);
+    expect(api.calls.filter(call => call.method === "POST" && call.path === "/api/admin/providers")).toHaveLength(1);
+    expect(api.calls.some(call => call.method === "POST" && /\/(models|routing-rules)$/.test(call.path))).toBe(false);
   });
 }
 

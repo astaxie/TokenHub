@@ -10,7 +10,20 @@ import { FieldInput } from "../shared/ui";
 import { useModalFocus } from "../shared/modal-focus";
 import { ModelBrandIcon } from "./model-catalog";
 
-const advancedFieldKeys = ["category", "family", "modality", "input_modalities", "context_window", "status", "capabilities", "supported_parameters"];
+const advancedFieldKeys = [
+  "category",
+  "family",
+  "modality",
+  "input_modalities",
+  "context_window",
+  "status",
+  "capabilities",
+  "supported_parameters",
+  "cache_write_price_usd_per_1m",
+  "cache_write_5m_price_usd_per_1m",
+  "cache_write_1h_price_usd_per_1m",
+  "pricing_periods",
+];
 
 export function ModelCreateModal({
   config,
@@ -236,14 +249,10 @@ export function ModelCreateModal({
               <div className="model-create-form-grid">
                 {renderField("input_price_usd_per_1m")}
                 {renderField("cache_read_price_usd_per_1m")}
-                {renderField("cache_write_price_usd_per_1m")}
-                {renderField("cache_write_5m_price_usd_per_1m")}
-                {renderField("cache_write_1h_price_usd_per_1m")}
                 {renderField("output_price_usd_per_1m")}
                 {renderField("embedding_price_usd_per_1m")}
                 {renderField("search_unit_price_usd")}
                 {renderField("retrieval_pricing_confirmed")}
-                {renderField("pricing_periods")}
               </div>
               <div className="model-create-pricing-note"><Info size={17} /><span>{tx("Provider 模型价格继续用于真实成本审计，不会覆盖此处的对外统一价格。")}</span></div>
             </section>

@@ -137,10 +137,12 @@ export function ModelRoutingPolicyEditor({
   onSave: (model: Model, policy: ModelRoutePolicy) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const persistedStrategies = useMemo(() => new Set(routes.map((route) => normalizeStrategy(route.strategy))), [routes]);
-  const persistedStrategy = persistedStrategies.values().next().value ?? "priority_weighted";
-  const unknownStrategy = routes.map((route) => route.strategy?.trim() ?? "").find((value) => value && !strategyOptions.some((option) => option.value === value));
+  const persistedStrategies = useMemo(() => new Set(routes.map((route) => route.strategy || "balanced")), [routes]);
+  const persistedStrategy = normalizeStrategy(persistedStrategies.values().next().value ?? "priority_weighted");
+  const unknownStrategies = [...persistedStrategies].filter((value) => !strategyOptions.some((option) => option.value === value));
   const [strategy, setStrategy] = useState<ModelRouteStrategy>(persistedStrategy);
+  const [strategyChosen, setStrategyChosen] = useState(false);
+  const needsStrategyChoice = unknownStrategies.length > 0 && !strategyChosen;
   const savedSemantic = readSemanticRoutingPolicy(model);
   const legacySemantic = savedSemantic.mode !== "off" && !savedSemantic.candidates?.length;
   const persistedSemantic = initialJevPolicy(model, routes, data);
@@ -153,13 +155,13 @@ export function ModelRoutingPolicyEditor({
   const selectedOption = strategyOptions.find((option) => option.value === strategy) ?? strategyOptions[0];
   const guideToggleLabel = tx(guideOpen ? "收起当前策略说明" : "查看当前策略说明");
   const mixedStrategies = persistedStrategies.size > 1;
-  const userDirty = JSON.stringify(semantic) !== JSON.stringify(persistedSemantic) || strategy !== persistedStrategy || routes.some((route) => {
+  const userDirty = (unknownStrategies.length > 0 && strategyChosen) || JSON.stringify(semantic) !== JSON.stringify(persistedSemantic) || strategy !== persistedStrategy || routes.some((route) => {
     const draft = drafts[route.id];
     return !draft || draft.weight !== positiveOr(route.weight, 100) || draft.quality_score !== positiveOr(route.quality_score, 50) || draft.cost_score !== positiveOr(route.cost_score, 50);
   });
   const dirty = userDirty || legacySemantic || semanticNeedsReconciliation || mixedStrategies;
   useEffect(() => { onDirtyChange?.(userDirty); }, [onDirtyChange, userDirty]);
-  const invalid = Boolean(unknownStrategy) || (strategy === "jev" && !validJevPolicy(semantic)) || routes.some((route) => {
+  const invalid = needsStrategyChoice || (strategy === "jev" && !validJevPolicy(semantic)) || routes.some((route) => {
     const draft = drafts[route.id];
     return !draft || !Number.isFinite(draft.weight) || !Number.isFinite(draft.quality_score) || !Number.isFinite(draft.cost_score) || draft.weight < 1 || draft.quality_score < 1 || draft.quality_score > 100 || draft.cost_score < 1 || draft.cost_score > 100;
   });
@@ -184,7 +186,7 @@ export function ModelRoutingPolicyEditor({
         <div>
           <div className="model-route-policy-title">
             <strong>{tx("模型路由策略")}</strong>
-            <button
+            {!needsStrategyChoice ? <button
               aria-controls={`route-strategy-panel-${strategy}`}
               aria-expanded={guideOpen}
               aria-label={guideToggleLabel}
@@ -194,9 +196,9 @@ export function ModelRoutingPolicyEditor({
               type="button"
             >
               <CircleHelp aria-hidden="true" size={15} />
-            </button>
+            </button> : null}
           </div>
-          <span>{tx(selectedOption.summary)}</span>
+          {!needsStrategyChoice ? <span>{tx(selectedOption.summary)}</span> : null}
         </div>
         <button className="button route-policy-save" disabled={loading || !dirty || invalid} onClick={savePolicy} type="button">
           <Save size={15} />
@@ -209,13 +211,13 @@ export function ModelRoutingPolicyEditor({
           const Icon = option.icon;
           return (
             <button
-              aria-selected={strategy === option.value}
+              aria-selected={!needsStrategyChoice && strategy === option.value}
               aria-controls={`route-strategy-panel-${option.value}`}
-              className={strategy === option.value ? "route-strategy-tab active" : "route-strategy-tab"}
+              className={!needsStrategyChoice && strategy === option.value ? "route-strategy-tab active" : "route-strategy-tab"}
               disabled={loading}
               id={`route-strategy-tab-${option.value}`}
               key={option.value}
-              onClick={() => setStrategy(option.value)}
+              onClick={() => { setStrategy(option.value); setStrategyChosen(true); }}
               role="tab"
               type="button"
             >
@@ -230,7 +232,7 @@ export function ModelRoutingPolicyEditor({
         aria-labelledby={`route-strategy-tab-${strategy}`}
         aria-live="polite"
         className="route-strategy-guide"
-        hidden={!guideOpen}
+        hidden={!guideOpen || needsStrategyChoice}
         id={`route-strategy-panel-${strategy}`}
         role="tabpanel"
       >
@@ -268,18 +270,18 @@ export function ModelRoutingPolicyEditor({
         </div>
       ) : null}
 
-      {strategy === "priority_weighted" || strategy === "adaptive" ? (
+      {!needsStrategyChoice && (strategy === "priority_weighted" || strategy === "adaptive") ? (
         <div className="route-policy-share-note">{tx("项目作用域过滤后将按可用 Provider 重新计算占比。")}</div>
       ) : null}
-      {strategy === "quality" || strategy === "cost" || strategy === "balanced" ? (
+      {!needsStrategyChoice && (strategy === "quality" || strategy === "cost" || strategy === "balanced") ? (
         <div className="route-policy-share-note">{tx("质量和成本评分由管理员维护，不会自动读取实时价格或模型评测。")}</div>
       ) : null}
-      {unknownStrategy ? <p className="route-policy-warning">{formatTranslationTemplate(tx("此模型包含未知路由策略：{strategy}。请选择受支持的策略后再保存。"), { strategy: routeStrategyLabel(unknownStrategy) })}</p> : null}
+      {needsStrategyChoice ? <p className="route-policy-warning">{formatTranslationTemplate(tx("此模型包含未知路由策略：{strategy}。请选择受支持的策略后再保存。"), { strategy: unknownStrategies.join(", ") })}</p> : null}
 
       {legacySemantic ? <p className="muted">{tx("此模型仍使用旧版 Jev 附加配置。应用当前策略后将替换旧配置；选择 Jev 智能路由可配置明确的候选模型。")}</p> : null}
-      {strategy === "jev" ? <SemanticRoutingFields value={semantic} routes={routes} data={data} disabled={loading} onChange={setSemantic} /> : null}
+      {!needsStrategyChoice && strategy === "jev" ? <SemanticRoutingFields value={semantic} routes={routes} data={data} disabled={loading} onChange={setSemantic} /> : null}
 
-      <div className="route-policy-list">
+      {!needsStrategyChoice ? <div className="route-policy-list">
         {routes.map((route, index) => {
           const draft = drafts[route.id];
           const share = route.status === "active" && activeWeight > 0 ? draft.weight / activeWeight * 100 : 0;
@@ -304,7 +306,7 @@ export function ModelRoutingPolicyEditor({
             />
           );
         })}
-      </div>
+      </div> : null}
     </section>
   );
 }

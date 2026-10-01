@@ -65,6 +65,8 @@ for (const mobile of [false, true]) {
     installProviders(api);
     await page.goto("/providers");
     const listing = page.locator(".provider-channel-list");
+    await expect(page.locator(".page-context-header")).toContainText("2/2已启用供应商");
+    await expect(page.locator(".page-context-header")).not.toContainText("健康 Provider");
     await expect(listing.getByText("待观测", { exact: true })).toHaveCount(2);
     await expect(listing.getByRole("columnheader", { name: "账号配额" })).toHaveCount(0);
     await capture(page, testInfo, listing, `providers-management-${mobile ? "mobile" : "desktop"}`, "供应商简洁列表与独立健康状态");
@@ -76,6 +78,7 @@ for (const mobile of [false, true]) {
     await expect(listing.getByText("待观测", { exact: true })).toHaveCount(1);
     await expect(search).toHaveValue("Internal");
     await expect(listing.getByRole("row").filter({ hasText: "UI Internal Cluster" })).toBeVisible();
+    await capture(page, testInfo, listing, `providers-monitoring-${mobile ? "mobile" : "desktop"}`, "可用性监控：无观测数据时保持待观测状态", "viewport");
     await listing.getByRole("button", { name: "供应商列表", exact: true }).click();
     await expect(search).toHaveValue("Internal");
     await expect(listing.getByRole("row").filter({ hasText: "UI Local Cluster" })).toHaveCount(0);
