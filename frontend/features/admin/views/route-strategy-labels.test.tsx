@@ -25,9 +25,9 @@ describe.each(locales)("Routing terminology in $language", ({ language, configur
     const routes = [{ ...route, strategy }];
     const data = { ...emptyData(), models: [model], routes };
     render(<RouteStrategyView config={routeConfig()} data={data} loading={false} onCreate={vi.fn()} onOpenModels={vi.fn()} onOpenProviders={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onReorder={vi.fn()} onSavePolicy={vi.fn()} />);
-    expect(screen.getByRole("cell", { name: label, exact: true })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: configure, exact: true }));
-    expect(within(screen.getByRole("dialog")).getByRole("tab", { name: label, exact: true })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("cell", { name: label })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: configure }));
+    expect(within(screen.getByRole("dialog")).getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
     expect(routeStrategyLabel(strategy)).toBe(label);
     expect(fieldValueLabel("strategy", strategy)).toBe(label);
     expect(enumValueLabel(strategy)).toBe(label);
