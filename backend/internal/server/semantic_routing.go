@@ -18,11 +18,10 @@ type semanticModelReader interface {
 }
 
 func (c Config) validateSemanticRouting() error {
+	// The TypeSafe key is evaluator-specific: a deployment that only uses the
+	// model evaluator runs without it, and TypeSafe policies then fall back.
 	if !c.SemanticRoutingEnabled {
 		return nil
-	}
-	if strings.TrimSpace(c.TypeSafeAPIKey) == "" {
-		return fmt.Errorf("TOKENHUB_TYPESAFE_API_KEY is required when semantic routing is enabled")
 	}
 	if len(c.SemanticRoutingProjects) == 0 {
 		return fmt.Errorf("TOKENHUB_SEMANTIC_ROUTING_PROJECTS must explicitly allow at least one project")
@@ -38,7 +37,8 @@ func (c Config) validateSemanticRouting() error {
 // Failover uses the resulting slice without invoking this evaluator again.
 func (s *Server) applyLegacySemanticRouting(ctx context.Context, routed *RoutedCall, req ChatCompletionRequest, headers http.Header) {
 	policy := modelSemanticRoutingPolicy(routed.Call.Model)
-	if !s.config.SemanticRoutingEnabled || policy.Mode == "off" || s.semanticRouter == nil || strings.TrimSpace(s.config.TypeSafeAPIKey) == "" || !slices.Contains(s.config.SemanticRoutingProjects, routed.Call.Project.ID) {
+	// The legacy overlay only asks TypeSafe; never for a policy that chose another classifier.
+	if policy.usesModelEvaluator() || !s.config.SemanticRoutingEnabled || policy.Mode == "off" || s.semanticRouter == nil || strings.TrimSpace(s.config.TypeSafeAPIKey) == "" || !slices.Contains(s.config.SemanticRoutingProjects, routed.Call.Project.ID) {
 		return
 	}
 	started := time.Now()

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -15,7 +16,7 @@ func usesJevStrategy(call CallContext, routes []RouteSelection) bool {
 		return true
 	}
 	for _, route := range routes {
-		if routeStrategy(route.Route) == RouteStrategyJev {
+		if isSemanticStrategy(routeStrategy(route.Route)) {
 			return true
 		}
 	}
@@ -23,7 +24,16 @@ func usesJevStrategy(call CallContext, routes []RouteSelection) bool {
 }
 
 func (s *Server) applySemanticRouting(ctx context.Context, routed *RoutedCall, req ChatCompletionRequest, headers http.Header) error {
-	if !usesJevStrategy(routed.Call, routed.Routes) {
+	jev := usesJevStrategy(routed.Call, routed.Routes)
+	if _, nested := classifierPrincipalFrom(ctx); nested {
+		// A classifier request carries the caller's text: it is never classified
+		// again, by Jev or by a legacy overlay that would send it to TypeSafe.
+		if jev || modelSemanticRoutingPolicy(routed.Call.Model).Mode != "off" {
+			return NewHTTPError(http.StatusConflict, "jev_classifier_nested", "A Jev classifier model cannot itself use semantic routing")
+		}
+		return nil
+	}
+	if !jev {
 		if len(modelSemanticRoutingPolicy(routed.Call.Model).Candidates) == 0 {
 			s.applyLegacySemanticRouting(ctx, routed, req, headers)
 		}
@@ -98,11 +108,14 @@ func jevModelFits(model ProviderModel, size, budget int, parameters map[string]b
 
 func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text string, eligible bool, fits func(ProviderModel) bool) error {
 	policy := modelSemanticRoutingPolicy(routed.Call.Model)
-	timeout := s.config.SemanticRoutingTimeoutMS
+	timeout := time.Duration(s.config.SemanticRoutingTimeoutMS) * time.Millisecond
 	if timeout <= 0 {
-		timeout = 1000
+		timeout = time.Second
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+	if policy.usesModelEvaluator() {
+		timeout = policy.classifierTimeout()
+	}
+	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errSemanticRoutingTimeout)
 	defer cancel()
 	if policy.Mode != "enforce" || len(policy.Candidates) == 0 {
 		return NewHTTPError(503, "jev_policy_unavailable", "Jev routing requires a configured model policy")
@@ -193,11 +206,21 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 	reason, selected := "fallback", fallback
 	decision := semanticDecision{}
 	defer func() {
-		s.store.RecordAuditEvent(AuditEvent{Action: "routing.semantic", ResourceType: "gateway_request", ResourceID: routed.Call.RequestID, Status: reason, Message: "Jev model selection", AfterSnapshot: auditSnapshotJSON(map[string]any{
-			"project_id": routed.Call.Project.ID, "model": routed.Call.Model.Name, "strategy": RouteStrategyJev, "protocol": routed.Call.RouteProtocol, "selected_candidate_id": selected, "selected_model": routed.Routes[0].ProviderModel, "confidence": decision.Confidence, "min_confidence": policy.MinConfidence, "probabilities": decision.Probabilities, "prompt_version": semanticRoutingPromptVersion, "evaluator_model": decision.Model, "input_tokens": decision.InputTokens, "output_tokens": decision.OutputTokens, "latency_ms": time.Since(started).Milliseconds(),
-		})})
+		snapshot := map[string]any{
+			"project_id": routed.Call.Project.ID, "model": routed.Call.Model.Name, "strategy": semanticStrategyOf(routed.Routes), "protocol": routed.Call.RouteProtocol, "selected_candidate_id": selected, "selected_model": routed.Routes[0].ProviderModel, "confidence": decision.Confidence, "min_confidence": policy.MinConfidence, "probabilities": decision.Probabilities, "prompt_version": semanticRoutingPromptVersion, "evaluator_model": decision.Model, "input_tokens": decision.InputTokens, "output_tokens": decision.OutputTokens, "latency_ms": time.Since(started).Milliseconds(),
+		}
+		if policy.usesModelEvaluator() {
+			// The model evaluator reports no confidence; the classifier's own usage
+			// is its request log entry, linked here by request id.
+			delete(snapshot, "confidence")
+			delete(snapshot, "min_confidence")
+			delete(snapshot, "probabilities")
+			snapshot["evaluator"], snapshot["prompt_version"], snapshot["classifier_request_id"] = semanticEvaluatorModel, classifierPromptVersion, decision.RequestID
+		}
+		s.store.RecordAuditEvent(AuditEvent{Action: "routing.semantic", ResourceType: "gateway_request", ResourceID: routed.Call.RequestID, Status: reason, Message: "Smart routing model selection", AfterSnapshot: auditSnapshotJSON(snapshot)})
 	}()
-	if !s.config.SemanticRoutingEnabled || s.semanticRouter == nil || s.config.TypeSafeAPIKey == "" || !slices.Contains(s.config.SemanticRoutingProjects, routed.Call.Project.ID) {
+	if !s.config.SemanticRoutingEnabled || !slices.Contains(s.config.SemanticRoutingProjects, routed.Call.Project.ID) ||
+		!policy.usesModelEvaluator() && (s.semanticRouter == nil || s.config.TypeSafeAPIKey == "") {
 		reason = "evaluator_disabled"
 		return nil
 	}
@@ -209,8 +232,19 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 		reason = "single_candidate"
 		return nil
 	}
-	decision, err = s.semanticRouter.Evaluate(ctx, text, candidates, policy.Instructions)
-	if err != nil || ctx.Err() != nil {
+	if policy.usesModelEvaluator() {
+		decision, err = s.classifyWithModel(ctx, routed.Call, policy, text, candidates)
+	} else {
+		decision, err = s.semanticRouter.Evaluate(ctx, text, candidates, policy.Instructions)
+	}
+	switch {
+	case errors.Is(err, errJevEvaluatorCooldown):
+		reason = "evaluator_cooldown"
+		return nil
+	case errors.Is(err, errJevInvalidAnswer):
+		reason = "invalid_decision"
+		return nil
+	case err != nil || ctx.Err() != nil:
 		reason = "evaluator_unavailable"
 		return nil
 	}
@@ -218,11 +252,11 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 		reason = "no_preference"
 		return nil
 	}
-	if len(groups[decision.Choice]) == 0 || !unitProbability(decision.Confidence) {
+	if len(groups[decision.Choice]) == 0 || !policy.usesModelEvaluator() && !unitProbability(decision.Confidence) {
 		reason = "invalid_decision"
 		return nil
 	}
-	if decision.Confidence < policy.MinConfidence {
+	if !policy.usesModelEvaluator() && decision.Confidence < policy.MinConfidence {
 		reason = "low_confidence"
 		return nil
 	}

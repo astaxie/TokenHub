@@ -31,6 +31,7 @@ type semanticDecision struct {
 	Confidence    float64            `json:"confidence"`
 	Probabilities map[string]float64 `json:"probabilities"`
 	Model         string             `json:"-"`
+	RequestID     string             `json:"-"`
 	InputTokens   int64              `json:"-"`
 	OutputTokens  int64              `json:"-"`
 }

@@ -1365,7 +1365,7 @@ func (s *Server) validateRouteModelProtocol(modelName string, pendingModel *Mode
 
 func (s *Server) validateRoutePolicy(route ModelRoute) error {
 	switch routeStrategy(route) {
-	case RouteStrategyJev, RouteStrategyBalanced, RouteStrategyAdaptive, RouteStrategyCost, RouteStrategyQuality, RouteStrategyPriorityWeighted, RouteStrategyPriorityOnly:
+	case RouteStrategyJev, RouteStrategySemantic, RouteStrategyBalanced, RouteStrategyAdaptive, RouteStrategyCost, RouteStrategyQuality, RouteStrategyPriorityWeighted, RouteStrategyPriorityOnly:
 	default:
 		return NewHTTPError(http.StatusBadRequest, "invalid_route_strategy", "Unsupported route strategy")
 	}

@@ -70,12 +70,12 @@ func TestSemanticRoutingConfigAndSessionHeader(t *testing.T) {
 	if err := config.validateSemanticRouting(); err != nil {
 		t.Fatal(err)
 	}
-	invalid := config
-	invalid.TypeSafeAPIKey = ""
-	if invalid.validateSemanticRouting() == nil {
-		t.Fatal("missing key accepted")
+	modelOnly := config
+	modelOnly.TypeSafeAPIKey = ""
+	if err := modelOnly.validateSemanticRouting(); err != nil {
+		t.Fatalf("model-evaluator deployment without a TypeSafe key rejected: %v", err)
 	}
-	invalid = config
+	invalid := config
 	invalid.SemanticRoutingProjects = nil
 	if invalid.validateSemanticRouting() == nil {
 		t.Fatal("missing allowlist accepted")

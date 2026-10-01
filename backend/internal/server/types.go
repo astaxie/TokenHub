@@ -15,7 +15,11 @@ const (
 	StatusDisabled = "disabled"
 	StatusRevoked  = "revoked"
 
+	// RouteStrategySemantic is smart routing whose classifier is chosen by the
+	// policy (TypeSafe Jev or a TokenHub model). RouteStrategyJev is its original
+	// name and stays accepted with identical behaviour.
 	RouteStrategyJev              = "jev"
+	RouteStrategySemantic         = "semantic"
 	RouteStrategyBalanced         = "balanced"
 	RouteStrategyAdaptive         = "adaptive"
 	RouteStrategyCost             = "cost"
@@ -1357,6 +1361,9 @@ type CallContext struct {
 	StreamFailed   bool
 	Affinity       *RequestAffinity
 	requestContext context.Context
+	// clientIP is the resolved client address the call was admitted for; a Jev
+	// model evaluator attributes its internal classifier request to it.
+	clientIP string
 }
 
 // measuredStart reports when the call began, on the clock its duration is
