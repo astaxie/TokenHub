@@ -8,7 +8,7 @@ import { findProvider, modelRoutesFor } from "../domain/entities";
 import { modelDirectorySubtitle, modelDisplayName } from "../domain/model-display-name";
 import { externalModels, filterExternalModels, isCustomModelAlias, modelPublicationState, modelRuntimeState, type ModelPublicationState } from "../domain/model-directory";
 import { compactNumber } from "../domain/formatting";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { DataSection, StatusPill } from "../shared/ui";
 import { ModelBrandIcon } from "./model-catalog";
@@ -206,7 +206,7 @@ function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, 
                 <td>
                   <div className="directory-model-name">
                     <ModelBrandIcon category={category} label={categoryLabel} data={data} />
-                    <div><button className="text-button model-detail-trigger" aria-label={`${tx("查看模型详情")}: ${title}`} onClick={() => onOpenDetails(model)} type="button">{title}</button>{subtitle ? <span>{subtitle}</span> : null}</div>
+                    <div><button className="text-button model-detail-trigger" aria-label={formatTranslationTemplate(tx("查看模型详情：{name}"), { name: title })} onClick={() => onOpenDetails(model)} type="button">{title}</button>{subtitle ? <span>{subtitle}</span> : null}</div>
                   </div>
                 </td>
                 <td><strong>{model.modality || "chat"}</strong><span>{model.context_window ? `${compactNumber(model.context_window)} ctx` : capabilities.slice(0, 2).join(" / ") || model.family || "-"}</span></td>

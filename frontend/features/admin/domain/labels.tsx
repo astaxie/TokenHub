@@ -1,6 +1,6 @@
 import { type AdminResource, type AdminUser, type AppData, type SettingsTabKey } from "../core/types";
 import { fieldSummary, projectName, stringifyValue, teamLabel } from "./entities";
-import { routeStrategyLabel } from "./formatting";
+import { routeStrategyLabel, routeStrategyLabelKeys } from "./route-strategy";
 import { displayText, tx } from "../i18n/runtime";
 import { identityProviderTemplateLabel, normalizedIdentityProviderIconKey } from "../shared/auth";
 import { codexFingerprintModeLabel } from "../core/project-key-download-templates";
@@ -97,6 +97,7 @@ export function enumOptionLabel(fieldKey: string, value: string) {
 export function enumValueLabel(value: string | undefined) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (!normalized) return "-";
+  if (Object.prototype.hasOwnProperty.call(routeStrategyLabelKeys, normalized)) return routeStrategyLabel(normalized);
   const labels: Record<string, string> = {
     active: "启用",
     disabled: "停用",
@@ -167,13 +168,6 @@ export function enumValueLabel(value: string | undefined) {
     quota_increase: "额度提升",
     invoice_confirm: "账单确认",
     invoice_reject: "账单驳回",
-    balanced: "平衡",
-    adaptive: "自适应",
-    quality: "质量优先",
-    cost: "成本优先",
-    jev: "Jev 智能路由",
-    priority_weighted: "优先级 + 权重",
-    priority_only: "仅优先级",
     inherit: "继承 Provider 策略",
     preserve: "保留归因块",
     strip: "移除归因块",

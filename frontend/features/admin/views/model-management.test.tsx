@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { type Model } from "../core/types";
 import { emptyData } from "../domain/catalog";
+import { type AppLanguage, setActiveLanguage } from "../i18n/runtime";
 import { modelConfig } from "../resources/provider-model-config";
 import { ModelCreateModal } from "./model-create-modal";
 import { ModelDirectoryView } from "./model-directory";
@@ -107,6 +108,20 @@ function directory(readOnly = false) {
 }
 
 describe("Compact model directory", () => {
+  it.each<[AppLanguage, string, string, string, string]>([
+    ["en", "View model details: published-model", "Routing policy: published-model", "More actions: published-model", "Model actions: published-model"],
+    ["ja", "モデル詳細を表示：published-model", "ルーティングポリシー：published-model", "その他の操作：published-model", "モデルの操作：published-model"],
+  ])("localizes complete dynamic action names in %s", async (language, detailsName, routingName, moreName, actionsName) => {
+    const user = userEvent.setup();
+    setActiveLanguage(language);
+    directory();
+    const row = screen.getByRole("row", { name: /published-model/ });
+    expect(within(row).getByRole("button", { name: detailsName })).toBeVisible();
+    expect(within(row).getByRole("button", { name: routingName })).toBeVisible();
+    await user.click(within(row).getByRole("button", { name: moreName }));
+    expect(screen.getByRole("group", { name: actionsName })).toBeVisible();
+  });
+
   it("defaults to published models and keeps secondary actions behind an accessible menu", async () => {
     const user = userEvent.setup();
     const { edit } = directory();
@@ -139,7 +154,7 @@ describe("Compact model directory", () => {
   it("opens complete model facts and every mapping by keyboard and restores focus on close", async () => {
     const user = userEvent.setup();
     directory();
-    const trigger = screen.getByRole("button", { name: "查看模型详情: published-model" });
+    const trigger = screen.getByRole("button", { name: "查看模型详情：published-model" });
     trigger.focus();
     await user.keyboard("{Enter}");
     const dialog = screen.getByRole("dialog", { name: "模型详情" });
@@ -154,7 +169,7 @@ describe("Compact model directory", () => {
   it("provides complete capabilities in read-only details without exposing upstream mappings", async () => {
     const user = userEvent.setup();
     directory(true);
-    await user.click(screen.getByRole("button", { name: "查看模型详情: published-model" }));
+    await user.click(screen.getByRole("button", { name: "查看模型详情：published-model" }));
     const dialog = screen.getByRole("dialog", { name: "模型详情" });
     expect(within(dialog).getByText("reasoning")).toBeVisible();
     expect(within(dialog).getByText("anthropic")).toBeVisible();

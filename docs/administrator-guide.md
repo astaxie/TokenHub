@@ -31,7 +31,7 @@ Anthropic Providers use `x-api-key` authentication by default. If an Anthropic-c
 
 ## Managing Providers, Models, and Routes
 
-Use **Add provider** to choose a provider card directly. Search the installed catalog or choose a custom connection; an already connected provider can have another instance for a different account, region, or environment. API connections show credentials and model selection together. Account connections open authorization with the default channel summarized; advanced settings retain manual credentials and connection overrides. Saving a provider imports upstream inventory only: it does not publish client-facing models.
+Use **Add provider** to choose a provider card directly. Search the installed catalog or choose a custom connection; an already connected provider can have another instance for a different account, region, or environment. API connections show credentials and model selection together. Retesting an unchanged provider connection preserves the selected models before import. Account connections open authorization with the default channel summarized; advanced settings retain manual credentials and connection overrides. Saving a provider imports upstream inventory only: it does not publish client-facing models.
 
 The default provider list separates configured status from observed health. A provider without observations is marked as awaiting observation. Open **Availability monitoring** for the existing probes, performance, account quotas, and refresh controls; search and category filters remain selected.
 
@@ -218,9 +218,11 @@ TokenHub rejects authentication headers, API-key and cookie credentials, forward
 
 ## Model Routing Policies
 
+All admin views use the same strategy names: Jev Smart Routing, Fixed Ratio, Adaptive, Quality First, Cost First, Primary / Backup, and Combined score.
+
 The admin console configures one routing strategy for the whole external model. Open the model card and select a strategy tab; the active tab explains its best use case, actual selection behaviour, parameter meaning, and a concrete example. Adjust the Provider parameters shown for that strategy, then choose **Apply Strategy**. The policy and every Provider parameter are saved atomically, so a model never runs with a partially updated configuration.
 
-For fixed-ratio routing, enter the relative weight beside each Provider. Two Providers with weights 75 and 25 display target shares of 75% and 25%. Adaptive routing uses the same values as base weights and dynamically adjusts effective shares. Quality, cost, and balanced modes expose only their relevant scores. All of these strategies place eligible Providers in one traffic-allocation pool. Sequential failover is the only mode that uses Provider order; drag the rows to set first, second, and later choices.
+For fixed-ratio routing, enter the relative weight beside each Provider. Two Providers with weights 75 and 25 display target shares of 75% and 25%. Adaptive routing uses the same values as base weights and dynamically adjusts effective shares. Quality First, Cost First, and Combined score expose only their relevant scores. All of these strategies place eligible Providers in one traffic-allocation pool. Primary / Backup is the only mode that uses Provider order; drag the rows to set first, second, and later choices.
 
 | Strategy | Behaviour |
 | --- | --- |

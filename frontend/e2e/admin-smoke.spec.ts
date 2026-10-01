@@ -263,7 +263,7 @@ test("admin can preview and export separate billing statements", async ({ page, 
   await page.screenshot({ path: test.info().outputPath("billing-statements-desktop.png") });
   await page.goto("/models");
   await page.getByRole("group", { name: "发布状态" }).getByRole("button", { name: "全部", exact: true }).click();
-  await page.getByRole("button", { name: /^更多操作:/ }).first().click();
+  await page.getByRole("button", { name: /^更多操作：/ }).first().click();
   await page.getByRole("button", { name: "下游费用对账单", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: "费用对账单", exact: true });
   await expect(dialog).toBeVisible();

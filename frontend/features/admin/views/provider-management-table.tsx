@@ -4,7 +4,7 @@ import { accountProviderCatalogOptionsFromPlugins } from "../domain/provider-acc
 import { providerDisplayBaseURL, providerDisplayName, providerDisplayType } from "../domain/entities";
 import { providerTypeLabelFromData } from "../domain/labels";
 import { isProviderAccountResourceForData } from "../domain/provider-resource-types";
-import { countWithUnit, tx } from "../i18n/runtime";
+import { countWithUnit, formatTranslationTemplate, tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 import type { ProviderMonitorRow } from "./crud-projects";
 
@@ -44,7 +44,7 @@ export function ProviderManagementTable({ rows, data, config, currentUser, onAct
               <td><div className="provider-management-actions">
                 {primaryActions.map((action) => <button className="text-button" key={action.label} onClick={() => onAction(action, provider)} title={tx(action.title ?? action.label)} type="button">{tx(action.label)}</button>)}
                 {canEdit ? <button className="text-button" onClick={() => onEdit(provider)} type="button">{tx("编辑")}</button> : null}
-                {secondaryActions.length > 0 || canDelete ? <details className="provider-management-more"><summary aria-label={`${tx("更多操作")}: ${name}`}><MoreHorizontal size={17} /><span>{tx("更多")}</span></summary><div>
+                {secondaryActions.length > 0 || canDelete ? <details className="provider-management-more"><summary aria-label={formatTranslationTemplate(tx("更多操作：{name}"), { name })}><MoreHorizontal size={17} /><span>{tx("更多")}</span></summary><div>
                   {secondaryActions.map((action) => <button className="text-button" key={action.label} onClick={() => onAction(action, provider)} type="button">{tx(action.label)}</button>)}
                   {canDelete ? <button className="text-button danger" onClick={() => onDelete(provider)} type="button">{tx("删除")}</button> : null}
                 </div></details> : null}

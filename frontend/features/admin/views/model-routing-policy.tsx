@@ -4,6 +4,7 @@ import { type AppData, type Model, type ModelRoute, type ModelRoutePolicy, type 
 import { priceMetric } from "../domain/catalog";
 import { findProvider, routeProjectScopeSummary } from "../domain/entities";
 import { providerTypeLabelFromData } from "../domain/labels";
+import { routeStrategyLabel } from "../domain/route-strategy";
 import { tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 
@@ -11,7 +12,6 @@ import { readSemanticRoutingPolicy, initialJevPolicy, validJevPolicy, SemanticRo
 
 const strategyOptions: Array<{
   value: ModelRouteStrategy;
-  label: string;
   summary: string;
   icon: typeof Gauge;
   badge: string;
@@ -22,7 +22,6 @@ const strategyOptions: Array<{
 }> = [
   {
     value: "jev",
-    label: "Jev 智能路由",
     summary: "根据请求内容选择合适的候选模型",
     icon: Activity,
     badge: "语义选模",
@@ -33,7 +32,6 @@ const strategyOptions: Array<{
   },
   {
     value: "priority_weighted",
-    label: "固定比例",
     summary: "按 Provider 权重形成目标流量比例",
     icon: BarChart3,
     badge: "最常用",
@@ -44,7 +42,6 @@ const strategyOptions: Array<{
   },
   {
     value: "adaptive",
-    label: "自适应",
     summary: "基于近期响应质量自动调整基础权重",
     icon: Activity,
     badge: "自动优化",
@@ -55,7 +52,6 @@ const strategyOptions: Array<{
   },
   {
     value: "quality",
-    label: "质量优先",
     summary: "优先选择质量评分更高的 Provider",
     icon: Gauge,
     badge: "固定排序",
@@ -66,7 +62,6 @@ const strategyOptions: Array<{
   },
   {
     value: "cost",
-    label: "成本优先",
     summary: "优先选择成本评分更高的 Provider",
     icon: CircleDollarSign,
     badge: "固定排序",
@@ -77,7 +72,6 @@ const strategyOptions: Array<{
   },
   {
     value: "priority_only",
-    label: "主备顺序",
     summary: "主 Provider 失败后按顺序切换备用 Provider",
     icon: ListOrdered,
     badge: "主备模式",
@@ -88,7 +82,6 @@ const strategyOptions: Array<{
   },
   {
     value: "balanced",
-    label: "综合评分",
     summary: "按权重、质量分和成本分形成综合分流权重",
     icon: Scale,
     badge: "兼容模式",
@@ -226,7 +219,7 @@ export function ModelRoutingPolicyEditor({
               type="button"
             >
               <Icon size={15} />
-              <span>{tx(option.label)}</span>
+              <span>{routeStrategyLabel(option.value)}</span>
             </button>
           );
         })}
@@ -242,7 +235,7 @@ export function ModelRoutingPolicyEditor({
       >
         <div className="route-strategy-guide-head">
           <div>
-            <strong>{tx(selectedOption.label)}</strong>
+            <strong>{routeStrategyLabel(selectedOption.value)}</strong>
             <span>{tx(selectedOption.summary)}</span>
           </div>
           <em>{tx(selectedOption.badge)}</em>

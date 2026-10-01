@@ -73,7 +73,7 @@ test("route-management opens-unmapped-model-from-directory", async ({ page, api 
   await page.goto("/models");
   await page.getByRole("button", { name: "草稿/待映射", exact: true }).click();
   const row = page.getByRole("row").filter({ hasText: unmapped.name });
-  await row.getByRole("button", { name: `路由策略: ${unmapped.name}`, exact: true }).click();
+  await row.getByRole("button", { name: `路由策略：${unmapped.name}`, exact: true }).click();
   await expect(page).toHaveURL(/\/routes$/);
   await expect(page.getByRole("tab", { name: /全部模型/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("row").filter({ hasText: unmapped.name })).toBeVisible();

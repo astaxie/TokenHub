@@ -104,6 +104,11 @@ for (const state of ["catalog", "catalog-many", "api-complete", "connection-fail
     const modelSwitch = editor.getByRole("switch", { name: "引入 UI Chat" });
     await modelSwitch.click();
     await expect(editor.getByRole("switch", { name: "移除 UI Chat" })).toHaveAttribute("aria-checked", "true");
+    if (state === "api-complete" || state === "mobile") {
+      await editor.getByRole("button", { name: "测试连接" }).click();
+      await expect(editor.getByRole("status")).toContainText("API Key 配置有效");
+      await expect(editor.getByRole("switch", { name: "移除 UI Chat" })).toHaveAttribute("aria-checked", "true");
+    }
     await capture(page, testInfo, editor, `provider-onboarding-${state === "save-failure" ? "save-review" : state}`, "填写密钥与选择模型在同一页面", "viewport");
     if (state === "mobile") {
       await editor.getByRole("button", { name: "添加供应商并引入模型" }).scrollIntoViewIfNeeded();

@@ -33,7 +33,7 @@ for (const mobile of [false, true]) {
     await expect(page.locator(".model-directory .model-governance-flow")).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await capture(page, info, page.locator(".model-directory"), `models-directory-${mobile ? "mobile" : "desktop"}`, "模型目录：统一名称、上游、状态与价格", "viewport");
-    const detailTrigger = table.getByRole("button", { name: `查看模型详情: ${published.name}` });
+    const detailTrigger = table.getByRole("button", { name: `查看模型详情：${published.name}` });
     await detailTrigger.click();
     const detail = page.getByRole("dialog", { name: "模型详情" });
     await expect(detail).toBeFocused();
@@ -48,8 +48,8 @@ for (const mobile of [false, true]) {
     await page.keyboard.press("Escape");
     await expect(detail).toHaveCount(0);
     await expect(detailTrigger).toBeFocused();
-    await table.getByRole("button", { name: `更多操作: ${published.name}` }).click();
-    const actions = page.getByRole("group", { name: `模型操作: ${published.name}` });
+    await table.getByRole("button", { name: `更多操作：${published.name}` }).click();
+    const actions = page.getByRole("group", { name: `模型操作：${published.name}` });
     await expect(actions.getByRole("button", { name: "编辑", exact: true })).toHaveCount(0);
     await expect(actions.getByRole("button", { name: "下游费用对账单", exact: true })).toBeVisible();
     await capture(page, info, actions, `models-actions-${mobile ? "mobile" : "desktop"}`, "模型更多操作");

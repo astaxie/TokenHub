@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type ApiContext, type Model } from "../core/types";
 import { type ModelPublicationState } from "../domain/model-directory";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { StatementLauncher } from "./billing-statements";
 
 export function ModelDirectoryActions({ api, model, busy, publication, activeRoutes, onOpenRoutes, onEdit, onDelete, onPublish }: {
@@ -62,10 +62,10 @@ export function ModelDirectoryActions({ api, model, busy, publication, activeRou
   return (
     <div className="directory-row-actions model-management-actions">
       <button className="text-button" disabled={busy} onClick={() => onEdit(model)} type="button">{tx("编辑")}</button>
-      <button aria-label={`${tx("路由策略")}: ${model.name}`} className="text-button" disabled={busy} onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button>
-      <button aria-controls={menuID} aria-expanded={open} aria-label={`${tx("更多操作")}: ${model.name}`} className="icon-button" disabled={busy} onClick={toggle} ref={trigger} type="button"><MoreHorizontal size={17} /></button>
+      <button aria-label={formatTranslationTemplate(tx("路由策略：{model}"), { model: model.name })} className="text-button" disabled={busy} onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button>
+      <button aria-controls={menuID} aria-expanded={open} aria-label={formatTranslationTemplate(tx("更多操作：{name}"), { name: model.name })} className="icon-button" disabled={busy} onClick={toggle} ref={trigger} type="button"><MoreHorizontal size={17} /></button>
       {typeof document !== "undefined" ? createPortal(
-        <div aria-label={`${tx("模型操作")}: ${model.name}`} className="model-management-menu" hidden={!open} id={menuID} ref={menu} role="group" style={position}>
+        <div aria-label={formatTranslationTemplate(tx("模型操作：{name}"), { name: model.name })} className="model-management-menu" hidden={!open} id={menuID} ref={menu} role="group" style={position}>
           <StatementLauncher api={api} side="tenant" model={model.name} />
           <button className="text-button" disabled={busy || (publication !== "published" && activeRoutes === 0)} onClick={() => run(() => onPublish(model, publication !== "published"))} type="button">{tx(publication === "published" ? "下线" : "发布")}</button>
           <button className="danger-button" disabled={busy} onClick={() => run(() => onDelete(model))} type="button">{tx("删除")}</button>

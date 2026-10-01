@@ -146,6 +146,8 @@ export function ProviderAPIQuickConnect({
   const [showKey, setShowKey] = useState(false);
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
   const connectionTestRun = useRef(0);
+  const selectedModelCountRef = useRef(selectedModelCount);
+  selectedModelCountRef.current = selectedModelCount;
   const custom = catalogID === "custom";
   const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
   const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions, values.type);
@@ -194,7 +196,10 @@ export function ProviderAPIQuickConnect({
         latencyMS: Math.max(0, result.latency_ms),
         message: tx(apiKeyRequired ? "API Key 配置有效" : "连接测试通过"),
       });
-      onReloadModels();
+      // Refresh the upstream catalog when the user has not started a model
+      // selection draft. Reloading resets the parent selection state, so keep
+      // the draft intact after a successful connection test.
+      if (selectedModelCountRef.current === 0) onReloadModels();
     } catch (err) {
       if (connectionTestRun.current !== run || isAuthExpiredError(err)) return;
       setConnectionTest({
