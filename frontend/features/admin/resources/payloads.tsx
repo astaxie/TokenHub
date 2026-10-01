@@ -899,6 +899,7 @@ export function loadRequestLabel(name: string) {
     "api-keys": "Key 管理",
     routes: "路由策略",
     audit: "请求日志",
+    "request-health": "请求健康时间线",
     "audit-events": "后台审计",
     alerts: "告警事件",
     "alert-deliveries": "通知记录",

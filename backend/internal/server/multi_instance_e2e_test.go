@@ -113,6 +113,9 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 	t.Run("startup task revision runs once", func(t *testing.T) {
 		testClusterTaskRunsOnce(t, storeA, storeB)
 	})
+	t.Run("request health counts hourly UTC buckets in PostgreSQL", func(t *testing.T) {
+		testPostgresRequestHealthBuckets(t, storeA)
+	})
 	t.Run("request payload retention deletes in PostgreSQL", func(t *testing.T) {
 		testRequestPayloadRetentionPostgres(t, storeA)
 	})

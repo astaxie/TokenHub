@@ -332,7 +332,7 @@
 
 .usage-health-cell {
   flex: 1 1 6px;
-  max-width: 6px;
+  max-width: 14px;
   min-width: 0;
   aspect-ratio: 1;
   border: 1px solid var(--border);
@@ -354,8 +354,8 @@
 
 .usage-health-cell.failure,
 .usage-health-legend .failure {
-  border-color: color-mix(in srgb, var(--danger) 26%, var(--border));
-  background: var(--danger);
+  border-color: color-mix(in srgb, var(--red) 26%, var(--border));
+  background: var(--red);
 }
 
 .usage-health-legend .none {

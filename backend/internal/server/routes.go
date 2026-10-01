@@ -274,6 +274,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/breakdown", s.handleAdminUsageBreakdown, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/timeseries", s.handleAdminUsageTimeseries, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/audit/requests", s.handleAdminRequestLogs, s.adminMethodNotAllowed("audit", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/audit/request-health", s.handleAdminRequestHealth, s.adminMethodNotAllowed("audit", http.MethodGet))
 	s.registerDynamicGETRoute("/api/admin/audit/requests/{request_id}", s.handleAdminRequestDetailGet, s.adminMethodNotAllowed("audit", http.MethodGet))
 	s.mux.HandleFunc("/api/admin/audit/requests/", s.handleAdminRequestDetail)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/audit/image-jobs", s.handleAdminImageJobs, s.adminMethodNotAllowed("audit", http.MethodGet))

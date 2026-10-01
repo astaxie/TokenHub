@@ -1,10 +1,10 @@
 import { Activity, BarChart3, Boxes, Check, CircleDollarSign, Code2, Database, FileText, Gauge, KeyRound, LayoutDashboard, Server, ShieldCheck, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { appRole, canAccessView } from "../core/navigation";
-import { type AdminUser, type AppData, type AppRole, type RequestLog, type Summary, type UsageBreakdownRow, type UsagePoint, type ViewKey } from "../core/types";
+import { type AdminUser, type AppData, type AppRole, type RequestHealthBucket, type RequestLog, type Summary, type UsageBreakdownRow, type UsagePoint, type ViewKey } from "../core/types";
 import { findProvider, providerResourceAuditLabel } from "../domain/entities";
 import { compactNumber, formatDashboardMoney, formatMoney, formatNumber, playgroundModels } from "../domain/formatting";
-import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
+import { countWithUnit, formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { AdminUIDashboardCards } from "./admin-ui-dashboard-cards";
 import { hasUsage } from "./usage-billing";
 
@@ -234,11 +234,11 @@ export function RoleUsageMonitorDashboard({
           <div className="usage-monitor-panel-head">
             <div>
               <h2>{tx("请求健康时间线")}</h2>
-              <span>{tx("最近请求按成功、告警和失败聚合")}</span>
+              <span>{tx("最近 7 天按小时汇总成功、告警和失败请求")}</span>
             </div>
             <strong className={stats.successRate >= 95 ? "health-rate ok" : "health-rate warn"}>{stats.successRate.toFixed(1)}%</strong>
           </div>
-          <UsageHealthTimeline logs={data.logs} />
+          <UsageHealthTimeline buckets={data.requestHealth} />
         </article>
 
         <article className="usage-monitor-panel token-mix">
@@ -313,35 +313,19 @@ export function UsageMonitorTrafficChart({ points }: { points: UsagePoint[] }) {
   );
 }
 
-export function UsageHealthTimeline({ logs }: { logs: RequestLog[] }) {
-  const gridRef = useRef<HTMLDivElement>(null);
-  const [gridSize, setGridSize] = useState({ rows: 14, columns: 42 });
-  useEffect(() => {
-    const element = gridRef.current;
-    if (!element) return;
-    const updateGridSize = () => {
-      const rect = element.getBoundingClientRect();
-      const next = usageHealthGridSize(rect.width, rect.height);
-      setGridSize((current) => (current.rows === next.rows && current.columns === next.columns ? current : next));
-    };
-    updateGridSize();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateGridSize);
-      return () => window.removeEventListener("resize", updateGridSize);
-    }
-    const observer = new ResizeObserver(updateGridSize);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  const cells = usageHealthCells(logs, gridSize.rows * gridSize.columns);
-  const rows = Array.from({ length: gridSize.rows }, (_, rowIndex) => cells.filter((_, cellIndex) => cellIndex % gridSize.rows === rowIndex));
+export function UsageHealthTimeline({ buckets }: { buckets: RequestHealthBucket[] }) {
   return (
     <div className="usage-health-timeline">
-      <div className="usage-health-grid" ref={gridRef}>
-        {rows.map((row, rowIndex) => (
+      <div className="usage-health-grid">
+        {usageHealthRows(buckets).map((row, rowIndex) => (
           <div className="usage-health-row" key={`health-row-${rowIndex}`}>
-            {row.map((cell, index) => <span className={`usage-health-cell ${cell}`} key={`${cell}-${rowIndex}-${index}`} />)}
+            {row.map((bucket, index) => (
+              <span
+                className={`usage-health-cell ${usageHealthStatus(bucket)}`}
+                key={bucket?.start ?? `health-empty-${rowIndex}-${index}`}
+                title={bucket ? usageHealthCellTitle(bucket) : undefined}
+              />
+            ))}
           </div>
         ))}
       </div>
@@ -1226,30 +1210,45 @@ export function usageMonitorRequestLine(points: UsagePoint[], maxRequests: numbe
     .join(" ");
 }
 
-export function usageHealthGridSize(width: number, height: number) {
-  const cellSize = 6;
-  const gap = 3;
-  return {
-    rows: clampInt(Math.floor((Math.max(height, 120) + gap) / (cellSize + gap)), 7, 28),
-    columns: clampInt(Math.floor((Math.max(width, 180) + gap) / (cellSize + gap)), 24, 120),
-  };
+const usageHealthHoursPerRow = 24;
+const usageHealthDays = 7;
+
+// usageHealthRows lays the hourly buckets out one day per row, oldest first. Without
+// buckets (no audit access, or the request failed) it keeps the grid's shape empty.
+export function usageHealthRows(buckets: RequestHealthBucket[]): Array<Array<RequestHealthBucket | null>> {
+  if (!buckets.length) {
+    return Array.from({ length: usageHealthDays }, () => Array.from({ length: usageHealthHoursPerRow }, () => null));
+  }
+  const rows: RequestHealthBucket[][] = [];
+  for (let index = 0; index < buckets.length; index += usageHealthHoursPerRow) {
+    rows.push(buckets.slice(index, index + usageHealthHoursPerRow));
+  }
+  return rows;
 }
 
-export function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+// usageHealthStatus marks an hour as failed once 5% of its requests failed, the same
+// threshold the success rate badge uses, and as a warning for any lesser trouble.
+export function usageHealthStatus(bucket: RequestHealthBucket | null) {
+  if (!bucket || bucket.total <= 0) return "none";
+  if (bucket.failure * 20 >= bucket.total) return "failure";
+  if (bucket.failure > 0 || bucket.warning > 0) return "warning";
+  return "success";
 }
 
-export function usageHealthCells(logs: RequestLog[], cellCount: number) {
-  const recent = logs
-    .slice()
-    .sort((left, right) => left.created_at.localeCompare(right.created_at))
-    .slice(-cellCount)
-    .map((log) => {
-      if (requestLogFailed(log)) return "failure";
-      if (log.status_code >= 300 || log.latency_ms >= 5000) return "warning";
-      return "success";
-    });
-  return [...Array.from({ length: Math.max(0, cellCount - recent.length) }, () => "none"), ...recent];
+export function usageHealthCellTitle(bucket: RequestHealthBucket) {
+  const start = new Intl.DateTimeFormat(languageLocale(), {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(bucket.start));
+  return formatTranslationTemplate(tx("{start} · 请求 {total} · 成功 {success} · 告警 {warning} · 失败 {failure}"), {
+    start,
+    total: formatNumber(bucket.total),
+    success: formatNumber(bucket.success),
+    warning: formatNumber(bucket.warning),
+    failure: formatNumber(bucket.failure),
+  });
 }
 
 export function providerFailureLabel(data: AppData, log: RequestLog) {

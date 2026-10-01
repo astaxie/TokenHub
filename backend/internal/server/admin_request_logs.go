@@ -91,14 +91,20 @@ func (s *Server) requestLogQueryForUser(user AdminUser, r *http.Request) (Reques
 		query.APIKeyIDs = []string{apiKeyID}
 		return query, nil
 	}
+	s.scopeRequestLogQuery(user, &query)
+	return query, nil
+}
+
+// scopeRequestLogQuery limits a request log query to the logs the user may read.
+func (s *Server) scopeRequestLogQuery(user AdminUser, query *RequestLogQuery) {
+	query.Global = s.canViewGlobalOperations(user)
 	if query.Global {
-		return query, nil
+		return
 	}
 	if normalizeAdminRole(user.Role) == "team_leader" {
 		query.ProjectIDs = trueMapKeys(s.visibleProjectIDSet(user))
 	}
 	query.APIKeyIDs = trueMapKeys(s.visibleAPIKeyIDSet(user))
-	return query, nil
 }
 
 func parseRequestLogQueryTime(name, value string) (time.Time, error) {
