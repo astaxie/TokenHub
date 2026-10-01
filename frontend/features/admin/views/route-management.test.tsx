@@ -97,6 +97,40 @@ describe("Route management", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("keeps the selected editor after deleting the last route until explicitly closed", () => {
+    const currentData: AppData = {
+      ...data,
+      models: [models[1], models[0]],
+      routes: [routes[0]],
+      providers: [{ id: routes[0].provider_id, name: "Test Provider", type: "mock", priority: 1, status: "active", healthy: true }],
+      providerModels: [{ id: "provider-model", provider_id: routes[0].provider_id, upstream_model: routes[0].provider_model, status: "active" }],
+    };
+    const callbacks = props(currentData);
+    const view = render(<RouteStrategyView {...callbacks} />);
+    const dialog = openEditor();
+    fireEvent.click(within(dialog).getByTitle("删除"));
+    expect(callbacks.onDelete).toHaveBeenCalledWith(routes[0]);
+    const emptyRoutes = { ...currentData, routes: [] };
+    view.rerender(<RouteStrategyView {...callbacks} data={emptyRoutes} />);
+    expect(dialog).toBeVisible();
+    expect(within(dialog).getByRole("heading", { name: models[0].name })).toBeVisible();
+    expect(within(dialog).getByText("该统一模型还没有 Provider 线路")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "还没有路由策略" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "添加线路" }));
+    expect(callbacks.onCreate).toHaveBeenLastCalledWith(models[0]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "还没有路由策略" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "为模型添加路由" }));
+    expect(callbacks.onCreate).toHaveBeenLastCalledWith(models[1]);
+    view.rerender(<RouteStrategyView {...callbacks} data={emptyRoutes} loading />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.rerender(<RouteStrategyView {...callbacks} data={{ ...currentData, routes: [{ ...routes[0], model_name: models[1].name }] }} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: new RegExp(models[1].name) })).toBeVisible();
+  });
+
   it.each([
     ["jev", "Jev 智能路由"],
     ["priority_weighted", "固定比例"],

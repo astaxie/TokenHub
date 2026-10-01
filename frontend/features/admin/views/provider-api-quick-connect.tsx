@@ -1,5 +1,5 @@
 import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
 import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
@@ -148,6 +148,10 @@ export function ProviderAPIQuickConnect({
   const connectionTestRun = useRef(0);
   const selectedModelCountRef = useRef(selectedModelCount);
   selectedModelCountRef.current = selectedModelCount;
+  useEffect(() => () => {
+    // A completed test must not reload another provider's draft after navigation.
+    connectionTestRun.current += 1;
+  }, []);
   const custom = catalogID === "custom";
   const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
   const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions, values.type);

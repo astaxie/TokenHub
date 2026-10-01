@@ -92,6 +92,63 @@ test("route-management opens-unmapped-model-from-directory", async ({ page, api 
   await expect(dialog.getByText(route.provider_model, { exact: true })).toBeVisible();
 });
 
+test("route-management last-route-deletion", async ({ page, api }, testInfo) => {
+  installRouteFixtures(api);
+  const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
+  api.replaceResponse("GET", "/api/admin/overview", { ...overview, providers: [provider], models: [unmapped, model] });
+  api.define("DELETE", `/api/admin/routing-rules/${route.id}`, () => {
+    api.replaceResponse("GET", "/api/admin/routing-rules", { data: [] });
+    return { status: 204, json: null };
+  });
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  api.define("POST", "/api/admin/routing-rules", async input => {
+    expect(input.body).toMatchObject({ model_name: unmapped.name, provider_id: provider.id, provider_model: route.provider_model, strategy: "priority_weighted", project_scope: "all", status: "active" });
+    await pending;
+    const created = { ...route, id: "route_ui_after_delete", model_name: unmapped.name, project_scope: "all", project_ids: [], tags: [], sticky_session: false };
+    api.replaceResponse("GET", "/api/admin/routing-rules", { data: [created] });
+    return { json: created };
+  });
+  try {
+    await page.goto("/routes");
+    await page.getByRole("button", { name: "配置", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "配置模型路由", exact: true });
+    await dialog.getByTitle("删除", { exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "确认删除", exact: true });
+    await confirmation.getByRole("button", { name: "删除", exact: true }).click();
+    await expect(confirmation).toHaveCount(0);
+    await expect(dialog.getByText("该统一模型还没有 Provider 线路", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: model.name, exact: true })).toBeVisible();
+    const add = dialog.getByRole("button", { name: "添加线路", exact: true });
+    await expect(add).toBeEnabled();
+    await capture(page, testInfo, dialog, "route-management-last-route-empty-editor", "删除最后一条线路后仍在当前模型中，可继续添加线路");
+    await add.click();
+    const sameModel = page.getByRole("dialog", { name: `添加线路 · ${model.name}`, exact: true });
+    await expect(sameModel).toBeFocused();
+    await sameModel.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(sameModel).toHaveCount(0);
+    await expect(add).toBeFocused();
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "还没有路由策略", exact: true })).toBeVisible();
+    await capture(page, testInfo, page.locator(".model-governance-empty-state"), "route-management-last-route-closed", "主动关闭空模型编辑器后显示全局空状态");
+
+    await page.getByRole("button", { name: "为模型添加路由", exact: true }).click();
+    const otherModel = page.getByRole("dialog", { name: `添加线路 · ${unmapped.name}`, exact: true });
+    await otherModel.getByRole("combobox", { name: /^Provider 模型/ }).selectOption(route.provider_model);
+    await otherModel.getByRole("button", { name: "添加路由", exact: true }).click();
+    await expect(otherModel.getByRole("button", { name: "添加路由", exact: true })).toBeDisabled();
+    await expect(dialog).toHaveCount(0);
+    release();
+    await expect(otherModel).toHaveCount(0);
+    await expect(page.getByRole("row").filter({ hasText: unmapped.name })).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("row").filter({ hasText: model.name })).toHaveCount(0);
+  } finally {
+    release();
+  }
+});
+
 for (const state of ["unknown-desktop", "unknown-mobile", "mixed-known-unknown"] as const) {
   test(`route-management ${state}`, async ({ page, api }, testInfo) => {
     if (state === "unknown-mobile") await page.setViewportSize({ width: 390, height: 844 });

@@ -14,7 +14,13 @@ const adapters: AdapterDescriptor[] = [
 ];
 
 function installProviderFixtures(api: MockAPI, state: string) {
-  const custom = state === "custom";
+  const custom = state === "custom" || state === "late-connection";
+  let releaseConnection: (() => void) | undefined;
+  const delayedConnection = state === "late-connection"
+    ? new Promise<{ json: { healthy: boolean; latency_ms: number } }>((resolve) => {
+      releaseConnection = () => resolve({ json: { healthy: true, latency_ms: 35 } });
+    })
+    : undefined;
   const providers: Provider[] = state.startsWith("catalog") ? [{ id: "prv_ui_existing", name: "Existing UI Service", type: direct.type, base_url: direct.base_url, priority: 10, healthy: true, status: "active", options: { catalog_id: direct.id } }] : [];
   const extraCatalog = state === "catalog-many" ? Array.from({ length: 8 }, (_, index) => ({ ...direct, id: `ui-catalog-${index}`, name: `UI Service ${index + 2}`, display_name: index === 3 ? "UI Enterprise Service With a Long Regional Deployment Name" : `UI Service ${index + 2}`, base_url: `https://region-${index + 2}.example.test/enterprise/compatible/v1` })) : [];
   api.respond("GET", "/api/admin/providers", { data: providers });
@@ -46,7 +52,7 @@ function installProviderFixtures(api: MockAPI, state: string) {
   });
   api.define("POST", "/api/admin/providers/test-connection", input => {
     expect(input.body).toMatchObject({ catalog_id: direct.id, base_url: direct.base_url, api_key: "synthetic-ui-key" });
-    return state === "connection-failure" ? { status: 502, json: { error: { message: "Synthetic provider rejected the key" } } } : { json: { healthy: true, latency_ms: 35 } };
+    return delayedConnection ?? (state === "connection-failure" ? { status: 502, json: { error: { message: "Synthetic provider rejected the key" } } } : { json: { healthy: true, latency_ms: 35 } });
   });
   api.define("POST", "/api/admin/providers", input => {
     const connection = custom ? customConnection : direct;
@@ -59,6 +65,7 @@ function installProviderFixtures(api: MockAPI, state: string) {
     api.replaceResponse("GET", "/api/admin/provider-models", { data: [{ id: "pm_ui_created", provider_id: provider.id, upstream_model: catalogModel.id, status: "active" }] });
     return { status: 201, json: { provider, imported_models: 1 } };
   });
+  return () => releaseConnection?.();
 }
 
 for (const viewport of ["desktop", "mobile"] as const) {
@@ -110,6 +117,37 @@ for (const viewport of ["desktop", "mobile"] as const) {
     expect(api.calls.some(call => call.method === "POST" && /\/(models|routing-rules)$/.test(call.path))).toBe(false);
   });
 }
+
+test("provider-onboarding delayed connection result does not clear the next provider draft", async ({ page, api }, testInfo) => {
+  const releaseConnection = installProviderFixtures(api, "late-connection");
+  try {
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    await editor.getByRole("button", { name: /UI Direct Service/ }).click();
+    await editor.getByLabel("API Key", { exact: true }).fill("synthetic-ui-key");
+    await editor.getByRole("button", { name: "测试连接" }).click();
+    await expect.poll(() => api.calls.filter(call => call.method === "POST" && call.path === "/api/admin/providers/test-connection").length).toBe(1);
+
+    await editor.getByRole("button", { name: "更换供应商" }).click();
+    await editor.getByRole("button", { name: /UI Alternate Service/ }).click();
+    const alternateModel = editor.getByRole("switch", { name: "引入 UI Chat" });
+    await alternateModel.click();
+    const selectedAlternateModel = editor.getByRole("switch", { name: "移除 UI Chat" });
+    await expect(selectedAlternateModel).toHaveAttribute("aria-checked", "true");
+    const alternateCatalogRequests = api.calls.filter(call => call.method === "GET" && call.path === "/api/admin/provider-catalog/ui-alternate").length;
+
+    const connectionResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/admin/providers/test-connection");
+    releaseConnection();
+    expect(await (await connectionResponse).finished()).toBeNull();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(selectedAlternateModel).toHaveAttribute("aria-checked", "true");
+    await expect.poll(() => api.calls.filter(call => call.method === "GET" && call.path === "/api/admin/provider-catalog/ui-alternate").length).toBe(alternateCatalogRequests);
+    await capture(page, testInfo, editor, "provider-onboarding-delayed-test-selected", "迟到连接结果不清空新供应商模型草稿", "viewport");
+  } finally {
+    releaseConnection();
+  }
+});
 
 for (const state of ["catalog", "catalog-many", "api-complete", "connection-failure", "model-failure", "save-failure", "account", "mobile"] as const) {
   test(`provider-onboarding ${state}`, async ({ page, api }, testInfo) => {

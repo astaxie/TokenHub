@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { PluginDescriptor, ProviderCatalogEntry } from "../core/types";
@@ -15,6 +15,36 @@ function renderProvider(overrides: Partial<React.ComponentProps<typeof ProviderU
 }
 
 describe("Provider onboarding", () => {
+  it("preserves the next provider draft when a previous connection test completes", async () => {
+    const user = userEvent.setup();
+    const alternate: ProviderCatalogEntry = { ...catalog, id: "ui-alternate", name: "Alternate Service", display_name: "Alternate Service", models: [{ id: "alternate-chat", name: "Alternate Chat", category: "openai" }] };
+    let resolveConnection!: (response: Response) => void;
+    const connectionResponse = new Promise<Response>(resolve => { resolveConnection = resolve; });
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith("/providers/test-connection")) return connectionResponse;
+      if (url.includes(`/provider-catalog/${alternate.id}`)) return new Response(JSON.stringify({ data: alternate }));
+      if (url.includes(`/provider-catalog/${catalog.id}`)) return new Response(JSON.stringify({ data: catalog }));
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    renderProvider({ catalog: [catalog, alternate] });
+    await user.click(screen.getByRole("button", { name: /UI Service/ }));
+    await user.type(screen.getByLabelText("API Key", { exact: true }), "synthetic-key");
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() => expect(requests.some(url => url.endsWith("/providers/test-connection"))).toBe(true));
+    await user.click(screen.getByRole("button", { name: "更换供应商" }));
+    await user.click(screen.getByRole("button", { name: /Alternate Service/ }));
+    await user.click(await screen.findByRole("switch", { name: "引入 Alternate Chat" }));
+    const alternateRequests = requests.filter(url => url.includes(`/provider-catalog/${alternate.id}`)).length;
+
+    await act(async () => resolveConnection(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 })));
+
+    expect(screen.getByRole("switch", { name: "移除 Alternate Chat" })).toHaveAttribute("aria-checked", "true");
+    expect(requests.filter(url => url.includes(`/provider-catalog/${alternate.id}`))).toHaveLength(alternateRequests);
+  });
+
   it("requires a model selection and imports it without publishing a model or creating a route", async () => {
     const user = userEvent.setup();
     const requests: Array<{ url: string; method: string; body?: unknown }> = [];

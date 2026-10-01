@@ -122,7 +122,7 @@ export function RouteStrategyView({
   const hasImportedProviderModels = data.providers.length > 0 && data.providerModels.length > 0;
   const emptyStage = !hasImportedProviderModels ? "providers" : directoryModelCount === 0 ? "models" : "routes";
 
-  if (!loading && (directoryModelCount === 0 || data.routes.length === 0)) {
+  if (!loading && !selectedModel && (directoryModelCount === 0 || data.routes.length === 0)) {
     const title = emptyStage === "providers"
       ? "先引入可用的 Provider 模型"
       : emptyStage === "models"

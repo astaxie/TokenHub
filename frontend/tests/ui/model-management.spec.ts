@@ -53,6 +53,13 @@ for (const mobile of [false, true]) {
     await expect(actions.getByRole("button", { name: "编辑", exact: true })).toHaveCount(0);
     await expect(actions.getByRole("button", { name: "下游费用对账单", exact: true })).toBeVisible();
     await capture(page, info, actions, `models-actions-${mobile ? "mobile" : "desktop"}`, "模型更多操作");
+    await actions.getByRole("button", { name: "下游费用对账单", exact: true }).click();
+    const statement = page.getByRole("dialog", { name: "费用对账单", exact: true });
+    const customer = statement.getByLabel("客户名称", { exact: true });
+    await customer.click();
+    await customer.fill("UI Statement Customer");
+    await statement.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(table.getByRole("button", { name: `更多操作：${published.name}` })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(actions).not.toBeVisible();
     await page.getByRole("button", { name: "已下线", exact: true }).click();
