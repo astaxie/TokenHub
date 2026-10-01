@@ -747,7 +747,10 @@ export function providerMonitorRow(data: AppData, provider: Provider): ProviderM
   const availability24h = observed24h ? (success24h.length / recent24h.length) * 100 : (healthyProvider ? 100 : 0);
   const latencySamples = (success24h.length ? success24h : samples.filter((sample) => sample.success)).filter((sample) => sample.latency_ms > 0);
   const latencyMS = percentileLatency(latencySamples, 0.5);
-  const statusTone = providerMonitorTone(provider, observed24h, availability24h, warning24h.length, failed24h, activeResources.length, healthyResources.length);
+  const calculatedStatusTone = providerMonitorTone(provider, observed24h, availability24h, warning24h.length, failed24h, activeResources.length, healthyResources.length);
+  // Provider liveness is not an availability observation. Keep the monitoring
+  // summary neutral until a real request or active probe has produced a sample.
+  const statusTone = calculatedStatusTone === "healthy" && !observed24h ? "unknown" : calculatedStatusTone;
   const activeRouteCount = routes.filter((route) => route.status === "active").length;
   return {
     provider,
@@ -872,7 +875,7 @@ export function providerMonitorTone(provider: Provider, observed: boolean, avail
 export function providerStatusLabel(tone: ProviderMonitorTone) {
   if (tone === "healthy") return "Healthy";
   if (tone === "degraded") return "Degraded";
-  if (tone === "unknown") return "Awaiting Test";
+  if (tone === "unknown") return "待观测";
   return "Functional Down";
 }
 

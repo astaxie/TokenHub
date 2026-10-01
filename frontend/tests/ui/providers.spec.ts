@@ -73,6 +73,7 @@ for (const mobile of [false, true]) {
     await expect(listing.getByRole("row").filter({ hasText: "UI Local Cluster" })).toHaveCount(0);
     await listing.getByRole("button", { name: "可用性监控", exact: true }).click();
     await expect(listing.getByRole("columnheader", { name: "账号配额" })).toBeVisible();
+    await expect(listing.getByText("待观测", { exact: true })).toHaveCount(1);
     await expect(search).toHaveValue("Internal");
     await expect(listing.getByRole("row").filter({ hasText: "UI Internal Cluster" })).toBeVisible();
     await listing.getByRole("button", { name: "供应商列表", exact: true }).click();

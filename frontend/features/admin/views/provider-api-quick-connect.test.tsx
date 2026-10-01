@@ -53,6 +53,8 @@ describe("ProviderAPIQuickConnect", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     render(<ProviderHarness apiKeyRequired={false} />);
+    expect(screen.getByLabelText("渠道商类型")).toBeVisible();
+    expect(screen.getByLabelText("渠道商类型")).toHaveValue("openai_compatible");
     await user.type(screen.getByLabelText("Base URL"), "http://localhost:8000/v1");
     expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
     await user.click(screen.getByRole("button", { name: "测试连接" }));

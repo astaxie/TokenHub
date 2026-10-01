@@ -39,3 +39,14 @@ it("keeps missing strategies consistent and unknown values visible", () => {
   expect(routeStrategyLabel("")).toBe(routeStrategyLabel(undefined));
   expect(routeSummaryStrategy([{ ...route, strategy: "future-strategy" }])).toBe("future-strategy");
 });
+
+it("shows an unknown persisted strategy before allowing a replacement", () => {
+  setActiveLanguage("zh-CN");
+  const unknown = { ...route, strategy: "future-strategy" as ModelRouteStrategy };
+  const data = { ...emptyData(), models: [model], routes: [unknown] };
+  render(<RouteStrategyView config={routeConfig()} data={data} loading={false} onCreate={vi.fn()} onOpenModels={vi.fn()} onOpenProviders={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onReorder={vi.fn()} onSavePolicy={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "配置" }));
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByText("此模型包含未知路由策略：future-strategy。请选择受支持的策略后再保存。")).toBeVisible();
+  expect(within(dialog).getByRole("button", { name: "应用策略" })).toBeDisabled();
+});

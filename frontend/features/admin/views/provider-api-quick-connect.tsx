@@ -231,6 +231,12 @@ export function ProviderAPIQuickConnect({
                 <span>Base URL</span>
                 <input value={values.base_url ?? ""} onChange={(event) => updateConnectionValue("base_url", event.target.value)} required />
               </label>
+              <label className="field">
+                <span>{tx("渠道商类型")}</span>
+                <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
+                  {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
             </div>
           ) : (
             <label className="field">
@@ -342,12 +348,12 @@ export function ProviderAPIQuickConnect({
                 <input value={values.name ?? ""} onChange={(event) => onUpdate("name", event.target.value)} />
               </label>
             ) : null}
-            <label className="field">
+            {!custom ? <label className="field">
               <span>{tx("渠道商类型")}</span>
               <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
                 {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-            </label>
+            </label> : null}
             <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={effectiveProviderTypeOptions} />
             <label className="field">
               <span>{tx("优先级")}</span>

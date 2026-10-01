@@ -43,6 +43,10 @@ describe("Model creation progressive disclosure", () => {
     expect(screen.getByLabelText("系列")).not.toBeVisible();
     expect(screen.getByLabelText("对外模型 ID")).toBeVisible();
     expect(screen.getByLabelText(/^对外输入价 USD\/1M/)).toBeVisible();
+    expect(screen.getByLabelText(/^对外缓存写价 USD\/1M/)).toBeVisible();
+    expect(screen.getByLabelText(/^对外 5 分钟缓存写价 USD\/1M/)).toBeVisible();
+    expect(screen.getByLabelText(/^对外 1 小时缓存写价 USD\/1M/)).toBeVisible();
+    expect(screen.getByLabelText(/^分时价格配置（JSON）/)).toBeVisible();
     expect(screen.getByRole("button", { name: "创建对外模型" })).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: "Test Provider / upstream-model" }));
     await user.click(screen.getByRole("button", { name: "创建对外模型" }));

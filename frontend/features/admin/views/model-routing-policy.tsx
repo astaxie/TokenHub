@@ -5,7 +5,7 @@ import { priceMetric } from "../domain/catalog";
 import { findProvider, routeProjectScopeSummary } from "../domain/entities";
 import { providerTypeLabelFromData } from "../domain/labels";
 import { routeStrategyLabel } from "../domain/route-strategy";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 
 import { readSemanticRoutingPolicy, initialJevPolicy, validJevPolicy, SemanticRoutingFields } from "./semantic-routing-policy";
@@ -139,6 +139,7 @@ export function ModelRoutingPolicyEditor({
 }) {
   const persistedStrategies = useMemo(() => new Set(routes.map((route) => normalizeStrategy(route.strategy))), [routes]);
   const persistedStrategy = persistedStrategies.values().next().value ?? "priority_weighted";
+  const unknownStrategy = routes.map((route) => route.strategy?.trim() ?? "").find((value) => value && !strategyOptions.some((option) => option.value === value));
   const [strategy, setStrategy] = useState<ModelRouteStrategy>(persistedStrategy);
   const savedSemantic = readSemanticRoutingPolicy(model);
   const legacySemantic = savedSemantic.mode !== "off" && !savedSemantic.candidates?.length;
@@ -158,7 +159,7 @@ export function ModelRoutingPolicyEditor({
   });
   const dirty = userDirty || legacySemantic || semanticNeedsReconciliation || mixedStrategies;
   useEffect(() => { onDirtyChange?.(userDirty); }, [onDirtyChange, userDirty]);
-  const invalid = (strategy === "jev" && !validJevPolicy(semantic)) || routes.some((route) => {
+  const invalid = Boolean(unknownStrategy) || (strategy === "jev" && !validJevPolicy(semantic)) || routes.some((route) => {
     const draft = drafts[route.id];
     return !draft || !Number.isFinite(draft.weight) || !Number.isFinite(draft.quality_score) || !Number.isFinite(draft.cost_score) || draft.weight < 1 || draft.quality_score < 1 || draft.quality_score > 100 || draft.cost_score < 1 || draft.cost_score > 100;
   });
@@ -273,6 +274,7 @@ export function ModelRoutingPolicyEditor({
       {strategy === "quality" || strategy === "cost" || strategy === "balanced" ? (
         <div className="route-policy-share-note">{tx("质量和成本评分由管理员维护，不会自动读取实时价格或模型评测。")}</div>
       ) : null}
+      {unknownStrategy ? <p className="route-policy-warning">{formatTranslationTemplate(tx("此模型包含未知路由策略：{strategy}。请选择受支持的策略后再保存。"), { strategy: routeStrategyLabel(unknownStrategy) })}</p> : null}
 
       {legacySemantic ? <p className="muted">{tx("此模型仍使用旧版 Jev 附加配置。应用当前策略后将替换旧配置；选择 Jev 智能路由可配置明确的候选模型。")}</p> : null}
       {strategy === "jev" ? <SemanticRoutingFields value={semantic} routes={routes} data={data} disabled={loading} onChange={setSemantic} /> : null}
