@@ -7,6 +7,7 @@ const direct: ProviderCatalogEntry = { id: "ui-direct", name: "UI Direct Service
 const alternate: ProviderCatalogEntry = { ...direct, id: "ui-alternate", name: "UI Alternate Service", display_name: "UI Alternate Service", type: "ui_alternate" };
 const customConnection = { name: "UI Custom Draft", base_url: "https://custom.example.test/v1", type: alternate.type, api_key: "synthetic-ui-key" };
 const subscription: ProviderCatalogEntry = { id: "ui-subscription", name: "UI Subscription", display_name: "UI Subscription", type: "ui_subscription", base_url: "https://account.example.test", categories: ["openai"], models_count: 1, source: "plugin" };
+const brandedOllama: ProviderCatalogEntry = { id: "ollama", name: "Ollama", display_name: "Ollama", type: "local", base_url: "http://127.0.0.1:11434/v1", models_count: 0, source: "plugin" };
 const catalogModel = { id: "ui-chat", name: "UI Chat", category: "openai", family: "test", type: "chat", input_price_usd_per_1m: 1, output_price_usd_per_1m: 2 };
 const subscriptionPlugin: PluginDescriptor = { id: "tokenhub.provider.ui-subscription", name: "UI Subscription", version: "1", source: "built_in", kinds: ["provider"], placements: [], capabilities: [{ kind: "provider_resource_type", name: "ui_subscription_account", subject: "ui_subscription" }] };
 const adapters: AdapterDescriptor[] = [
@@ -25,7 +26,7 @@ function installProviderFixtures(api: MockAPI, state: string) {
   const providers: Provider[] = state.startsWith("catalog") ? [{ id: "prv_ui_existing", name: "Existing UI Service", type: direct.type, base_url: direct.base_url, priority: 10, healthy: true, status: "active", options: { catalog_id: direct.id } }] : [];
   const extraCatalog = state === "catalog-many" ? Array.from({ length: 8 }, (_, index) => ({ ...direct, id: `ui-catalog-${index}`, name: `UI Service ${index + 2}`, display_name: index === 3 ? "UI Enterprise Service With a Long Regional Deployment Name" : `UI Service ${index + 2}`, base_url: `https://region-${index + 2}.example.test/enterprise/compatible/v1` })) : [];
   api.respond("GET", "/api/admin/providers", { data: providers });
-  api.respond("GET", "/api/admin/provider-catalog", { data: [direct, ...extraCatalog, ...(custom ? [alternate] : []), subscription] });
+  api.respond("GET", "/api/admin/provider-catalog", { data: [direct, ...extraCatalog, ...(state === "catalog" ? [brandedOllama] : []), ...(custom ? [alternate] : []), subscription] });
   let catalogFailed = state === "model-failure";
   api.define("GET", "/api/admin/provider-catalog/ui-direct", () => catalogFailed
     ? { status: 503, json: { error: { message: "Synthetic catalog unavailable" } } }
@@ -198,6 +199,7 @@ for (const state of ["catalog", "catalog-many", "api-complete", "connection-fail
       const card = editor.getByRole("button", { name: /UI Direct Service/ });
       await expect(card).toContainText("已接入");
       await expect(card).toBeEnabled();
+      await expect(editor.locator('.provider-onboarding-card img[src="/provider-icons/ollama.svg"]')).toBeVisible();
       await capture(page, testInfo, editor, "provider-onboarding-catalog", "供应商卡片：API 与账号同屏，已接入服务仍可添加");
       await editor.getByPlaceholder("搜索供应商名称或地址").fill("no-such-provider");
       await expect(editor.getByText("没有匹配的供应商，可使用自定义接入。")).toBeVisible();

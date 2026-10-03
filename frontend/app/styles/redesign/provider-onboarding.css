@@ -7,6 +7,10 @@
 .provider-onboarding-card { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 82px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
 .provider-onboarding-card:hover { border-color: var(--accent); background: var(--surface-soft); }
 .provider-onboarding-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.provider-onboarding-card-icon { width: 38px; height: 38px; flex: 0 0 38px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); color: var(--muted-strong); }
+.provider-onboarding-card-icon img { width: 24px; height: 24px; display: block; object-fit: contain; }
+.provider-onboarding-card-icon.fallback { background: var(--surface-soft); }
+[data-theme="dark"] .provider-onboarding-card-icon { background: #fff; }
 .provider-onboarding-card-copy { display: grid; min-width: 0; gap: 5px; flex: 1; }
 .provider-onboarding-card-copy strong { font-size: 14px; overflow-wrap: anywhere; }
 .provider-onboarding-card-copy small { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

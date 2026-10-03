@@ -1096,7 +1096,7 @@ export function ProviderUpsertModal({
               </div>
             ) : null}
             {mode === "create" && createStep === 0 ? (
-              <ProviderOnboardingCatalog directEntries={directCredentialCatalog} accountEntries={accountProviderCatalogOptions} providers={existingProviders} query={catalogQuery} onQueryChange={setCatalogQuery} onSelect={selectOnboardingProvider} onCustom={selectOnboardingCustom} contributions={pluginUI} plugins={plugins} adapters={providerAdapters} />
+              <ProviderOnboardingCatalog directEntries={directCredentialCatalog} accountEntries={accountProviderCatalogOptions} providers={existingProviders} query={catalogQuery} onQueryChange={setCatalogQuery} onSelect={selectOnboardingProvider} onCustom={selectOnboardingCustom} contributions={pluginUI} />
             ) : null}
             {quickAPIConnect ? (
                 <><ProviderAPIQuickConnect api={api}

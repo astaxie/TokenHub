@@ -1,9 +1,19 @@
-import { Check, Plus, Search } from "lucide-react";
-import type { AdapterDescriptor, AdminUIContribution, PluginDescriptor, Provider, ProviderCatalogEntry, ProviderCredentialMode } from "../core/types";
+import { useState } from "react";
+import { Boxes, Check, Plus, Search } from "lucide-react";
+import type { AdminUIContribution, Provider, ProviderCatalogEntry, ProviderCredentialMode } from "../core/types";
+import { providerBrandIconSource } from "../domain/provider-brand-icons";
 import { tx } from "../i18n/runtime";
-import { ModelBrandIcon } from "./model-catalog";
 
-export function ProviderOnboardingCatalog({ directEntries, accountEntries, providers, query, onQueryChange, onSelect, onCustom, contributions, plugins, adapters }: {
+function ProviderBrandIcon({ entry, label }: { entry: ProviderCatalogEntry; label: string }) {
+  const source = providerBrandIconSource(entry);
+  const [failed, setFailed] = useState(false);
+  const className = `provider-onboarding-card-icon${source ? "" : " fallback"}`;
+  return <span aria-hidden="true" className={className} title={label}>
+    {source && !failed ? <img alt="" src={source} onError={() => setFailed(true)} /> : <Boxes size={22} />}
+  </span>;
+}
+
+export function ProviderOnboardingCatalog({ directEntries, accountEntries, providers, query, onQueryChange, onSelect, onCustom, contributions }: {
   directEntries: ProviderCatalogEntry[];
   accountEntries: ProviderCatalogEntry[];
   providers: Provider[];
@@ -12,8 +22,6 @@ export function ProviderOnboardingCatalog({ directEntries, accountEntries, provi
   onSelect: (entry: ProviderCatalogEntry, mode: ProviderCredentialMode) => void;
   onCustom: () => void;
   contributions: AdminUIContribution[];
-  plugins: PluginDescriptor[];
-  adapters: AdapterDescriptor[];
 }) {
   const normalized = query.trim().toLowerCase();
   const groups: Array<{ title: string; mode: ProviderCredentialMode; entries: ProviderCatalogEntry[] }> = [
@@ -38,7 +46,7 @@ export function ProviderOnboardingCatalog({ directEntries, accountEntries, provi
         const details = cardDetails(entry);
         const connected = providers.some(provider => provider.options?.catalog_id === entry.id || (!provider.options?.catalog_id && provider.type === entry.type && provider.base_url === entry.base_url));
         return <button className="provider-onboarding-card" key={entry.id} onClick={() => onSelect(entry, group.mode)} type="button">
-          <span aria-hidden="true"><ModelBrandIcon category={entry.categories?.[0] || entry.id} label={details.title} data={{ plugins, providerAdapters: adapters }} /></span>
+          <ProviderBrandIcon entry={entry} label={details.title} />
           <span className="provider-onboarding-card-copy"><strong>{details.title}</strong><small title={details.description}>{details.description || tx(group.mode === "account_integration" ? "账号授权" : "API Key")}</small></span>
           {connected ? <span className="provider-onboarding-connected"><Check size={13} />{tx("已接入")}</span> : null}
         </button>;
