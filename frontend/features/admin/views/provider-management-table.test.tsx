@@ -62,13 +62,13 @@ describe("Provider management view", () => {
     expect(within(row).getByText("启用", { exact: true })).toBeVisible();
   });
 
-  it("keeps health awaiting observation when only configuration is unhealthy", async () => {
+  it.each(["down", "degraded"] as const)("keeps health awaiting observation when only configuration is %s", async (configurationState) => {
     const user = userEvent.setup();
     setup({
       provider, adapter: { type: provider.type, capabilities: ["chat"] },
       route_count: 0, active_route_count: 0, resource_count: 0, active_resource_count: 0, healthy_resource_count: 0,
-      state: "down", status_label: "Functional Down", status_detail: "configuration:provider_unhealthy",
-      configuration: { state: "down", source: "configuration", samples: 0 },
+      state: configurationState, status_label: configurationState === "down" ? "Functional Down" : "Degraded", status_detail: "configuration:provider_unhealthy",
+      configuration: { state: configurationState, source: "configuration", samples: 0 },
       resources: { state: "unknown", source: "configuration", samples: 0 },
       active_probe: { state: "unknown", source: "active_probe", samples: 0 },
       gateway: { state: "unknown", source: "gateway_request", samples: 0 },
