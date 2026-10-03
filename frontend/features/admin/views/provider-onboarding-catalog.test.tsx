@@ -48,6 +48,7 @@ describe("ProviderOnboardingCatalog", () => {
     expect(ollamaCard.querySelector("img")).toHaveAttribute("src", "/provider-icons/ollama.svg");
     fireEvent.error(ollamaCard.querySelector("img")!);
     expect(ollamaCard.querySelector("svg")).toBeInTheDocument();
+    expect(ollamaCard.querySelector(".provider-onboarding-card-icon")).toHaveClass("fallback");
     expect(screen.getByRole("button", { name: /UI Account/ }).querySelector("svg")).toBeInTheDocument();
   });
 });

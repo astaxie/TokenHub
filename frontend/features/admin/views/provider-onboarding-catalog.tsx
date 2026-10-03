@@ -7,9 +7,10 @@ import { tx } from "../i18n/runtime";
 function ProviderBrandIcon({ entry, label }: { entry: ProviderCatalogEntry; label: string }) {
   const source = providerBrandIconSource(entry);
   const [failed, setFailed] = useState(false);
-  const className = `provider-onboarding-card-icon${source ? "" : " fallback"}`;
+  const hasIcon = Boolean(source && !failed);
+  const className = `provider-onboarding-card-icon${hasIcon ? "" : " fallback"}`;
   return <span aria-hidden="true" className={className} title={label}>
-    {source && !failed ? <img alt="" src={source} onError={() => setFailed(true)} /> : <Boxes size={22} />}
+    {hasIcon ? <img alt="" src={source} onError={() => setFailed(true)} /> : <Boxes size={22} />}
   </span>;
 }
 
