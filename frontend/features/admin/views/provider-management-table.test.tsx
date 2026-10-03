@@ -8,9 +8,9 @@ import { ProviderAccountQuota, ProviderChannelTable } from "./crud-projects";
 
 const provider: Provider = { id: "prv_test", name: "Example Provider", type: "openai_compatible", base_url: "https://provider.example/v1", status: "active", healthy: true, priority: 1 };
 
-function setup(snapshot?: ProviderMonitoringSnapshot, readOnly = false) {
+function setup(snapshot?: ProviderMonitoringSnapshot, readOnly = false, configuredProvider = provider) {
   const data = emptyData();
-  data.providers = [provider];
+  data.providers = [configuredProvider];
   data.providerModels = [{ id: "upstream_1", provider_id: provider.id, upstream_model: "example-chat", status: "active" }];
   if (snapshot) data.providerMonitoring = [snapshot];
   const config = providerConfig();
@@ -60,6 +60,13 @@ describe("Provider management view", () => {
     const row = screen.getByRole("row", { name: /Example Provider/ });
     expect(within(row).getByText("故障", { exact: true })).toBeVisible();
     expect(within(row).getByText("启用", { exact: true })).toBeVisible();
+  });
+
+  it.each([{ ...provider, status: "disabled" }, { ...provider, healthy: false }])("keeps unobserved health neutral without a monitoring snapshot (%j)", async (configuredProvider) => {
+    setup(undefined, false, configuredProvider);
+    expect(within(screen.getByRole("row", { name: /Example Provider/ })).getByText("待观测", { exact: true })).toBeVisible();
+    await userEvent.setup().click(screen.getByRole("button", { name: "可用性监控" }));
+    expect(within(screen.getByRole("row", { name: /Example Provider/ })).getByText("待观测", { exact: true })).toBeVisible();
   });
 
   it.each(["down", "degraded"] as const)("keeps health awaiting observation when only configuration is %s", async (configurationState) => {

@@ -671,7 +671,7 @@ function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitor
   const resources = data.providerResources.filter((resource) => resource.provider_id === snapshot.provider.id);
   const observedSignal = snapshot.gateway.samples > 0 ? snapshot.gateway : snapshot.active_probe;
   const observed = observedSignal.samples > 0;
-  const statusTone = observed ? snapshot.state as ProviderMonitorTone : "unknown";
+  const statusTone = observed ? snapshot.state : "unknown";
   return {
     provider: snapshot.provider,
     resources,
@@ -752,7 +752,7 @@ export function providerMonitorRow(data: AppData, provider: Provider): ProviderM
   const calculatedStatusTone = providerMonitorTone(provider, observed24h, availability24h, warning24h.length, failed24h, activeResources.length, healthyResources.length);
   // Provider liveness is not an availability observation. Keep the monitoring
   // summary neutral until a real request or active probe has produced a sample.
-  const statusTone = calculatedStatusTone === "healthy" && !observed24h ? "unknown" : calculatedStatusTone;
+  const statusTone = observed24h ? calculatedStatusTone : "unknown";
   const activeRouteCount = routes.filter((route) => route.status === "active").length;
   return {
     provider,
