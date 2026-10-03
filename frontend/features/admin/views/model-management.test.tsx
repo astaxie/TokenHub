@@ -209,6 +209,18 @@ describe("Compact model directory", () => {
     expect(screen.getByRole("button", { name: "发布" })).toBeDisabled();
   });
 
+  it("closes the model actions menu before opening a billing statement", async () => {
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function(this: HTMLDialogElement) { this.setAttribute("open", ""); } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [] }))));
+    const user = userEvent.setup();
+    directory();
+    const row = screen.getByRole("row", { name: /published-model/ });
+    await user.click(within(row).getByRole("button", { name: /更多操作/ }));
+    await user.click(screen.getByRole("button", { name: "下游费用对账单" }));
+    expect(screen.queryByRole("group", { name: /模型操作/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "费用对账单" })).toBeVisible();
+  });
+
   it("keeps upstream identities and management controls out of the read-only directory", () => {
     directory(true);
     expect(screen.getAllByRole("columnheader")).toHaveLength(4);

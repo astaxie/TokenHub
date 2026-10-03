@@ -13,9 +13,10 @@ const strategies: ModelRouteStrategy[] = ["jev", "priority_weighted", "adaptive"
 const model: Model = { id: "model", name: "test-model", family: "test", modality: "chat", status: "active" };
 const route: ModelRoute = { id: "route", model_name: model.name, provider_id: "provider", provider_model: "upstream", priority: 1, weight: 100, status: "active" };
 const locales = [
-  { language: "zh-CN", configure: "配置", labels: ["Jev 智能路由", "固定比例", "自适应", "质量优先", "成本优先", "主备顺序", "综合评分"] },
-  { language: "en", configure: "Settings", labels: ["Jev Smart Routing", "Fixed Ratio", "Adaptive", "Quality First", "Cost First", "Primary / Backup", "Combined score"] },
-  { language: "ja", configure: "設定", labels: ["Jev スマートルーティング", "固定比率", "適応型", "品質優先", "コスト優先", "プライマリ / バックアップ", "総合スコア"] },
+  { language: "zh-CN", configure: "配置路由：test-model", labels: ["Jev 智能路由", "固定比例", "自适应", "质量优先", "成本优先", "主备顺序", "综合评分"] },
+  { language: "en", configure: "Configure routes: test-model", labels: ["Jev Smart Routing", "Fixed Ratio", "Adaptive", "Quality First", "Cost First", "Primary / Backup", "Combined score"] },
+  { language: "ja", configure: "ルートを設定: test-model", labels: ["Jev スマートルーティング", "固定比率", "適応型", "品質優先", "コスト優先", "プライマリ / バックアップ", "総合スコア"] },
+  { language: "ru", configure: "Настроить маршруты: test-model", labels: ["Умная маршрутизация Jev", "Фиксированная пропорция", "Адаптивный", "Приоритет качества", "Приоритет стоимости", "Основной / Резервный", "Комплексная оценка"] },
 ] as const;
 
 describe.each(locales)("Routing terminology in $language", ({ language, configure, labels }) => {
@@ -46,7 +47,7 @@ it.each(["balanced", "priority_weighted"] as const)("requires explicit selection
   const data = { ...emptyData(), models: [model], routes: [unknown] };
   const save = vi.fn();
   render(<RouteStrategyView config={routeConfig()} data={data} loading={false} onCreate={vi.fn()} onOpenModels={vi.fn()} onOpenProviders={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onReorder={vi.fn()} onSavePolicy={save} />);
-  fireEvent.click(screen.getByRole("button", { name: "配置" }));
+  fireEvent.click(screen.getByRole("button", { name: "配置路由：test-model" }));
   const dialog = screen.getByRole("dialog");
   expect(within(dialog).getByText("此模型包含未知路由策略：future-strategy。请选择受支持的策略后再保存。")).toBeVisible();
   expect(within(dialog).getByRole("button", { name: "应用策略" })).toBeDisabled();
@@ -70,7 +71,7 @@ it.each(["balanced", "jev"])("keeps mixed %s and unknown strategies unselected u
   const routes = [{ ...route, strategy }, { ...route, id: "unknown", strategy: "future-strategy" }, { ...route, id: "unknown-two", strategy: "another-strategy" }];
   const data = { ...emptyData(), models: [model], routes };
   render(<RouteStrategyView config={routeConfig()} data={data} loading={false} onCreate={vi.fn()} onOpenModels={vi.fn()} onOpenProviders={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onReorder={vi.fn()} onSavePolicy={vi.fn()} />);
-  fireEvent.click(screen.getByRole("button", { name: "配置" }));
+  fireEvent.click(screen.getByRole("button", { name: "配置路由：test-model" }));
   const dialog = within(screen.getByRole("dialog"));
   expect(dialog.getByText("当前 Provider 线路策略不一致，应用后将统一为所选模型策略。")).toBeVisible();
   expect(dialog.getByText("此模型包含未知路由策略：future-strategy, another-strategy。请选择受支持的策略后再保存。")).toBeVisible();

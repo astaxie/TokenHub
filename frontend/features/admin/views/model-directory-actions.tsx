@@ -67,7 +67,7 @@ export function ModelDirectoryActions({ api, model, busy, publication, activeRou
       <button aria-controls={menuID} aria-expanded={open} aria-label={formatTranslationTemplate(tx("更多操作：{name}"), { name: model.name })} className="icon-button" disabled={busy} onClick={toggle} ref={trigger} type="button"><MoreHorizontal size={17} /></button>
       {typeof document !== "undefined" ? createPortal(
         <div aria-label={formatTranslationTemplate(tx("模型操作：{name}"), { name: model.name })} className="model-management-menu" hidden={!open} id={menuID} ref={menu} role="group" style={position}>
-          <StatementLauncher api={api} side="tenant" model={model.name} returnFocusRef={trigger} />
+          <StatementLauncher api={api} side="tenant" model={model.name} onOpen={() => setOpen(false)} returnFocusRef={trigger} />
           <button className="text-button" disabled={busy || (publication !== "published" && activeRoutes === 0)} onClick={() => run(() => onPublish(model, publication !== "published"))} type="button">{tx(publication === "published" ? "下线" : "发布")}</button>
           <button className="danger-button" disabled={busy} onClick={() => run(() => onDelete(model))} type="button">{tx("删除")}</button>
         </div>, document.body,
