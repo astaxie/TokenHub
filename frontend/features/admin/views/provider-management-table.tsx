@@ -26,7 +26,7 @@ export function ProviderManagementTable({ rows, data, config, currentUser, onAct
           const provider = row.provider;
           const name = providerDisplayName(provider, row.resources);
           const snapshot = data.providerMonitoring.find((item) => item.provider.id === provider.id);
-          const health = snapshot?.state ?? (row.observed24h ? row.statusTone : "unknown");
+          const health = row.statusTone;
           const healthLabel = { healthy: "正常", degraded: "降级", down: "故障", unknown: "待观测" }[health];
           const account = accountTypes.has(provider.type) || row.resources.some((resource) => isProviderAccountResourceForData(data, resource));
           const importedCount = data.providerModels.filter((model) => model.provider_id === provider.id).length;

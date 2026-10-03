@@ -671,13 +671,14 @@ function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitor
   const resources = data.providerResources.filter((resource) => resource.provider_id === snapshot.provider.id);
   const observedSignal = snapshot.gateway.samples > 0 ? snapshot.gateway : snapshot.active_probe;
   const observed = observedSignal.samples > 0;
+  const statusTone = observed ? snapshot.state as ProviderMonitorTone : "unknown";
   return {
     provider: snapshot.provider,
     resources,
     routeCount: snapshot.route_count,
     activeRouteCount: snapshot.active_route_count,
-    statusTone: snapshot.state,
-    statusLabel: snapshot.status_label,
+    statusTone,
+    statusLabel: observed ? snapshot.status_label : providerStatusLabel(statusTone),
     statusDetail: monitoringDetail(snapshot.status_detail),
     basicPrimaryTone: monitoringProbeTone(snapshot.configuration.state),
     basicPrimaryDetail: monitoringDetail(snapshot.configuration.detail),

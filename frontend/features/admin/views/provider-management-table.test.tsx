@@ -62,6 +62,27 @@ describe("Provider management view", () => {
     expect(within(row).getByText("启用", { exact: true })).toBeVisible();
   });
 
+  it("keeps health awaiting observation when only configuration is unhealthy", async () => {
+    const user = userEvent.setup();
+    setup({
+      provider, adapter: { type: provider.type, capabilities: ["chat"] },
+      route_count: 0, active_route_count: 0, resource_count: 0, active_resource_count: 0, healthy_resource_count: 0,
+      state: "down", status_label: "Functional Down", status_detail: "configuration:provider_unhealthy",
+      configuration: { state: "down", source: "configuration", samples: 0 },
+      resources: { state: "unknown", source: "configuration", samples: 0 },
+      active_probe: { state: "unknown", source: "active_probe", samples: 0 },
+      gateway: { state: "unknown", source: "gateway_request", samples: 0 },
+      quota: { supported: false, limit_reached: false, successful_accounts: 0, failed_accounts: 0 },
+      quality_score: 0, trend: [],
+    });
+    let row = screen.getByRole("row", { name: /Example Provider/ });
+    expect(within(row).getByText("待观测", { exact: true })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "可用性监控" }));
+    row = screen.getByRole("row", { name: /Example Provider/ });
+    expect(within(row).getByText("待观测", { exact: true })).toBeVisible();
+  });
+
   it("keeps the same filtered providers when opening monitoring and returning", async () => {
     const user = userEvent.setup();
     setup();
