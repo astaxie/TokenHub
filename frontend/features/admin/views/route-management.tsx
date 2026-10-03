@@ -4,7 +4,7 @@ import type { AppData, Model } from "../core/types";
 import { modelRoutesFor, routeProjectScopeSummary } from "../domain/entities";
 import { modelRuntimeState } from "../domain/model-directory";
 import { routeSummarySources, routeSummaryStrategy } from "../domain/route-summary";
-import { countRatioWithUnit, formatLocaleNumber, tx } from "../i18n/runtime";
+import { countRatioWithUnit, formatLocaleNumber, formatTranslationTemplate, tx } from "../i18n/runtime";
 import { useModalFocus } from "../shared/modal-focus";
 import { ConfirmDialog, StatusPill } from "../shared/ui";
 
@@ -30,7 +30,7 @@ export function RouteSummaryTable({ models, data, loading, onConfigure }: {
               <td data-label={tx("路由方式")}>{routeSummaryStrategy(routes)}</td>
               <td data-label={tx("模型来源")}><span title={sources.join(", ")}>{sources.slice(0, 2).join(", ") || "—"}{sources.length > 2 ? ` +${formatLocaleNumber(sources.length - 2)}` : ""}</span><small>{countRatioWithUnit(active, routes.length, "条启用线路", "active route", "件の有効ルート")}</small>{restricted.length ? <small title={restricted.map((route) => routeProjectScopeSummary(route, data)).join("; ")}>{tx("含项目范围限制")}</small> : null}</td>
               <td><StatusPill status={active && model.status === "active" ? "active" : "disabled"} label={!routes.length ? tx("未配置") : active && model.status === "active" ? tx("已启用") : tx("已停用")} />{active > 0 && model.status === "active" && (runtime === "unavailable" || runtime === "degraded") ? <small className="route-summary-warning">{tx(runtime === "degraded" ? "部分线路异常" : "线路需检查")}</small> : null}</td>
-              <td><button className="secondary-button" disabled={loading} onClick={() => onConfigure(model)} type="button"><Settings2 size={14} />{tx("配置")}</button></td>
+              <td><button aria-label={formatTranslationTemplate(tx("配置路由：{model}"), { model: model.name })} className="secondary-button" disabled={loading} onClick={() => onConfigure(model)} type="button"><Settings2 size={14} />{tx("配置")}</button></td>
             </tr>
           );
         })}</tbody>

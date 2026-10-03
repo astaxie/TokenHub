@@ -119,10 +119,11 @@ export function RouteStrategyView({
   const directoryModelCount = data.models.filter((model) => modelIsInDirectory(model, data)).length;
   const activeRouteCount = data.routes.filter((route) => route.status === "active").length;
   const firstDirectoryModel = data.models.find((model) => modelIsInDirectory(model, data));
+  const deepLinkedDirectoryModel = Boolean(initialQuery.trim() && data.models.some((model) => model.name === initialQuery.trim() && modelIsInDirectory(model, data)));
   const hasImportedProviderModels = data.providers.length > 0 && data.providerModels.length > 0;
   const emptyStage = !hasImportedProviderModels ? "providers" : directoryModelCount === 0 ? "models" : "routes";
 
-  if (!loading && !selectedModel && (directoryModelCount === 0 || data.routes.length === 0)) {
+  if (!loading && !selectedModel && !deepLinkedDirectoryModel && (directoryModelCount === 0 || data.routes.length === 0)) {
     const title = emptyStage === "providers"
       ? "先引入可用的 Provider 模型"
       : emptyStage === "models"
@@ -233,8 +234,8 @@ export function RouteStrategyView({
                   setDraggedRouteID("");
                   if (reordered !== routes) onReorder(selectedModel, reordered);
                 }}
-                onEdit={(route) => guard(() => onEdit(route))}
-                onDelete={(route) => guard(() => onDelete(route))}
+                onEdit={(route) => guard(() => { onClearError?.(); onEdit(route); })}
+                onDelete={(route) => guard(() => { onClearError?.(); onDelete(route); })}
                 onSave={onSavePolicy}
                 onDirtyChange={onDirtyChange}
               />

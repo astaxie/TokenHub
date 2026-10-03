@@ -24,7 +24,7 @@ test("route-management nested-editor-focus-and-save-failure", async ({ page, api
     return { status: 500, json: { error: { message: "Synthetic route save failed" } } };
   });
   await page.goto("/routes");
-  await page.getByRole("button", { name: "配置", exact: true }).click();
+  await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
   const parent = page.getByRole("dialog", { name: "配置模型路由", exact: true });
   const edit = parent.getByRole("button", { name: "编辑", exact: true });
   await edit.focus();
@@ -42,6 +42,7 @@ test("route-management nested-editor-focus-and-save-failure", async ({ page, api
   await child.getByRole("spinbutton", { name: /^流量权重/ }).fill("25");
   await child.getByRole("button", { name: "保存", exact: true }).click();
   await expect(child.getByRole("alert")).toHaveText("Synthetic route save failed");
+  await expect(parent.getByRole("alert")).toHaveCount(0);
   await expect(child.getByRole("spinbutton", { name: /^流量权重/ })).toHaveValue("25");
   await capture(page, testInfo, child, "route-management-child-error", "线路编辑：保存失败保留参数并在当前弹窗显示错误", "viewport");
   await page.keyboard.press("Escape");
@@ -77,7 +78,7 @@ test("route-management opens-unmapped-model-from-directory", async ({ page, api 
   await expect(page).toHaveURL(/\/routes$/);
   await expect(page.getByRole("tab", { name: /全部模型/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("row").filter({ hasText: unmapped.name })).toBeVisible();
-  await page.getByRole("button", { name: "配置", exact: true }).click();
+  await page.getByRole("button", { name: `配置路由：${unmapped.name}`, exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "配置模型路由", exact: true });
   await expect(dialog.getByRole("heading", { name: unmapped.name, exact: true })).toBeVisible();
   await expect(dialog.getByText("该统一模型还没有 Provider 线路")).toBeVisible();
@@ -111,7 +112,7 @@ test("route-management last-route-deletion", async ({ page, api }, testInfo) => 
   });
   try {
     await page.goto("/routes");
-    await page.getByRole("button", { name: "配置", exact: true }).click();
+    await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "配置模型路由", exact: true });
     await dialog.getByTitle("删除", { exact: true }).click();
     const confirmation = page.getByRole("dialog", { name: "确认删除", exact: true });
@@ -170,7 +171,7 @@ for (const state of ["unknown-desktop", "unknown-mobile", "mixed-known-unknown"]
     });
     await page.goto("/routes");
     await expect(page.getByRole("cell", { name: state === "mixed-known-unknown" ? "策略不一致" : "future-strategy" })).toBeVisible();
-    await page.getByRole("button", { name: "配置", exact: true }).click();
+    await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "配置模型路由", exact: true });
     const tabs = dialog.getByRole("tablist", { name: "模型路由策略", exact: true }).getByRole("tab");
     await expect(tabs).toHaveCount(7);

@@ -76,6 +76,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [pluginManagerTab, setPluginManagerTab] = useState<PluginManagerTabKey>("installed");
   const [data, setData] = useState<AppData>(emptyData());
   const [error, setError] = useState("");
+  const [routingPolicyError, setRoutingPolicyError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -857,6 +858,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   async function saveModelRoutingPolicy(model: Model, policy: ModelRoutePolicy, successMessage = `已应用 ${model.name} 的模型路由策略`) {
     setLoading(true);
     setError("");
+    setRoutingPolicyError("");
     setNotice("");
     try {
       await adminMutate(api, `/api/admin/model-routing-policies/${encodeURIComponent(model.name)}`, "PATCH", policy);
@@ -864,7 +866,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       await load();
     } catch (err) {
       if (isAuthExpiredError(err)) return;
-      setError(err instanceof Error ? err.message : tx("更新模型路由策略失败"));
+      const message = err instanceof Error ? err.message : tx("更新模型路由策略失败");
+      setRoutingPolicyError(message);
     } finally {
       setLoading(false);
     }
@@ -1084,8 +1087,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             </div>
           ) : activeView === "routes" && activeConfig ? (
             <RouteStrategyView
-              onClearError={() => setError("")}
-              error={error}
+              onClearError={() => { setError(""); setRoutingPolicyError(""); }}
+              error={routingPolicyError}
               config={activeConfig as ResourceConfig<ModelRoute>}
               data={data}
               initialQuery={routeModelQuery}

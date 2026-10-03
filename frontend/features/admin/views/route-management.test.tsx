@@ -14,7 +14,7 @@ function props(currentData = data) {
 }
 
 function openEditor() {
-  fireEvent.click(screen.getByRole("button", { name: "配置" }));
+  fireEvent.click(screen.getByRole("button", { name: /^配置路由：/ }));
   return screen.getByRole("dialog", { name: "配置模型路由" });
 }
 
@@ -51,6 +51,16 @@ describe("Route management", () => {
     expect(within(dialog).getByText("该统一模型还没有 Provider 线路")).toBeVisible();
     fireEvent.click(within(dialog).getByRole("button", { name: "添加线路" }));
     expect(callbacks.onCreate).toHaveBeenCalledWith(models[1]);
+  });
+
+  it("keeps a deep-linked unrouted model available when there are no routes", () => {
+    const callbacks = props({ ...data, routes: [] });
+    render(<RouteStrategyView {...callbacks} initialQuery={models[1].name} />);
+    expect(screen.getByRole("tab", { name: /全部模型/ })).toHaveAttribute("aria-selected", "true");
+    const row = screen.getByRole("row", { name: new RegExp(models[1].name) });
+    expect(row).toBeVisible();
+    fireEvent.click(within(row).getByRole("button", { name: `配置路由：${models[1].name}` }));
+    expect(screen.getByRole("dialog", { name: "配置模型路由" })).toBeVisible();
   });
 
   it("shows mixed saved strategies without normalizing them on open or close", () => {
