@@ -330,7 +330,7 @@ export function ProviderChannelTable({
   const rows = providers.map((provider) => rowsByID.get(provider.id) ?? providerMonitorRow(data, provider));
   const summary = providerMonitorSummary(summaryRows);
   return (
-    <section className="provider-channel-list" aria-label={tx("供应商管理")}>
+    <section className={`provider-channel-list${view === "manage" ? " provider-channel-list-manage" : ""}`} aria-label={tx("供应商管理")}>
       <div className="provider-management-tabs" role="group" aria-label={tx("供应商管理")}>
         <button className={view === "manage" ? "active" : ""} aria-pressed={view === "manage"} onClick={() => setView("manage")} type="button">{tx("供应商列表")}</button>
         <button className={view === "monitoring" ? "active" : ""} aria-pressed={view === "monitoring"} onClick={() => setView("monitoring")} type="button">{tx("可用性监控")}</button>

@@ -1,7 +1,9 @@
 .provider-management-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.provider-channel-list-manage { overflow: visible; }
 .provider-management-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 12px 16px; cursor: pointer; font: inherit; font-size: 13px; }
 .provider-management-tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
 .provider-management-table-wrap { width: 100%; overflow-x: auto; }
+.provider-channel-list-manage .provider-management-table-wrap { overflow: visible; }
 .provider-management-table { width: 100%; border-collapse: collapse; text-align: left; }
 .provider-management-table th { color: var(--muted); font-size: 12px; font-weight: 500; padding: 12px 14px; background: var(--surface-2); }
 .provider-management-table td { padding: 18px 14px; border-top: 1px solid var(--border); font-size: 13px; vertical-align: top; }

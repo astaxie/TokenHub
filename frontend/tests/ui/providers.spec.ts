@@ -65,6 +65,8 @@ for (const mobile of [false, true]) {
     installProviders(api);
     await page.goto("/providers");
     const listing = page.locator(".provider-channel-list");
+    await expect(listing).toHaveClass(/provider-channel-list-manage/);
+    await expect(listing.locator(".provider-management-table-wrap")).toHaveCSS("overflow-y", "visible");
     await expect(page.locator(".page-context-header")).toContainText("2/2已启用供应商");
     await expect(page.locator(".page-context-header")).not.toContainText("健康 Provider");
     await expect(listing.getByText("待观测", { exact: true })).toHaveCount(2);
@@ -85,6 +87,7 @@ for (const mobile of [false, true]) {
     await search.fill("Internal");
     await expect(listing.getByRole("row").filter({ hasText: "UI Local Cluster" })).toHaveCount(0);
     await listing.getByRole("button", { name: "可用性监控", exact: true }).click();
+    await expect(listing).not.toHaveClass(/provider-channel-list-manage/);
     await expect(listing.getByRole("columnheader", { name: "账号配额" })).toBeVisible();
     await expect(listing.getByText("待观测", { exact: true })).toHaveCount(1);
     await expect(search).toHaveValue("Internal");
