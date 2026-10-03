@@ -1,10 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { Provider, ProviderMonitoringSnapshot } from "../core/types";
+import type { Provider, ProviderMonitoringSnapshot, ProviderQuotaSummary } from "../core/types";
 import { emptyData } from "../domain/catalog";
 import { providerConfig } from "../resources/provider-model-config";
-import { ProviderChannelTable } from "./crud-projects";
+import { ProviderAccountQuota, ProviderChannelTable } from "./crud-projects";
 
 const provider: Provider = { id: "prv_test", name: "Example Provider", type: "openai_compatible", base_url: "https://provider.example/v1", status: "active", healthy: true, priority: 1 };
 
@@ -22,6 +22,19 @@ function setup(snapshot?: ProviderMonitoringSnapshot, readOnly = false) {
 }
 
 describe("Provider management view", () => {
+  it("shows awaiting observation when the background quota snapshot is not ready", () => {
+    const quota: ProviderQuotaSummary = {
+      supported: true,
+      limit_reached: false,
+      successful_accounts: 0,
+      failed_accounts: 1,
+      accounts: [{ resource_id: "rsrc_pending", resource_name: "Pending account", error_code: "quota_not_cached" }],
+    };
+    render(<ProviderAccountQuota quota={quota} refreshing={{}} resources={[]} onRefresh={vi.fn()} />);
+    expect(screen.getByText("待观测")).toBeVisible();
+    expect(screen.queryByText("查询失败")).not.toBeInTheDocument();
+  });
+
   it("shows inventory counts separately from health and does not claim unobserved health", () => {
     setup();
     const row = screen.getByRole("row", { name: /Example Provider/ });

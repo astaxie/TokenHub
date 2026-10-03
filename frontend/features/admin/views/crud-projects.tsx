@@ -507,7 +507,8 @@ export function ProviderAccountQuota({
   const accounts = quota.accounts ?? [];
   if (accounts.length === 0 || quota.successful_accounts === 0) {
     const error = accounts.find((account) => account.error_code)?.error_code;
-    return <span className="provider-account-quota error" title={error}>{tx("查询失败")}</span>;
+    const awaitingObservation = error === "quota_not_cached";
+    return <span className={`provider-account-quota ${awaitingObservation ? "na" : "error"}`} title={awaitingObservation ? tx("待观测") : error}>{tx(awaitingObservation ? "待观测" : "查询失败")}</span>;
   }
   const remaining = quota.remaining_percent ?? 100;
   const plan = quota.plan_type || "-";
@@ -549,8 +550,8 @@ export function ProviderAccountQuota({
                       {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))}% · {quotaResetLabel(providerAccountQuotaPrimaryWindow(accountQuota))}
                     </span>
                   ) : (
-                    <span className="limited" title={account.error_code}>
-                      {refreshing[account.resource_id] ? tx("查询中") : account.error_code || tx("查询失败")}
+                    <span className={account.error_code === "quota_not_cached" ? undefined : "limited"} title={account.error_code}>
+                      {refreshing[account.resource_id] ? tx("查询中") : account.error_code === "quota_not_cached" ? tx("待观测") : account.error_code || tx("查询失败")}
                     </span>
                   )}
                 </div>
