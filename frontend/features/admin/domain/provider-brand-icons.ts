@@ -47,7 +47,8 @@ const providerIconRules: ProviderIconRule[] = [
   { asset: "qiniu-color.svg", exact: ["qiniu", "qiniu-ai"] },
   { asset: "snowflake-color.svg", exact: ["snowflake", "snowflake-cortex"] },
   { asset: "aws-color.svg", exact: ["aws"] },
-  { asset: "meta-color.svg", exact: ["llama", "meta"] },
+  { asset: "meta-color.svg", exact: ["meta"] },
+  { asset: "llama.svg", exact: ["llama"] },
 ];
 
 export function providerBrandIconSource(entry: Pick<ProviderCatalogEntry, "id" | "name" | "display_name" | "type">) {

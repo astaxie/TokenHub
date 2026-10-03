@@ -8,7 +8,7 @@ describe("providerBrandIconSource", () => {
     expect(providerBrandIconSource(entry("ollama", "local", "Ollama Cloud"))).toBe("/provider-icons/ollama.svg");
     expect(providerBrandIconSource(entry("azure-openai", "azure_openai", "Azure OpenAI"))).toBe("/provider-icons/azure-color.svg");
     expect(providerBrandIconSource(entry("google-vertex-anthropic", "openai_compatible", "Vertex (Anthropic)"))).toBe("/provider-icons/vertexai-color.svg");
-    expect(providerBrandIconSource(entry("llama", "openai_compatible", "Llama"))).toBe("/provider-icons/meta-color.svg");
+    expect(providerBrandIconSource(entry("llama", "openai_compatible", "Llama"))).toBe("/provider-icons/llama.svg");
   });
 
   it("covers common catalog providers and keeps generic gateways neutral", () => {
