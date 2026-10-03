@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { type ApiContext } from "../core/types";
 import { formatStatementAmount, statementCSV, statementMonth, type StatementQuery, type StatementResult, type StatementSide } from "../domain/billing-statements";
 import { languageLocale, tx } from "../i18n/runtime";
@@ -10,12 +10,17 @@ import { DataSection, SimpleTable } from "../shared/ui";
 
 type StatementProps = { api: ApiContext; side?: StatementSide; model?: string; providerID?: string };
 
-export function StatementLauncher(props: StatementProps) {
+export function StatementLauncher({ returnFocusRef, onOpen, ...props }: StatementProps & { onOpen?: () => void; returnFocusRef?: RefObject<HTMLElement | null> }) {
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { if (open) dialog.current?.showModal(); }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    dialog.current?.showModal();
+    const returnFocusTarget = returnFocusRef?.current;
+    return () => { returnFocusTarget?.focus(); };
+  }, [open, returnFocusRef]);
   return <>
-    <button className="text-button" type="button" onClick={() => setOpen(!open)}>{props.side === "provider" ? tx("上游费用对账单") : tx("下游费用对账单")}</button>
+    <button className="text-button" type="button" onClick={() => { if (!open) onOpen?.(); setOpen(current => !current); }}>{props.side === "provider" ? tx("上游费用对账单") : tx("下游费用对账单")}</button>
     {open ? createPortal(<dialog ref={dialog} className="statement-drawer" aria-label={tx("费用对账单")} onClose={() => setOpen(false)}><button className="button secondary" type="button" onClick={() => setOpen(false)}>{tx("关闭")}</button><BillingStatements {...props} /></dialog>, document.body) : null}
   </>;
 }

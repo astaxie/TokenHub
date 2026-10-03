@@ -1,7 +1,8 @@
 import type { Provider } from "../../features/admin/core/types";
 import { test, expect, capture } from "./harness";
+import type { MockAPI } from "./network";
 
-test("providers local-provider-labels", async ({ page, api }, testInfo) => {
+function installProviders(api: MockAPI) {
   const providers: Provider[] = [
     { id: "prv_ui_local", name: "UI Local Cluster", type: "mock", base_url: "", priority: 1, status: "active", healthy: true },
     { id: "prv_ui_internal", name: "UI Internal Cluster", type: "mock", base_url: "http://inference.example.test/v1", priority: 2, status: "active", healthy: true },
@@ -23,6 +24,10 @@ test("providers local-provider-labels", async ({ page, api }, testInfo) => {
     expect(Object.fromEntries(query)).toEqual({ page: "1", page_size: "20", status: "all", q: "" });
   });
 
+}
+
+test("providers local-provider-labels", async ({ page, api }, testInfo) => {
+  installProviders(api);
   await page.goto("/providers");
   const local = page.getByRole("row").filter({ hasText: "UI Local Cluster" });
   const internal = page.getByRole("row").filter({ hasText: "UI Internal Cluster" });
@@ -53,3 +58,44 @@ test("providers local-provider-labels", async ({ page, api }, testInfo) => {
     expect(providerReads(), "Language changes must not reload provider data").toBe(initialProviderReads);
   }
 });
+
+for (const mobile of [false, true]) {
+  test(`providers compact-management ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    installProviders(api);
+    await page.goto("/providers");
+    const listing = page.locator(".provider-channel-list");
+    await expect(listing).toHaveClass(/provider-channel-list-manage/);
+    await expect(listing.locator(".provider-management-table-wrap")).toHaveCSS("overflow-y", "visible");
+    await expect(page.locator(".page-context-header")).toContainText("2/2已启用供应商");
+    await expect(page.locator(".page-context-header")).not.toContainText("健康 Provider");
+    await expect(listing.getByText("待观测", { exact: true })).toHaveCount(2);
+    await expect(listing.getByRole("columnheader", { name: "账号配额" })).toHaveCount(0);
+    await capture(page, testInfo, listing, `providers-management-${mobile ? "mobile" : "desktop"}`, "供应商简洁列表与独立健康状态");
+    const providerRow = listing.getByRole("row").filter({ hasText: "UI Internal Cluster" });
+    const rowBeforeMore = await providerRow.boundingBox();
+    const moreTrigger = providerRow.locator("summary[aria-label='更多操作：UI Internal Cluster']");
+    await moreTrigger.click();
+    const moreMenu = providerRow.locator(".provider-management-more > div");
+    await expect(moreMenu).toBeVisible();
+    const rowAfterMore = await providerRow.boundingBox();
+    expect(rowBeforeMore && rowAfterMore && rowAfterMore.height).toBeLessThanOrEqual((rowBeforeMore?.height ?? 0) + 4);
+    await capture(page, testInfo, moreMenu, `providers-management-more-${mobile ? "mobile" : "desktop"}`, "供应商更多操作浮层");
+    await moreTrigger.click();
+    await expect(moreMenu).toBeHidden();
+    const search = page.getByPlaceholder("搜索名称、ID、状态");
+    await search.fill("Internal");
+    await expect(listing.getByRole("row").filter({ hasText: "UI Local Cluster" })).toHaveCount(0);
+    await listing.getByRole("button", { name: "可用性监控", exact: true }).click();
+    await expect(listing).not.toHaveClass(/provider-channel-list-manage/);
+    await expect(listing.getByRole("columnheader", { name: "账号配额" })).toBeVisible();
+    await expect(listing.getByText("待观测", { exact: true })).toHaveCount(1);
+    await expect(search).toHaveValue("Internal");
+    await expect(listing.getByRole("row").filter({ hasText: "UI Internal Cluster" })).toBeVisible();
+    await capture(page, testInfo, listing, `providers-monitoring-${mobile ? "mobile" : "desktop"}`, "可用性监控：无观测数据时保持待观测状态", "viewport");
+    await listing.getByRole("button", { name: "供应商列表", exact: true }).click();
+    await expect(search).toHaveValue("Internal");
+    await expect(listing.getByRole("row").filter({ hasText: "UI Local Cluster" })).toHaveCount(0);
+    await expect(listing.getByRole("row").filter({ hasText: "UI Internal Cluster" })).toBeVisible();
+  });
+}

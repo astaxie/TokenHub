@@ -44,6 +44,14 @@ for (const state of ["save", "failure", "mobile"] as const) {
       return { json: { strategy: policy.strategy, data: updated, semantic_routing: policy.semantic_routing } };
     });
     await page.goto("/routes");
+    await expect(page.getByRole("tab", { name: /已配置/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Jev 智能路由" })).toHaveCount(0);
+    if (state === "mobile") {
+      await expect(page.getByRole("button", { name: `配置路由：${model.name}`, exact: true })).toBeInViewport({ ratio: 1 });
+      expect(await page.locator(".route-summary-scroll").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    }
+    await capture(page, testInfo, page.locator(".route-summary-table"), `semantic-routing-${state}-summary`, "路由摘要：按模型查看已配置策略");
+    await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
     await expect(page.getByLabel("模型选择指令")).toHaveCount(0);
     await page.getByRole("tab", { name: "Jev 智能路由" }).click();
     const panel = page.getByRole("group", { name: "Jev 智能路由设置" });
@@ -56,13 +64,15 @@ for (const state of ["save", "failure", "mobile"] as const) {
     await panel.getByLabel("最低置信度").fill("0.8");
     await page.getByRole("button", { name: "应用策略" }).click();
     if (state === "failure") {
-      await expect(page.getByText("Synthetic save failure")).toBeVisible();
-      await capture(page, testInfo, page.getByText("Synthetic save failure"), "semantic-routing-save-error", "Jev 智能路由：保存失败提示");
+      const error = page.getByRole("dialog", { name: "配置模型路由" }).getByRole("alert");
+      await expect(error).toHaveText("Synthetic save failure");
+      await capture(page, testInfo, error, "semantic-routing-save-error", "Jev 智能路由：保存失败提示");
       await expect(panel.getByLabel("默认模型")).toHaveValue("route_ui_1");
       await expect(page.getByRole("button", { name: "应用策略" })).toBeEnabled();
     } else {
       await expect(page.getByRole("button", { name: "应用策略" })).toBeDisabled();
       await page.reload();
+      await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
       await expect(page.getByRole("tab", { name: "Jev 智能路由" })).toHaveAttribute("aria-selected", "true");
       await expect(panel.getByLabel("默认模型")).toHaveValue("route_ui_1");
       await expect(panel.getByLabel("upstream-1 · UI Provider 1 的适用条件")).toHaveValue("Complex analysis and code changes");
@@ -84,6 +94,7 @@ for (const state of ["save", "failure", "mobile"] as const) {
       await page.getByRole("button", { name: "应用策略" }).click();
       await expect(page.getByRole("button", { name: "应用策略" })).toBeDisabled();
       await page.reload();
+      await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
       confidence = 0.75;
       await panel.getByLabel("最低置信度").fill("0.75");
       await page.getByRole("button", { name: "应用策略" }).click();
@@ -102,11 +113,13 @@ for (const state of ["save", "failure", "mobile"] as const) {
       await page.getByRole("button", { name: "应用策略" }).click();
       await expect(page.getByRole("button", { name: "应用策略" })).toBeDisabled();
       await page.reload();
+      await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
       await expect(panel.getByLabel("replacement · UI Provider 1 的适用条件")).toHaveValue("Replacement model tasks");
       await page.getByRole("tab", { name: "固定比例" }).click();
       await page.getByRole("button", { name: "应用策略" }).click();
       await expect(page.getByRole("button", { name: "应用策略" })).toBeDisabled();
       await page.reload();
+      await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
       await expect(page.getByLabel("模型选择指令")).toHaveCount(0);
       expect(saved.map(policy => policy.strategy)).toEqual(["jev", "jev", "jev", "jev", "priority_weighted"]);
     }

@@ -34,6 +34,25 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	quotaFetchedAt := time.Now().UTC().Add(-2 * time.Hour)
+	quotaSnapshot, err := json.Marshal(OpenAIAccountQuota{
+		PlanType: "pro",
+		RateLimit: &OpenAIAccountRateLimit{
+			Allowed:      true,
+			LimitReached: false,
+			PrimaryWindow: &OpenAIAccountQuotaWindow{
+				UsedPercent: 25,
+				ResetAt:     1999999999,
+			},
+		},
+		FetchedAt: quotaFetchedAt.Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProviderResourceQuota(resource.ID, provider.Type, string(quotaSnapshot), quotaFetchedAt); err != nil {
+		t.Fatal(err)
+	}
 	store.RecordProviderObservation(ProviderObservation{
 		ProviderID:  provider.ID,
 		ResourceID:  resource.ID,
@@ -75,8 +94,8 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 	}
 	first := invoke()
 	second := invoke()
-	if quotaCalls != 1 {
-		t.Fatalf("quota cache did not prevent duplicate upstream requests: %d", quotaCalls)
+	if quotaCalls != 0 {
+		t.Fatalf("monitoring GET performed an upstream quota request: %d", quotaCalls)
 	}
 	if len(first) != 1 || len(second) != 1 {
 		t.Fatalf("unexpected monitoring snapshots: first=%+v second=%+v", first, second)
@@ -86,6 +105,35 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 		snapshot.ActiveProbe.LatencyMS != 321 || snapshot.Quota.RemainingPercent != 75 ||
 		snapshot.Quota.SuccessfulAccounts != 1 {
 		t.Fatalf("monitoring did not preserve source semantics or quota: %+v", snapshot)
+	}
+}
+
+func TestProviderMonitoringSchedulerRunsProbeOutOfBand(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_monitoring_scheduler", Name: "Scheduled Monitoring", Type: "scheduled_health",
+		Status: StatusActive, Healthy: false,
+	})
+	server := New(store)
+	adapter := &pluginHealthProbeAdapter{}
+	server.adapterRegistry.Register("scheduled_health", adapter, AdapterCapabilityProbe)
+	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	if err := server.providerMonitoring.RunDue(context.Background(), now); err != nil {
+		t.Fatalf("run provider monitoring: %v", err)
+	}
+	if err := server.providerMonitoring.RunDue(context.Background(), now); err != nil {
+		t.Fatalf("repeat provider monitoring: %v", err)
+	}
+	if adapter.calls != 1 {
+		t.Fatalf("scheduled health probe calls = %d, want one call per revision", adapter.calls)
+	}
+	updated, ok := store.GetProvider(provider.ID)
+	if !ok || !updated.Healthy {
+		t.Fatalf("scheduled probe did not update provider health: %+v", updated)
+	}
+	observations := store.ListProviderObservations(time.Time{})
+	if len(observations) != 1 || observations[0].Source != "active_probe" || !observations[0].Success {
+		t.Fatalf("scheduled probe observations = %+v", observations)
 	}
 }
 
@@ -152,6 +200,9 @@ func TestProviderMonitoringQuotaUsesPluginActionSnapshot(t *testing.T) {
 		}}, nil
 	})); err != nil {
 		t.Fatalf("register quota monitoring action: %v", err)
+	}
+	if _, err := server.queryProviderMonitoringQuota(context.Background(), provider, resource); err != nil {
+		t.Fatalf("refresh monitoring quota in background: %v", err)
 	}
 
 	invoke := func() ProviderMonitoringSnapshot {

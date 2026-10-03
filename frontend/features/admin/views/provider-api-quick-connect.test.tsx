@@ -2,9 +2,21 @@ import { useState } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { type ProviderCatalogModel } from "../core/types";
 import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api-quick-connect";
 
-function ProviderHarness({ apiKeyRequired = true }: { apiKeyRequired?: boolean }) {
+function ProviderHarness({
+  apiKeyRequired = true,
+  initialSelectedModels = {},
+  models = [],
+  onReloadModels = vi.fn(),
+}: {
+  apiKeyRequired?: boolean;
+  initialSelectedModels?: Record<string, boolean>;
+  models?: ProviderCatalogModel[];
+  onReloadModels?: () => void;
+}) {
+  const [selectedModels, setSelectedModels] = useState(initialSelectedModels);
   const [values, setValues] = useState<Record<string, string>>({
     name: "Local Test Provider",
     type: "openai_compatible",
@@ -17,18 +29,18 @@ function ProviderHarness({ apiKeyRequired = true }: { apiKeyRequired?: boolean }
       api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
       catalogID="custom"
       providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, apiKeyRequired }]}
-      modelCount={0}
-      models={[]}
+      modelCount={models.length}
+      models={models}
       modelsLoading={false}
       modelsError=""
       modelQuery=""
-      selectedModelCount={0}
-      selectedModels={{}}
+      selectedModelCount={Object.values(selectedModels).filter(Boolean).length}
+      selectedModels={selectedModels}
       activeTab="connect"
       values={values}
       onModelQueryChange={vi.fn()}
-      onModelToggle={vi.fn()}
-      onReloadModels={vi.fn()}
+      onModelToggle={(modelID, enabled) => setSelectedModels((current) => ({ ...current, [modelID]: enabled }))}
+      onReloadModels={onReloadModels}
       onTabChange={vi.fn()}
       onUpdate={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
     />
@@ -41,11 +53,69 @@ describe("ProviderAPIQuickConnect", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     render(<ProviderHarness apiKeyRequired={false} />);
+    expect(screen.getByLabelText("渠道商类型")).toBeVisible();
+    expect(screen.getByLabelText("渠道商类型")).toHaveValue("openai_compatible");
     await user.type(screen.getByLabelText("Base URL"), "http://localhost:8000/v1");
     expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
     await user.click(screen.getByRole("button", { name: "测试连接" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("连接测试通过"));
     expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({ type: "openai_compatible", api_key: "", base_url: "http://localhost:8000/v1" });
+  });
+
+  it("keeps the selected model draft after a successful connection test", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));
+    const onReloadModels = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ProviderHarness initialSelectedModels={{ "gpt-draft": true }} models={[{ id: "gpt-draft", name: "gpt-draft", display_name: "GPT Draft" }]} onReloadModels={onReloadModels} />);
+
+    await user.type(screen.getByLabelText("Base URL"), "http://localhost:8000/v1");
+    await user.type(screen.getByLabelText("API Key"), "provider-secret");
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("API Key 配置有效"));
+    expect(onReloadModels).not.toHaveBeenCalled();
+    expect(screen.getByRole("switch", { name: "移除 GPT Draft" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("reloads models after a successful connection test when no draft is selected", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));
+    const onReloadModels = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ProviderHarness onReloadModels={onReloadModels} />);
+
+    await user.type(screen.getByLabelText("Base URL"), "http://localhost:8000/v1");
+    await user.type(screen.getByLabelText("API Key"), "provider-secret");
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("API Key 配置有效"));
+    expect(onReloadModels).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reload when a model is selected while the connection test is pending", async () => {
+    const user = userEvent.setup();
+    let resolveConnection!: (response: Response) => void;
+    const connectionResponse = new Promise<Response>((resolve) => { resolveConnection = resolve; });
+    const fetchMock = vi.fn().mockReturnValue(connectionResponse);
+    const onReloadModels = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProviderHarness
+        models={[{ id: "gpt-draft", name: "gpt-draft", display_name: "GPT Draft" }]}
+        onReloadModels={onReloadModels}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "http://localhost:8000/v1");
+    await user.type(screen.getByLabelText("API Key"), "provider-secret");
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await user.click(screen.getByRole("switch", { name: "引入 GPT Draft" }));
+    resolveConnection(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("API Key 配置有效"));
+    expect(onReloadModels).not.toHaveBeenCalled();
+    expect(screen.getByRole("switch", { name: "移除 GPT Draft" })).toHaveAttribute("aria-checked", "true");
   });
 
   it("renders provider catalog cards contributed by matching plugins", async () => {

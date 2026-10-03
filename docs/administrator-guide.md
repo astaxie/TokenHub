@@ -29,6 +29,24 @@ This guide is for platform administrators, security operators, and infrastructur
 
 Anthropic Providers use `x-api-key` authentication by default. If an Anthropic-compatible upstream requires `Authorization: Bearer`, open the Provider's **Advanced** tab, keep **Provider Type** set to **Claude / Anthropic**, and select **Authorization Bearer** under **Anthropic Authentication**. TokenHub derives either header from the encrypted Provider API Key and sends only the selected authentication header; do not duplicate the credential in custom headers.
 
+## Managing Providers, Models, and Routes
+
+Use **Add provider** to choose a provider card directly. Search the installed catalog or choose a custom connection; an already connected provider can have another instance for a different account, region, or environment. API connections show credentials and model selection together. Retesting an unchanged provider connection preserves the selected models before import. If you switch providers while a test is running, its later result leaves the new provider's draft unchanged. After models load manually or following a successful connection test, pending automatic discovery for the same connection will not reload them or clear your selection. Account connections open authorization with the default channel summarized; advanced settings retain manual credentials and connection overrides. Saving a provider imports upstream inventory only: it does not publish client-facing models.
+
+For a custom connection, choose **Provider Type** alongside the name and Base URL so the protocol is explicit before testing. Returning to the picker and choosing the same custom connection preserves the protocol, authentication settings, and model selection in the current draft.
+
+The default provider list separates configured status from observed health. The page header counts enabled providers; it does not infer health from their configuration. A provider without observations is marked as awaiting observation. Open **Availability monitoring** to view the latest persisted probes, performance, and account quota snapshot; opening the page does not call provider upstreams. A backend task refreshes health and supported quotas every five minutes, while explicit tests and account refresh actions remain immediate. Search and category filters remain selected.
+
+On **Model Directory**, **New Model** is the primary action. Choose a catalog template, then confirm the client-facing model ID, imported upstream models, and prices. Template metadata is summarized under advanced settings; custom models and validation errors expose required fields. Publication and route availability remain separate indicators. Billing statements, publish/unpublish, and deletion are available under **More**. Closing a billing statement returns keyboard focus to that model’s **More** button. Provider costs and unified client-facing prices remain independent, including the distinction between unknown and explicitly free prices. Click a model name to open its complete capabilities, supported protocols and parameters; administrators can also review every upstream mapping and its project scope. Read-only users can inspect model details without seeing upstream information.
+
+Expand **Advanced model settings** to adjust optional cache-write prices, including the five-minute and one-hour variants, or time-based pricing periods. Template values, including explicit zero prices, remain part of the saved model while these fields are collapsed.
+
+**Routing Policies** lists one summary per external model and defaults to configured models. Open **Configure** to edit one model's policy in a dialog. All seven strategies remain available, together with per-route resource bindings, project scope, and plugin fields. Mixed strategies are identified explicitly. Failed saves preserve the draft; leaving an edited policy asks before discarding it. Deleting the last route keeps that model's dialog open with an empty state, so you can add a replacement route or close it explicitly. Quality and cost strategies use administrator-maintained scores, not automatic model benchmarks or current market prices.
+
+If an existing route uses a strategy the editor does not recognize, its stored identifier is shown and saving remains disabled until you explicitly choose a supported strategy. Opening the editor alone does not replace the saved strategy.
+
+Screenshots with synthetic data: [provider picker](assets/screenshots/admin-management/provider-picker.png), [provider list](assets/screenshots/admin-management/providers.png), [API connection](assets/screenshots/admin-management/provider-connection.png), [model directory](assets/screenshots/admin-management/models.png), [model creation](assets/screenshots/admin-management/model-create.png), [route summary](assets/screenshots/admin-management/routes.png), [route editor](assets/screenshots/admin-management/route-editor.png), and [mobile routes](assets/screenshots/admin-management/mobile-routes.png).
+
 ## Plugin Management
 
 Open **Plugin Management** to browse the unified list of built-in and installed plugins by Provider Integration, Request Pipeline, UI Template, or Automation. Each detail page explains the plugin's purpose and exposes package files; settings appear only for implemented declarative settings surfaces. Marketplace and local package installs are validated by checksum, written to `TOKENHUB_PLUGIN_DIR`, and evaluated by a runtime reload. Declarative presentation packages can become active. An enabled external package with a backend command is instead shown as **Startup Failed**, remains installed and inspectable, and does not register its Provider, hook, job, or action because external execution is unavailable in this release. Built-ins can be enabled or disabled but not uninstalled; external packages can also be updated or uninstalled.
@@ -206,9 +224,11 @@ TokenHub rejects authentication headers, API-key and cookie credentials, forward
 
 ## Model Routing Policies
 
+All admin views use the same strategy names: Jev Smart Routing, Fixed Ratio, Adaptive, Quality First, Cost First, Primary / Backup, and Combined score.
+
 The admin console configures one routing strategy for the whole external model. Open the model card and select a strategy tab; the active tab explains its best use case, actual selection behaviour, parameter meaning, and a concrete example. Adjust the Provider parameters shown for that strategy, then choose **Apply Strategy**. The policy and every Provider parameter are saved atomically, so a model never runs with a partially updated configuration.
 
-For fixed-ratio routing, enter the relative weight beside each Provider. Two Providers with weights 75 and 25 display target shares of 75% and 25%. Adaptive routing uses the same values as base weights and dynamically adjusts effective shares. Quality, cost, and balanced modes expose only their relevant scores. All of these strategies place eligible Providers in one traffic-allocation pool. Sequential failover is the only mode that uses Provider order; drag the rows to set first, second, and later choices.
+For fixed-ratio routing, enter the relative weight beside each Provider. Two Providers with weights 75 and 25 display target shares of 75% and 25%. Adaptive routing uses the same values as base weights and dynamically adjusts effective shares. Quality First, Cost First, and Combined score expose only their relevant scores. All of these strategies place eligible Providers in one traffic-allocation pool. Primary / Backup is the only mode that uses Provider order; drag the rows to set first, second, and later choices.
 
 | Strategy | Behaviour |
 | --- | --- |
@@ -451,4 +471,4 @@ behavior is preserved; only `starttls` and `ssl` write the field.
 
 ## Screenshot
 
-![Routing policies](assets/screenshots/routes-en.png)
+![Routing policies](assets/screenshots/admin-management/routes.png)

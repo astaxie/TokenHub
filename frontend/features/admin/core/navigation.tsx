@@ -75,7 +75,7 @@ export const adminNavGroups: NavGroup[] = [
   {
     title: "AI 资源",
     items: [
-      { view: "providers", label: "Provider 渠道", icon: Server },
+      { view: "providers", label: "供应商", icon: Server },
       { view: "models", label: "模型目录", icon: Boxes },
       { view: "routes", label: "路由策略", icon: Gauge },
       { view: "playground", label: "模型演练场", icon: Send },
@@ -348,7 +348,7 @@ export function topSearchEntityItems(user: AdminUser, data: AppData): TopSearchI
         id: `provider:${provider.id}`,
         view: "providers",
         label,
-        group: "Provider 渠道",
+        group: "供应商",
         description: provider.healthy ? "Provider 健康" : "Provider 需要关注",
         icon: Server,
         tone: "entity",
@@ -437,7 +437,7 @@ export function topQuickActionsForUser(user: AdminUser): NavLeafItem[] {
   const role = appRole(user.role);
   const candidates: Record<AppRole, NavLeafItem[]> = {
     admin: [
-      { view: "providers", label: "Provider 渠道", icon: Server },
+      { view: "providers", label: "供应商", icon: Server },
       { view: "routes", label: "路由策略", icon: Gauge },
       { view: "settings", label: "系统设置", icon: Settings },
     ],

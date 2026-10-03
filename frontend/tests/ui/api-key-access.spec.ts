@@ -172,7 +172,7 @@ test("api-key-access rotation requires confirmation and cancels without a write"
   await row.getByRole("button", { name: "轮换", exact: true }).click();
   await confirmation.getByRole("button", { name: "确认轮换", exact: true }).click();
   await expect.poll(() => api.calls.filter(call => call.path.endsWith("/rotate")).length).toBe(1);
-  await row.getByRole("button", { name: "轮换", exact: true }).click();
+  await expect(row.getByRole("button", { name: "轮换", exact: true })).toBeDisabled();
   await expect(confirmation).toHaveCount(0);
   release();
   const dialog = page.getByRole("dialog", { name: "使用 API Key" });

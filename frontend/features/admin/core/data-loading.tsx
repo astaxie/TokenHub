@@ -152,7 +152,6 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "providers":
       plan.providers = true;
       plan.plugins = true;
-      plan.pluginMarketplace = true;
       plan.pluginUI = true;
       plan.pluginActions = true;
       plan.pluginBackgroundJobs = true;
