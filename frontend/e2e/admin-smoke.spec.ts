@@ -28,7 +28,7 @@ test("admin can sign in and sign out of the console", async ({ page }) => {
 for (const authenticated of [true, false]) {
 test(`admin can validate and create a custom Provider with authentication = ${authenticated}`, async ({ page }) => {
   await login(page);
-  await sidebar(page).getByRole("button", { name: "Provider 渠道", exact: true }).click();
+  await sidebar(page).getByRole("button", { name: "供应商", exact: true }).click();
   await expect(page).toHaveURL(/\/providers$/);
   await page.getByRole("button", { name: "添加供应商" }).click();
 
