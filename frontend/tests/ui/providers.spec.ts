@@ -70,6 +70,17 @@ for (const mobile of [false, true]) {
     await expect(listing.getByText("待观测", { exact: true })).toHaveCount(2);
     await expect(listing.getByRole("columnheader", { name: "账号配额" })).toHaveCount(0);
     await capture(page, testInfo, listing, `providers-management-${mobile ? "mobile" : "desktop"}`, "供应商简洁列表与独立健康状态");
+    const providerRow = listing.getByRole("row").filter({ hasText: "UI Internal Cluster" });
+    const rowBeforeMore = await providerRow.boundingBox();
+    const moreTrigger = providerRow.locator("summary[aria-label='更多操作：UI Internal Cluster']");
+    await moreTrigger.click();
+    const moreMenu = providerRow.locator(".provider-management-more > div");
+    await expect(moreMenu).toBeVisible();
+    const rowAfterMore = await providerRow.boundingBox();
+    expect(rowBeforeMore && rowAfterMore && rowAfterMore.height).toBeLessThanOrEqual((rowBeforeMore?.height ?? 0) + 4);
+    await capture(page, testInfo, moreMenu, `providers-management-more-${mobile ? "mobile" : "desktop"}`, "供应商更多操作浮层");
+    await moreTrigger.click();
+    await expect(moreMenu).toBeHidden();
     const search = page.getByPlaceholder("搜索名称、ID、状态");
     await search.fill("Internal");
     await expect(listing.getByRole("row").filter({ hasText: "UI Local Cluster" })).toHaveCount(0);

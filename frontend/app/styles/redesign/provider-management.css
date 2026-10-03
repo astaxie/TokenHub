@@ -13,10 +13,13 @@
 .provider-management-name span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .provider-management-status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .provider-management-status .provider-monitor-status { font-size: 12px; white-space: nowrap; }
-.provider-management-actions { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.provider-management-actions { position: relative; display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
 .provider-management-more > summary { color: var(--muted); display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 12px; }
 .provider-management-more > summary::-webkit-details-marker { display: none; }
-.provider-management-more > div { display: grid; justify-items: start; gap: 10px; padding-top: 12px; }
+.provider-management-more { position: relative; }
+.provider-management-more > div { position: absolute; top: calc(100% + 6px); right: 0; z-index: 110; display: grid; min-width: 148px; gap: 3px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.provider-management-more > div > button { width: 100%; min-height: 34px; padding: 8px 10px; text-align: left; justify-content: flex-start; white-space: nowrap; }
+.provider-management-more > div > button:hover { background: var(--surface-soft); }
 .provider-management-more .danger { color: var(--red); }
 @media (max-width: 720px) {
   .provider-management-table, .provider-management-table tbody { display: block; }
