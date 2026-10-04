@@ -420,7 +420,7 @@ func (s *GormStore) GetQuotaPolicyUsage(scope string, scopeID string) (QuotaPoli
 	default:
 		return QuotaPolicyUsage{}, false, nil
 	}
-	if scopeID == "" {
+	if scopeID == "" || scope == "user" && scopeID == allUsersQuotaScopeID {
 		return QuotaPolicyUsage{}, false, nil
 	}
 	now, err := s.databaseNow(s.db)
@@ -752,10 +752,8 @@ func quotaPolicyLimits(tx *gorm.DB, project Project, key APIKey) (QuotaLimits, M
 			MaxConcurrency:  int64Field(resource.Fields, "max_concurrency"),
 		}
 		if scope == "user" {
-			if scopeID == attributedUserID {
-				userPolicy.UserID = attributedUserID
-				userPolicy.Limits = mergeQuotaLimits(userPolicy.Limits, candidate)
-			}
+			userPolicy.UserID = attributedUserID
+			userPolicy.Limits = mergeQuotaLimits(userPolicy.Limits, candidate)
 			// User-scoped limits are enforced against the aggregate user buckets
 			// below. They must not also become per-key limits.
 			continue
@@ -884,7 +882,7 @@ func quotaPolicyApplies(scope string, scopeID string, project Project, key APIKe
 	case "team":
 		return scopeID == "" || scopeID == project.TeamID
 	case "user":
-		return scopeID != "" && scopeID == usageAttributionUserID(key, project)
+		return userQuotaPolicyApplies(scopeID, usageAttributionUserID(key, project))
 	default:
 		return false
 	}

@@ -213,6 +213,17 @@ func (s *Server) serveAdminResourcePatch(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) serveAdminResourceDelete(w http.ResponseWriter, r *http.Request, user AdminUser, kind string, resourceID string) {
+	if kind == "quota-policies" && !isPlatformAdminRole(user.Role) {
+		item, err := s.findResource(kind, resourceID)
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		if isDefaultUserQuotaPolicy(item.Fields) {
+			writeError(w, r, defaultUserQuotaForbidden())
+			return
+		}
+	}
 	if kind == "settings" && resourceID == gatewaySettingsID {
 		s.syntheticDNSSetting.Lock()
 		defer s.syntheticDNSSetting.Unlock()

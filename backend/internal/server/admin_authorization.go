@@ -966,7 +966,7 @@ func (s *Server) filterQuotaPoliciesForTeamLeader(user AdminUser, resources []Ad
 			visible = scopeID == user.TeamID
 		case "user":
 			target, ok := s.findAdminUser(scopeID)
-			visible = ok && userHasTeam(target, user.TeamID)
+			visible = scopeID != allUsersQuotaScopeID && ok && userHasTeam(target, user.TeamID)
 		case "cost_center", "cost-center":
 			visible = costCenters[normalizeScopeValue(scopeID)]
 		default:
@@ -1039,7 +1039,7 @@ func (s *Server) canAccessQuotaPolicy(user AdminUser, item AdminResource) bool {
 		return scopeID == user.TeamID
 	case "user":
 		target, ok := s.findAdminUser(scopeID)
-		return ok && userHasTeam(target, user.TeamID)
+		return scopeID != allUsersQuotaScopeID && ok && userHasTeam(target, user.TeamID)
 	case "cost_center", "cost-center":
 		return s.teamCostCenterSet(user.TeamID)[normalizeScopeValue(scopeID)]
 	}
@@ -1085,30 +1085,8 @@ func (s *Server) validateScopedResourceMutation(user AdminUser, kind string, res
 		quotaFields = fields
 		scope := strings.ToLower(strings.TrimSpace(firstStringField(fields, "scope", "scope_type")))
 		if scope == "user" {
-			scopeID := strings.TrimSpace(stringField(fields, "scope_id"))
-			if scopeID == "" {
-				return NewHTTPError(http.StatusBadRequest, "invalid_quota_policy_scope", "User quota policies require a user scope_id")
-			}
-			target, ok := s.findAdminUser(scopeID)
-			if !ok {
-				return NewHTTPError(http.StatusNotFound, "admin_user_not_found", "Quota policy user not found")
-			}
-			resultingStatus := StatusActive
-			if resourceID != "" {
-				existing, err := s.findResource(kind, resourceID)
-				if err != nil {
-					return err
-				}
-				resultingStatus = existing.Status
-			}
-			if req.Status != "" {
-				resultingStatus = req.Status
-			}
-			if target.Status != StatusActive && !strings.EqualFold(strings.TrimSpace(resultingStatus), StatusDisabled) {
-				return NewHTTPError(http.StatusBadRequest, "invalid_quota_policy_scope", "User quota policies require an active user")
-			}
-			if normalizeAdminRole(user.Role) == "team_leader" && !userHasTeam(target, user.TeamID) {
-				return NewHTTPError(http.StatusForbidden, "quota_forbidden", "Team leader can only manage quotas for users in own team")
+			if err := s.validateUserQuotaPolicyTarget(user, resourceID, req.Status, fields); err != nil {
+				return err
 			}
 		}
 	}
@@ -1204,6 +1182,9 @@ func validProjectMemberRole(role string) bool {
 }
 
 func (s *Server) canManageQuotaPolicy(user AdminUser, item AdminResource) bool {
+	if isDefaultUserQuotaPolicy(item.Fields) {
+		return isPlatformAdminRole(user.Role)
+	}
 	projectID := projectScopedResourceProjectID(item)
 	projects := s.store.ListProjects()
 	memberships := s.store.ListResources("project-members")
