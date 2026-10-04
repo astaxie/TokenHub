@@ -17,13 +17,18 @@ import (
 func BuildPlan(ctx context.Context, opts Options) (*Plan, error) {
 	plan := &Plan{Blockers: []string{}, Warnings: []string{}}
 
+	sourceURL, err := sqliteSourceReadOnlyURL(opts.SourceURL)
+	if err != nil {
+		return nil, err
+	}
+
 	secretKey, keySource, keyNotice := resolveSecretKey(opts.SourceURL, opts.SecretKey)
 	plan.Secret.KeySource = string(keySource)
 	if keyNotice != "" {
 		plan.Warnings = append(plan.Warnings, keyNotice)
 	}
 
-	driver, db, err := server.OpenRawDatabase(opts.SourceURL)
+	driver, db, err := server.OpenRawDatabase(sourceURL)
 	if err != nil {
 		return nil, fmt.Errorf("open source database: %w", err)
 	}
@@ -157,6 +162,67 @@ func sqliteTargetFileMissing(targetURL string) (bool, string) {
 func fileMissing(path string) bool {
 	_, err := os.Stat(path)
 	return os.IsNotExist(err)
+}
+
+// sqliteSourceReadOnlyURL validates that the source names an existing
+// SQLite database and rewrites its URL to open the file read-only.
+// Connecting to a missing SQLite file would create it, so a typo in --from
+// used to produce a zero-byte source that planned as an empty, READY
+// upgrade. URLs for other drivers pass through unchanged and fail the
+// driver check after opening.
+func sqliteSourceReadOnlyURL(sourceURL string) (string, error) {
+	trimmed := strings.TrimSpace(sourceURL)
+	var prefix string
+	switch {
+	case strings.HasPrefix(trimmed, "sqlite://"):
+		prefix = "sqlite://"
+	case strings.HasPrefix(trimmed, "sqlite:"):
+		prefix = "sqlite:"
+	case strings.Contains(trimmed, "://"), isKeywordStyleURL(trimmed):
+		return trimmed, nil
+	}
+	rest := strings.TrimPrefix(trimmed, prefix)
+	path, query := rest, ""
+	if idx := strings.Index(rest, "?"); idx >= 0 {
+		path, query = rest[:idx], rest[idx+1:]
+	}
+	// In-memory and file: DSNs carry driver URI semantics of their own.
+	if path == "" || path == ":memory:" || strings.HasPrefix(path, "file:") {
+		return trimmed, nil
+	}
+	if fileMissing(path) {
+		return "", fmt.Errorf("open source database: source file %s does not exist; point --from at the SQLite deployment to upgrade", path)
+	}
+	return prefix + path + "?" + withReadOnlyMode(query), nil
+}
+
+// isKeywordStyleURL reports whether the URL is a PostgreSQL keyword DSN
+// such as "host=db user=tokenhub dbname=tokenhub" rather than a SQLite
+// path. Keyword DSNs have no scheme and begin with a connection keyword.
+func isKeywordStyleURL(databaseURL string) bool {
+	first := strings.SplitN(databaseURL, "=", 2)
+	if len(first) != 2 {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(first[0])) {
+	case "host", "hostaddr", "user", "dbname", "port", "password", "sslmode":
+		return true
+	}
+	return false
+}
+
+// withReadOnlyMode merges a mode=ro parameter into a SQLite DSN query,
+// replacing any mode the URL already carried, so no connection the
+// preflight opens can write to the source.
+func withReadOnlyMode(query string) string {
+	var parts []string
+	for _, part := range strings.Split(query, "&") {
+		if part == "" || strings.HasPrefix(part, "mode=") {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(append(parts, "mode=ro"), "&")
 }
 
 // protectedRows totals the source rows in tables that carry protected

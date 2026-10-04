@@ -91,28 +91,37 @@ phases consume (`dbupgrade.Plan`, rendered as text or JSON):
    list lives in `backend/internal/dbupgrade/registry.go`; the encrypted
    column registry is derived from the store layer's `encryptSecret` call
    sites and must gain an entry in the same change as any new protected
-   column.
+   column. The source itself is opened with SQLite `mode=ro` after the
+   file is confirmed to exist, so the preflight can neither create a
+   mistyped `--from` path nor write to the deployment it inspects; a
+   missing source file is an error, not an empty plan.
 2. **Secret key resolution.** `--secret-key`, then `TOKENHUB_SECRET_KEY`,
    then the `.secret-key` sidecar file beside the source database
    (read-only through `server.ReadSQLiteSecretKeySidecar`; provisioning
    stays with startup). Resolution order mirrors `PrepareForStartup` so an
    explicit environment key keeps winning over the sidecar.
 3. **Ciphertext canary.** For every registered protected column present in
-   the source, scan rows in `rowid` pages, extract `enc:v1:` tokens from
-   the raw column text (this also covers ciphertext embedded in JSON maps
-   such as `providers.headers`), and verify each distinct token decrypts
-   with the resolved key through `server.VerifySecretCiphertext`. Failures
-   on serving-configuration columns (provider credentials, connector
-   credentials, bootstrap password) are blockers; failures on historical
-   artifacts (image/response job payloads, OAuth session records) are
-   warnings. This exists because `decryptSecret` returns an empty string
-   on any failure: without the canary, a wrong key is indistinguishable
-   from empty plaintext until after cutover.
+   the source, scan rows in `rowid` pages and verify every distinct
+   protected value as a complete value through
+   `server.VerifySecretCiphertext`: scalar columns hold one whole
+   `enc:v1:` ciphertext, and JSON columns such as `providers.headers` are
+   parsed so each embedded protected string is verified individually. A
+   marker-carrying value that is truncated, carries appended garbage,
+   embeds the marker mid-value, or sits in an unparseable document fails
+   instead of being skipped. Failures on serving-configuration columns
+   (provider credentials, connector credentials, bootstrap password) are
+   blockers; failures on historical artifacts (image/response job
+   payloads, OAuth session records) are warnings. This exists because
+   `decryptSecret` returns an empty string on any failure: without the
+   canary, a wrong key is indistinguishable from empty plaintext until
+   after cutover.
 4. **Target classification.** `empty` (no tables; a SQLite-style URL whose
    file does not exist yet is classified without connecting, so the
    preflight cannot create the file as a side effect), `tokenhub` (ledger
    present; occupied targets block, freshly adopted empty targets warn),
-   or `unrecognized` (tables but no ledger; blocks).
+   or `unrecognized` (tables but no ledger; blocks). Occupancy probes
+   every application table with `SELECT 1 ... LIMIT 1`, excluding only
+   the system tables the target maintains itself.
 5. **Verdict.** Blockers and warnings are findings, not command failures:
    the command exits 0 whenever the preflight ran, and the rendered result
    states `READY` or `NOT READY`.
@@ -155,10 +164,12 @@ archived.
 
 - Unit tests run on file-backed SQLite through the real store flow
   (`OpenStoreWithConfig`), covering the canary (right key, wrong key, no
-  key), key resolution including the sidecar, target classification
-  (missing file, empty, adopted-empty, occupied, unrecognized), JSON
-  round-trip, and the CLI surface. `internal/dbupgrade` and `internal/dbcli`
-  hold these today.
+  key, corrupted and truncated stored values, ciphertext embedded in
+  JSON documents), key resolution including the sidecar, target
+  classification (missing file, empty, adopted-empty, occupied, occupied
+  outside the core tables, unrecognized, missing source rejected without
+  creating it), JSON round-trip, and the CLI surface. `internal/dbupgrade`
+  and `internal/dbcli` hold these today.
 - PostgreSQL coverage joins the existing opt-in integration pattern
   (`//go:build integration` with `TEST_POSTGRES_URL`) in P2, alongside the
   copy and verification paths that actually exercise the dialect.

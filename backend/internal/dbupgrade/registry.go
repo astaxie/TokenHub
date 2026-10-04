@@ -8,11 +8,11 @@ package dbupgrade
 var encryptedColumns = []encryptedColumnRef{
 	// Serving configuration: unreadable credentials break provider calls
 	// immediately after cutover. providers.headers is a JSON map whose
-	// sensitive values are encrypted individually, so the canary scans the
-	// raw column text for embedded tokens rather than treating it as one
-	// ciphertext.
+	// sensitive values are encrypted individually, so the canary parses the
+	// document and verifies each embedded protected string individually
+	// rather than treating the column as one ciphertext.
 	{Table: "providers", Column: "api_key", Severity: SeverityBlocker},
-	{Table: "providers", Column: "headers", Severity: SeverityBlocker},
+	{Table: "providers", Column: "headers", Severity: SeverityBlocker, JSON: true},
 	{Table: "provider_resources", Column: "api_key", Severity: SeverityBlocker},
 	{Table: "provider_resources", Column: "credential_blob", Severity: SeverityBlocker},
 	{Table: "billing_connectors", Column: "credential_ciphertext", Severity: SeverityBlocker},
@@ -33,6 +33,10 @@ type encryptedColumnRef struct {
 	Table    string
 	Column   string
 	Severity Severity
+	// JSON marks a column that stores a JSON document whose string values
+	// are encrypted individually, such as providers.headers, instead of one
+	// whole-value ciphertext.
+	JSON bool
 }
 
 // historyTables lists append-only evidence tables. They are copied last and
@@ -53,13 +57,14 @@ var historyTables = []string{
 
 // systemTables lists tables the target maintains itself. The migration
 // ledger belongs to the target's own adoption flow, so an upgrade run never
-// copies these rows.
+// copies these rows; adoption and startup may legitimately seed them.
 var systemTables = []string{
 	"schema_migrations",
 	"migration_attempts",
 	"analytics_sequences",
 	"instance_heartbeats",
 	"sqlite_backup_records",
+	"cluster_task_states",
 }
 
 // encryptedColumnsForTable returns the registered protected columns of one

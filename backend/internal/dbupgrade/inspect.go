@@ -103,10 +103,14 @@ func classifyTarget(ctx context.Context, db *sql.DB, driver string) (TargetRepor
 	}
 	report.State = TargetStateTokenhub
 	report.LedgerVersion = version
-	// Probing a handful of core tables keeps classification cheap on large
-	// targets; COUNT(*) would seq-scan every table.
-	for _, table := range []string{"providers", "admin_users", "api_keys", "usage_records", "request_logs"} {
-		if !tableExists(tables, table) {
+	// Occupancy must consider every application table: an adopted target
+	// can hold projects, model routing, or billing configuration without
+	// touching any fixed core-table list. Only the system tables the target
+	// maintains itself are permitted to hold rows. SELECT 1 ... LIMIT 1
+	// stops at the first row, so probing stays cheap on large targets
+	// where COUNT(*) would seq-scan.
+	for _, table := range tables {
+		if contains(systemTables, table) {
 			continue
 		}
 		hasRows, err := tableHasRows(ctx, db, table)
@@ -115,11 +119,9 @@ func classifyTarget(ctx context.Context, db *sql.DB, driver string) (TargetRepor
 		}
 		if hasRows {
 			report.HasData = true
+			report.Detail = fmt.Sprintf("target table %s holds rows; cutover requires an empty target", table)
 			break
 		}
-	}
-	if report.HasData {
-		report.Detail = "target already holds data; cutover requires an empty target"
 	}
 	return report, nil
 }

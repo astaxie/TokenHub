@@ -3,7 +3,9 @@ package dbupgrade
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -278,6 +280,282 @@ func TestBuildPlanSurfacesUnreadableSource(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "open source database") {
 		t.Fatalf("unreadable source must error, got: %v", err)
 	}
+}
+
+func TestBuildPlanRejectsMissingSourceFile(t *testing.T) {
+	clearSecretKeyEnv(t)
+	sourcePath := filepath.Join(t.TempDir(), "typo-source.db")
+	sourceURL := "sqlite://" + sourcePath
+
+	_, err := BuildPlan(context.Background(), Options{
+		SourceURL: sourceURL,
+		TargetURL: "sqlite://" + filepath.Join(t.TempDir(), "absent.db"),
+		SecretKey: devSecretKey,
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Fatalf("missing source must error naming the file, got: %v", err)
+	}
+	// The preflight must not create the missing source file as a side
+	// effect of connecting.
+	if _, statErr := os.Stat(sourcePath); !os.IsNotExist(statErr) {
+		t.Fatalf("plan must not create the source file: %v", statErr)
+	}
+}
+
+func TestSQLiteSourceReadOnlyURL(t *testing.T) {
+	existing := filepath.Join(t.TempDir(), "source.db")
+	if err := os.WriteFile(existing, []byte("sqlite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("existing sqlite file rewrites to read-only", func(t *testing.T) {
+		got, err := sqliteSourceReadOnlyURL("sqlite://" + existing)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "sqlite://" + existing + "?mode=ro"; got != want {
+			t.Fatalf("rewritten URL: got %q, want %q", got, want)
+		}
+	})
+	t.Run("existing query parameters are preserved", func(t *testing.T) {
+		got, err := sqliteSourceReadOnlyURL("sqlite://" + existing + "?cache=shared")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "sqlite://" + existing + "?cache=shared&mode=ro"; got != want {
+			t.Fatalf("rewritten URL: got %q, want %q", got, want)
+		}
+	})
+	t.Run("a carried mode parameter is replaced", func(t *testing.T) {
+		got, err := sqliteSourceReadOnlyURL("sqlite://" + existing + "?mode=rw")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "sqlite://" + existing + "?mode=ro"; got != want {
+			t.Fatalf("rewritten URL: got %q, want %q", got, want)
+		}
+	})
+	t.Run("missing file errors without rewriting", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "absent.db")
+		if _, err := sqliteSourceReadOnlyURL("sqlite://" + missing); err == nil ||
+			!strings.Contains(err.Error(), "does not exist") {
+			t.Fatalf("missing source file must error, got: %v", err)
+		}
+	})
+	t.Run("non-sqlite URLs pass through", func(t *testing.T) {
+		for _, url := range []string{
+			"postgres://user:pass@localhost:5432/tokenhub",
+			"host=db user=tokenhub dbname=tokenhub",
+		} {
+			got, err := sqliteSourceReadOnlyURL(url)
+			if err != nil || got != url {
+				t.Fatalf("URL %q must pass through, got %q (err %v)", url, got, err)
+			}
+		}
+	})
+}
+
+func TestBuildPlanFlagsCorruptedStoredCiphertext(t *testing.T) {
+	clearSecretKeyEnv(t)
+	targetURL := "sqlite://" + filepath.Join(t.TempDir(), "absent.db")
+
+	t.Run("appended character fails the complete scalar value", func(t *testing.T) {
+		databaseURL := adoptTempStore(t)
+		addTestProvider(t, databaseURL)
+		rewriteProviderColumn(t, databaseURL, "api_key", func(value string) string {
+			return value + "!"
+		})
+
+		plan, err := BuildPlan(context.Background(), Options{
+			SourceURL: databaseURL,
+			TargetURL: targetURL,
+			SecretKey: devSecretKey,
+		})
+		if err != nil {
+			t.Fatalf("build plan: %v", err)
+		}
+		if plan.Secret.Verified {
+			t.Fatalf("corrupted ciphertext must fail the canary")
+		}
+		apiKey := findCanary(plan, "providers", "api_key")
+		if apiKey == nil || apiKey.FailedCiphertexts != 1 {
+			t.Fatalf("providers.api_key canary: %+v", apiKey)
+		}
+		if !hasFinding(plan.Blockers, "providers.api_key") {
+			t.Fatalf("corrupted ciphertext must block; blockers: %v", plan.Blockers)
+		}
+	})
+
+	t.Run("bare marker fails instead of being skipped", func(t *testing.T) {
+		databaseURL := adoptTempStore(t)
+		addTestProvider(t, databaseURL)
+		rewriteProviderColumn(t, databaseURL, "api_key", func(string) string {
+			return server.SecretCiphertextPrefix
+		})
+
+		plan, err := BuildPlan(context.Background(), Options{
+			SourceURL: databaseURL,
+			TargetURL: targetURL,
+			SecretKey: devSecretKey,
+		})
+		if err != nil {
+			t.Fatalf("build plan: %v", err)
+		}
+		if plan.Secret.Verified {
+			t.Fatalf("bare marker must fail the canary")
+		}
+		apiKey := findCanary(plan, "providers", "api_key")
+		if apiKey == nil || apiKey.FailedCiphertexts != 1 {
+			t.Fatalf("providers.api_key canary: %+v", apiKey)
+		}
+	})
+
+	t.Run("json document with intact embedded ciphertext verifies", func(t *testing.T) {
+		databaseURL := adoptTempStore(t)
+		addTestProvider(t, databaseURL)
+		apiKey := providerColumnValue(t, databaseURL, "api_key")
+		rewriteProviderColumn(t, databaseURL, "headers", func(string) string {
+			return fmt.Sprintf(`{"Authorization":%q}`, apiKey)
+		})
+
+		plan, err := BuildPlan(context.Background(), Options{
+			SourceURL: databaseURL,
+			TargetURL: targetURL,
+			SecretKey: devSecretKey,
+		})
+		if err != nil {
+			t.Fatalf("build plan: %v", err)
+		}
+		if !plan.Secret.Verified {
+			t.Fatalf("intact embedded ciphertext must verify; canary: %+v", plan.Secret.Canary)
+		}
+		headers := findCanary(plan, "providers", "headers")
+		if headers == nil || headers.DistinctCiphertexts != 1 || headers.FailedCiphertexts != 0 {
+			t.Fatalf("providers.headers canary: %+v", headers)
+		}
+	})
+
+	t.Run("json document with corrupted embedded ciphertext fails", func(t *testing.T) {
+		databaseURL := adoptTempStore(t)
+		addTestProvider(t, databaseURL)
+		apiKey := providerColumnValue(t, databaseURL, "api_key")
+		rewriteProviderColumn(t, databaseURL, "headers", func(string) string {
+			return fmt.Sprintf(`{"Authorization":%q}`, apiKey+"=")
+		})
+
+		plan, err := BuildPlan(context.Background(), Options{
+			SourceURL: databaseURL,
+			TargetURL: targetURL,
+			SecretKey: devSecretKey,
+		})
+		if err != nil {
+			t.Fatalf("build plan: %v", err)
+		}
+		if plan.Secret.Verified {
+			t.Fatalf("corrupted embedded ciphertext must fail the canary")
+		}
+		headers := findCanary(plan, "providers", "headers")
+		if headers == nil || headers.FailedCiphertexts != 1 {
+			t.Fatalf("providers.headers canary: %+v", headers)
+		}
+		if !hasFinding(plan.Blockers, "providers.headers") {
+			t.Fatalf("corrupted embedded ciphertext must block; blockers: %v", plan.Blockers)
+		}
+	})
+
+	t.Run("unparseable document carrying the marker fails", func(t *testing.T) {
+		databaseURL := adoptTempStore(t)
+		addTestProvider(t, databaseURL)
+		apiKey := providerColumnValue(t, databaseURL, "api_key")
+		rewriteProviderColumn(t, databaseURL, "headers", func(string) string {
+			// Truncated JSON: the protected marker is present but the
+			// document cannot be parsed or verified.
+			return fmt.Sprintf(`{"Authorization":%q`, apiKey)
+		})
+
+		plan, err := BuildPlan(context.Background(), Options{
+			SourceURL: databaseURL,
+			TargetURL: targetURL,
+			SecretKey: devSecretKey,
+		})
+		if err != nil {
+			t.Fatalf("build plan: %v", err)
+		}
+		if plan.Secret.Verified {
+			t.Fatalf("unparseable prefixed document must fail the canary")
+		}
+		headers := findCanary(plan, "providers", "headers")
+		if headers == nil || headers.FailedCiphertexts != 1 {
+			t.Fatalf("providers.headers canary: %+v", headers)
+		}
+	})
+}
+
+func TestBuildPlanBlocksTargetHoldingDataOutsideCoreTables(t *testing.T) {
+	clearSecretKeyEnv(t)
+	databaseURL := adoptTempStore(t)
+	targetURL := adoptTempStore(t)
+	_, db, err := server.OpenRawDatabase(targetURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A single projects row sits outside the previous core-table probe;
+	// it must still mark the target occupied.
+	if _, err := db.Exec(`INSERT INTO projects (id, name) VALUES ('prj_occupied', 'occupied')`); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := BuildPlan(context.Background(), Options{
+		SourceURL: databaseURL,
+		TargetURL: targetURL,
+		SecretKey: devSecretKey,
+	})
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+	if !plan.Target.HasData {
+		t.Fatalf("data outside the core tables must mark the target occupied; target: %+v", plan.Target)
+	}
+	if !hasFinding(plan.Blockers, "already holds TokenHub data") {
+		t.Fatalf("occupied target must block; blockers: %v", plan.Blockers)
+	}
+}
+
+// rewriteProviderColumn replaces the named column of the first providers
+// row with a transformation of its current value.
+func rewriteProviderColumn(t *testing.T, databaseURL, column string, transform func(string) string) {
+	t.Helper()
+	_, db, err := server.OpenRawDatabase(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var current sql.NullString
+	if err := db.QueryRow(fmt.Sprintf("SELECT %q FROM providers LIMIT 1", column)).Scan(&current); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("UPDATE providers SET %q = ?", column), transform(current.String)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// providerColumnValue reads the named column of the first providers row.
+func providerColumnValue(t *testing.T, databaseURL, column string) string {
+	t.Helper()
+	_, db, err := server.OpenRawDatabase(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var value sql.NullString
+	if err := db.QueryRow(fmt.Sprintf("SELECT %q FROM providers LIMIT 1", column)).Scan(&value); err != nil {
+		t.Fatal(err)
+	}
+	return value.String
 }
 
 func TestRenderJSONRoundTrips(t *testing.T) {
