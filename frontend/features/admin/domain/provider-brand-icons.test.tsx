@@ -11,10 +11,19 @@ describe("providerBrandIconSource", () => {
     expect(providerBrandIconSource(entry("llama", "openai_compatible", "Llama"))).toBe("/provider-icons/llama.svg");
   });
 
+  it("prefers the catalog brand over a shared protocol adapter or custom label", () => {
+    expect(providerBrandIconSource(entry("stepfun", "openai", "OpenAI"))).toBe("/provider-icons/stepfun-color.svg");
+    expect(providerBrandIconSource(entry("azure-openai", "openai", "Azure OpenAI"))).toBe("/provider-icons/azure-color.svg");
+  });
+
   it("covers common catalog providers and keeps generic gateways neutral", () => {
     expect(providerBrandIconSource(entry("siliconflow", "openai_compatible", "SiliconFlow"))).toBe("/provider-icons/siliconcloud-color.svg");
     expect(providerBrandIconSource(entry("github-copilot", "openai_compatible", "GitHub Copilot"))).toBe("/provider-icons/githubcopilot.svg");
+    expect(providerBrandIconSource(entry("stepfun", "openai_compatible", "Stepfun"))).toBe("/provider-icons/stepfun-color.svg");
+    expect(providerBrandIconSource(entry("kimi", "openai_compatible", "Kimi"))).toBe("/provider-icons/kimi-color.svg");
+    expect(providerBrandIconSource(entry("moonshot", "openai_compatible", "Moonshot"))).toBe("/provider-icons/moonshot.svg");
     expect(providerBrandIconSource(entry("openai-compatible", "openai_compatible", "OpenAI-Compatible"))).toBe("");
     expect(providerBrandIconSource(entry("private-gateway", "openai_compatible", "Private Gateway"))).toBe("");
+    expect(providerBrandIconSource(entry("bailing", "openai_compatible", "Bailing"))).toBe("");
   });
 });

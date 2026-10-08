@@ -7,16 +7,21 @@ import { ProviderAPIQuickCatalog, ProviderAPIQuickConnect } from "./provider-api
 
 function ProviderHarness({
   apiKeyRequired = true,
+  accountProviderTypes = [],
+  catalogID = "custom",
   initialSelectedModels = {},
   models = [],
   onReloadModels = vi.fn(),
 }: {
   apiKeyRequired?: boolean;
+  accountProviderTypes?: string[];
+  catalogID?: string;
   initialSelectedModels?: Record<string, boolean>;
   models?: ProviderCatalogModel[];
   onReloadModels?: () => void;
 }) {
   const [selectedModels, setSelectedModels] = useState(initialSelectedModels);
+  const [activeTab, setActiveTab] = useState<"connect" | "models" | "advanced">("connect");
   const [values, setValues] = useState<Record<string, string>>({
     name: "Local Test Provider",
     type: "openai_compatible",
@@ -27,8 +32,10 @@ function ProviderHarness({
   return (
     <ProviderAPIQuickConnect
       api={{ baseURL: "http://localhost:8080", adminToken: "admin-token" }}
-      catalogID="custom"
-      providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, apiKeyRequired }]}
+      catalogID={catalogID}
+      entry={catalogID === "custom" ? undefined : { id: catalogID, name: "Example API", display_name: "Example API", type: "openai_compatible", source: "test", models_count: 0 }}
+      providerTypeOptions={[{ value: "openai_compatible", label: "OpenAI Compatible", supportsCustomHeaders: true, apiKeyRequired }, { value: "account_only", label: "Account only", supportsCustomHeaders: false }, { value: "optional_compatible", label: "Optional API", supportsCustomHeaders: true, apiKeyRequired: false, authModes: ["bearer"] }]}
+      accountProviderTypes={accountProviderTypes}
       modelCount={models.length}
       models={models}
       modelsLoading={false}
@@ -36,18 +43,48 @@ function ProviderHarness({
       modelQuery=""
       selectedModelCount={Object.values(selectedModels).filter(Boolean).length}
       selectedModels={selectedModels}
-      activeTab="connect"
+      activeTab={activeTab}
       values={values}
       onModelQueryChange={vi.fn()}
       onModelToggle={(modelID, enabled) => setSelectedModels((current) => ({ ...current, [modelID]: enabled }))}
       onReloadModels={onReloadModels}
-      onTabChange={vi.fn()}
+      onTabChange={setActiveTab}
       onUpdate={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
     />
   );
 }
 
 describe("ProviderAPIQuickConnect", () => {
+  it.each(["custom", "openai"])("does not offer account-only provider types for an API connection (%s)", async (catalogID) => {
+    const user = userEvent.setup();
+    render(<ProviderHarness catalogID={catalogID} accountProviderTypes={["account_only"]} />);
+    if (catalogID !== "custom") await user.click(screen.getByText("高级连接设置"));
+    expect(screen.getByRole("combobox", { name: "渠道商类型" })).toHaveValue("openai_compatible");
+    expect(screen.queryByRole("option", { name: "Account only" })).not.toBeInTheDocument();
+  });
+
+  it("updates branded credential requirements and the test payload after changing the adapter", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ProviderHarness catalogID="openai" />);
+    await user.type(screen.getByLabelText("Base URL"), "http://localhost:8000/v1");
+    expect(screen.getByLabelText("API Key", { exact: true })).toBeRequired();
+    expect(screen.getByRole("button", { name: "测试连接" })).toBeDisabled();
+
+    await user.click(screen.getByText("高级连接设置"));
+    await user.selectOptions(screen.getByRole("combobox", { name: "渠道商类型" }), "optional_compatible");
+    expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("连接测试通过"));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({ type: "optional_compatible", api_key: "", provider_auth_mode: "bearer" });
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "渠道商类型" }), "openai_compatible");
+    expect(screen.getByLabelText("API Key", { exact: true })).toBeRequired();
+    expect(screen.getByRole("button", { name: "测试连接" })).toBeDisabled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("tests an optional-credential custom upstream without a placeholder key", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ healthy: true, latency_ms: 1 }), { status: 200 }));

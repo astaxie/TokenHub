@@ -1,6 +1,9 @@
 export const providerOnboardingTranslations: Record<"en" | "ja" | "ru", Record<string, string>> = {
   en: {
     "选择供应商": "Choose a provider",
+    "供应商分类": "Provider categories",
+    "中转聚合": "Aggregators",
+    "本地部署": "Local deployments",
     "添加供应商": "Add provider",
     "选择你要接入的服务，下一步填写密钥或登录账号。": "Choose a service, then enter its API key or sign in.",
     "搜索供应商名称或地址": "Search provider name or URL",
@@ -17,6 +20,9 @@ export const providerOnboardingTranslations: Record<"en" | "ja" | "ru", Record<s
   },
   ja: {
     "选择供应商": "プロバイダーを選択",
+    "供应商分类": "プロバイダーの分類",
+    "中转聚合": "集約サービス",
+    "本地部署": "ローカル環境",
     "添加供应商": "プロバイダーを追加",
     "选择你要接入的服务，下一步填写密钥或登录账号。": "サービスを選択して、API キーの入力またはログインに進みます。",
     "搜索供应商名称或地址": "プロバイダー名または URL を検索",
@@ -33,6 +39,9 @@ export const providerOnboardingTranslations: Record<"en" | "ja" | "ru", Record<s
   },
   ru: {
     "选择供应商": "Выберите провайдера",
+    "供应商分类": "Категории провайдеров",
+    "中转聚合": "Агрегаторы",
+    "本地部署": "Локальные развёртывания",
     "添加供应商": "Добавить провайдера",
     "选择你要接入的服务，下一步填写密钥或登录账号。": "Выберите сервис, затем введите API-ключ или войдите в аккаунт.",
     "搜索供应商名称或地址": "Поиск по названию или URL",

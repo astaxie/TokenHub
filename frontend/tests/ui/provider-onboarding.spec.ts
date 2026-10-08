@@ -8,6 +8,7 @@ const alternate: ProviderCatalogEntry = { ...direct, id: "ui-alternate", name: "
 const customConnection = { name: "UI Custom Draft", base_url: "https://custom.example.test/v1", type: alternate.type, api_key: "synthetic-ui-key" };
 const subscription: ProviderCatalogEntry = { id: "ui-subscription", name: "UI Subscription", display_name: "UI Subscription", type: "ui_subscription", base_url: "https://account.example.test", categories: ["openai"], models_count: 1, source: "plugin" };
 const brandedOllama: ProviderCatalogEntry = { id: "ollama", name: "Ollama", display_name: "Ollama", type: "local", base_url: "http://127.0.0.1:11434/v1", models_count: 0, source: "plugin" };
+const brandedAggregator: ProviderCatalogEntry = { id: "openrouter", name: "OpenRouter", display_name: "OpenRouter", type: "openai_compatible", base_url: "https://openrouter.example.test/api/v1", models_count: 0, source: "ui-fixture" };
 const catalogModel = { id: "ui-chat", name: "UI Chat", category: "openai", family: "test", type: "chat", input_price_usd_per_1m: 1, output_price_usd_per_1m: 2 };
 const subscriptionPlugin: PluginDescriptor = { id: "tokenhub.provider.ui-subscription", name: "UI Subscription", version: "1", source: "built_in", kinds: ["provider"], placements: [], capabilities: [{ kind: "provider_resource_type", name: "ui_subscription_account", subject: "ui_subscription" }] };
 const adapters: AdapterDescriptor[] = [
@@ -26,7 +27,7 @@ function installProviderFixtures(api: MockAPI, state: string) {
   const providers: Provider[] = state.startsWith("catalog") ? [{ id: "prv_ui_existing", name: "Existing UI Service", type: direct.type, base_url: direct.base_url, priority: 10, healthy: true, status: "active", options: { catalog_id: direct.id } }] : [];
   const extraCatalog = state === "catalog-many" ? Array.from({ length: 8 }, (_, index) => ({ ...direct, id: `ui-catalog-${index}`, name: `UI Service ${index + 2}`, display_name: index === 3 ? "UI Enterprise Service With a Long Regional Deployment Name" : `UI Service ${index + 2}`, base_url: `https://region-${index + 2}.example.test/enterprise/compatible/v1` })) : [];
   api.respond("GET", "/api/admin/providers", { data: providers });
-  api.respond("GET", "/api/admin/provider-catalog", { data: [direct, ...extraCatalog, ...(state === "catalog" ? [brandedOllama] : []), ...(custom ? [alternate] : []), subscription] });
+  api.respond("GET", "/api/admin/provider-catalog", { data: [direct, ...extraCatalog, ...(["catalog", "catalog-filters"].includes(state) ? [brandedOllama] : []), ...(state === "catalog-filters" ? [brandedAggregator] : []), ...(custom ? [alternate] : []), subscription] });
   let catalogFailed = state === "model-failure";
   api.define("GET", "/api/admin/provider-catalog/ui-direct", () => catalogFailed
     ? { status: 503, json: { error: { message: "Synthetic catalog unavailable" } } }
@@ -71,6 +72,75 @@ function installProviderFixtures(api: MockAPI, state: string) {
 }
 
 for (const viewport of ["desktop", "mobile"] as const) {
+  test(`provider-onboarding category filters ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    installProviderFixtures(api, "catalog-filters");
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    const categories = editor.getByRole("group", { name: "供应商分类" });
+    const search = editor.getByPlaceholder("搜索供应商名称或地址");
+    const all = categories.getByRole("button", { name: /^全部/ });
+    const supplierCategory = categories.getByRole("button", { name: /^供应商/ });
+    const accountCategory = categories.getByRole("button", { name: /^订阅与账号/ });
+    const aggregatorCategory = categories.getByRole("button", { name: /^中转聚合/ });
+    const localCategory = categories.getByRole("button", { name: /^本地部署/ });
+    await expect(categories.getByRole("button")).toHaveCount(5);
+    await expect(all).toHaveAttribute("aria-pressed", "true");
+    await expect(all).toHaveText("全部 4");
+    await expect(editor.locator(".provider-onboarding-card")).toHaveCount(5);
+    const connectionCalls = () => api.calls.filter(call => call.method === "POST" || call.path.startsWith("/api/admin/provider-catalog/"));
+    await expect.poll(() => connectionCalls().length).toBe(1);
+    const initialConnectionCalls = [...connectionCalls()];
+    for (const button of [all, supplierCategory, accountCategory, aggregatorCategory, localCategory]) await expect(button).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await capture(page, testInfo, editor, `provider-onboarding-categories-${viewport}`, "供应商按订阅、供应商、中转聚合与本地部署分类", "viewport");
+
+    await supplierCategory.click();
+    await expect(supplierCategory).toHaveAttribute("aria-pressed", "true");
+    await expect(editor.getByRole("button", { name: /UI Direct Service/ })).toBeVisible();
+    await expect(editor.getByRole("button", { name: /UI Subscription|OpenRouter|Ollama/ })).toHaveCount(0);
+    await aggregatorCategory.click();
+    await expect(aggregatorCategory).toHaveAttribute("aria-pressed", "true");
+    await expect(editor.getByRole("button", { name: /OpenRouter/ })).toBeVisible();
+    await expect(editor.getByRole("button", { name: /UI Direct Service|UI Subscription|Ollama/ })).toHaveCount(0);
+    await localCategory.click();
+    await expect(localCategory).toHaveAttribute("aria-pressed", "true");
+    await expect(editor.getByRole("button", { name: /Ollama/ })).toBeVisible();
+    await expect(editor.getByRole("button", { name: /UI Direct Service|UI Subscription|OpenRouter/ })).toHaveCount(0);
+    await capture(page, testInfo, editor, `provider-onboarding-local-filter-${viewport}`, "供应商分类：独立筛选本地部署", "viewport");
+    await accountCategory.click();
+    await expect(accountCategory).toHaveAttribute("aria-pressed", "true");
+    await expect(supplierCategory).toHaveAttribute("aria-pressed", "false");
+    await expect(editor.getByRole("button", { name: /UI Subscription/ })).toBeVisible();
+    await expect(editor.getByRole("button", { name: /UI Direct Service|OpenRouter|Ollama/ })).toHaveCount(0);
+    await capture(page, testInfo, editor, `provider-onboarding-account-filter-${viewport}`, "供应商分类：仅显示订阅与账号入口", "viewport");
+
+    await search.fill("UI Direct");
+    await expect(editor.getByText("没有匹配的供应商，可使用自定义接入。")).toBeVisible();
+    await expect(accountCategory).toBeEnabled();
+    await expect(accountCategory).toHaveText("订阅与账号 0");
+    await expect(all).toHaveText("全部 1");
+    await expect(categories.getByRole("button")).toHaveCount(5);
+    await expect(editor.getByRole("button", { name: /自定义供应商/ })).toBeEnabled();
+    await capture(page, testInfo, editor, `provider-onboarding-category-empty-${viewport}`, "分类与搜索组合无结果时仍可切换分类或自定义接入", "viewport");
+
+    await supplierCategory.click();
+    await expect(search).toHaveValue("UI Direct");
+    await expect(supplierCategory).toHaveAttribute("aria-pressed", "true");
+    await expect(editor.locator(".provider-onboarding-card")).toHaveCount(2);
+    await expect(editor.getByRole("button", { name: /UI Direct Service/ })).toContainText("已接入");
+    await capture(page, testInfo, editor, `provider-onboarding-supplier-filter-${viewport}`, "供应商分类：保留搜索并筛选供应商", "viewport");
+    expect(connectionCalls()).toEqual(initialConnectionCalls);
+    expect(api.calls.filter(call => call.method === "POST")).toEqual([]);
+
+    await search.fill("no-such-provider");
+    await expect(editor.getByText("没有匹配的供应商，可使用自定义接入。")).toBeVisible();
+    await editor.getByRole("button", { name: /自定义供应商/ }).click();
+    await expect(editor.getByLabel("渠道名称", { exact: true })).toBeVisible();
+    await expect(editor.getByLabel("Base URL", { exact: true })).toBeVisible();
+  });
+
   test(`provider-onboarding manual discovery preserves selection ${viewport}`, async ({ page, api }, testInfo) => {
     if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
     installProviderFixtures(api, "custom");

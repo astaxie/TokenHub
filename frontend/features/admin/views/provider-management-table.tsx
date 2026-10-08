@@ -1,12 +1,26 @@
-import { MoreHorizontal, Server } from "lucide-react";
-import type { AdminUser, AppData, Provider, ResourceAction, ResourceConfig } from "../core/types";
+import { Boxes, MoreHorizontal } from "lucide-react";
+import { useState } from "react";
+import type { AdminUser, AppData, Provider, ProviderCatalogEntry, ResourceAction, ResourceConfig } from "../core/types";
 import { accountProviderCatalogOptionsFromPlugins } from "../domain/provider-account-catalog";
 import { providerDisplayBaseURL, providerDisplayName, providerDisplayType } from "../domain/entities";
 import { providerTypeLabelFromData } from "../domain/labels";
+import { providerBrandIconSource } from "../domain/provider-brand-icons";
 import { isProviderAccountResourceForData } from "../domain/provider-resource-types";
 import { countWithUnit, formatTranslationTemplate, tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 import type { ProviderMonitorRow } from "./crud-projects";
+
+function ProviderManagementIcon({ provider, data, label }: { provider: Provider; data: AppData; label: string }) {
+  const [failedSource, setFailedSource] = useState("");
+  const catalogID = provider.options?.catalog_id?.trim();
+  const entry: ProviderCatalogEntry = data.providerCatalog.find((item) => item.id === catalogID)
+    ?? { id: catalogID || provider.type, name: provider.name, display_name: label, type: provider.type, source: "provider", models_count: 0 };
+  const source = providerBrandIconSource(entry);
+  const hasIcon = Boolean(source && source !== failedSource);
+  return <span aria-hidden="true" className={`provider-management-icon${hasIcon ? "" : " fallback"}`} title={label}>
+    {hasIcon ? <img alt="" src={source} onError={() => setFailedSource(source)} /> : <Boxes size={20} />}
+  </span>;
+}
 
 export function ProviderManagementTable({ rows, data, config, currentUser, onAction, onEdit, onDelete }: {
   rows: ProviderMonitorRow[];
@@ -37,7 +51,7 @@ export function ProviderManagementTable({ rows, data, config, currentUser, onAct
           const canDelete = Boolean(config.remove && (config.canRemove?.(provider, currentUser, data) ?? true));
           return (
             <tr key={provider.id}>
-              <td><div className="provider-management-name"><Server size={20} aria-hidden="true" /><div><strong>{name}</strong><span>{providerTypeLabelFromData(data, providerDisplayType(provider, row.resources))} · {providerDisplayBaseURL(provider, row.resources)}</span></div></div></td>
+              <td><div className="provider-management-name"><ProviderManagementIcon data={data} label={name} provider={provider} /><div><strong>{name}</strong><span>{providerTypeLabelFromData(data, providerDisplayType(provider, row.resources))} · {providerDisplayBaseURL(provider, row.resources)}</span></div></div></td>
               <td data-label={tx("接入方式")}>{tx(account ? "账号接入" : "API 接入")}</td>
               <td data-label={tx("已引入模型")}>{countWithUnit(importedCount, "个模型", "model", "モデル", "models")}</td>
               <td data-label={tx("状态")}><div className="provider-management-status"><StatusPill status={provider.status} /><span className={`provider-monitor-status ${health}`} title={snapshot ? row.statusDetail : undefined}><i />{tx(healthLabel)}</span></div></td>

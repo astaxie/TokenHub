@@ -9,7 +9,10 @@
 .provider-management-table td { padding: 18px 14px; border-top: 1px solid var(--border); font-size: 13px; vertical-align: top; }
 .provider-management-table th:first-child { width: 35%; }
 .provider-management-name { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
-.provider-management-name > svg { color: var(--muted); flex-shrink: 0; margin-top: 3px; }
+.provider-management-name > .provider-management-icon { width: 30px; height: 30px; flex: 0 0 30px; display: inline-flex; align-items: center; justify-content: center; margin-top: -2px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); color: var(--muted-strong); }
+.provider-management-icon img { width: 20px; height: 20px; display: block; object-fit: contain; }
+.provider-management-icon.fallback { background: var(--surface-soft); }
+[data-theme="dark"] .provider-management-icon:not(.fallback) { background: #fff; }
 .provider-management-name > div { display: grid; gap: 6px; min-width: 0; }
 .provider-management-name strong { font-weight: 600; overflow-wrap: anywhere; }
 .provider-management-name span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }

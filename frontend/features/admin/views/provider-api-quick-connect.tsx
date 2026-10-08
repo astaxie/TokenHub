@@ -117,6 +117,7 @@ export function ProviderAPIQuickConnect({
   onTabChange,
   onUpdate,
   providerTypeOptions = [],
+  accountProviderTypes = [],
   pluginActions = [],
   connectionFields,
   advancedFields,
@@ -139,6 +140,7 @@ export function ProviderAPIQuickConnect({
   onTabChange: (tab: "connect" | "models" | "advanced") => void;
   onUpdate: (key: string, value: string) => void;
   providerTypeOptions?: ProviderTypeOption[];
+  accountProviderTypes?: string[];
   pluginActions?: PluginActionDescriptor[];
   connectionFields?: ReactNode;
   advancedFields?: ReactNode;
@@ -154,7 +156,8 @@ export function ProviderAPIQuickConnect({
   }, []);
   const custom = catalogID === "custom";
   const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
-  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions, values.type);
+  const connectionProviderTypeOptions = effectiveProviderTypeOptions.filter((option) => !accountProviderTypes.includes(option.value));
+  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, connectionProviderTypeOptions, values.type);
   const connectionReady = Boolean(values.base_url?.trim() && (!apiKeyRequired || values.api_key?.trim()));
 
   function updateConnectionValue(key: string, value: string) {
@@ -167,7 +170,7 @@ export function ProviderAPIQuickConnect({
   }
 
   async function testConnection() {
-    const headerError = providerHeaderFormError(values.custom_headers, providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type));
+    const headerError = providerHeaderFormError(values.custom_headers, providerTypeManagedHeaders(connectionProviderTypeOptions, values.type));
     if (headerError) { setConnectionTest({ status: "error", message: tx(headerError) }); return; }
     if (!connectionReady) {
       setConnectionTest({ status: "error", message: tx(apiKeyRequired ? "请填写 Base URL 和 API Key 后测试。" : "请填写 Base URL 后测试。") });
@@ -178,7 +181,7 @@ export function ProviderAPIQuickConnect({
     const startedAt = performance.now();
     setConnectionTest({ status: "testing" });
     try {
-      const authMode = providerAuthMode(values, effectiveProviderTypeOptions);
+      const authMode = providerAuthMode(values, connectionProviderTypeOptions);
       const resp = await adminFetch(api, "/api/admin/providers/test-connection", {
         method: "POST",
         body: JSON.stringify({
@@ -238,7 +241,7 @@ export function ProviderAPIQuickConnect({
               <label className="field">
                 <span>{tx("渠道商类型")}</span>
                 <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
-                  {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  {connectionProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
             </div>
@@ -355,10 +358,10 @@ export function ProviderAPIQuickConnect({
             {!custom ? <label className="field">
               <span>{tx("渠道商类型")}</span>
               <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
-                {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                {connectionProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label> : null}
-            <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={effectiveProviderTypeOptions} />
+            <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={connectionProviderTypeOptions} />
             <label className="field">
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
@@ -373,8 +376,8 @@ export function ProviderAPIQuickConnect({
             </label>
           </div>
           <ProviderCustomHeaders
-            disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
-            managedHeaders={providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type)}
+            disabled={!providerTypeSupportsCustomHeaders(connectionProviderTypeOptions, values.type)}
+            managedHeaders={providerTypeManagedHeaders(connectionProviderTypeOptions, values.type)}
             onChange={(value) => onUpdate("custom_headers", value)}
             value={values.custom_headers ?? "[]"}
           />

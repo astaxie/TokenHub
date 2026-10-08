@@ -195,6 +195,17 @@ test("custom provider credentials follow the selected type instead of the catalo
   assert.equal(providerCatalogAPIKeyRequired("custom", entry, [], options, "unknown"), true);
 });
 
+test("branded provider credentials follow an overridden adapter policy and preview schema", () => {
+  const entry = { id: "branded", type: "authenticated" };
+  const options = [{ value: "authenticated", apiKeyRequired: true }, { value: "optional", apiKeyRequired: false }];
+  const actions = [{ capability: "models.preview", subject: "preview_optional", input_schema: { required: ["base_url"] } }];
+  assert.equal(providerCatalogAPIKeyRequired("branded", entry, actions, options), true);
+  assert.equal(providerCatalogAPIKeyRequired("branded", entry, actions, options, "optional"), false);
+  assert.equal(providerCatalogAPIKeyRequired("branded", entry, actions, options, "preview_optional"), false);
+  assert.equal(providerCatalogAPIKeyRequired("branded", { ...entry, type: "preview_optional" }, actions, options, "authenticated"), true);
+  assert.equal(providerCatalogAPIKeyRequired("branded", { ...entry, type: "preview_optional" }, actions, options, "unknown"), true);
+});
+
 test("provider catalog preview can require API keys through action schema", () => {
   const entry = { id: "strict", type: "strict_provider" };
   const actions = [{

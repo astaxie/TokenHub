@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Provider, ProviderMonitoringSnapshot, ProviderQuotaSummary } from "../core/types";
@@ -17,8 +17,9 @@ function setup(snapshot?: ProviderMonitoringSnapshot, readOnly = false, configur
   if (readOnly) { config.update = undefined; config.remove = undefined; config.actions = []; }
   const onEdit = vi.fn();
   const onDelete = vi.fn();
-  render(<ProviderChannelTable config={config} currentUser={null} data={data} loading={false} providers={data.providers} summaryProviders={data.providers} query="Example" onAction={vi.fn()} onEdit={onEdit} onDelete={onDelete} />);
-  return { onEdit, onDelete };
+  const table = (currentProvider: Provider) => <ProviderChannelTable config={config} currentUser={null} data={{ ...data, providers: [currentProvider] }} loading={false} providers={[currentProvider]} summaryProviders={[currentProvider]} query="Example" onAction={vi.fn()} onEdit={onEdit} onDelete={onDelete} />;
+  const view = render(table(configuredProvider));
+  return { onEdit, onDelete, rerenderProvider: (nextProvider: Provider) => view.rerender(table(nextProvider)) };
 }
 
 describe("Provider management view", () => {
@@ -43,6 +44,24 @@ describe("Provider management view", () => {
     expect(within(row).getByText("启用", { exact: true })).toBeVisible();
     expect(screen.queryByRole("columnheader", { name: "真实监控 · L3" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "账号配额" })).not.toBeInTheDocument();
+  });
+
+  it("uses brand icons and recovers from an image failure when the provider brand changes", () => {
+    const { rerenderProvider } = setup();
+    const icon = () => within(screen.getByRole("row", { name: /Example Provider/ })).getByTitle("Example Provider");
+    expect(icon()).toHaveClass("fallback");
+    expect(icon().querySelector("img")).not.toBeInTheDocument();
+
+    rerenderProvider({ ...provider, options: { catalog_id: "stepfun" } });
+    const image = icon().querySelector("img");
+    expect(image).toHaveAttribute("src", "/provider-icons/stepfun-color.svg");
+    fireEvent.error(image!);
+    expect(icon()).toHaveClass("fallback");
+    expect(icon().querySelector("img")).not.toBeInTheDocument();
+
+    rerenderProvider({ ...provider, options: { catalog_id: "kimi" } });
+    expect(icon().querySelector("img")).toHaveAttribute("src", "/provider-icons/kimi-color.svg");
+    expect(icon()).not.toHaveClass("fallback");
   });
 
   it("uses the monitoring snapshot independently of the configured enabled state", () => {

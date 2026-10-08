@@ -17,7 +17,8 @@ const providerIconRules: ProviderIconRule[] = [
   { asset: "deepseek-color.svg", exact: ["deepseek"] },
   { asset: "qwen-color.svg", exact: ["qwen", "dashscope"] },
   { asset: "alibabacloud-color.svg", exact: ["alibaba", "alibaba-cn", "alibaba-intl", "alibabacloud"], prefixes: ["alibaba-"] },
-  { asset: "moonshot.svg", exact: ["moonshot", "moonshot-ai", "kimi", "kimi-for-coding"], prefixes: ["moonshot-", "kimi-"] },
+  { asset: "kimi-color.svg", exact: ["kimi", "kimi-for-coding"], prefixes: ["kimi-"] },
+  { asset: "moonshot.svg", exact: ["moonshot", "moonshot-ai"], prefixes: ["moonshot-"] },
   { asset: "zhipu-color.svg", exact: ["zai", "zhipuai", "zhipu", "glm"], prefixes: ["zai-", "zhipuai-"] },
   { asset: "minimax-color.svg", exact: ["minimax"], prefixes: ["minimax-"] },
   { asset: "doubao-color.svg", exact: ["doubao", "volcengine"] },
@@ -41,8 +42,9 @@ const providerIconRules: ProviderIconRule[] = [
   { asset: "vllm-color.svg", exact: ["vllm"] },
   { asset: "cursor.svg", exact: ["cursor"] },
   { asset: "dify.svg", exact: ["dify"] },
+  { asset: "stepfun-color.svg", exact: ["stepfun", "stepfun-global", "stepfun-plan", "stepfun-ai"], prefixes: ["stepfun-"] },
   { asset: "baichuan-color.svg", exact: ["baichuan"] },
-  { asset: "baidu-color.svg", exact: ["baidu", "bailing"], prefixes: ["baidu-"] },
+  { asset: "baidu-color.svg", exact: ["baidu"], prefixes: ["baidu-"] },
   { asset: "tencent-color.svg", exact: ["tencent"], prefixes: ["tencent-"] },
   { asset: "qiniu-color.svg", exact: ["qiniu", "qiniu-ai"] },
   { asset: "snowflake-color.svg", exact: ["snowflake", "snowflake-cortex"] },
@@ -52,8 +54,8 @@ const providerIconRules: ProviderIconRule[] = [
 ];
 
 export function providerBrandIconSource(entry: Pick<ProviderCatalogEntry, "id" | "name" | "display_name" | "type">) {
-  const values = [entry.id, entry.type, entry.name, entry.display_name].map(normalizeProviderKey).filter(Boolean);
-  const rule = providerIconRules.find((candidate) => candidate.exact.some((key) => values.includes(key)) || candidate.prefixes?.some((prefix) => values.some((value) => value.startsWith(prefix))));
+  const values = [entry.id, entry.name, entry.display_name, entry.type].map(normalizeProviderKey).filter(Boolean);
+  const rule = values.map((value) => providerIconRules.find((candidate) => candidate.exact.includes(value) || candidate.prefixes?.some((prefix) => value.startsWith(prefix)))).find(Boolean);
   return rule ? `/provider-icons/${rule.asset}` : "";
 }
 

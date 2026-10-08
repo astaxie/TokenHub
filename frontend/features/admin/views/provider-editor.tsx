@@ -7,7 +7,7 @@ import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelC
 import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
 import { compactNumber, formatModelPrice, modelCapabilities } from "../domain/formatting";
-import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
+import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider, accountProviderCatalogOptionsFromPlugins, accountProviderTypesFromPlugins, accountProviderResourceDefaultPatch, directProviderCatalogOptions } from "../domain/provider-account-catalog";
 import { defaultProviderSystemPromptTransformPolicy, providerSystemPromptTransformPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerResourceBaseURLForProviderUpdate, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
@@ -748,8 +748,8 @@ export function ProviderUpsertModal({
     setModelCategory("all");
     selectCustomCatalog();
     // Initialize a new custom connection without overwriting an existing draft.
-    if (catalogID !== "custom") {
-      const directTypes = providerTypeOptions?.filter(option => !accountProviderCatalogOptions.some(entry => entry.type === option.value));
+    if (catalogID !== "custom" || accountProviderTypesFromPlugins(plugins, providerAdapters).includes(values.type)) {
+      const directTypes = providerTypeOptions?.filter(option => !accountProviderTypesFromPlugins(plugins, providerAdapters).includes(option.value));
       const type = defaultProviderTypeValue(directTypes);
       setValues(current => ({ ...current, type, [providerAuthModeField]: providerAuthMode({ type }, directTypes), system_prompt_transform_policy: defaultProviderSystemPromptTransformPolicy(type, "custom", directTypes) }));
     }
@@ -1116,7 +1116,7 @@ export function ProviderUpsertModal({
                   onModelToggle={(modelID, enabled) => setSelectedModels((current) => ({ ...current, [modelID]: enabled }))}
                   onReloadModels={reloadSelectedCatalog}
                   onTabChange={setQuickAPITab}
-                  onUpdate={update} providerTypeOptions={providerTypeOptions} pluginActions={pluginActions}
+                  onUpdate={update} providerTypeOptions={providerTypeOptions} accountProviderTypes={accountProviderTypesFromPlugins(plugins, providerAdapters)} pluginActions={pluginActions}
                   connectionFields={<ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} values={values} />}
                   advancedFields={<ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" values={values} />}
                 /></>
