@@ -105,6 +105,9 @@ func (s *Server) runProviderMonitoring(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	s.pluginRuntimeMu.RLock()
 	defer s.pluginRuntimeMu.RUnlock()
 	if s.integrations == nil {
@@ -135,10 +138,19 @@ func (s *Server) runProviderMonitoring(ctx context.Context) error {
 }
 
 func (s *Server) checkProviderMonitoring(ctx context.Context, provider Provider) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return
+	}
 	probeCtx, cancel := context.WithTimeout(ctx, providerMonitoringProbeTimeout)
 	defer cancel()
 	startedAt := time.Now()
 	_, probeErr := s.integrations.TestProvider(probeCtx, provider.ID)
+	if ctx.Err() != nil {
+		return
+	}
 	_, _ = s.store.SetProviderHealth(provider.ID, probeErr == nil)
 	_, errorCode := statusAndCode(probeErr)
 	s.store.RecordProviderObservation(ProviderObservation{
