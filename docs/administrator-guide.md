@@ -71,6 +71,8 @@ Each new usage record snapshots the attributed user, so later ownership changes 
 
 The per-Key **Usage** page uses the saved Key ID as an exact boundary for trends, model and error breakdowns, and request details. Rotation links are informational and do not combine predecessor and successor usage. Its current day and month Key quota cards use the configured quota timezone and resolve the same global, project, team, and Key limits used for the gateway's per-Key admission checks. Aggregate user quotas are enforced separately and are not included in this per-Key view. Platform administrators additionally receive Provider and Resource performance breakdowns; other roles retain the existing scoped request-detail visibility, and Provider cost remains restricted to platform administrators.
 
+The project attribution tables display visible project names when they can be resolved, otherwise retaining the project ID (or the built-in label for the default project). The resource-account dimension refers to the upstream Provider Resource used for a request, not the API Key's owner; historical usage records without a Provider Resource ID are grouped as `unknown`, and the upstream resource is not inferred from Key ownership.
+
 ## Daily Usage Dashboard
 
 Open **Usage** to see the current day's usage above the longer-range executive report. The daily section shows today's tokens, requests, estimated cost, cache reads, and tables for token type, model, project, and API Key. Platform administrators also see Provider and Provider Resource tables; other roles receive only the remaining scoped dimensions. Team leaders also see member usage for their team, and governance roles see cost-center attribution.

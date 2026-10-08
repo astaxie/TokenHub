@@ -41,7 +41,7 @@ export function UsageView({ api, data, user }: { api: ApiContext; data: AppData;
             columns={[showMemberBreakdown ? "成员" : "项目", "请求", "Token", "缓存读", "缓存命中率", "成本"]}
             paginationKey={showMemberBreakdown ? "usage-members" : "usage-projects"}
             rows={(showMemberBreakdown ? data.breakdown.members ?? [] : data.breakdown.projects ?? []).map((row) => [
-              showMemberBreakdown ? usageMemberLabel(data, row.id) : row.id,
+              showMemberBreakdown ? usageMemberLabel(data, row.id) : projectName(data, row.id),
               formatNumber(row.request_count),
               compactNumber(row.total_tokens),
               compactNumber(row.cached_input_tokens ?? 0),
