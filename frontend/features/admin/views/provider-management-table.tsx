@@ -1,4 +1,4 @@
-import { Boxes, MoreHorizontal } from "lucide-react";
+import { Boxes } from "lucide-react";
 import { useState } from "react";
 import type { AdminUser, AppData, Provider, ProviderCatalogEntry, ResourceAction, ResourceConfig } from "../core/types";
 import { accountProviderCatalogOptionsFromPlugins } from "../domain/provider-account-catalog";
@@ -6,9 +6,10 @@ import { providerDisplayBaseURL, providerDisplayName, providerDisplayType } from
 import { providerTypeLabelFromData } from "../domain/labels";
 import { providerBrandIconSource } from "../domain/provider-brand-icons";
 import { isProviderAccountResourceForData } from "../domain/provider-resource-types";
-import { countWithUnit, formatTranslationTemplate, tx } from "../i18n/runtime";
+import { countWithUnit, tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 import type { ProviderMonitorRow } from "./crud-projects";
+import { ProviderManagementActions, type ProviderManagementAction } from "./provider-management-actions";
 
 function ProviderManagementIcon({ provider, data, label }: { provider: Provider; data: AppData; label: string }) {
   const [failedSource, setFailedSource] = useState("");
@@ -49,20 +50,20 @@ export function ProviderManagementTable({ rows, data, config, currentUser, onAct
           const secondaryActions = actions.filter((action) => action.navigate);
           const canEdit = Boolean(config.update && (config.canUpdate?.(provider, currentUser, data) ?? true));
           const canDelete = Boolean(config.remove && (config.canRemove?.(provider, currentUser, data) ?? true));
+          const actionItem = (action: ResourceAction<Provider>): ProviderManagementAction => ({ id: action.label, label: tx(action.label), title: tx(action.title ?? action.label), onClick: () => onAction(action, provider) });
+          const rowActions: ProviderManagementAction[] = [
+            ...primaryActions.map(actionItem),
+            ...(canEdit ? [{ id: "edit", label: tx("编辑"), onClick: () => onEdit(provider) }] : []),
+            ...secondaryActions.map(actionItem),
+            ...(canDelete ? [{ id: "delete", label: tx("删除"), danger: true, onClick: () => onDelete(provider) }] : []),
+          ];
           return (
             <tr key={provider.id}>
               <td><div className="provider-management-name"><ProviderManagementIcon data={data} label={name} provider={provider} /><div><strong>{name}</strong><span>{providerTypeLabelFromData(data, providerDisplayType(provider, row.resources))} · {providerDisplayBaseURL(provider, row.resources)}</span></div></div></td>
               <td data-label={tx("接入方式")}>{tx(account ? "账号接入" : "API 接入")}</td>
               <td data-label={tx("已引入模型")}>{countWithUnit(importedCount, "个模型", "model", "モデル", "models")}</td>
               <td data-label={tx("状态")}><div className="provider-management-status"><StatusPill status={provider.status} /><span className={`provider-monitor-status ${health}`} title={snapshot ? row.statusDetail : undefined}><i />{tx(healthLabel)}</span></div></td>
-              <td><div className="provider-management-actions">
-                {primaryActions.map((action) => <button className="text-button" key={action.label} onClick={() => onAction(action, provider)} title={tx(action.title ?? action.label)} type="button">{tx(action.label)}</button>)}
-                {canEdit ? <button className="text-button" onClick={() => onEdit(provider)} type="button">{tx("编辑")}</button> : null}
-                {secondaryActions.length > 0 || canDelete ? <details className="provider-management-more"><summary aria-label={formatTranslationTemplate(tx("更多操作：{name}"), { name })}><MoreHorizontal size={17} /><span>{tx("更多")}</span></summary><div>
-                  {secondaryActions.map((action) => <button className="text-button" key={action.label} onClick={() => onAction(action, provider)} type="button">{tx(action.label)}</button>)}
-                  {canDelete ? <button className="text-button danger" onClick={() => onDelete(provider)} type="button">{tx("删除")}</button> : null}
-                </div></details> : null}
-              </div></td>
+              <td><ProviderManagementActions actions={rowActions} name={name} /></td>
             </tr>
           );
         })}</tbody>

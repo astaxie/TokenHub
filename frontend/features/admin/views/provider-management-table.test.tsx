@@ -125,7 +125,6 @@ describe("Provider management view", () => {
     const { onEdit, onDelete } = setup();
     await user.click(screen.getByRole("button", { name: /^编辑$/ }));
     expect(onEdit).toHaveBeenCalledWith(provider);
-    await user.click(screen.getByText("更多", { exact: true }));
     await user.click(screen.getByRole("button", { name: /^删除$/ }));
     expect(onDelete).toHaveBeenCalledWith(provider);
   });
