@@ -325,6 +325,7 @@ export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
       return [{ label: "当前生效", value: currentSettings?.id ?? "-" }];
     }
     case "usage":
+      return [];
     case "billing":
       return [
         { label: "请求", value: formatNumber(data.summary.request_count) },

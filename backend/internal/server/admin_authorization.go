@@ -332,26 +332,7 @@ func (s *Server) aggregateUsageByMember(user AdminUser, records []UsageRecord, p
 		}
 	}
 	for _, record := range records {
-		memberID := strings.TrimSpace(record.AttributedUserID)
-		if !canAttributeUsageToMember(user, usersByID, memberID) {
-			memberID = ""
-		}
-		if memberID == "" {
-			if key, ok := keysByID[record.APIKeyID]; ok {
-				candidate := usageAttributionUserID(key, projectsByID[key.ProjectID])
-				if canAttributeUsageToMember(user, usersByID, candidate) {
-					memberID = candidate
-				}
-			}
-		}
-		if memberID == "" {
-			if project, ok := projectsByID[record.ProjectID]; ok && canAttributeUsageToMember(user, usersByID, project.OwnerUserID) {
-				memberID = project.OwnerUserID
-			}
-		}
-		if memberID == "" {
-			memberID = "unknown"
-		}
+		memberID := usageReportMemberID(user, record, keysByID, projectsByID, usersByID)
 		item, ok := buckets[memberID]
 		if !ok {
 			item = &bucket{Key: memberID, UsedKeyIDs: map[string]bool{}}

@@ -91,11 +91,15 @@ Each new usage record snapshots the attributed user, so later ownership changes 
 
 The per-Key **Usage** page uses the saved Key ID as an exact boundary for trends, model and error breakdowns, and request details. Rotation links are informational and do not combine predecessor and successor usage. Its current day and month Key quota cards use the configured quota timezone and resolve the same global, project, team, and Key limits used for the gateway's per-Key admission checks. Aggregate user quotas are enforced separately and are not included in this per-Key view. Platform administrators additionally receive Provider and Resource performance breakdowns; other roles retain the existing scoped request-detail visibility, and Provider cost remains restricted to platform administrators.
 
-## Daily Usage Dashboard
+## Global Usage Dashboard
 
-Open **Usage** to see the current day's usage above the longer-range executive report. The daily section shows today's tokens, requests, estimated cost, cache reads, and tables for token type, model, project, and API Key. Platform administrators also see Provider and Provider Resource tables; other roles receive only the remaining scoped dimensions. Team leaders also see member usage for their team, and governance roles see cost-center attribution.
+Open **Usage** and choose **Today**, **7 days**, **30 days**, or **All** at the top. Today is selected initially. The selected period applies together to estimated cost, tokens, cache reads, reasoning tokens, requests, the input/output trend, and the attribution tables. Cache reads are already part of input tokens, and reasoning tokens are already part of output tokens; they are not added again to the total. Estimated cost comes from recorded TokenHub usage and is not a provider account balance or a reconciled upstream bill. Requests include failures; the attribution tables count usage records, so those counts can differ. Playground requests are excluded.
 
-The day boundary comes from **System Settings > Gateway Base Settings > Dashboard Timezone**. Use an IANA timezone such as `UTC`, `Asia/Shanghai`, or `America/New_York`. TokenHub stores this setting centrally, so all administrators see the same daily window and the dashboard resets at that timezone's local midnight. The usage view refreshes the daily section every 30 seconds while it is open.
+Calendar boundaries come from **System Settings > Gateway Base Settings > Dashboard Timezone**. Use an IANA timezone such as `UTC`, `Asia/Shanghai`, or `America/New_York`. **Today** starts at local midnight; **7 days** and **30 days** include today and the preceding 6 or 29 calendar days. **All** starts at the earliest visible usage record or request log, including failed requests before the first usage record. If neither exists, the report has no start timestamp. Every period ends at the current time. The trend uses hourly buckets for today, daily buckets for the other ranges, and monthly buckets when all-time history exceeds 90 days. The displayed window and timezone identify the scope of the report.
+
+The selected period refreshes every 30 seconds while the page is open, and **Refresh** requests an immediate update. Switching periods loads a new report; loading or failure never presents the previous period's totals as the new result. Use **Retry** after a failed request. An empty period is shown explicitly.
+
+Attribution remains permission-scoped. Platform administrators see Provider and Provider Resource tables; other roles receive only the remaining permitted dimensions. Team leaders also see member usage for their team, and governance roles see cost-center attribution. Time filters do not broaden these permissions.
 
 ## Quota Reset Timezone
 

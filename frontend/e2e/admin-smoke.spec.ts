@@ -25,6 +25,28 @@ test("admin can sign in and sign out of the console", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
 });
 
+test("admin can switch global usage ranges against the real backend", async ({ page }) => {
+  await login(page);
+  const initial = page.waitForResponse(response => response.url().endsWith("/api/admin/usage/report?range=today"));
+  await page.goto("/usage");
+  expect((await initial).ok()).toBe(true);
+  const usage = page.locator(".global-usage");
+  await expect(usage.locator(".global-usage-stats")).toBeVisible();
+  for (const [range, label] of [["7d", "7 天"], ["30d", "30 天"], ["all", "全部"], ["today", "今日"]]) {
+    const loaded = page.waitForResponse(response => response.url().endsWith(`/api/admin/usage/report?range=${range}`));
+    await usage.getByRole("button", { name: label, exact: true }).click();
+    const response = await loaded;
+    expect(response.ok()).toBe(true);
+    const report = await response.json();
+    expect(report.range).toBe(range);
+    expect(report.timezone).toBeTruthy();
+    expect(Array.isArray(report.timeseries)).toBe(true);
+    await expect(usage.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(usage.getByRole("group", { name: "请求数", exact: true }).locator("strong")).toHaveAttribute("title", new Intl.NumberFormat("zh-CN").format(report.summary.request_count));
+    await expect(usage.getByRole("alert")).toHaveCount(0);
+  }
+});
+
 for (const authenticated of [true, false]) {
 test(`admin can validate and create a custom Provider with authentication = ${authenticated}`, async ({ page }) => {
   await login(page);

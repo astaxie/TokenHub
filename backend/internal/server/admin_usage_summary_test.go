@@ -143,6 +143,13 @@ func TestUsageSummarySQLMatchesLegacyPermissions(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertUsageSummaryEqual(t, actual, legacy)
+			report, err := server.usageReportForUser(t.Context(), test.user, "all", now.Add(time.Second))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertUsageSummaryEqual(t, report["summary"].(map[string]any), legacy)
+			assertUsageReportSeriesMatchesSummary(t, report)
+			assertUsageReportBreakdownMatchesLegacy(t, server, test.user, report)
 			if got := int64(usageSummaryNumber(t, actual["usage_record_count"])); got != test.wantUsageRecords {
 				t.Fatalf("usage_record_count = %d, want %d", got, test.wantUsageRecords)
 			}

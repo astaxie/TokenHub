@@ -11,64 +11,14 @@ import { AdminUIReportTemplates } from "./admin-ui-report-templates";
 import { BillingRateCards } from "./billing-rate-cards";
 import { BillingStatements } from "./billing-statements";
 import { ReconciliationManager } from "./billing-reconciliation";
+import { GlobalUsageView } from "./global-usage";
 
 export function UsageView({ api, data, user }: { api: ApiContext; data: AppData; user: AdminUser }) {
-  const modelBreakdown = data.breakdown.models ?? [];
-  const showMemberBreakdown = appRole(user.role) === "team_leader";
   const showExecutiveReport = appRole(user.role) !== "user";
-  return (
-    <>
-      <DailyUsageSection data={data} user={user} />
-      {showExecutiveReport ? <ExecutiveUsageReport data={data} /> : <PersonalUsageSummary data={data} />}
-      {showExecutiveReport ? <AdminUIReportTemplates api={api} data={data} /> : null}
-      <div className="two-column">
-        <DataSection title="模型用量">
-          <SimpleTable
-            columns={["模型", "请求", "Token", "缓存读", "缓存命中率", "成本"]}
-            paginationKey="usage-models"
-            rows={modelBreakdown.map((row) => [
-              row.id,
-              formatNumber(row.request_count),
-              compactNumber(row.total_tokens),
-              compactNumber(row.cached_input_tokens ?? 0),
-              cacheHitRate(row.cached_input_tokens ?? 0, row.input_tokens),
-              `$${formatMoney(row.estimated_cost_usd)}`,
-            ])}
-          />
-        </DataSection>
-        <DataSection title={showMemberBreakdown ? "成员用量" : "项目归因"}>
-          <SimpleTable
-            columns={[showMemberBreakdown ? "成员" : "项目", "请求", "Token", "缓存读", "缓存命中率", "成本"]}
-            paginationKey={showMemberBreakdown ? "usage-members" : "usage-projects"}
-            rows={(showMemberBreakdown ? data.breakdown.members ?? [] : data.breakdown.projects ?? []).map((row) => [
-              showMemberBreakdown ? usageMemberLabel(data, row.id) : row.id,
-              formatNumber(row.request_count),
-              compactNumber(row.total_tokens),
-              compactNumber(row.cached_input_tokens ?? 0),
-              cacheHitRate(row.cached_input_tokens ?? 0, row.input_tokens),
-              `$${formatMoney(row.estimated_cost_usd)}`,
-            ])}
-          />
-        </DataSection>
-      </div>
-      {showMemberBreakdown ? (
-        <DataSection title="项目归因">
-          <SimpleTable
-            columns={["项目", "请求", "Token", "缓存读", "缓存命中率", "成本"]}
-            paginationKey="usage-projects"
-            rows={(data.breakdown.projects ?? []).map((row) => [
-              projectName(data, row.id),
-              formatNumber(row.request_count),
-              compactNumber(row.total_tokens),
-              compactNumber(row.cached_input_tokens ?? 0),
-              cacheHitRate(row.cached_input_tokens ?? 0, row.input_tokens),
-              `$${formatMoney(row.estimated_cost_usd)}`,
-            ])}
-          />
-        </DataSection>
-      ) : null}
-    </>
-  );
+  return <GlobalUsageView key={`${api.baseURL}:${user.id}:${user.role}`} api={api} data={data} user={user} renderReport={showExecutiveReport ? (scopedData, periodLabel) => <>
+    <ExecutiveUsageReport data={scopedData} periodLabel={periodLabel} />
+    <AdminUIReportTemplates api={api} data={scopedData} />
+  </> : undefined} />;
 }
 
 export function DailyUsageSection({ data, user }: { data: AppData; user: AdminUser }) {
@@ -256,7 +206,7 @@ export type ExecutiveMemberRow = UsageBreakdownRow & {
   department: string;
 };
 
-export function ExecutiveUsageReport({ data }: { data: AppData }) {
+export function ExecutiveUsageReport({ data, periodLabel = tx("全部") }: { data: AppData; periodLabel?: string }) {
   const departments = executiveDepartmentRows(data);
   const members = executiveMemberRows(data);
   const totalTokens = data.summary.total_tokens || departments.reduce((sum, row) => sum + row.total_tokens, 0);
@@ -287,7 +237,7 @@ export function ExecutiveUsageReport({ data }: { data: AppData }) {
           <span>{tx("面向管理层的部门、个人与 Token 消耗对比")}</span>
         </div>
         <div className="executive-report-tools">
-          <span>{tx("本月")}</span>
+          <span>{periodLabel}</span>
           <span>{tx("按部门")}</span>
           <span>{tx("Token 口径")}</span>
         </div>

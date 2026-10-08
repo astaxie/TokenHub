@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
@@ -96,7 +96,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [confirmRestoreModels, setConfirmRestoreModels] = useState(false);
   const [issuedKey, setIssuedKey] = useState("");
   const [pendingAction, setPendingAction] = useState<{ action: ResourceAction<any>; item: any } | null>(null);
-  const loadRef = useRef<(view?: ViewKey) => Promise<void>>(async () => undefined);
   const [reportHistory, setReportHistory] = useState<ReportExportHistoryItem[]>([]);
   const [resetToken, setResetToken] = useState("");
   const [simSelectionPreference, setSIMSelectionPreference] = useState<unknown>(null);
@@ -327,14 +326,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     void load(activeView);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load is an orchestration command; the explicit state keys define when it runs.
   }, [bootstrapped, adminToken, currentUser, activeView]);
-
-  useEffect(() => {
-    if (!bootstrapped || !adminToken || !currentUser || activeView !== "usage") return;
-    const timer = window.setInterval(() => {
-      void loadRef.current("usage");
-    }, 30_000);
-    return () => window.clearInterval(timer);
-  }, [activeView, adminToken, bootstrapped, currentUser]);
 
   useEffect(() => {
     if (activeView === "notification-channels" && !notificationChannelTypes.includes(modelCategoryFilter)) {
@@ -594,7 +585,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setLoading(false);
     }
   }
-  loadRef.current = load;
 
   async function login(identity: string, password: string) {
     setLoading(true);
