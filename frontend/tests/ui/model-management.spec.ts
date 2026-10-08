@@ -1,6 +1,8 @@
 import type { Model, ModelRoute, Provider, ProviderModel } from "../../features/admin/core/types";
+import type { Locator } from "@playwright/test";
 import { test, expect, capture } from "./harness";
 import { shellResponses } from "./fixtures/shell";
+import type { MockAPI } from "./network";
 
 const provider: Provider = { id: "provider_model_ui", name: "UI Model Provider", type: "mock", priority: 1, status: "active", healthy: true };
 const inventory: ProviderModel = { id: "inventory_model_ui", provider_id: provider.id, upstream_model: "ui-upstream-chat", status: "active", call_supported: true };
@@ -9,14 +11,18 @@ const published: Model = { ...template, id: "published_model_ui", name: "ui-publ
 const disabled: Model = { ...published, id: "disabled_model_ui", name: "ui-disabled-model", status: "disabled" };
 const route: ModelRoute = { id: "route_model_ui", model_name: published.name, provider_id: provider.id, provider_model: inventory.upstream_model, priority: 1, weight: 100, status: "active", strategy: "priority_weighted" };
 
+function installDirectory(api: MockAPI) {
+  const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
+  api.replaceResponse("GET", "/api/admin/overview", { ...overview, models: [published, disabled, template], providers: [provider] });
+  api.replaceResponse("GET", "/api/admin/provider-models", { data: [inventory] });
+  api.respond("GET", "/api/admin/routing-rules", { data: [route, { ...route, id: "secondary_ui_route", provider_model: "ui-secondary-upstream", status: "disabled", project_scope: "include", project_ids: ["prj_ui"] }] });
+  api.respond("GET", "/api/admin/provider-catalog", { data: [] });
+}
+
 for (const mobile of [false, true]) {
   test(`models compact-directory-${mobile ? "mobile" : "desktop"}`, async ({ page, api }, info) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
-    const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
-    api.replaceResponse("GET", "/api/admin/overview", { ...overview, models: [published, disabled, template], providers: [provider] });
-    api.replaceResponse("GET", "/api/admin/provider-models", { data: [inventory] });
-    api.respond("GET", "/api/admin/routing-rules", { data: [route, { ...route, id: "secondary_ui_route", provider_model: "ui-secondary-upstream", status: "disabled", project_scope: "include", project_ids: ["prj_ui"] }] });
-    api.respond("GET", "/api/admin/provider-catalog", { data: [] });
+    installDirectory(api);
     await page.goto("/models");
     const table = page.locator(".model-directory-table");
     await expect(table.getByRole("columnheader")).toHaveCount(6);
@@ -48,22 +54,126 @@ for (const mobile of [false, true]) {
     await page.keyboard.press("Escape");
     await expect(detail).toHaveCount(0);
     await expect(detailTrigger).toBeFocused();
-    await table.getByRole("button", { name: `更多操作：${published.name}` }).click();
+    const rowActions = table.locator(".model-management-actions");
+    const inlineStatement = rowActions.getByRole("button", { name: "下游费用对账单", exact: true });
+    const more = table.getByRole("button", { name: `更多操作：${published.name}` });
     const actions = page.getByRole("group", { name: `模型操作：${published.name}` });
-    await expect(actions.getByRole("button", { name: "编辑", exact: true })).toHaveCount(0);
-    await expect(actions.getByRole("button", { name: "下游费用对账单", exact: true })).toBeVisible();
-    await capture(page, info, actions, `models-actions-${mobile ? "mobile" : "desktop"}`, "模型更多操作");
-    await actions.getByRole("button", { name: "下游费用对账单", exact: true }).click();
+    const statementInline = await inlineStatement.isVisible();
+    if (!statementInline) await more.click();
+    const statementAction = statementInline ? inlineStatement : actions.getByRole("button", { name: "下游费用对账单", exact: true });
+    await expect(statementAction).toBeVisible();
+    await capture(page, info, statementInline ? rowActions : actions, `models-actions-${mobile ? "mobile" : "desktop"}`, "模型操作按可用空间显示");
+    await statementAction.click();
     const statement = page.getByRole("dialog", { name: "费用对账单", exact: true });
     const customer = statement.getByLabel("客户名称", { exact: true });
     await customer.click();
     await customer.fill("UI Statement Customer");
     await statement.getByRole("button", { name: "关闭", exact: true }).click();
-    await expect(table.getByRole("button", { name: `更多操作：${published.name}` })).toBeFocused();
+    await expect(statementInline ? inlineStatement : more).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(actions).not.toBeVisible();
     await page.getByRole("button", { name: "已下线", exact: true }).click();
     await expect(table.getByText(disabled.name, { exact: true })).toBeVisible();
+  });
+}
+
+async function expectActionsFit(actions: Locator) {
+  await expect.poll(() => actions.evaluate(element => {
+    const container = element.getBoundingClientRect();
+    const bounds = Array.from(element.querySelectorAll<HTMLElement>(":scope > button")).map(button => button.getBoundingClientRect());
+    return {
+      contained: bounds.every(rect => rect.width > 0 && rect.left >= container.left - 1 && rect.right <= container.right + 1),
+      oneRow: bounds.every(rect => Math.abs((rect.top + rect.bottom) / 2 - (bounds[0].top + bounds[0].bottom) / 2) <= 1),
+      separated: bounds.every((rect, index) => index === 0 || rect.left >= bounds[index - 1].right),
+    };
+  }), { message: "Visible model actions must fit on one row without overlap" }).toEqual({ contained: true, oneRow: true, separated: true });
+}
+
+async function expectMenuReachable(menu: Locator) {
+  await expect.poll(() => menu.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    const finalButton = element.querySelector<HTMLButtonElement>("button:last-child");
+    const button = finalButton?.getBoundingClientRect();
+    const hit = button ? document.elementFromPoint(button.left + button.width / 2, button.top + button.height / 2) : null;
+    return {
+      withinViewport: bounds.top >= 0 && bounds.left >= 0 && bounds.bottom <= innerHeight && bounds.right <= innerWidth,
+      finalActionReachable: Boolean(finalButton && hit && (hit === finalButton || finalButton.contains(hit))),
+    };
+  }), { message: "All overflow actions must remain visible and reachable" }).toEqual({ withinViewport: true, finalActionReachable: true });
+}
+
+for (const locale of [
+  { language: "zh-CN", option: "简体中文", labels: ["编辑", "路由策略", "下游费用对账单", "下线", "删除"], customer: "客户名称", close: "关闭" },
+  { language: "en", option: "English", labels: ["Edit", "Routing Policies", "Customer charge statement", "Unpublish", "Delete"], customer: "Customer name", close: "Close" },
+  { language: "ja", option: "日本語", labels: ["編集", "ルーティングポリシー", "顧客料金明細書", "非公開", "削除"], customer: "顧客名", close: "閉じる" },
+]) {
+  test(`models responsive-directory-actions ${locale.language}`, async ({ page, api }, info) => {
+    await page.setViewportSize({ width: 2200, height: 1000 });
+    installDirectory(api);
+    await page.goto("/models");
+    const directory = page.locator(".model-directory");
+    const row = directory.getByRole("row").filter({ hasText: published.name });
+    const actions = row.locator(".model-management-actions");
+    const inline = actions.locator(':scope > button:not([data-action-id="more"])');
+    const more = actions.locator('[data-action-id="more"]');
+    const menu = page.locator(".model-management-menu");
+    const reads = () => api.calls.filter(call => ["/api/admin/overview", "/api/admin/provider-models", "/api/admin/routing-rules"].includes(call.path)).length;
+    await expect(inline).toHaveCount(5);
+    const initialReads = reads();
+    await page.getByRole("button", { name: /^(界面语言|Interface Language|表示言語)$/ }).click();
+    await page.getByRole("option", { name: locale.option, exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", locale.language);
+    await expect(inline).toHaveText(locale.labels);
+    await expect(more).toHaveCount(0);
+    await expectActionsFit(actions);
+    await capture(page, info, directory, `models-actions-wide-${locale.language}`, "宽屏直接展示全部模型操作", "viewport");
+
+    await actions.locator('[data-action-id="statement"]').click();
+    const statement = page.locator("dialog.statement-drawer");
+    await statement.getByLabel(locale.customer, { exact: true }).fill("UI Persistent Statement Customer");
+    await page.setViewportSize({ width: 1024, height: 1000 });
+    await expect(statement.getByLabel(locale.customer, { exact: true })).toHaveValue("UI Persistent Statement Customer");
+    await expect(more).toBeVisible();
+    await statement.getByRole("button", { name: locale.close, exact: true }).click();
+    await expect(more).toBeFocused();
+
+    for (const viewport of [{ name: "narrow", width: 1024, height: 1000 }, { name: "mobile", width: 390, height: 844 }]) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await expect.poll(() => inline.count()).toBeLessThan(5);
+      await more.scrollIntoViewIfNeeded();
+      await expectActionsFit(actions);
+      expect(await row.locator(".directory-model-name").evaluate(element => {
+        const cell = element.closest("td")!.getBoundingClientRect();
+        return Array.from(element.querySelectorAll("button, div > span")).every(item => item.getBoundingClientRect().right <= cell.right - 9);
+      }), "Model names and alias labels must stay inside the model column").toBe(true);
+      await expect(menu).toBeHidden();
+      const before = await row.boundingBox();
+      await more.click();
+      await expect(menu).toBeVisible();
+      await expect(menu).toHaveCSS("position", "fixed");
+      const visibleCount = await inline.count();
+      await expect(inline).toHaveText(locale.labels.slice(0, visibleCount));
+      await expect(menu.getByRole("button")).toHaveText(locale.labels.slice(visibleCount));
+      await expectMenuReachable(menu);
+      const after = await row.boundingBox();
+      expect(Math.abs(after!.height - before!.height), "Opening More must not change the model row height").toBeLessThanOrEqual(1);
+      await capture(page, info, directory, `models-actions-${viewport.name}-${locale.language}`, "根据实际可用宽度收纳模型操作", "viewport");
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+      await expect(more).toBeFocused();
+    }
+
+    await more.click();
+    await menu.locator('[data-action-id="statement"]').click();
+    await statement.getByLabel(locale.customer, { exact: true }).fill("UI Widened Statement Customer");
+    await page.setViewportSize({ width: 2200, height: 1000 });
+    await expect(statement.getByLabel(locale.customer, { exact: true })).toHaveValue("UI Widened Statement Customer");
+    await statement.getByRole("button", { name: locale.close, exact: true }).click();
+    await expect(actions.locator('[data-action-id="statement"]')).toBeFocused();
+    await expect(inline).toHaveText(locale.labels);
+    await expect(more).toHaveCount(0);
+    await expectActionsFit(actions);
+    expect(reads(), "Resizing and changing language must not reload model data").toBe(initialReads);
   });
 }
 
