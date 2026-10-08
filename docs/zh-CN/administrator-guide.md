@@ -233,6 +233,8 @@ Provider 连接信息和项目限制仍按线路配置。编辑单条 Provider �
 
 模型访问权先于路由执行。项目和 API Key 均支持 `inherit`（继承）与 `restricted`（限制）模式。限制列表会与所有上层列表取交集，因此 API Key 不能扩大项目权限；`restricted` 且列表为空表示禁止全部模型。为保持兼容，在访问模式上线前创建、且模式与列表均为空的记录仍按继承处理。`GET /v1/models` 使用同一有效访问范围，并要求至少存在一条被有效路由策略允许的路由。
 
+修改已有 Key 的模型权限时，打开「Key 管理」，点击该 Key 行的「编辑」，设置「模型访问模式」。选择 `restricted` 后，在允许列表中填写以逗号分隔的模型名称；留空表示禁止全部模型。选择 `inherit` 可恢复继承项目的有效模型范围。保存会更新原 Key，不会轮换密钥；列表的「模型」列会显示保存后的访问范围。编辑操作要求当前账号拥有该 Key 的管理权限。
+
 作用域策略可约束模型名、Provider、Provider Resource、必需路由标签、资源地域和资源环境，也可覆盖路由算法。路由标签在模型路由上配置，地域与环境在 Provider Resource 上配置。已有的路由项目作用域会与这些约束取交集。流量分配、会话/缓存亲和、半开恢复和故障转移都在筛选之后运行，不会把已排除路由重新加回候选池。因此内部模型专属策略会安全失败，而不会静默跨界到外部 Provider。
 
 策略预览/模拟面板接收项目、API Key 和模型，展示有效策略、访问判定、最终路由，以及每个候选的安全允许/排除原因。策略失败使用 `routing_policy_unavailable`、`routing_policy_conflict` 和 `routing_policy_no_candidate` 等可诊断错误码，不暴露凭据。请求日志记录 `routing_policy_id`、`routing_policy_scope` 和 `routing_policy_priority`；通用策略创建/更新/删除以及显式绑定/解绑操作也会写入管理员审计事件。
