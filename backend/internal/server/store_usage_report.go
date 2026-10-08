@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -19,7 +20,7 @@ func (s *GormStore) StreamUsageReportRecords(ctx context.Context, query UsageSum
 	return s.streamUsageReportRequests(ctx, query.RequestLogs, request)
 }
 
-func (s *GormStore) streamUsageReportUsage(ctx context.Context, scope UsageSummaryScope, visit func(UsageRecord)) error {
+func (s *GormStore) streamUsageReportUsage(ctx context.Context, scope UsageSummaryScope, visit func(UsageRecord)) (resultErr error) {
 	query, err := applyUsageSummaryScope(s.db.WithContext(ctx).Model(&UsageRecord{}), s.dbDriver, scope)
 	if err != nil {
 		return err
@@ -28,7 +29,7 @@ func (s *GormStore) streamUsageReportUsage(ctx context.Context, scope UsageSumma
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { resultErr = errors.Join(resultErr, rows.Close()) }()
 	for rows.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -45,7 +46,7 @@ func (s *GormStore) streamUsageReportUsage(ctx context.Context, scope UsageSumma
 	return ctx.Err()
 }
 
-func (s *GormStore) streamUsageReportRequests(ctx context.Context, scope UsageSummaryScope, visit func(UsageReportRequest)) error {
+func (s *GormStore) streamUsageReportRequests(ctx context.Context, scope UsageSummaryScope, visit func(UsageReportRequest)) (resultErr error) {
 	query, err := applyUsageSummaryScope(s.db.WithContext(ctx).Model(&RequestLog{}), s.dbDriver, scope)
 	if err != nil {
 		return err
@@ -54,7 +55,7 @@ func (s *GormStore) streamUsageReportRequests(ctx context.Context, scope UsageSu
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { resultErr = errors.Join(resultErr, rows.Close()) }()
 	for rows.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
