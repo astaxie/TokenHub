@@ -16,6 +16,7 @@ export function ProviderManagementActions({ name, actions }: { name: string; act
   const menu = useRef<HTMLDetailsElement>(null);
   const restoreFocus = useRef<{ actionId?: string; fromMore: boolean } | null>(null);
   const [capacity, setCapacity] = useState(actions.length);
+  const [menuAbove, setMenuAbove] = useState(false);
   const visibleCount = Math.min(capacity, actions.length);
   const moreLabel = tx("更多");
   const measurementKey = JSON.stringify([moreLabel, actions.map(({ id, label }) => [id, label])]);
@@ -74,7 +75,12 @@ export function ProviderManagementActions({ name, actions }: { name: string; act
 
   return <div className="provider-management-actions" ref={container}>
     {actions.slice(0, visibleCount).map(action => renderAction(action))}
-    {visibleCount < actions.length ? <details className="provider-management-more" ref={menu} onKeyDown={event => {
+    {visibleCount < actions.length ? <details className="provider-management-more" data-side={menuAbove ? "above" : "below"} ref={menu} onToggle={event => {
+      const element = event.currentTarget;
+      const trigger = element.querySelector("summary")?.getBoundingClientRect();
+      const panel = element.querySelector("div")?.getBoundingClientRect();
+      setMenuAbove(Boolean(element.open && trigger && panel && trigger.bottom + panel.height + 6 > window.innerHeight && trigger.top >= panel.height + 6));
+    }} onKeyDown={event => {
       if (event.key === "Escape") {
         event.preventDefault();
         event.currentTarget.open = false;

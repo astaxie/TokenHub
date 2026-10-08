@@ -107,6 +107,29 @@ async function expectActionControlsWithinRow(actions: Locator) {
   }), { message: "Visible provider actions must fit on one row without clipping or overlap" }).toEqual({ contained: true, oneRow: true, separated: true });
 }
 
+async function expectOverflowMenuUnclipped(menu: Locator) {
+  await menu.scrollIntoViewIfNeeded();
+  await expect.poll(() => menu.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    const clippingAncestors: string[] = [];
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      const ancestorBounds = ancestor.getBoundingClientRect();
+      const clipsX = style.overflowX !== "visible" && (bounds.left < ancestorBounds.left - 1 || bounds.right > ancestorBounds.right + 1);
+      const clipsY = style.overflowY !== "visible" && (bounds.top < ancestorBounds.top - 1 || bounds.bottom > ancestorBounds.bottom + 1);
+      if (clipsX || clipsY) clippingAncestors.push(`${ancestor.tagName}.${ancestor.className}`);
+    }
+    const lastAction = element.querySelector("button:last-child");
+    const lastBounds = lastAction?.getBoundingClientRect();
+    const hit = lastBounds ? document.elementFromPoint(lastBounds.left + lastBounds.width / 2, lastBounds.top + lastBounds.height / 2) : null;
+    return {
+      withinViewport: bounds.top >= 0 && bounds.left >= 0 && bounds.bottom <= window.innerHeight && bounds.right <= window.innerWidth,
+      clippingAncestors,
+      lastActionReachable: Boolean(lastAction && hit && (hit === lastAction || lastAction.contains(hit))),
+    };
+  }), { message: "The entire More menu and final action must remain visible and reachable outside the provider card" }).toEqual({ withinViewport: true, clippingAncestors: [], lastActionReachable: true });
+}
+
 for (const locale of [
   { language: "zh-CN", option: "简体中文", labels: ["测试", "编辑", "配置路由", "删除"] },
   { language: "en", option: "English", labels: ["Test", "Edit", "Configure Routes", "Delete"] },
@@ -165,6 +188,7 @@ for (const locale of [
         expect(Math.abs(after!.height - before!.height), "Opening More must not change the provider row height").toBeLessThanOrEqual(1);
         const inlineCount = await actions.locator(":scope > button").count();
         await expect(overflow.getByRole("button")).toHaveText(locale.labels.slice(inlineCount));
+        await expectOverflowMenuUnclipped(overflow);
       }
       await expectActionControlsWithinRow(actions);
       await capture(page, testInfo, listing, `providers-actions-${viewport.name}-${locale.language}`, "根据实际可用宽度收纳供应商操作", "viewport");
