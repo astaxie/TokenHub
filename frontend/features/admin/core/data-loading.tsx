@@ -119,9 +119,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "usage":
       plan.overview = true;
       plan.keys = can("api-keys");
-      plan.dailyUsage = true;
-      plan.breakdown = true;
-      plan.timeseries = true;
+      // The usage view loads one range-scoped report for all displayed metrics.
       plan.users = can("users") || appRole(user.role) === "team_leader";
       if (appRole(user.role) !== "user") {
         plan.pluginUI = true;
@@ -152,7 +150,6 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
     case "providers":
       plan.providers = true;
       plan.plugins = true;
-      plan.pluginMarketplace = true;
       plan.pluginUI = true;
       plan.pluginActions = true;
       plan.pluginBackgroundJobs = true;

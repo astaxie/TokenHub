@@ -7,6 +7,8 @@ import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime"
 import { preferredModelCategories, preferredModelCategoriesFromData } from "./model-categories";
 import { pluginDetailRouteFromPath } from "./plugin-detail-route";
 
+export { routeStrategyLabel } from "./route-strategy";
+
 export function initialView(): ViewKey {
   if (typeof window === "undefined") return "overview";
   return viewFromPath(window.location.pathname);
@@ -436,18 +438,6 @@ export function formatBytes(value: number, locale = languageLocale()) {
   const fractionDigits = index === 0 ? 0 : 2;
   const formatter = new Intl.NumberFormat(locale, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
   return `${formatter.format(size)} ${byteUnits[index]}`;
-}
-
-export function routeStrategyLabel(value?: string) {
-  const labels: Record<string, string> = {
-    balanced: "平衡",
-    adaptive: "自适应",
-    quality: "质量优先",
-    cost: "成本优先",
-    priority_weighted: "优先级 + 权重",
-    priority_only: "仅优先级",
-  };
-  return tx(labels[value || "balanced"] ?? value ?? "平衡");
 }
 
 export function formatTime(value: string) {

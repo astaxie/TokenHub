@@ -105,7 +105,8 @@ test("api-key-edit failed save preserves the draft and existing key", async ({ p
   await modal.getByRole("textbox", { name: /模型允许列表/ }).fill("ui-review-model, replacement-model");
   await modal.getByRole("spinbutton", { name: "日 Token", exact: true }).fill("2000");
   await modal.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("Synthetic key update unavailable", { exact: false })).toBeVisible();
+  await expect(modal.getByRole("alert")).toContainText("Synthetic key update unavailable");
+  await expect(modal.getByRole("alert")).toBeVisible();
   await expect(modal).toBeVisible();
   await expect(modal.getByRole("textbox", { name: /模型允许列表/ })).toHaveValue("ui-review-model, replacement-model");
   await expect(modal.getByRole("button", { name: "保存", exact: true })).toBeEnabled();

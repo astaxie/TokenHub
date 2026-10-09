@@ -43,3 +43,9 @@
 @import "./styles/legacy/semantic-routing.css";
 
 @import "./styles/redesign/retrieval-readability.css";
+@import "./styles/redesign/provider-management.css";
+@import "./styles/redesign/provider-onboarding.css";
+@import "./styles/redesign/model-management.css";
+@import "./styles/redesign/route-management.css";
+
+@import "./styles/redesign/global-usage.css";

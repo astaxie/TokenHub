@@ -31,6 +31,12 @@ func NewIntegrationService(store Store, registry *AdapterRegistry, clients ...*h
 }
 
 func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceID string, request *ProviderProbeRequest) (any, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	resource, ok := integrationProviderResource(s.store, resourceID)
 	if !ok {
 		return nil, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
@@ -60,7 +66,13 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 			Type: effective.Type, BaseURL: effective.BaseURL, APIKey: effective.APIKey,
 			Headers: effective.Headers, SensitiveHeaders: effective.SensitiveHeaders, Options: effective.Options,
 		}, descriptor)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		s.finishProbe(ctx, provider, resource, startedAt, probeErr, Usage{})
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if probeErr != nil {
 			return nil, probeErr
 		}
@@ -72,7 +84,13 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 	}
 	startedAt := time.Now()
 	result, err := prober.Probe(ctx, provider, resource, probeRequest)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 	s.finishProbe(ctx, provider, resource, startedAt, err, result.Usage)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +104,12 @@ func (s *IntegrationService) TestProviderResource(ctx context.Context, resourceI
 }
 
 func (s *IntegrationService) TestProvider(ctx context.Context, providerID string) (any, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	provider, ok := integrationProvider(s.store, providerID)
 	if !ok {
 		return nil, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
@@ -97,6 +121,9 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	descriptor, described := s.registry.Describe(provider.Type)
 	if healthProber, supported := resolveProviderHealthProber(s.registry, provider.Type, adapter); supported {
 		result, probeErr := healthProber.ProbeProvider(ctx, effectiveProviderResourceConfig(provider, nil))
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		_, _ = s.store.SetProviderHealth(providerID, probeErr == nil)
 		if probeErr != nil {
 			return nil, probeErr
@@ -110,8 +137,14 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		effectiveProvider := effectiveProviderResourceConfig(provider, nil)
 		var firstResourceErr error
 		for _, resource := range s.store.ListProviderResources() {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			if resource.ProviderID == providerID && resource.Status == StatusActive {
 				result, probeErr := s.TestProviderResource(ctx, resource.ID, nil)
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
 				if probeErr != nil {
 					if firstResourceErr == nil {
 						firstResourceErr = probeErr
@@ -123,10 +156,16 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			}
 		}
 		if firstResourceErr != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, firstResourceErr
 		}
 		if err := validateProviderHeaderSupportWithRegistry(s.registry, effectiveProvider.Type, effectiveProvider.Headers); err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, err
 		}
@@ -135,6 +174,9 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			Type: effectiveProvider.Type, BaseURL: effectiveProvider.BaseURL, APIKey: effectiveProvider.APIKey,
 			Headers: effectiveProvider.Headers, SensitiveHeaders: effectiveProvider.SensitiveHeaders, Options: effectiveProvider.Options,
 		}, descriptor)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if probeErr != nil {
 			_, _ = s.store.SetProviderHealth(providerID, false)
 			return nil, probeErr
@@ -144,10 +186,16 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	result := ProviderProbeBatchResult{ProviderID: providerID}
 	var firstErr error
 	for _, resource := range s.store.ListProviderResources() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if resource.ProviderID != providerID || resource.Status != StatusActive {
 			continue
 		}
 		probe, probeErr := s.TestProviderResource(ctx, resource.ID, nil)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if probeErr != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, AsHTTPError(probeErr).Code)
@@ -163,6 +211,9 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 	}
 	result.Healthy = result.Succeeded > 0
 	if result.Succeeded == 0 {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if firstErr != nil {
 			return nil, firstErr
 		}
@@ -192,11 +243,17 @@ func resolveProviderHealthProber(registry *AdapterRegistry, providerType string,
 }
 
 func (s *IntegrationService) finishProbe(ctx context.Context, provider Provider, resource ProviderResource, startedAt time.Time, err error, usage Usage) {
+	if ctx != nil && ctx.Err() != nil {
+		return
+	}
 	disposition := providerErrorDisposition(err)
 	if err == nil {
 		s.store.FinishProviderResourceAttempt(ctx, resource.ID, "", AttemptSucceeded, usage)
 	} else if disposition == ProviderErrorQuotaExhausted || disposition == ProviderErrorAuthBroken || disposition == ProviderErrorResourceBroken {
 		s.store.FinishProviderResourceAttempt(ctx, resource.ID, "", AttemptFailed, usage)
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return
 	}
 	_, code := statusAndCode(err)
 	s.store.RecordProviderObservation(ProviderObservation{

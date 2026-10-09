@@ -1,5 +1,5 @@
 import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
-import { useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
 import { providerTypeLabel } from "../domain/labels";
 import { providerHeaderFormError, providerHeadersPayload } from "../domain/provider-headers";
@@ -117,7 +117,10 @@ export function ProviderAPIQuickConnect({
   onTabChange,
   onUpdate,
   providerTypeOptions = [],
+  accountProviderTypes = [],
   pluginActions = [],
+  connectionFields,
+  advancedFields,
 }: {
   api: ApiContext;
   catalogID: string;
@@ -137,15 +140,24 @@ export function ProviderAPIQuickConnect({
   onTabChange: (tab: "connect" | "models" | "advanced") => void;
   onUpdate: (key: string, value: string) => void;
   providerTypeOptions?: ProviderTypeOption[];
+  accountProviderTypes?: string[];
   pluginActions?: PluginActionDescriptor[];
+  connectionFields?: ReactNode;
+  advancedFields?: ReactNode;
 }) {
   const [showKey, setShowKey] = useState(false);
   const [connectionTest, setConnectionTest] = useState<ProviderConnectionTestState>({ status: "idle" });
   const connectionTestRun = useRef(0);
+  const selectedModelCountRef = useRef(selectedModelCount);
+  selectedModelCountRef.current = selectedModelCount;
+  useEffect(() => () => {
+    // A completed test must not reload another provider's draft after navigation.
+    connectionTestRun.current += 1;
+  }, []);
   const custom = catalogID === "custom";
   const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
-  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, effectiveProviderTypeOptions, values.type);
-  const name = values.name || entry?.display_name || entry?.name || tx("请选择渠道商");
+  const connectionProviderTypeOptions = effectiveProviderTypeOptions.filter((option) => !accountProviderTypes.includes(option.value));
+  const apiKeyRequired = providerCatalogAPIKeyRequired(catalogID, entry, pluginActions, connectionProviderTypeOptions, values.type);
   const connectionReady = Boolean(values.base_url?.trim() && (!apiKeyRequired || values.api_key?.trim()));
 
   function updateConnectionValue(key: string, value: string) {
@@ -158,7 +170,7 @@ export function ProviderAPIQuickConnect({
   }
 
   async function testConnection() {
-    const headerError = providerHeaderFormError(values.custom_headers, providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type));
+    const headerError = providerHeaderFormError(values.custom_headers, providerTypeManagedHeaders(connectionProviderTypeOptions, values.type));
     if (headerError) { setConnectionTest({ status: "error", message: tx(headerError) }); return; }
     if (!connectionReady) {
       setConnectionTest({ status: "error", message: tx(apiKeyRequired ? "请填写 Base URL 和 API Key 后测试。" : "请填写 Base URL 后测试。") });
@@ -169,7 +181,7 @@ export function ProviderAPIQuickConnect({
     const startedAt = performance.now();
     setConnectionTest({ status: "testing" });
     try {
-      const authMode = providerAuthMode(values, effectiveProviderTypeOptions);
+      const authMode = providerAuthMode(values, connectionProviderTypeOptions);
       const resp = await adminFetch(api, "/api/admin/providers/test-connection", {
         method: "POST",
         body: JSON.stringify({
@@ -191,6 +203,10 @@ export function ProviderAPIQuickConnect({
         latencyMS: Math.max(0, result.latency_ms),
         message: tx(apiKeyRequired ? "API Key 配置有效" : "连接测试通过"),
       });
+      // Refresh the upstream catalog when the user has not started a model
+      // selection draft. Reloading resets the parent selection state, so keep
+      // the draft intact after a successful connection test.
+      if (selectedModelCountRef.current === 0) onReloadModels();
     } catch (err) {
       if (connectionTestRun.current !== run || isAuthExpiredError(err)) return;
       setConnectionTest({
@@ -203,22 +219,6 @@ export function ProviderAPIQuickConnect({
 
   return (
     <section className="provider-api-quick-connect">
-      <div className="provider-api-quick-hero">
-        <div>
-          <span>{tx("直接 API Key")}</span>
-          <h3>{name}</h3>
-          <p>{values.base_url || tx("填写 Base URL 后连接上游")}</p>
-        </div>
-        <strong>{countWithUnit(selectedModelCount, "个待引入模型", "model to import", "件の取り込み予定モデル", "models to import")}</strong>
-      </div>
-
-      <div className="provider-editor-tabs provider-quick-tabs" role="tablist" aria-label={tx("Provider 编辑区")}>
-        <button aria-selected={activeTab === "connect"} className={activeTab === "connect" ? "active" : ""} onClick={() => onTabChange("connect")} role="tab" type="button">{tx("连接")}</button>
-        <button aria-selected={activeTab === "models"} className={activeTab === "models" ? "active" : ""} onClick={() => onTabChange("models")} role="tab" type="button">{tx("模型")}</button>
-        <button aria-selected={activeTab === "advanced"} className={activeTab === "advanced" ? "active" : ""} onClick={() => onTabChange("advanced")} role="tab" type="button">{tx("高级")}</button>
-      </div>
-
-      {activeTab === "connect" ? (
         <div className="provider-quick-tab-panel">
           <div className="provider-api-quick-intro">
             <span><KeyRound size={18} /></span>
@@ -237,6 +237,12 @@ export function ProviderAPIQuickConnect({
               <label className="field">
                 <span>Base URL</span>
                 <input value={values.base_url ?? ""} onChange={(event) => updateConnectionValue("base_url", event.target.value)} required />
+              </label>
+              <label className="field">
+                <span>{tx("渠道商类型")}</span>
+                <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
+                  {connectionProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
               </label>
             </div>
           ) : (
@@ -286,12 +292,12 @@ export function ProviderAPIQuickConnect({
             ) : null}
           </div>
         </div>
-      ) : null}
+      {connectionFields}
 
-      {activeTab === "models" ? (
-        <div className="provider-quick-tab-panel">
+        <div className="provider-quick-tab-panel provider-onboarding-models">
+          <p className="provider-onboarding-model-hint">{tx("勾选模型后保存到供应商；发布给客户端请继续前往模型目录。")}</p>
           {custom && !values.base_url?.trim() ? (
-            <p className="provider-quick-custom-note">{tx("先在“连接”中填写 Base URL，这里会加载自定义渠道的上游模型。")}</p>
+            <p className="provider-quick-custom-note">{tx("填写上方连接信息后加载模型，勾选要引入的模型。")}</p>
           ) : (
             <>
               <div className="provider-quick-model-summary">
@@ -335,9 +341,8 @@ export function ProviderAPIQuickConnect({
             </>
           )}
         </div>
-      ) : null}
-
-      {activeTab === "advanced" ? (
+      <details className="provider-onboarding-advanced" open={activeTab === "advanced"} onToggle={event => { const next = event.currentTarget.open ? "advanced" : "connect"; if (next !== activeTab) onTabChange(next); }}>
+        <summary>{tx("高级连接设置")}</summary>
         <div className="provider-quick-tab-panel">
           <div className="provider-form-grid provider-quick-advanced-grid">
             <label className="field">
@@ -350,13 +355,13 @@ export function ProviderAPIQuickConnect({
                 <input value={values.name ?? ""} onChange={(event) => onUpdate("name", event.target.value)} />
               </label>
             ) : null}
-            <label className="field">
+            {!custom ? <label className="field">
               <span>{tx("渠道商类型")}</span>
               <select value={values.type ?? ""} onChange={(event) => updateConnectionValue("type", event.target.value)} required>
-                {effectiveProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                {connectionProviderTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-            </label>
-            <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={effectiveProviderTypeOptions} />
+            </label> : null}
+            <ProviderAuthModeField values={values} onUpdate={updateConnectionValue} providerTypeOptions={connectionProviderTypeOptions} />
             <label className="field">
               <span>{tx("优先级")}</span>
               <input value={values.priority ?? "10"} type="number" onChange={(event) => onUpdate("priority", event.target.value)} />
@@ -371,13 +376,14 @@ export function ProviderAPIQuickConnect({
             </label>
           </div>
           <ProviderCustomHeaders
-            disabled={!providerTypeSupportsCustomHeaders(effectiveProviderTypeOptions, values.type)}
-            managedHeaders={providerTypeManagedHeaders(effectiveProviderTypeOptions, values.type)}
+            disabled={!providerTypeSupportsCustomHeaders(connectionProviderTypeOptions, values.type)}
+            managedHeaders={providerTypeManagedHeaders(connectionProviderTypeOptions, values.type)}
             onChange={(value) => onUpdate("custom_headers", value)}
             value={values.custom_headers ?? "[]"}
           />
+          {advancedFields}
         </div>
-      ) : null}
+      </details>
     </section>
   );
 }

@@ -12,7 +12,8 @@ import { defaultFormValues, testProviderEgress } from "../resources/payloads";
 import { apiKeyStatusAction, APIKeyDownloadMenu, APIKeyStatusSwitch } from "../resources/project-key-config";
 import { identityProviderConfig, roleConfig, systemSettingConfig } from "../resources/settings-config";
 import { usePagination } from "../shared/pagination";
-import { FieldInput, StatusPill } from "../shared/ui";
+import { useModalFocus } from "../shared/modal-focus";
+import { ConfirmDialog, FieldInput, StatusPill } from "../shared/ui";
 import { identityProviderInitialFormValues, identityProviderTemplatesFromData } from "../shared/auth";
 import { CrudView } from "./crud-projects";
 import { IdentityProviderEditModal } from "./modals";
@@ -473,6 +474,7 @@ export function EditModal<T>({
   api,
   currentUser,
   loading,
+  submitError,
   onClose,
   onSave,
 }: {
@@ -481,6 +483,7 @@ export function EditModal<T>({
   api: ApiContext;
   currentUser?: AdminUser | null;
   loading: boolean;
+  submitError?: string;
   onClose: () => void;
   onSave: (values: Record<string, string>) => void;
 }) {
@@ -491,6 +494,15 @@ export function EditModal<T>({
   const [values, setValues] = useState<Record<string, string>>(
     state.config.view === "identity-providers" ? identityProviderInitialFormValues(initial, !state.item, identityProviderTemplatesFromData(data)) : initial,
   );
+  const [initialRouteValues] = useState(initial);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const routeDirty = state.config.view === "routes" && Object.keys({ ...initialRouteValues, ...values }).some((key) => (initialRouteValues[key] ?? "") !== (values[key] ?? ""));
+  function close() {
+    if (loading) return;
+    if (routeDirty) setConfirmClose(true);
+    else onClose();
+  }
+  const focus = useModalFocus<HTMLFormElement>(close);
   const [proxyTestProviderID, setProxyTestProviderID] = useState(data.providers.find((provider) => provider.status === "active")?.id ?? data.providers[0]?.id ?? "");
   const [proxyTestState, setProxyTestState] = useState<{ status: "idle" | "testing" | "success" | "error"; message?: string }>({ status: "idle" });
 
@@ -528,6 +540,7 @@ export function EditModal<T>({
   if (state.config.view === "models" && !state.item) {
     return (
       <ModelCreateModal
+        submitError={submitError}
         config={state.config as unknown as ResourceConfig<Model>}
         data={data}
         currentUser={currentUser}
@@ -541,16 +554,18 @@ export function EditModal<T>({
   }
 
   return (
+    <>
     <div className="modal-backdrop" role="presentation">
-      <form className="modal" onSubmit={submit}>
+      <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-label={tx(state.config.title)} {...focus}>
         <div className="modal-header">
           <div>
             <p className="eyebrow">{state.item ? tx("编辑") : tx("新增")}</p>
             <h2>{tx(state.config.title)}</h2>
           </div>
-          <button className="icon-button" onClick={onClose} type="button" title={tx("关闭")}>×</button>
+          <button className="icon-button" disabled={loading} onClick={close} type="button" title={tx("关闭")}>×</button>
         </div>
         <div className="modal-body">
+          {submitError ? <p className="inline-notice error" role="alert">{submitError}</p> : null}
           {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values, data, currentUser) ?? true)).map((field) => (
             <FieldInput
               key={field.key}
@@ -588,10 +603,12 @@ export function EditModal<T>({
           ) : null}
         </div>
         <div className="modal-actions">
-          <button className="secondary-button" onClick={onClose} type="button">{tx("取消")}</button>
+          <button className="secondary-button" disabled={loading} onClick={close} type="button">{tx("取消")}</button>
           <button className="button" disabled={loading} type="submit">{tx(state.config.view === "routes" && !state.item ? "添加路由" : "保存")}</button>
         </div>
       </form>
     </div>
+    {confirmClose ? <ConfirmDialog title="放弃路由更改？" message="尚未应用的路由更改将丢失。" confirmLabel="放弃更改" loading={loading} onCancel={() => setConfirmClose(false)} onConfirm={() => { setConfirmClose(false); onClose(); }} /> : null}
+    </>
   );
 }

@@ -34,6 +34,25 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	quotaFetchedAt := time.Now().UTC().Add(-2 * time.Hour)
+	quotaSnapshot, err := json.Marshal(OpenAIAccountQuota{
+		PlanType: "pro",
+		RateLimit: &OpenAIAccountRateLimit{
+			Allowed:      true,
+			LimitReached: false,
+			PrimaryWindow: &OpenAIAccountQuotaWindow{
+				UsedPercent: 25,
+				ResetAt:     1999999999,
+			},
+		},
+		FetchedAt: quotaFetchedAt.Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProviderResourceQuota(resource.ID, provider.Type, string(quotaSnapshot), quotaFetchedAt); err != nil {
+		t.Fatal(err)
+	}
 	store.RecordProviderObservation(ProviderObservation{
 		ProviderID:  provider.ID,
 		ResourceID:  resource.ID,
@@ -75,8 +94,8 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 	}
 	first := invoke()
 	second := invoke()
-	if quotaCalls != 1 {
-		t.Fatalf("quota cache did not prevent duplicate upstream requests: %d", quotaCalls)
+	if quotaCalls != 0 {
+		t.Fatalf("monitoring GET performed an upstream quota request: %d", quotaCalls)
 	}
 	if len(first) != 1 || len(second) != 1 {
 		t.Fatalf("unexpected monitoring snapshots: first=%+v second=%+v", first, second)
@@ -86,6 +105,185 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 		snapshot.ActiveProbe.LatencyMS != 321 || snapshot.Quota.RemainingPercent != 75 ||
 		snapshot.Quota.SuccessfulAccounts != 1 {
 		t.Fatalf("monitoring did not preserve source semantics or quota: %+v", snapshot)
+	}
+}
+
+func TestProviderMonitoringSchedulerRunsProbeOutOfBand(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_monitoring_scheduler", Name: "Scheduled Monitoring", Type: "scheduled_health",
+		Status: StatusActive, Healthy: false,
+	})
+	server := New(store)
+	adapter := &pluginHealthProbeAdapter{}
+	server.adapterRegistry.Register("scheduled_health", adapter, AdapterCapabilityProbe)
+	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	if err := server.providerMonitoring.RunDue(context.Background(), now); err != nil {
+		t.Fatalf("run provider monitoring: %v", err)
+	}
+	if err := server.providerMonitoring.RunDue(context.Background(), now); err != nil {
+		t.Fatalf("repeat provider monitoring: %v", err)
+	}
+	if adapter.calls != 1 {
+		t.Fatalf("scheduled health probe calls = %d, want one call per revision", adapter.calls)
+	}
+	updated, ok := store.GetProvider(provider.ID)
+	if !ok || !updated.Healthy {
+		t.Fatalf("scheduled probe did not update provider health: %+v", updated)
+	}
+	observations := store.ListProviderObservations(time.Time{})
+	if len(observations) != 1 || observations[0].Source != "active_probe" || !observations[0].Success {
+		t.Fatalf("scheduled probe observations = %+v", observations)
+	}
+}
+
+func TestProviderMonitoringSchedulerSkipsPersistenceAfterCancellation(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_monitoring_cancelled", Name: "Cancelled Monitoring", Type: "cancelled_health",
+		Status: StatusActive, Healthy: false,
+	})
+	if _, err := store.SetProviderHealth(provider.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	server := New(store)
+	server.adapterRegistry.Register("cancelled_health", &pluginHealthProbeAdapter{}, AdapterCapabilityProbe)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	server.checkProviderMonitoring(ctx, provider)
+
+	updated, ok := store.GetProvider(provider.ID)
+	if !ok || updated.Healthy {
+		t.Fatalf("cancelled probe changed provider health: %+v", updated)
+	}
+	if observations := store.ListProviderObservations(time.Time{}); len(observations) != 0 {
+		t.Fatalf("cancelled probe persisted observations: %+v", observations)
+	}
+}
+
+type cancellationAwareHealthProbeAdapter struct {
+	started chan struct{}
+}
+
+func (a cancellationAwareHealthProbeAdapter) ProbeProvider(ctx context.Context, _ Provider) (any, error) {
+	close(a.started)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestProviderMonitoringSchedulerDoesNotPersistInFlightCancellation(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_monitoring_inflight_cancelled", Name: "In-Flight Cancelled Monitoring", Type: "inflight_cancelled_health",
+		Status: StatusActive,
+	})
+	server := New(store)
+	started := make(chan struct{})
+	server.adapterRegistry.Register("inflight_cancelled_health", cancellationAwareHealthProbeAdapter{started: started}, AdapterCapabilityProbe)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		server.checkProviderMonitoring(ctx, provider)
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("provider probe did not start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cancelled provider probe did not stop")
+	}
+
+	updated, ok := store.GetProvider(provider.ID)
+	if !ok || !updated.Healthy {
+		t.Fatalf("in-flight cancellation changed provider health: %+v", updated)
+	}
+	if observations := store.ListProviderObservations(time.Time{}); len(observations) != 0 {
+		t.Fatalf("in-flight cancellation persisted observations: %+v", observations)
+	}
+}
+
+type cancellationIgnoringResourceProbeAdapter struct {
+	recoveryProbeAdapter
+	started chan struct{}
+}
+
+func (a cancellationIgnoringResourceProbeAdapter) Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error) {
+	close(a.started)
+	<-ctx.Done()
+	return a.recoveryProbeAdapter.Probe(ctx, provider, resource, request)
+}
+
+func TestProviderMonitoringSchedulerDoesNotRecoverResourceAfterCancellation(t *testing.T) {
+	store, server, resourceID := newProbeRecoveryServer(t, nil, nil)
+	tripBreaker(t, store, resourceID)
+	before := findResource(t, store, resourceID)
+	provider, ok := store.GetProvider(before.ProviderID)
+	if !ok {
+		t.Fatal("probe provider missing")
+	}
+	started := make(chan struct{})
+	server.adapterRegistry.Register(provider.Type, cancellationIgnoringResourceProbeAdapter{started: started}, AdapterCapabilityProbe)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		server.checkProviderMonitoring(ctx, provider)
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("resource probe did not start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cancelled resource probe did not stop")
+	}
+
+	after := findResource(t, store, resourceID)
+	if after.Healthy || after.FailureCount != before.FailureCount || after.CooldownUntil == nil || !after.CooldownUntil.Equal(*before.CooldownUntil) || !after.UpdatedAt.Equal(before.UpdatedAt) {
+		t.Fatalf("cancelled probe changed resource breaker state: before=%+v after=%+v", before, after)
+	}
+	if observations := store.ListProviderObservations(time.Time{}); len(observations) != 0 {
+		t.Fatalf("cancelled resource probe persisted observations: %+v", observations)
+	}
+}
+
+type timeoutHealthProbeAdapter struct{}
+
+func (timeoutHealthProbeAdapter) ProbeProvider(ctx context.Context, _ Provider) (any, error) {
+	requestCtx, cancel := context.WithTimeout(ctx, time.Millisecond)
+	defer cancel()
+	<-requestCtx.Done()
+	return nil, requestCtx.Err()
+}
+
+func TestProviderMonitoringSchedulerRecordsUpstreamTimeout(t *testing.T) {
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_monitoring_timeout", Name: "Timed Out Monitoring", Type: "timeout_health", Status: StatusActive,
+	})
+	server := New(store)
+	server.adapterRegistry.Register(provider.Type, timeoutHealthProbeAdapter{}, AdapterCapabilityProbe)
+	server.checkProviderMonitoring(context.Background(), provider)
+
+	updated, ok := store.GetProvider(provider.ID)
+	if !ok || updated.Healthy {
+		t.Fatalf("upstream timeout did not mark provider unhealthy: %+v", updated)
+	}
+	observations := store.ListProviderObservations(time.Time{})
+	if len(observations) != 1 || observations[0].Success || observations[0].ErrorCode == "" {
+		t.Fatalf("upstream timeout did not persist failed observation: %+v", observations)
 	}
 }
 
@@ -152,6 +350,9 @@ func TestProviderMonitoringQuotaUsesPluginActionSnapshot(t *testing.T) {
 		}}, nil
 	})); err != nil {
 		t.Fatalf("register quota monitoring action: %v", err)
+	}
+	if _, err := server.queryProviderMonitoringQuota(context.Background(), provider, resource); err != nil {
+		t.Fatalf("refresh monitoring quota in background: %v", err)
 	}
 
 	invoke := func() ProviderMonitoringSnapshot {

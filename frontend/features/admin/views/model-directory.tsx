@@ -1,21 +1,21 @@
 "use client";
 
-import { StatementLauncher } from "./billing-statements";
-import { AlertTriangle, Boxes, CircleCheck, CircleDashed, Link2, Plus, Search } from "lucide-react";
+import { AlertTriangle, Boxes, CircleCheck, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { type ApiContext, type AppData, type Model, type ResourceConfig } from "../core/types";
-import { modelCategory, modelCategoryLabel, priceMetric } from "../domain/catalog";
+import { modelCategory, modelCategoryLabel } from "../domain/catalog";
 import { findProvider, modelRoutesFor } from "../domain/entities";
 import { modelDirectorySubtitle, modelDisplayName } from "../domain/model-display-name";
-import { modelMetadataFacts } from "../domain/model-endpoints";
 import { externalModels, filterExternalModels, isCustomModelAlias, modelPublicationState, modelRuntimeState, type ModelPublicationState } from "../domain/model-directory";
-import { modelTokenPriceMetric, formatRetrievalUSD } from "../domain/model-token-price";
 import { compactNumber } from "../domain/formatting";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { DataSection, StatusPill } from "../shared/ui";
 import { ModelBrandIcon } from "./model-catalog";
-import { ModelGovernanceEmptyState, ModelGovernanceFlow } from "./model-governance-empty-state";
+import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
+import { ModelDirectoryActions } from "./model-directory-actions";
+import { ModelDirectoryDetail } from "./model-directory-detail";
+import { ModelDirectoryPrice } from "./model-directory-price";
 
 export function ModelDirectoryView({
   api,
@@ -48,14 +48,15 @@ export function ModelDirectoryView({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [detailName, setDetailName] = useState("");
 
   const publishedModels = useMemo(() => externalModels(data, readOnly), [data, readOnly]);
   const filteredExternal = useMemo(
     () => filterExternalModels(publishedModels, data, publication, query, providerID),
     [data, providerID, publication, publishedModels, query],
   );
-  const stats = useMemo(() => modelDirectoryStats(publishedModels, data), [data, publishedModels]);
   const hasImportedProviderModels = data.providers.length > 0 && data.providerModels.length > 0;
+  const detailModel = publishedModels.find((model) => model.name === detailName);
 
   async function setPublished(model: Model, published: boolean) {
     setBusy(true);
@@ -105,28 +106,19 @@ export function ModelDirectoryView({
   return (
     <DataSection title={config.eyebrow}>
       <div className="model-directory">
-        <header className="model-directory-hero">
+        <header className="model-management-header">
           <div>
-            <p className="eyebrow">{tx("对外模型目录")}</p>
-            <h2>{tx("统一模型名称、能力与对外价格")}</h2>
+            <h2>{tx("对外模型目录")}</h2>
             <span>{tx("这里的模型和价格面向客户端统一生效，不随实际命中的 Provider 改变。")}</span>
           </div>
           {!readOnly ? (
-            <div className="model-directory-hero-actions">
-              <button className="secondary-button" onClick={onCreateModel} type="button">
+              <button className="button" onClick={onCreateModel} type="button">
                 <Plus size={16} />
                 {tx("新建对外模型")}
               </button>
-              <button className="button" onClick={() => onOpenRoutes()} type="button">
-                <Link2 size={16} />
-                {tx("路由策略")}
-              </button>
-            </div>
           ) : null}
         </header>
 
-        {!readOnly ? <ModelDirectoryStats stats={stats} /> : null}
-        {!readOnly ? <ModelGovernanceFlow /> : null}
         {notice ? <div className="inline-notice success"><CircleCheck size={15} />{notice}</div> : null}
         {error ? <div className="inline-notice error"><AlertTriangle size={15} />{error}</div> : null}
 
@@ -162,33 +154,15 @@ export function ModelDirectoryView({
           onEdit={onEditModel}
           onDelete={onDeleteModel}
           onPublish={setPublished}
+          onOpenDetails={(model) => setDetailName(model.name)}
         />
+        {detailModel ? <ModelDirectoryDetail model={detailModel} data={data} readOnly={readOnly} onClose={() => setDetailName("")} /> : null}
       </div>
     </DataSection>
   );
 }
 
-function ModelDirectoryStats({ stats }: { stats: ReturnType<typeof modelDirectoryStats> }) {
-  const items = [
-    { label: "已发布", value: stats.published, icon: CircleCheck, tone: "healthy" },
-    { label: "草稿/待映射", value: stats.draft, icon: CircleDashed, tone: "draft" },
-    { label: "正常可用", value: stats.healthy, icon: Link2, tone: "healthy" },
-    { label: "线路异常", value: stats.issues, icon: AlertTriangle, tone: "warning" },
-  ];
-  return (
-    <div className="model-directory-stats">
-      {items.map((item) => (
-        <div className={item.tone} key={item.label}>
-          <item.icon size={17} />
-          <span>{tx(item.label)}</span>
-          <strong>{item.value}</strong>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, onEdit, onDelete, onPublish }: {
+function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, onEdit, onDelete, onPublish, onOpenDetails }: {
   api: ApiContext;
   data: AppData;
   models: Model[];
@@ -198,6 +172,7 @@ function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, 
   onEdit: (model: Model) => void;
   onDelete: (model: Model) => void;
   onPublish: (model: Model, published: boolean) => void;
+  onOpenDetails: (model: Model) => void;
 }) {
   if (models.length === 0) {
     return (
@@ -210,8 +185,8 @@ function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, 
   }
   return (
     <div className="model-directory-table-wrap">
-      <table className="model-directory-table">
-        <thead><tr><th>{tx("对外模型")}</th><th>{tx("类型与能力")}</th>{!readOnly ? <><th>{tx("真实上游映射")}</th><th>{tx("发布")}</th><th>{tx("线路")}</th></> : <th>{tx("可用状态")}</th>}<th>{tx("对外统一价")}</th>{!readOnly ? <th>{tx("操作")}</th> : null}</tr></thead>
+      <table className={`model-directory-table model-management-table${readOnly ? " is-read-only" : ""}`}>
+        <thead><tr><th>{tx("对外模型")}</th><th>{tx("类型与能力")}</th>{!readOnly ? <><th>{tx("真实上游映射")}</th><th>{tx("状态")}</th></> : <th>{tx("可用状态")}</th>}<th>{tx("对外统一价")}</th>{!readOnly ? <th>{tx("操作")}</th> : null}</tr></thead>
         <tbody>
           {models.map((model) => {
             const routes = modelRoutesFor(model, data);
@@ -226,27 +201,24 @@ function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, 
             const category = modelCategory(model, data);
             const categoryLabel = modelCategoryLabel(category, data);
             const capabilities = model.capabilities ?? [];
-            const supportedParameters = model.supported_parameters ?? [];
-            const facts = modelMetadataFacts(model.metadata, capabilities, supportedParameters);
             return (
               <tr key={model.name}>
                 <td>
                   <div className="directory-model-name">
                     <ModelBrandIcon category={category} label={categoryLabel} data={data} />
-                    <div><strong>{title}</strong>{subtitle ? <span>{subtitle}</span> : null}</div>
+                    <div><button className="text-button model-detail-trigger" aria-label={formatTranslationTemplate(tx("查看模型详情：{name}"), { name: title })} onClick={() => onOpenDetails(model)} type="button">{title}</button>{subtitle ? <span>{subtitle}</span> : null}</div>
                   </div>
                 </td>
-                <td><strong>{model.modality || "chat"}</strong><span>{model.context_window ? `${compactNumber(model.context_window)} ctx · ` : ""}{capabilities.slice(0, 2).join(" / ") || model.family || "-"}</span>{facts.map((fact) => <div key={fact.kind}><small>{tx({ protocols: "支持接口协议", parameters: "支持参数", capabilities: "模型能力" }[fact.kind])}: {fact.values.join(" / ")}</small></div>)}</td>
+                <td><strong>{model.modality || "chat"}</strong><span>{model.context_window ? `${compactNumber(model.context_window)} ctx` : capabilities.slice(0, 2).join(" / ") || model.family || "-"}</span></td>
                 {!readOnly ? <>
                   <td>
                     {primary ? <div className="mapping-summary"><span>{provider?.name || primary.provider_id}</span><strong>{primary.provider_model}</strong>{routes.length > 1 ? <em>+{routes.length - 1}</em> : null}</div> : <span className="muted">{tx("尚未映射 Provider")}</span>}
                   </td>
-                  <td><StatusPill status={publication === "published" ? "active" : "disabled"} label={tx(publicationLabel(publication))} /></td>
-                  <td><RuntimeStatus state={runtime} active={activeRoutes.length} total={routes.length} /></td>
+                  <td><div className="model-management-status"><StatusPill status={publication === "published" ? "active" : "disabled"} label={tx(publicationLabel(publication))} /><RuntimeStatus state={runtime} active={activeRoutes.length} total={routes.length} /></div></td>
                 </> : <td><StatusPill status="active" label={tx("当前账号可用")} /></td>}
-                <td>{model.modality === "rerank" && model.metadata?.search_unit_price_usd?.trim() ? <><strong>{formatRetrievalUSD(Number(model.metadata.search_unit_price_usd))}</strong><span>{tx("搜索单元价格 USD/次")}</span>{model.input_price_usd_per_1m != null ? <span>{tx("输入")} · {modelTokenPriceMetric(model)}</span> : null}</> : <><strong>{modelTokenPriceMetric(model)}</strong><span>{model.modality === "embedding" ? "Embedding" : tx("输入")}{model.modality !== "embedding" && model.modality !== "rerank" ? <> · {priceMetric(model.output_price_usd_per_1m)} {tx("输出")}</> : null}</span></>}</td>
+                <td><ModelDirectoryPrice model={model} /></td>
                 {!readOnly ? (
-                  <td><div className="directory-row-actions"><StatementLauncher api={api} side="tenant" model={model.name} /><button aria-label={`${tx("路由策略")}: ${model.name}`} className="text-button" onClick={() => onOpenRoutes(model)} type="button">{tx("路由策略")}</button><button className="text-button" onClick={() => onEdit(model)} type="button">{tx("编辑")}</button><button className="text-button" disabled={busy || (publication !== "published" && activeRoutes.length === 0)} onClick={() => onPublish(model, publication !== "published")} type="button">{tx(publication === "published" ? "下线" : "发布")}</button><button className="danger-button" onClick={() => onDelete(model)} type="button">{tx("删除")}</button></div></td>
+                  <td><ModelDirectoryActions api={api} model={model} busy={busy} publication={publication} activeRoutes={activeRoutes.length} onOpenRoutes={onOpenRoutes} onEdit={onEdit} onDelete={onDelete} onPublish={onPublish} /></td>
                 ) : null}
               </tr>
             );
@@ -265,18 +237,6 @@ function RuntimeStatus({ state, active, total }: { state: ReturnType<typeof mode
     unmapped: { label: "未映射", status: "disabled" },
   }[state];
   return <div className="runtime-status"><StatusPill status={config.status} label={tx(config.label)} /><span>{active}/{total} {tx("条启用")}</span></div>;
-}
-
-function modelDirectoryStats(models: Model[], data: AppData) {
-  return models.reduce((stats, model) => {
-    const publication = modelPublicationState(model, data);
-    const runtime = modelRuntimeState(model, data);
-    if (publication === "published") stats.published += 1;
-    if (publication === "draft") stats.draft += 1;
-    if (runtime === "healthy") stats.healthy += 1;
-    if (runtime === "degraded" || runtime === "unavailable") stats.issues += 1;
-    return stats;
-  }, { published: 0, draft: 0, healthy: 0, issues: 0 });
 }
 
 function publicationLabel(state: "all" | ModelPublicationState) {

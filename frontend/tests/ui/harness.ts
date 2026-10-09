@@ -1,12 +1,13 @@
 import { test as base, expect, type Locator, type Page, type TestInfo } from "@playwright/test";
-import { languageStorageKey, sessionStorageKey } from "../../features/admin/core/types";
+import { languageStorageKey, sessionStorageKey, type AdminUser } from "../../features/admin/core/types";
 import configuration from "./config.cjs";
 import { fixedTime, shellResponses, user } from "./fixtures/shell";
 import { MockAPI } from "./network";
 const { apiOrigin } = configuration;
 
-export const test = base.extend<{ api: MockAPI }>({
-  api: [async ({ context, page }, runScenario) => {
+export const test = base.extend<{ api: MockAPI; sessionUser: AdminUser }>({
+  sessionUser: [user, { option: true }],
+  api: [async ({ context, page, sessionUser }, runScenario) => {
     const api = new MockAPI();
     for (const [key, json] of shellResponses()) {
       const [method, pathname] = key.split(" ");
@@ -18,7 +19,7 @@ export const test = base.extend<{ api: MockAPI }>({
     await context.addInitScript(({ sessionKey, languageKey, session }) => {
       window.sessionStorage.setItem(sessionKey, JSON.stringify(session));
       window.localStorage.setItem(languageKey, "zh-CN");
-    }, { sessionKey: sessionStorageKey, languageKey: languageStorageKey, session: { baseURL: apiOrigin, token: "ui-fixture-session", user, expiresAt: "2099-01-01T00:00:00Z" } });
+    }, { sessionKey: sessionStorageKey, languageKey: languageStorageKey, session: { baseURL: apiOrigin, token: "ui-fixture-session", user: sessionUser, expiresAt: "2099-01-01T00:00:00Z" } });
     const pageErrors: string[] = [];
     context.on("page", opened => opened.on("pageerror", error => pageErrors.push(error.message)));
     page.on("pageerror", error => pageErrors.push(error.message));

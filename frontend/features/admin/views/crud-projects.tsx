@@ -17,6 +17,7 @@ import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
 import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
 import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent } from "./provider-account-ui";
+import { ProviderManagementTable } from "./provider-management-table";
 import { latencyDisplay, requestLogFailed } from "./overview";
 import { PaginationControls, type PaginationState } from "../shared/pagination";
 import { APIKeyFlowHint, EntityTable, ResourceEmptyState, resultCountLabel, RouteStrategyHint, TableSkeleton } from "./settings-table";
@@ -98,9 +99,9 @@ export function CrudView<T>({
       <DataSection title={config.eyebrow}>
         <ModelGovernanceEmptyState
           stage="providers"
-          title="还没有 Provider 渠道"
-          description="先添加一个上游 Provider，并选择要引入的模型。Provider 模型价格用于记录真实成本与审计。"
-          actionLabel={config.createLabel ?? "新增 Provider"}
+          title="还没有供应商"
+          description="先添加供应商并引入模型，再到模型页面配置对外调用。"
+          actionLabel={config.createLabel ?? "添加供应商"}
           onAction={onCreate}
         />
       </DataSection>
@@ -282,6 +283,7 @@ export function ProviderChannelTable({
   onDelete: (provider: Provider) => void;
   onEdit: (provider: Provider) => void;
 }) {
+  const [view, setView] = useState<"manage" | "monitoring">("manage");
   const [quotaOverrides, setQuotaOverrides] = useState<Record<string, ProviderQuotaSummary>>({});
   const [quotaRefreshing, setQuotaRefreshing] = useState<Record<string, boolean>>({});
 
@@ -328,7 +330,12 @@ export function ProviderChannelTable({
   const rows = providers.map((provider) => rowsByID.get(provider.id) ?? providerMonitorRow(data, provider));
   const summary = providerMonitorSummary(summaryRows);
   return (
-    <section className="provider-channel-list" aria-label={tx("Provider 可用性监控")}>
+    <section className={`provider-channel-list${view === "manage" ? " provider-channel-list-manage" : ""}`} aria-label={tx("供应商管理")}>
+      <div className="provider-management-tabs" role="group" aria-label={tx("供应商管理")}>
+        <button className={view === "manage" ? "active" : ""} aria-pressed={view === "manage"} onClick={() => setView("manage")} type="button">{tx("供应商列表")}</button>
+        <button className={view === "monitoring" ? "active" : ""} aria-pressed={view === "monitoring"} onClick={() => setView("monitoring")} type="button">{tx("可用性监控")}</button>
+      </div>
+      {view === "manage" ? <ProviderManagementTable rows={rows} data={data} config={config} currentUser={currentUser} onAction={onAction} onEdit={onEdit} onDelete={onDelete} /> : <>
       <div className="provider-monitor-head">
         <div>
           <p className="eyebrow">{tx("上游可用性")}</p>
@@ -454,6 +461,7 @@ export function ProviderChannelTable({
         <span><i className="warning" />{tx("降级/慢响应")}</span>
         <span><i className="failure" />{tx("故障")}</span>
       </div>
+      </>}
     </section>
   );
 }
@@ -499,7 +507,8 @@ export function ProviderAccountQuota({
   const accounts = quota.accounts ?? [];
   if (accounts.length === 0 || quota.successful_accounts === 0) {
     const error = accounts.find((account) => account.error_code)?.error_code;
-    return <span className="provider-account-quota error" title={error}>{tx("查询失败")}</span>;
+    const awaitingObservation = error === "quota_not_cached";
+    return <span className={`provider-account-quota ${awaitingObservation ? "na" : "error"}`} title={awaitingObservation ? tx("待观测") : error}>{tx(awaitingObservation ? "待观测" : "查询失败")}</span>;
   }
   const remaining = quota.remaining_percent ?? 100;
   const plan = quota.plan_type || "-";
@@ -541,8 +550,8 @@ export function ProviderAccountQuota({
                       {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))}% · {quotaResetLabel(providerAccountQuotaPrimaryWindow(accountQuota))}
                     </span>
                   ) : (
-                    <span className="limited" title={account.error_code}>
-                      {refreshing[account.resource_id] ? tx("查询中") : account.error_code || tx("查询失败")}
+                    <span className={account.error_code === "quota_not_cached" ? undefined : "limited"} title={account.error_code}>
+                      {refreshing[account.resource_id] ? tx("查询中") : account.error_code === "quota_not_cached" ? tx("待观测") : account.error_code || tx("查询失败")}
                     </span>
                   )}
                 </div>
@@ -662,13 +671,14 @@ function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitor
   const resources = data.providerResources.filter((resource) => resource.provider_id === snapshot.provider.id);
   const observedSignal = snapshot.gateway.samples > 0 ? snapshot.gateway : snapshot.active_probe;
   const observed = observedSignal.samples > 0;
+  const statusTone = observed ? snapshot.state : "unknown";
   return {
     provider: snapshot.provider,
     resources,
     routeCount: snapshot.route_count,
     activeRouteCount: snapshot.active_route_count,
-    statusTone: snapshot.state,
-    statusLabel: snapshot.status_label,
+    statusTone,
+    statusLabel: observed ? snapshot.status_label : providerStatusLabel(statusTone),
     statusDetail: monitoringDetail(snapshot.status_detail),
     basicPrimaryTone: monitoringProbeTone(snapshot.configuration.state),
     basicPrimaryDetail: monitoringDetail(snapshot.configuration.detail),
@@ -739,7 +749,10 @@ export function providerMonitorRow(data: AppData, provider: Provider): ProviderM
   const availability24h = observed24h ? (success24h.length / recent24h.length) * 100 : (healthyProvider ? 100 : 0);
   const latencySamples = (success24h.length ? success24h : samples.filter((sample) => sample.success)).filter((sample) => sample.latency_ms > 0);
   const latencyMS = percentileLatency(latencySamples, 0.5);
-  const statusTone = providerMonitorTone(provider, observed24h, availability24h, warning24h.length, failed24h, activeResources.length, healthyResources.length);
+  const calculatedStatusTone = providerMonitorTone(provider, observed24h, availability24h, warning24h.length, failed24h, activeResources.length, healthyResources.length);
+  // Provider liveness is not an availability observation. Keep the monitoring
+  // summary neutral until a real request or active probe has produced a sample.
+  const statusTone = observed24h ? calculatedStatusTone : "unknown";
   const activeRouteCount = routes.filter((route) => route.status === "active").length;
   return {
     provider,
@@ -864,7 +877,7 @@ export function providerMonitorTone(provider: Provider, observed: boolean, avail
 export function providerStatusLabel(tone: ProviderMonitorTone) {
   if (tone === "healthy") return "Healthy";
   if (tone === "degraded") return "Degraded";
-  if (tone === "unknown") return "Awaiting Test";
+  if (tone === "unknown") return "待观测";
   return "Functional Down";
 }
 

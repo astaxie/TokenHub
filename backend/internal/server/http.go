@@ -42,6 +42,7 @@ type Server struct {
 	reconciliation          *ReconciliationService
 	credentialRefresh       *ProviderCredentialRefreshService
 	payloadRetention        *requestPayloadRetentionService
+	providerMonitoring      *providerMonitoringScheduler
 	mux                     *http.ServeMux
 	publicGatewayOperations map[gatewayOperation]bool
 	config                  Config
@@ -216,6 +217,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 		syntheticDNSPolicy:  syntheticDNSPolicy,
 		providerProxyPolicy: providerProxyPolicy,
 	}
+	s.providerMonitoring = newProviderMonitoringScheduler(store, s.runProviderMonitoring)
 	s.pluginBackgroundRunner.SetSchedulerSnapshotLocker(s.pluginRuntimeMu.RLocker())
 	s.installServerPluginHandlers(&pluginBootstrap)
 	if err := pluginmeta.NewRuntime(config.PluginDir).CompleteRuntimeRestart(); err != nil {

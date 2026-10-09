@@ -1,7 +1,7 @@
 import { type AdapterDescriptor, type PluginDescriptor, type Provider, type ProviderCatalogEntry } from "../core/types";
 import { isProviderAccountResourceType, providerResourceTypeCapabilityKind } from "./provider-resource-types";
 
-export function accountProviderCatalogOptionsFromPlugins(catalog: ProviderCatalogEntry[], plugins: PluginDescriptor[], adapters: AdapterDescriptor[] = []) {
+export function accountProviderTypesFromPlugins(plugins: PluginDescriptor[], adapters: AdapterDescriptor[] = []) {
   const accountProviderTypes = new Set<string>();
   for (const adapter of adapters) {
     if (adapter.type && adapter.provider_policy?.credentials_scope === "resource") accountProviderTypes.add(adapter.type);
@@ -14,6 +14,11 @@ export function accountProviderCatalogOptionsFromPlugins(catalog: ProviderCatalo
       if (capability.kind === "provider_policy" && capability.name === "credentials_scope" && capability.value === "resource") accountProviderTypes.add(subject);
     }
   }
+  return Array.from(accountProviderTypes);
+}
+
+export function accountProviderCatalogOptionsFromPlugins(catalog: ProviderCatalogEntry[], plugins: PluginDescriptor[], adapters: AdapterDescriptor[] = []) {
+  const accountProviderTypes = new Set(accountProviderTypesFromPlugins(plugins, adapters));
   const candidates = catalog.filter((entry) => accountProviderTypes.has(entry.type));
   const merged = new Map<string, ProviderCatalogEntry>();
   for (const entry of candidates) {

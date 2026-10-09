@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { type ApiContext } from "../core/types";
 import { formatStatementAmount, statementCSV, statementMonth, type StatementQuery, type StatementResult, type StatementSide } from "../domain/billing-statements";
 import { languageLocale, tx } from "../i18n/runtime";
@@ -10,12 +10,18 @@ import { DataSection, SimpleTable } from "../shared/ui";
 
 type StatementProps = { api: ApiContext; side?: StatementSide; model?: string; providerID?: string };
 
-export function StatementLauncher(props: StatementProps) {
+export function StatementLauncher({ renderTrigger, returnFocusRef, onOpen, ...props }: StatementProps & { renderTrigger?: (onClick: () => void) => ReactNode; onOpen?: () => void; returnFocusRef?: RefObject<HTMLElement | null> }) {
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { if (open) dialog.current?.showModal(); }, [open]);
+  const restoreFocus = useCallback(() => returnFocusRef?.current?.focus(), [returnFocusRef]);
+  useEffect(() => {
+    if (!open) return;
+    dialog.current?.showModal();
+    return restoreFocus;
+  }, [open, restoreFocus]);
+  const toggle = () => { if (!open) onOpen?.(); setOpen(current => !current); };
   return <>
-    <button className="text-button" type="button" onClick={() => setOpen(!open)}>{props.side === "provider" ? tx("上游费用对账单") : tx("下游费用对账单")}</button>
+    {renderTrigger ? renderTrigger(toggle) : <button className="text-button" type="button" onClick={toggle}>{props.side === "provider" ? tx("上游费用对账单") : tx("下游费用对账单")}</button>}
     {open ? createPortal(<dialog ref={dialog} className="statement-drawer" aria-label={tx("费用对账单")} onClose={() => setOpen(false)}><button className="button secondary" type="button" onClick={() => setOpen(false)}>{tx("关闭")}</button><BillingStatements {...props} /></dialog>, document.body) : null}
   </>;
 }

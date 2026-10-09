@@ -22,6 +22,9 @@ for (const modality of ["rerank", "embedding"] as const) {
     const editor = page.locator(".model-create-modal");
     await editor.locator(".model-create-template").filter({ hasText: model.name }).click();
     await editor.getByRole("button", { name: "下一步：选择 Provider 模型" }).click();
+    await expect(editor.getByRole("button", { name: "高级模型设置" })).toHaveAttribute("aria-expanded", "false");
+    await expect(editor.getByLabel("对外模型 ID", { exact: true })).toBeVisible();
+    await expect(editor.getByLabel("系列", { exact: true })).not.toBeVisible();
     await editor.getByText("UI Provider", { exact: false }).first().click();
     const confirmation = editor.getByRole("radiogroup", { name: "确认检索模型收费配置（包含免费价格）", exact: true });
     await expect(confirmation).toBeVisible();

@@ -25,16 +25,37 @@ test("admin can sign in and sign out of the console", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
 });
 
+test("admin can switch global usage ranges against the real backend", async ({ page }) => {
+  await login(page);
+  const initial = page.waitForResponse(response => response.url().endsWith("/api/admin/usage/report?range=today"));
+  await page.goto("/usage");
+  expect((await initial).ok()).toBe(true);
+  const usage = page.locator(".global-usage");
+  await expect(usage.locator(".global-usage-stats")).toBeVisible();
+  for (const [range, label] of [["7d", "7 天"], ["30d", "30 天"], ["all", "全部"], ["today", "今日"]]) {
+    const loaded = page.waitForResponse(response => response.url().endsWith(`/api/admin/usage/report?range=${range}`));
+    await usage.getByRole("button", { name: label, exact: true }).click();
+    const response = await loaded;
+    expect(response.ok()).toBe(true);
+    const report = await response.json();
+    expect(report.range).toBe(range);
+    expect(report.timezone).toBeTruthy();
+    expect(Array.isArray(report.timeseries)).toBe(true);
+    await expect(usage.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(usage.getByRole("group", { name: "请求数", exact: true }).locator("strong")).toHaveAttribute("title", new Intl.NumberFormat("zh-CN").format(report.summary.request_count));
+    await expect(usage.getByRole("alert")).toHaveCount(0);
+  }
+});
+
 for (const authenticated of [true, false]) {
 test(`admin can validate and create a custom Provider with authentication = ${authenticated}`, async ({ page }) => {
   await login(page);
-  await sidebar(page).getByRole("button", { name: "Provider 渠道", exact: true }).click();
+  await sidebar(page).getByRole("button", { name: "供应商", exact: true }).click();
   await expect(page).toHaveURL(/\/providers$/);
-  await page.getByRole("button", { name: "新增 Provider" }).click();
+  await page.getByRole("button", { name: "添加供应商" }).click();
 
-  await expect(page.getByRole("heading", { name: "选择接入方式" })).toBeVisible();
-  await page.getByRole("button", { name: "下一步" }).click();
-  await page.getByRole("button", { name: "自定义渠道商" }).click();
+  await expect(page.getByRole("heading", { name: "选择供应商" })).toBeVisible();
+  await page.getByRole("button", { name: /自定义供应商/ }).click();
   const providerName = authenticated ? "E2E Fake Provider" : "E2E Local Provider";
   await page.getByLabel("渠道名称").fill(providerName);
   await page.getByLabel("Base URL").fill(`http://${authenticated ? "127.0.0.1" : "localhost"}:${upstreamPort}${authenticated ? "" : "/open"}/v1`);
@@ -44,10 +65,9 @@ test(`admin can validate and create a custom Provider with authentication = ${au
 
   await page.getByRole("button", { name: "测试连接" }).click();
   await expect(page.getByRole("status")).toContainText("连接测试通过");
-  await page.getByRole("tab", { name: "模型" }).click();
   await expect(page.getByText("e2e-chat-model", { exact: true }).first()).toBeVisible();
   await page.getByRole("switch", { name: "引入 e2e-chat-model" }).click();
-  await page.locator("form.provider-modal").getByRole("button", { name: "新增 Provider" }).click();
+  await page.locator("form.provider-modal").getByRole("button", { name: "添加供应商并引入模型" }).click();
 
   await expect(page.getByText(providerName, { exact: true }).first()).toBeVisible();
 });
@@ -86,8 +106,8 @@ test("admin can issue an API Key and open its usage page", async ({ page }) => {
   await sidebar(page).getByRole("button", { name: "Key 管理", exact: true }).click();
   await keyRow.getByRole("button", { name: "轮换", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "确认轮换 API Key" })).toBeVisible();
-  // Exercise session cleanup independently of the dialog's focus trap.
-  await page.getByTitle("退出登录").press("Enter");
+  // Exercise session cleanup directly while the modal correctly retains focus.
+  await page.getByTitle("退出登录").dispatchEvent("click");
   await expect(page.getByRole("heading", { name: "欢迎回来" })).toBeVisible();
   await page.getByLabel("账号 / 邮箱").fill(adminIdentity);
   await page.getByLabel("密码", { exact: true }).fill(adminPassword);
@@ -265,7 +285,14 @@ test("admin can preview and export separate billing statements", async ({ page, 
   await page.screenshot({ path: test.info().outputPath("billing-statements-desktop.png") });
   await page.goto("/models");
   await page.getByRole("group", { name: "发布状态" }).getByRole("button", { name: "全部", exact: true }).click();
-  await page.getByRole("button", { name: "下游费用对账单", exact: true }).first().click();
+  const modelActions = page.locator(".model-management-actions").first();
+  await expect(modelActions).toBeVisible();
+  const inlineStatement = modelActions.getByRole("button", { name: "下游费用对账单", exact: true });
+  if (await inlineStatement.isVisible()) await inlineStatement.click();
+  else {
+    await modelActions.getByRole("button", { name: /^更多操作：/ }).click();
+    await page.getByRole("group", { name: /^模型操作：/ }).getByRole("button", { name: "下游费用对账单", exact: true }).click();
+  }
   const dialog = page.getByRole("dialog", { name: "费用对账单", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("对外模型（留空为全部）")).not.toHaveValue("");

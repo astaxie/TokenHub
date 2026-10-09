@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
@@ -76,6 +76,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [pluginManagerTab, setPluginManagerTab] = useState<PluginManagerTabKey>("installed");
   const [data, setData] = useState<AppData>(emptyData());
   const [error, setError] = useState("");
+  const [routingPolicyError, setRoutingPolicyError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -84,6 +85,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [settingsTab, setSettingsTab] = useState<SettingsTabKey>("settings");
   const [securityPolicyTab, setSecurityPolicyTab] = useState<"access" | "content">("access");
   const [modal, setModal] = useState<ModalState<any> | null>(null);
+  const [modalSaveError, setModalSaveError] = useState<{ source: typeof modal; message: string } | null>(null);
   const [projectWorkspace, setProjectWorkspace] = useState<{ mode: ProjectWorkspaceMode; projectID?: string } | null>(null);
   const [providerCreateOpen, setProviderCreateOpen] = useState(false);
   const [providerEditItem, setProviderEditItem] = useState<Provider | null>(null);
@@ -94,7 +96,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [confirmRestoreModels, setConfirmRestoreModels] = useState(false);
   const [issuedKey, setIssuedKey] = useState("");
   const [pendingAction, setPendingAction] = useState<{ action: ResourceAction<any>; item: any } | null>(null);
-  const loadRef = useRef<(view?: ViewKey) => Promise<void>>(async () => undefined);
   const [reportHistory, setReportHistory] = useState<ReportExportHistoryItem[]>([]);
   const [resetToken, setResetToken] = useState("");
   const [simSelectionPreference, setSIMSelectionPreference] = useState<unknown>(null);
@@ -325,14 +326,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     void load(activeView);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load is an orchestration command; the explicit state keys define when it runs.
   }, [bootstrapped, adminToken, currentUser, activeView]);
-
-  useEffect(() => {
-    if (!bootstrapped || !adminToken || !currentUser || activeView !== "usage") return;
-    const timer = window.setInterval(() => {
-      void loadRef.current("usage");
-    }, 30_000);
-    return () => window.clearInterval(timer);
-  }, [activeView, adminToken, bootstrapped, currentUser]);
 
   useEffect(() => {
     if (activeView === "notification-channels" && !notificationChannelTypes.includes(modelCategoryFilter)) {
@@ -592,7 +585,6 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       setLoading(false);
     }
   }
-  loadRef.current = load;
 
   async function login(identity: string, password: string) {
     setLoading(true);
@@ -658,6 +650,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     if (!modal) return;
     setLoading(true);
     setError("");
+    setModalSaveError(null);
     try {
       if (modal.item) {
         await modal.config.update?.(api, modal.item, values, data);
@@ -668,7 +661,9 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       await load();
     } catch (err) {
       if (isAuthExpiredError(err)) return;
-      setError(err instanceof Error ? err.message : tx("保存失败"));
+      const message = err instanceof Error ? err.message : tx("保存失败");
+      setModalSaveError({ source: modal, message });
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -853,6 +848,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   async function saveModelRoutingPolicy(model: Model, policy: ModelRoutePolicy, successMessage = `已应用 ${model.name} 的模型路由策略`) {
     setLoading(true);
     setError("");
+    setRoutingPolicyError("");
     setNotice("");
     try {
       await adminMutate(api, `/api/admin/model-routing-policies/${encodeURIComponent(model.name)}`, "PATCH", policy);
@@ -860,7 +856,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       await load();
     } catch (err) {
       if (isAuthExpiredError(err)) return;
-      setError(err instanceof Error ? err.message : tx("更新模型路由策略失败"));
+      const message = err instanceof Error ? err.message : tx("更新模型路由策略失败");
+      setRoutingPolicyError(message);
     } finally {
       setLoading(false);
     }
@@ -1080,6 +1077,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             </div>
           ) : activeView === "routes" && activeConfig ? (
             <RouteStrategyView
+              onClearError={() => { setError(""); setRoutingPolicyError(""); }}
+              error={routingPolicyError}
               config={activeConfig as ResourceConfig<ModelRoute>}
               data={data}
               initialQuery={routeModelQuery}
@@ -1189,6 +1188,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       {modal ? (
         <EditModal
           state={modal}
+          submitError={modalSaveError?.source === modal ? modalSaveError.message : ""}
           data={data}
           api={api}
           currentUser={currentUser}
@@ -1209,6 +1209,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           mode="create"
           api={api}
           catalog={data.providerCatalog}
+          existingProviders={data.providers}
           providerModels={data.providerModels}
           resources={data.providerResources}
           providerAdapters={data.providerAdapters}
@@ -1234,6 +1235,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           provider={providerEditItem}
           api={api}
           catalog={data.providerCatalog}
+          existingProviders={data.providers}
           providerModels={data.providerModels}
           routes={data.routes}
           resources={data.providerResources.filter((resource) => resource.provider_id === providerEditItem.id)}
