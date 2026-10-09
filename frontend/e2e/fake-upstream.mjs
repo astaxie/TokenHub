@@ -1,11 +1,13 @@
 import { createServer } from "node:http";
 import e2eDefaults from "./config.cjs";
+import { handleFakeOIDC } from "./fake-oidc.mjs";
 
 const host = process.env.TOKENHUB_E2E_UPSTREAM_HOST ?? "127.0.0.1";
 const port = Number(process.env.TOKENHUB_E2E_UPSTREAM_PORT ?? e2eDefaults.upstreamPort);
 const expectedKey = process.env.TOKENHUB_E2E_UPSTREAM_KEY ?? e2eDefaults.upstreamKey;
 
-const server = createServer((request, response) => {
+const server = createServer(async (request, response) => {
+  if (await handleFakeOIDC(request, response)) return;
   if (request.method === "GET" && request.url === "/healthz") {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ ok: true }));

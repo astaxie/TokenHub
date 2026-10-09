@@ -110,6 +110,7 @@ export const ruTranslations: Record<string, string> = {
   "Key（已用/归属）": "Ключи (активные / всего)",
   "NewAPI 用户 ID": "ID пользователя NewAPI",
   "OAuth 登录失败": "Ошибка входа через OAuth",
+  "OAuth 登录失败（{code}），请重试或联系管理员。": "Ошибка входа через OAuth ({code}). Повторите попытку или обратитесь к администратору.",
   "OAuth 账号": "OAuth-аккаунт",
   "OpenAI Compatible Gateway 默认配置": "Конфигурация OpenAI-совместимого шлюза по умолчанию.",
   "OpenAI Subscription 账号": "Аккаунт подписки OpenAI",
