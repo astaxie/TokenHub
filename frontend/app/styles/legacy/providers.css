@@ -1423,6 +1423,18 @@
   resize: vertical;
 }
 
+.checkbox-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-line input[type="checkbox"] {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+}
+
 .boolean-toggle {
   width: fit-content;
   min-height: 32px;
