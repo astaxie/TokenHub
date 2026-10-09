@@ -1,0 +1,52 @@
+diff --git a/node_modules/@easyops-cn/docusaurus-search-local/dist/client/client/utils/tokenize.js b/node_modules/@easyops-cn/docusaurus-search-local/dist/client/client/utils/tokenize.js
+index e79541d..87d7bc2 100644
+--- a/node_modules/@easyops-cn/docusaurus-search-local/dist/client/client/utils/tokenize.js
++++ b/node_modules/@easyops-cn/docusaurus-search-local/dist/client/client/utils/tokenize.js
+@@ -19,7 +19,10 @@ export function tokenize(text, language) {
+     if (language.includes("zh")) {
+         // Currently only works fine with letters in Latin alphabet and Chinese.
+         // https://zhuanlan.zhihu.com/p/33335629
+-        regExpMatchWords = /\w+|\p{Unified_Ideograph}+/gu;
++        // PATCH: include kana (\\u3040-\\u30FF) so Japanese query words are
++        // tokenized instead of being silently dropped, matching the patched
++        // server-side tokenizer.
++        regExpMatchWords = /\w+|[\p{Unified_Ideograph}\u3040-\u30FF]+/gu;
+         // regExpMatchWords = /\p{Unified_Ideograph}+|[^-\s\p{Unified_Ideograph}]+/gu;
+         // https://mothereff.in/regexpu#input=const+regex+%3D+/%5Cp%7BUnified_Ideograph%7D/u%3B&unicodePropertyEscape=1
+         // regExpMatchWords = /\w+|[\u3400-\u4DBF\u4E00-\u9FFC\uFA0E\uFA0F\uFA11\uFA13\uFA14\uFA1F\uFA21\uFA23\uFA24\uFA27-\uFA29\u{20000}-\u{2A6DD}\u{2A700}-\u{2B734}\u{2B740}-\u{2B81D}\u{2B820}-\u{2CEA1}\u{2CEB0}-\u{2EBE0}\u{30000}-\u{3134A}]+/gu
+diff --git a/node_modules/@easyops-cn/docusaurus-search-local/dist/server/server/utils/tokenizer.js b/node_modules/@easyops-cn/docusaurus-search-local/dist/server/server/utils/tokenizer.js
+index c0912ff..a4b3e4e 100644
+--- a/node_modules/@easyops-cn/docusaurus-search-local/dist/server/server/utils/tokenizer.js
++++ b/node_modules/@easyops-cn/docusaurus-search-local/dist/server/server/utils/tokenizer.js
+@@ -7,7 +7,9 @@ const lunr_1 = tslib_1.__importDefault(require("lunr"));
+ const jieba_1 = tslib_1.__importDefault(require("@node-rs/jieba"));
+ const cutWordByUnderscore_1 = require("./cutWordByUnderscore");
+ // https://zhuanlan.zhihu.com/p/33335629
+-const RegExpConsecutiveWord = /\w+|\p{Unified_Ideograph}+/u;
++// PATCH: include kana (\\u3040-\\u30FF) so Japanese runs reach the tokenizer
++// instead of being silently dropped; see the kana branch below.
++const RegExpConsecutiveWord = /\w+|[\p{Unified_Ideograph}\u3040-\u30FF]+/u;
+ let userDictLoaded = false;
+ function loadUserDict(zhUserDict, zhUserDictPath) {
+     if (userDictLoaded) {
+@@ -57,6 +59,20 @@ function tokenizer(input, metadata) {
+             }
+             start += word.length;
+         }
++        else if (/[\u3040-\u30FF]/.test(word) && lunr_1.default.ja && lunr_1.default.ja.tokenizer) {
++            // PATCH: a run containing kana is Japanese; segment it with the
++            // loaded lunr.ja tokenizer (tinyseg) instead of jieba, which emits
++            // kana character-by-character and drops pure-kana tokens.
++            const absoluteStart = start;
++            let cursor = 0;
++            for (const segment of lunr_1.default.ja.tokenizer(word)) {
++                const segmentText = segment.toString();
++                const relative = word.indexOf(segmentText, cursor);
++                cursor = relative + segmentText.length;
++                tokens.push(new lunr_1.default.Token(segmentText, Object.assign(Object.assign({}, lunr_1.default.utils.clone(metadata)), { position: [absoluteStart + relative, segmentText.length], index: tokens.length })));
++            }
++            start += word.length;
++        }
+         else {
+             for (const zhWord of jieba_1.default.cut(word)) {
+                 tokens.push(new lunr_1.default.Token(zhWord, Object.assign(Object.assign({}, lunr_1.default.utils.clone(metadata)), { position: [start, zhWord.length], index: tokens.length })));
