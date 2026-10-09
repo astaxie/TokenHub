@@ -48,10 +48,13 @@ models:
       tool_call_note: Tool calling requires Responses; Chat Completions supports requests without tools.
       sampling_note: temperature, top_p and log probabilities are unsupported; this model does not support reasoning effort
         none.
-      pricing_note: Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%;
-        configure applicable pricing separately.
+      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output
+        rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure
+        billing.
       catalog_reviewed_at: '2026-10-10'
       availability: active
+      pricing_status: unverified
+      catalog_price_reference: 'true'
   - name: gpt-6-sol
     title: GPT-6 Sol
     description: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling
@@ -96,10 +99,13 @@ models:
       verified_at: '2026-10-10'
       tool_call_note: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none.
       sampling_note: temperature, top_p and log probabilities require reasoning effort none.
-      pricing_note: Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%;
-        configure applicable pricing separately.
+      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output
+        rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure
+        billing.
       catalog_reviewed_at: '2026-10-10'
       availability: active
+      pricing_status: unverified
+      catalog_price_reference: 'true'
   - name: gpt-6-luna
     title: GPT-6 Luna
     description: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling
@@ -144,10 +150,13 @@ models:
       verified_at: '2026-10-10'
       tool_call_note: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none.
       sampling_note: temperature, top_p and log probabilities require reasoning effort none.
-      pricing_note: Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%;
-        configure applicable pricing separately.
+      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output
+        rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure
+        billing.
       catalog_reviewed_at: '2026-10-10'
       availability: active
+      pricing_status: unverified
+      catalog_price_reference: 'true'
   - name: gpt-image-2.5-sunburst
     title: GPT Image 2.5 Sunburst
     category: openai
@@ -2810,32 +2819,54 @@ models:
       state_question_context_window: "32000"
       pricing_verified_at: "2026-09-19"
       pricing_note: "Input-only pricing. Aliases may change versions; pin a version for calibrated decisions."
-  - name: "gpt-6-astra"
-    title: "GPT-6 Astra"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+  - name: gpt-6-astra
+    title: GPT-6 Astra
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 1050000
     input_price_usd_per_1m: 10
     output_price_usd_per_1m: 50
     cache_read_price_usd_per_1m: 1
     cache_write_price_usd_per_1m: 12.5
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "tools", "response_format", "reasoning", "reasoning_effort", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - max_tokens
+    - max_completion_tokens
+    - max_output_tokens
+    - tools
+    - response_format
+    - reasoning
+    - reasoning_effort
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "https://developers.openai.com/api/docs/models/gpt-6-astra"
-      provider_catalog_id: "openai"
-      provider_model_id: "gpt-6-astra"
-      endpoints: "responses,chat/completions"
-      max_output_tokens: "128000"
-      knowledge_cutoff: "2026-04-30"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-      reasoning_effort_options: "low,medium,high,xhigh,max"
-      pricing_note: "Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%; configure applicable pricing separately."
+      source: tokenhub-standard-catalog
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-6-astra
+      provider_catalog_id: openai
+      provider_model_id: gpt-6-astra
+      endpoints: responses,chat/completions
+      max_output_tokens: '128000'
+      knowledge_cutoff: '2026-04-30'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      reasoning_effort_options: low,medium,high,xhigh,max
+      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output
+        rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure
+        billing.
+      pricing_status: unverified
+      catalog_price_reference: 'true'
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
   - name: "step-3.7-flash"
     title: "Step 3.7 Flash"
     description: "StepFun's flagship multimodal reasoning model for agents, coding, image understanding, and video understanding. It supports a 256K-token context window, tool calling, and low, medium, or high reasoning effort."

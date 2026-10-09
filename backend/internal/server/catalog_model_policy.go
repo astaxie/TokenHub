@@ -112,7 +112,8 @@ func (s *Server) validateCatalogModelPublication(provider Provider, route ModelR
 }
 
 func catalogModelCostConfigurationError(model ProviderModel) error {
-	if model.Metadata["pricing_status"] == "unverified" && model.InputPriceUSDPer1M <= 0 && model.OutputPriceUSDPer1M <= 0 && model.Metadata["retrieval_pricing_confirmed"] != "true" {
+	unconfirmed := model.InputPriceUSDPer1M <= 0 && model.OutputPriceUSDPer1M <= 0 || model.Metadata["catalog_price_reference"] == "true"
+	if model.Metadata["pricing_status"] == "unverified" && unconfirmed && model.Metadata["retrieval_pricing_confirmed"] != "true" {
 		return NewHTTPError(http.StatusBadRequest, "provider_model_price_required", "Confirm and save upstream model costs before publishing a new route; an unverified catalog price is not free usage")
 	}
 	return nil

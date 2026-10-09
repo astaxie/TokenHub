@@ -106,6 +106,14 @@ func TestLegacyZeroInventoryRequiresNewRouteCostConfirmation(t *testing.T) {
 	if legacy.Metadata != nil {
 		t.Fatal("advisory persisted metadata into legacy inventory")
 	}
+	conditional := ProviderModel{InputPriceUSDPer1M: 2, OutputPriceUSDPer1M: 10, Metadata: map[string]string{"pricing_status": "unverified", "catalog_price_reference": "true"}}
+	if err := catalogModelCostConfigurationError(conditional); err == nil {
+		t.Fatal("a positive short-context reference price was treated as a configured universal cost")
+	}
+	conditional.Metadata["pricing_status"] = "configured"
+	if err := catalogModelCostConfigurationError(conditional); err != nil {
+		t.Fatalf("explicitly confirmed conditional price was blocked: %v", err)
+	}
 	for _, model := range []ProviderModel{
 		{UpstreamModel: "model", InputPriceUSDPer1M: 2},
 		{UpstreamModel: "model", Metadata: map[string]string{"pricing_status": "configured"}},

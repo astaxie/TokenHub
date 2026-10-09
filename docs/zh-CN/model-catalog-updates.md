@@ -33,6 +33,8 @@ Provider 选择、模型创建和 Provider 模型库存会展示预览状态、�
 
 当 Provider 模型库存项标为 `pricing_status=unverified`，且既没有已配置的正数输入/输出成本，也没有明确确认时，新启用线路发布会被阻止。进入该 Provider 的模型库存，核对实际账号的价格与计价单位，填写上游成本并保存。保存审核后的成本会将其标记为已配置。若实际价格确为零，应在核实后明确填写并保存零；保留未核实的目录零值不算确认。检索模型还需满足其原有的 Token 或搜索单元价格与成本确认要求。
 
+正数也可能仅是目录参考价。当 `pricing_status=unverified` 且 `catalog_price_reference=true` 时，正数本身不能代替新线路的成本确认。已核查的 GPT-6 条目保留了短上下文参考单价，但输入超过 272,000 Token 时适用另一档价格。应核对适用成本并明确保存为 `pricing_status=configured`，再解除这项发布限制。提示信息叠加不会覆盖既有库存中已配置的正数成本，也不会把这组价格标记复制到该记录。
+
 若当前目录的精确匹配项为未核实价格，而历史库存的输入/输出成本均为零、没有价格状态或明确确认，列表返回与新线路检查也会叠加未核实提示。该叠加不持久化，不改变既有线路计费；已保存的正数成本和明确配置的成本仍被保留。未精确匹配当前目录的库存不在追溯检查范围内。租户价格与上游成本仍应分开配置。本次不会自动把人民币换成美元、把峰谷或长上下文阶梯价压成单价、把按量价套用于订阅，也不会把按图片/秒/字符计费转换成 Token 价。结构化价格说明用于记录上游条件，不会安装新的计费公式；发布前还需确认所需计价单位已受支持。
 
 ## 维护者 metadata 约定
@@ -49,6 +51,7 @@ Provider 选择、模型创建和 Provider 模型库存会展示预览状态、�
 | `redirect_at`、`replacement_note` | 上游计划重定向的时间与条件；不可把重定向日期等同于调用必然失败。 |
 | `call_support`、`support_note`、`call_support_scope` | 仅目录收录的操作用 `unsupported`；写明缺失契约或 `text-only` 等范围。未设置该标记不代表已做账号或集成测试。 |
 | `pricing_status`、`pricing_source`、`pricing_note` | 可用目录参考价用 `reference`；需管理员配置成本时用 `unverified`；明确审核保存后用 `configured`。保留来源与适用条件。 |
+| `catalog_price_reference` | `true` 表示已填写的价格仍仅供参考；与 `pricing_status=unverified` 同时存在时，即使输入/输出价格为正数，也须明确确认成本才能发布新的启用线路，保存为 `configured` 后解除这项限制。 |
 | `original_currency`、`original_unit`、`original_prices` | 原始报价币种、单位与结构化价格，仅是证据，不隐含换汇。 |
 | `pricing_tiers`、`pricing_schedule`、`reference_token_prices` | 有条件或促销参考价；保留条件与日期，不把最低值默认为通用成本。 |
 | `billing_unit` 与原生单位价格字段 | 区分 Token、搜索单元、图片、秒和字符；搜索单元价不是每百万 Token 价。 |
