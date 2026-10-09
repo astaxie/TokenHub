@@ -37,6 +37,10 @@ A positive number can still be only a catalog reference. If `pricing_status=unve
 
 For an exact match to a currently unverified catalog entry, a legacy inventory item with zero input/output costs and no pricing-status or explicit confirmation also receives the unverified notice during listing and new-route checks. This overlay is not persisted and does not change existing route billing. Saved positive costs and explicitly configured costs remain intact. Inventory outside that exact catalog match is not retroactively audited. Keep tenant prices separate from upstream costs. The refresh does not convert CNY to USD, flatten peak/off-peak or long-context tiers, reuse PAYG prices for a subscription, or convert image/second/character charges into token prices. Structured pricing notes describe the upstream terms; they do not install a new billing formula. Confirm support for the required unit before publishing.
 
+Saving the full token-cost form persists `pricing_status=configured` as explicit confirmation of the displayed input, output, and cache-read token rates, including zero. Publication checks and provider metering snapshots both honor that confirmation. Cache-write rates retain their separate configuration flags and inheritance rules; native-unit rates still require their own prices. Unconfirmed legacy zero values remain unknown, and earlier request snapshots are not repriced after confirmation.
+
+The compact retrieval editor retains its separate input/native-unit confirmation contract; it does not confirm hidden output or cache-read prices.
+
 ## Metadata reference for maintainers
 
 Catalog model `metadata` is transported as string values. Serialize structured evidence as JSON strings; it is descriptive unless code explicitly consumes the field.

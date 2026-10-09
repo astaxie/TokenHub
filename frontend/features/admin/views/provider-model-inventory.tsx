@@ -76,7 +76,7 @@ export function ProviderModelInventory({
       const resp = await adminFetch(api, `/api/admin/provider-models/${encodeURIComponent(model.id)}`, {
         method: "PATCH",
         body: JSON.stringify({
-          metadata: { ...model.metadata, ...(model.metadata?.pricing_status === "unverified" ? { pricing_status: "configured" } : {}), ...(model.modality === "rerank" || model.modality === "embedding" ? { retrieval_pricing_confirmed: "true", search_unit_price_usd: draft.searchUnit.trim() } : {}) },
+          metadata: { ...model.metadata, pricing_status: "configured", ...(model.modality === "rerank" || model.modality === "embedding" ? { retrieval_pricing_confirmed: "true", search_unit_price_usd: draft.searchUnit.trim() } : {}) },
           input_price_usd_per_1m: costs.input,
           cache_read_price_usd_per_1m: costs.cache,
           cache_write_price_usd_per_1m: costs.cacheWrite,
