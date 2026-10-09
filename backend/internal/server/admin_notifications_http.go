@@ -903,6 +903,12 @@ func (s *Server) applyApprovalRequest(request ApprovalRequest, actor AdminUser) 
 			Fields:      fieldsFromPayload(payload["fields"]),
 		}
 		if request.ResourceType == "quota-policies" {
+			if err := s.validateProjectQuotaApprovalTarget(request.ResourceID, payload); err != nil {
+				return nil, err
+			}
+			if err := s.validateDefaultUserQuotaMutation(actor, request.ResourceID, resource.Fields); err != nil {
+				return nil, err
+			}
 			if err := validateQuotaPolicyMinuteLimits(resource.Fields); err != nil {
 				return nil, err
 			}
