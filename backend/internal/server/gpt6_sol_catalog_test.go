@@ -44,6 +44,10 @@ func TestGPT6SolCatalogConsistency(t *testing.T) {
 						}
 					}
 					wantEfforts := "none,low,medium,high,xhigh,max"
+					wantTopP := id != "gpt-6.1-sol"
+					if slices.Contains(s.SupportedParameters, "top_p") != wantTopP || slices.Contains(p.SupportedParameters, "top_p") != wantTopP {
+						t.Fatal("top_p must be declared only for models supporting non-reasoning sampling")
+					}
 					if id == "gpt-6.1-sol" {
 						wantEfforts = "low,medium,high,xhigh,max"
 						if s.CacheReadPriceUSDPer1M != 0.1 || slices.Contains(s.SupportedParameters, "temperature") {
