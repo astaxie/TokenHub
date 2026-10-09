@@ -213,11 +213,13 @@ Provider Channels、Model Directory、Routing Policies に設定データがな�
 
 「公開状態」と「実行時ヘルス」は独立しています。`GET /v1/models` に含まれるには、外部 `Model` が有効、1 つ以上の `ModelRoute` が有効、さらに API Key にモデル許可リストがある場合は対象モデルが許可済みである必要があります。Provider または Provider Resource の一時的な不健全は一覧の所属を変更せず、現在のリクエストを処理できるかどうかだけに影響し、ディレクトリとルーティング診断に別状態として表示されます。外部モデルを非公開にすると `GET /v1/models` から削除されますが、後で再公開できるようマッピングは保持されます。
 
-### GPT-6 Astra
+### GPT-6 モデル
 
 標準モデルディレクトリと組み込み OpenAI Provider インベントリには `gpt-6-astra` が含まれます。モデル作成時に選択し、アクセス権のある上流ルートを設定してください。カタログへの掲載は上流のアクセス権を付与しません。Codex サブスクリプションのインベントリは引き続きアカウントから取得します。推論レベルは `low`、`medium`、`high`、`xhigh`、`max` に対応し、Codex プローブと Anthropic から Codex への変換は `max` を保持します。
 
 テンプレートは OpenAI Standard の 100 万トークン単価を使用します。入力 10 ドル、キャッシュ読み取り 1 ドル、キャッシュ書き込み 12.50 ドル、出力 50 ドルです。入力が 272,000 トークンを超える場合、OpenAI はリクエスト全体の入力とキャッシュ単価を 2 倍、出力単価を 1.5 倍にします。Provider の段階別メタデータにはこの違いを記録していますが、標準テンプレートの固定単価ではコンテキスト別料金や Batch/Flex/Fast の割引・割増は自動適用されません。適用料金を別途設定してください。[OpenAI モデル仕様](https://developers.openai.com/api/docs/models/gpt-6-astra)を参照してください。
+
+同じカタログには `gpt-6.1-sol`、`gpt-6-sol`、`gpt-6-luna` も含まれ、いずれもコンテキストウィンドウは 1,050,000 トークン、最大出力は 128,000 トークンです。GPT-6.1 Sol の推論レベルは `low`、`medium`、`high`、`xhigh`、`max` です。ツール呼び出しには Responses が必要で、Chat Completions はツールなしのリクエストに対応します。GPT-6 Sol と GPT-6 Luna は `none` にも対応します。Chat Completions でのツール呼び出しには `reasoning_effort=none` を設定し、推論を伴うツール呼び出しには Responses を使用してください。推論が有効な場合、サンプリングパラメーターには対応しません。これらはカタログメタデータの追加であり、利用前に権限のある Provider ルートを設定して上流へのアクセスを検証してください。公式仕様の [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol)、[GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) を参照してください。
 
 
 ## カスタム上流リクエストヘッダー

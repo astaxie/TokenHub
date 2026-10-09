@@ -213,11 +213,13 @@ When Provider Channels, Model Directory, or Routing Policies has no configured d
 
 Publication and runtime health are different states. Membership in `GET /v1/models` requires an active external `Model`, at least one active `ModelRoute`, and API-key access when a model allowlist is configured. It does not change when a Provider or Provider Resource is temporarily unhealthy. Health affects whether a request can be served and is shown separately in the directory and routing diagnostics. Disabling the external model removes it from `GET /v1/models` while retaining its mappings for later re-publication.
 
-### GPT-6 Astra
+### GPT-6 models
 
 The standard model directory and built-in OpenAI Provider inventory include `gpt-6-astra`. Select it when creating a model and configure an authorized upstream route; catalog inclusion does not grant upstream access. Codex subscription inventory remains account-discovered. Supported reasoning efforts are `low`, `medium`, `high`, `xhigh`, and `max`; Codex probes and Anthropic-to-Codex conversion preserve `max`.
 
 The template uses OpenAI Standard prices per million tokens: $10 input, $1 cached input, $12.50 cache writes, and $50 output. Above 272,000 input tokens, OpenAI doubles input/cache rates and multiplies output rates by 1.5 for the full request. Provider tier metadata records this distinction; the standard template's fixed prices do not automatically apply context tiers or Batch/Flex/Fast discounts and surcharges. Configure applicable pricing separately. See [OpenAI model specifications](https://developers.openai.com/api/docs/models/gpt-6-astra).
+
+The same catalogs also include `gpt-6.1-sol`, `gpt-6-sol`, and `gpt-6-luna`, each with a 1,050,000-token context window and 128,000-token maximum output. GPT-6.1 Sol supports `low`, `medium`, `high`, `xhigh`, and `max` reasoning efforts; tool calls require Responses, and Chat Completions supports requests without tools. GPT-6 Sol and GPT-6 Luna additionally support `none`; their Chat Completions tool calls require `reasoning_effort=none`, while tools with reasoning require Responses. Sampling parameters are unsupported while reasoning is enabled. These entries add catalog metadata only: configure an authorized Provider route and validate upstream access before use. See the official specifications for [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol), [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol), and [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna).
 
 
 ## Custom Upstream Request Headers
