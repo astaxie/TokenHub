@@ -438,6 +438,8 @@ Token 用量与成本只挂在 generation span 上，绝不挂在根 span 上。
 
 管理员 OAuth 登录完成时，重定向 URL 不会携带管理员会话 Token。TokenHub 只向控制台返回短时、单次使用的 code；控制台完成一次交换后，仅在当前浏览器标签页保留得到的会话。刷新该标签页仍会保持登录；关闭标签页后需要重新登录。
 
+OAuth 登录失败时，登录页会保留错误提示，可在同一标签页重新发起登录。已知错误码用于区分身份源授权（`provider_error`）、Token 交换（`token_exchange_failed`）、用户信息读取（`userinfo_failed`）或用户同步（`user_sync_failed`）阶段。对接 Keycloak 等 OIDC 身份源时，请检查登记的公网回调地址、客户端凭据，以及稳定用户标识和邮箱的 Claim 映射。邮箱明确标记为 `email_verified: false` 时会拒绝登录；部分已支持的企业身份源可在未提供邮箱时，根据稳定的用户 Subject 派生内部邮箱。请求支持时只分享错误码和脱敏配置，不要提供 Token、授权码或 Client Secret。
+
 身份源 Client Secret 与通知渠道敏感字段（包括 Webhook URL、SMTP 密码、Bot Token、签名密钥和 Access Token）在管理 API 响应和 CSV 导出中始终以掩码展示，并在审计快照中脱敏。告警投递输出不会暴露包含凭据的完整 URL：URL 目标只保留 scheme 和 host，路径、query 以及错误文本中匹配到的凭据都会被掩码；该规则同样覆盖告警投递 CSV 导出和投递审计快照。
 
 更新身份源或通知渠道时，空字符串、掩码 `********`、`••••••••` 或 `[redacted]` 都表示“保留已存储的 Secret”。只有发送 JSON `null` 才会显式清空 Secret。清空通知渠道 Secret 时，还会一并删除相关别名，例如 `url` / `webhook_url`、`smtp_password` / `password`，以及当前渠道对应的 Token 或 Secret 别名。只有平台管理员可以新增、修改或删除身份源；安全管理员只能读取已掩码的配置。
