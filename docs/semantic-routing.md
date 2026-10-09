@@ -1,12 +1,12 @@
-# Jev model routing strategy
+# Smart routing strategy
 
-Jev is a routing strategy alongside fixed weights, adaptive, quality, cost, primary/backup, and balanced routing. A client sends an ordinary public model name to TokenHub. TokenHub asks Jev to classify the latest user task and choose a configured model, then calls that model through its existing Provider adapter. Jev does not generate the answer and does not need to be registered as a Provider.
+Smart routing (strategy `semantic`) is a routing strategy alongside fixed weights, adaptive, quality, cost, primary/backup, and balanced routing. A client sends an ordinary public model name to TokenHub. TokenHub asks a classifier to classify the latest user task and choose a configured model, then calls that model through its existing Provider adapter. The classifier is either TypeSafe Jev or one of TokenHub's own public models (see [Model evaluator](#model-evaluator)). The classifier does not generate the answer, and Jev does not need to be registered as a Provider. The strategy was first named `jev`; that value is still accepted and behaves identically.
 
 ## Configure and call
 
-1. Create a public model, for example `auto-chat`, and add routes to the approved upstream models. This is an ordinary model alias: any name can use any routing strategy; the name does not activate Jev.
-2. In **Routing → Model routing policy**, select **Jev Smart Routing**.
-3. Select candidate models from the existing routes, describe each model's task criteria, enter the selection instructions, and choose a default model and minimum confidence. Apply the strategy.
+1. Create a public model, for example `auto-chat`, and add routes to the approved upstream models. This is an ordinary model alias: any name can use any routing strategy; the name does not activate smart routing.
+2. In **Routing → Model routing policy**, select **Smart Routing**.
+3. Choose the classifier: TypeSafe Jev, or a TokenHub model (see [Model evaluator](#model-evaluator)). Select candidate models from the existing routes, describe each model's task criteria, enter the selection instructions, and choose a default model. TypeSafe also needs a minimum confidence. Apply the strategy.
 4. Call `/v1/chat/completions` or `/v1/responses` with that public model name. Both endpoints support streaming. Tools and other generation parameters remain in the target-model request.
 
 For example, one candidate can handle extraction and translation, while another handles complex code changes. Describe suitability using workload evidence; a model name alone does not establish quality. Multiple resource accounts for the same Provider/model appear as one candidate. Other routing strategies use the same public-model and route configuration flow.
@@ -23,7 +23,7 @@ After changing a route's Provider or upstream model, the Jev editor refreshes th
 
 ## Server configuration
 
-External Jev calls default to off. The server must allow the project and hold the TypeSafe key:
+Jev classification defaults to off. The server must enable it and allow the project; the TypeSafe evaluator also needs its key:
 
 ```dotenv
 TOKENHUB_SEMANTIC_ROUTING_ENABLED=true
@@ -33,7 +33,22 @@ TOKENHUB_TYPESAFE_MODEL=jev-1.13.0
 TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS=1000
 ```
 
-The project allowlist contains exact IDs separated by commas. An empty list permits no external evaluation; startup rejects an enabled deployment without a key or allowlist. Pin the evaluator version. The timeout covers candidate metadata lookup and evaluation, defaults to 1000 ms, and cannot exceed 10000 ms. Each process permits eight simultaneous evaluations, without a queue or retry.
+The project allowlist contains exact IDs separated by commas. An empty list permits no external evaluation; startup rejects an enabled deployment without an allowlist. The TypeSafe key is required only by policies that use the TypeSafe evaluator; without it they fall back to the default model. Pin the evaluator version. The timeout covers candidate metadata lookup and evaluation, defaults to 1000 ms, and cannot exceed 10000 ms. Each process permits eight simultaneous evaluations, without a queue or retry.
+
+## Model evaluator
+
+Instead of TypeSafe Jev (`evaluator` `jev`, the default), a policy can ask one of TokenHub's own public models to classify the task. Set `evaluator` to `model` and `classifier_model` to a public model name. `classifier_timeout_ms` bounds the classification (100–10000, default 3000). In the console, choose **Classifier → TokenHub model**. The model evaluator needs explicit candidates; legacy overlays without candidates only use TypeSafe, so a model evaluator on one is rejected.
+
+```json
+{"mode":"enforce","min_confidence":0.65,"instructions":"Choose using the configured task criteria.","default_candidate_id":"fast","evaluator":"model","classifier_model":"router-small","classifier_timeout_ms":3000,"candidates":[...]}
+```
+
+- The classifier model must be active, differ from the routed model, have an active route, and use no semantic routing of its own (neither the Jev strategy nor a legacy overlay). Saving the policy checks this. A classifier model changed later is refused at request time, and the request falls back.
+- TokenHub sends the classification through its own `/v1/chat/completions` path as an ordinary request of the same project and API key, with User-Agent `tokenhub-router/1` and the caller's client IP. Model access, rate limits, quotas, concurrency limits, privacy and guardrail hooks, routing, failover, request logging and billing apply to it as to any other request. If the key may not use the classifier model, is out of quota, or is at its concurrency limit, the request uses the default model; a key limited to one concurrent request always does. The `routing.semantic` audit event links the classifier request through `classifier_request_id`.
+- The prompt lists only the candidates' criteria as numbered options, the selection instructions, and the latest user text encoded as a JSON string. Candidate identifiers and model names are not sent. The request uses `temperature` 0 and `max_tokens` 8. The answer must be exactly one option number; `0` means no preference, and any other answer is an invalid decision. Choose a fast model without extended reasoning.
+- The model evaluator reports no confidence. `min_confidence` is still required by the API but does not apply, and the audit event omits confidence and probabilities.
+- The server gate and project allowlist apply as for TypeSafe; the TypeSafe key is not needed. The classifier's upstream receives the latest user text, so choose a classifier model whose providers are approved for that data. Criteria are advisory routing hints, never an authorization or data-residency boundary.
+- A timeout or an upstream 502, 503 or 504 pauses the classifier for that project for 30 seconds (`evaluator_cooldown`). Local rejections, invalid answers and callers that disconnect do not. The timeout bounds admission and the upstream call; the classifier request still settles before routing continues. Each process runs at most eight classifications at once.
 
 ## Selection and fallback
 
@@ -55,11 +70,11 @@ Detailed route bindings are shared through SQLite or PostgreSQL and expire after
 
 ## Data handling and billing
 
-The classifier receives only the latest eligible user text, selection instructions, candidate identifiers, upstream model names and configured task criteria. System/developer instructions, assistant history, tool definitions/results, media, credentials, headers and arbitrary model metadata are not sent to Jev. The full processed generation request is preserved for the selected Provider. Text over 8192 bytes, missing user text, or non-text content in the latest user message uses the fallback instead of truncating or sending media.
+The TypeSafe classifier receives only the latest eligible user text, selection instructions, candidate identifiers, upstream model names and configured task criteria. System/developer instructions, assistant history, tool definitions/results, media, credentials, headers and arbitrary model metadata are not sent to Jev. The full processed generation request is preserved for the selected Provider. Text over 8192 bytes, missing user text, or non-text content in the latest user message uses the fallback instead of truncating or sending media.
 
 The fixed endpoint is `https://api.typesafe.ai/v1/systemone`; redirects are rejected. Jev returns a constrained TypeSafe `Choice`. TokenHub checks candidate membership and confidence locally. Restrict external routing to approved workloads. The initial `0.65` threshold is a starting value, not a quality guarantee: confidence is a choice distribution, not task success probability.
 
-Audit action `routing.semantic` records selection/fallback, strategy, protocol, selected model and candidate ID, evaluator version, confidence/probabilities, evaluator tokens and latency under the gateway request ID. It contains no user text or credentials. Generation request logs retain the executed upstream model. Public-model pricing still applies; the alias is not automatically repriced by selected model. Evaluator usage is separate and is not added to the generation token usage or customer bill.
+Audit action `routing.semantic` records selection/fallback, strategy, protocol, selected model and candidate ID, evaluator version, confidence/probabilities, evaluator tokens and latency under the gateway request ID. It contains no user text or credentials. Generation request logs retain the executed upstream model. Public-model pricing still applies; the alias is not automatically repriced by selected model. TypeSafe evaluator usage is separate and is not added to the generation token usage or customer bill. Model evaluator usage is billed as its own request, as described in [Model evaluator](#model-evaluator).
 
 ## Administration API and compatibility
 
@@ -67,7 +82,7 @@ Audit action `routing.semantic` records selection/fallback, strategy, protocol, 
 
 ```json
 {
-  "strategy": "jev",
+  "strategy": "semantic",
   "routes": [
     {"route_id":"route_fast","weight":100,"quality_score":50,"cost_score":50},
     {"route_id":"route_deep","weight":100,"quality_score":50,"cost_score":50}
@@ -85,9 +100,9 @@ Audit action `routing.semantic` records selection/fallback, strategy, protocol, 
 }
 ```
 
-The Jev strategy requires `enforce`, explicit instructions, 1–32 distinct Provider/model candidates, nonempty criteria, a default in that set, and an explicit finite threshold between 0 and 1. Instructions are limited to 4096 bytes and each criterion to 2048 bytes. Candidate IDs must be unique and cannot be `no_preference`. Every candidate must reference the public model's routes; invalid settings roll back the entire update.
+The smart routing strategy (`semantic`, or its original name `jev`) requires `enforce`, explicit instructions, 1–32 distinct Provider/model candidates, nonempty criteria, a default in that set, and an explicit finite threshold between 0 and 1. The threshold stays required with the model evaluator for API compatibility, which ignores it. Instructions are limited to 4096 bytes and each criterion to 2048 bytes. Candidate IDs must be unique and cannot be `no_preference`. Every candidate must reference the public model's routes; invalid settings roll back the entire update.
 
-Policy remains in `Model.metadata.tokenhub_semantic_routing`. Ordinary model edits and catalog imports preserve it. Previously saved `off`/`shadow`/`enforce` overlays without explicit candidates retain the old Chat-only, same-priority behavior until reconfigured. The console identifies such legacy settings. Applying an ordinary strategy disables the overlay; applying Jev replaces it with explicit candidates. Omission of `semantic_routing` preserves legacy overlays; switching an explicit Jev policy to an ordinary strategy disables classification even when this field is omitted. Choosing `jev` requires the full policy. The server-managed `response_binding_required` flag remains true once the alias uses Jev: future Responses on that alias still save and validate bindings after strategy changes, and unknown, foreign or expired continuations remain rejected. Clients cannot clear this flag through policy updates.
+Policy remains in `Model.metadata.tokenhub_semantic_routing`. Ordinary model edits and catalog imports preserve it. Previously saved `off`/`shadow`/`enforce` overlays without explicit candidates retain the old Chat-only, same-priority behavior until reconfigured. The console identifies such legacy settings. Applying an ordinary strategy disables the overlay; applying Jev replaces it with explicit candidates. Omission of `semantic_routing` preserves legacy overlays; switching an explicit Jev policy to an ordinary strategy disables classification even when this field is omitted. Choosing `semantic` or `jev` requires the full policy; the console saves `semantic`. The server-managed `response_binding_required` flag remains true once the alias uses Jev: future Responses on that alias still save and validate bindings after strategy changes, and unknown, foreign or expired continuations remain rejected. Clients cannot clear this flag through policy updates.
 
 Schema migration 6 adds the durable `jev_response_bindings` table and expiry index. Startup applies this additive migration before admitting requests; no baseline schema is rewritten. Roll back routing behavior by selecting an ordinary strategy, or disable external evaluation with the server gate. Neither removes existing continuation bindings. Binary rollback must satisfy the database compatibility manifest; do not delete migration history or the binding table to force it.
 

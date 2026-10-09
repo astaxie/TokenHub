@@ -22,6 +22,7 @@ import (
 
 type Server struct {
 	semanticRouter          semanticEvaluator
+	modelClassifier         *jevModelClassifier
 	pluginRuntimeMu         sync.RWMutex
 	pluginLifecycleMu       sync.Mutex
 	store                   Store
@@ -206,6 +207,7 @@ func newWithConfig(store Store, config Config, billingDependencies BillingDepend
 			Timeout: time.Duration(config.GuardrailModelTimeoutSeconds) * time.Second,
 		})),
 		semanticRouter:      newJevRoutingClient(config),
+		modelClassifier:     newJevModelClassifier(),
 		upstreamClient:      client,
 		pluginInstallClient: newPluginDownloadClient(nil),
 		pluginMarketplaceClient: &http.Client{

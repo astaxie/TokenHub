@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -23,7 +24,7 @@ func (s *GormStore) UpdateModelRoutePolicy(modelName string, policy ModelRoutePo
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model, "name = ?", modelName).Error; err != nil {
 			return notFound(err, "model_not_found", "Model not found")
 		}
-		if policy.Strategy != RouteStrategyJev {
+		if !isSemanticStrategy(policy.Strategy) {
 			saved := modelSemanticRoutingPolicy(model)
 			if policy.SemanticRouting != nil {
 				saved = *policy.SemanticRouting
@@ -43,8 +44,13 @@ func (s *GormStore) UpdateModelRoutePolicy(modelName string, policy ModelRoutePo
 		if err := validateJevStrategyPolicy(policy, routes); err != nil {
 			return err
 		}
+		if isSemanticStrategy(policy.Strategy) {
+			if err := validateJevClassifierModel(tx, modelName, *policy.SemanticRouting); err != nil {
+				return err
+			}
+		}
 		previous := modelSemanticRoutingPolicy(model)
-		if previous.ResponseBindingRequired || len(previous.Candidates) > 0 || policy.Strategy == RouteStrategyJev {
+		if previous.ResponseBindingRequired || len(previous.Candidates) > 0 || isSemanticStrategy(policy.Strategy) {
 			if policy.SemanticRouting == nil {
 				policy.SemanticRouting = &previous
 			}
@@ -91,4 +97,45 @@ func (s *GormStore) UpdateModelRoutePolicy(modelName string, policy ModelRoutePo
 		return saveSemanticRoutingPolicy(tx, modelName, policy.SemanticRouting)
 	})
 	return updated, err
+}
+
+// validateJevClassifierModel checks that a model evaluator names a public model
+// that can answer on its own: active, not the routed model, with an active route,
+// and not itself routed by Jev. The gateway re-checks nesting at request time.
+func validateJevClassifierModel(tx *gorm.DB, modelName string, policy SemanticRoutingPolicy) error {
+	if !policy.usesModelEvaluator() {
+		return nil
+	}
+	invalid := func(message string) error {
+		return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", message)
+	}
+	if policy.ClassifierModel == modelName {
+		return invalid("The classifier model must differ from the routed model")
+	}
+	var classifier Model
+	if err := tx.First(&classifier, "name = ?", policy.ClassifierModel).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return invalid("The classifier model does not exist")
+		}
+		return err
+	}
+	if classifier.Status != StatusActive {
+		return invalid("The classifier model is not active")
+	}
+	if modelSemanticRoutingPolicy(classifier).Mode != "off" {
+		return invalid("The classifier model must not use smart routing")
+	}
+	var routes []ModelRoute
+	if err := tx.Where("model_name = ? AND status = ?", classifier.Name, StatusActive).Find(&routes).Error; err != nil {
+		return err
+	}
+	if len(routes) == 0 {
+		return invalid("The classifier model has no active route")
+	}
+	for _, route := range routes {
+		if route.Status == StatusActive && isSemanticStrategy(routeStrategy(route)) {
+			return invalid("The classifier model must not use smart routing")
+		}
+	}
+	return nil
 }

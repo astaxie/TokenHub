@@ -7,7 +7,7 @@ import { providerTypeLabelFromData } from "../domain/labels";
 import { tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 
-import { readSemanticRoutingPolicy, initialJevPolicy, validJevPolicy, SemanticRoutingFields } from "./semantic-routing-policy";
+import { readSemanticRoutingPolicy, initialJevPolicy, validJevPolicy, jevClassifierModels, SemanticRoutingFields } from "./semantic-routing-policy";
 
 const strategyOptions: Array<{
   value: ModelRouteStrategy;
@@ -21,13 +21,13 @@ const strategyOptions: Array<{
   example: string;
 }> = [
   {
-    value: "jev",
-    label: "Jev 智能路由",
+    value: "semantic",
+    label: "智能路由",
     summary: "根据请求内容选择合适的候选模型",
     icon: Activity,
     badge: "语义选模",
     useCase: "希望不同任务自动使用不同模型",
-    behavior: "Jev 按适用条件选择模型，TokenHub 再调用目标模型",
+    behavior: "分类器按适用条件选择模型，TokenHub 再调用目标模型",
     parameterHelp: "配置候选模型的适用条件、选择指令和默认模型",
     example: "简单提取选择轻量模型，复杂分析选择推理模型",
   },
@@ -161,7 +161,7 @@ export function ModelRoutingPolicyEditor({
     const draft = drafts[route.id];
     return !draft || draft.weight !== positiveOr(route.weight, 100) || draft.quality_score !== positiveOr(route.quality_score, 50) || draft.cost_score !== positiveOr(route.cost_score, 50);
   });
-  const invalid = (strategy === "jev" && !validJevPolicy(semantic)) || routes.some((route) => {
+  const invalid = (strategy === "semantic" && !validJevPolicy(semantic, jevClassifierModels(data, model.name))) || routes.some((route) => {
     const draft = drafts[route.id];
     return !draft || !Number.isFinite(draft.weight) || !Number.isFinite(draft.quality_score) || !Number.isFinite(draft.cost_score) || draft.weight < 1 || draft.quality_score < 1 || draft.quality_score > 100 || draft.cost_score < 1 || draft.cost_score > 100;
   });
@@ -174,7 +174,7 @@ export function ModelRoutingPolicyEditor({
 
   function savePolicy() {
     onSave(model, {
-      semantic_routing: strategy === "jev" ? { ...semantic, mode: "enforce" } : validJevPolicy(semantic) ? { ...semantic, mode: "off" } : { mode: "off", min_confidence: 0.65 },
+      semantic_routing: strategy === "semantic" ? { ...semantic, mode: "enforce" } : validJevPolicy(semantic) ? { ...semantic, mode: "off" } : { mode: "off", min_confidence: 0.65 },
       strategy,
       routes: routes.map((route) => ({ route_id: route.id, ...drafts[route.id] })),
     });
@@ -274,8 +274,8 @@ export function ModelRoutingPolicyEditor({
         <div className="route-policy-share-note">{tx("项目作用域过滤后将按可用 Provider 重新计算占比。")}</div>
       ) : null}
 
-      {legacySemantic ? <p className="muted">{tx("此模型仍使用旧版 Jev 附加配置。应用当前策略后将替换旧配置；选择 Jev 智能路由可配置明确的候选模型。")}</p> : null}
-      {strategy === "jev" ? <SemanticRoutingFields value={semantic} routes={routes} data={data} disabled={loading} onChange={setSemantic} /> : null}
+      {legacySemantic ? <p className="muted">{tx("此模型仍使用旧版 Jev 附加配置。应用当前策略后将替换旧配置；选择智能路由可配置明确的候选模型。")}</p> : null}
+      {strategy === "semantic" ? <SemanticRoutingFields value={semantic} routes={routes} data={data} disabled={loading} onChange={setSemantic} /> : null}
 
       <div className="route-policy-list">
         {routes.map((route, index) => {
@@ -401,7 +401,7 @@ function RouteParameterControl({
   disabled: boolean;
   onChange: (key: keyof RouteDraft, value: number) => void;
 }) {
-  if (strategy === "jev") return <div className="route-policy-order-value">{tx("按模型适用条件选择")}</div>;
+  if (strategy === "semantic") return <div className="route-policy-order-value">{tx("按模型适用条件选择")}</div>;
   if (strategy === "priority_only") {
     return <div className="route-policy-order-value">{tx("从上到下")}</div>;
   }
@@ -437,6 +437,8 @@ function RouteParameterControl({
 }
 
 function normalizeStrategy(value?: string): ModelRouteStrategy {
+  // "jev" is the original name of smart routing; saving writes "semantic".
+  if (value === "jev") return "semantic";
   return strategyOptions.some((option) => option.value === value) ? value as ModelRouteStrategy : "balanced";
 }
 

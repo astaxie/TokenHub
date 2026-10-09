@@ -5,12 +5,24 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 const semanticRoutingMetadataKey = "tokenhub_semantic_routing"
+
+// Smart routing evaluators. Jev is TypeSafe's external decision API; the model
+// evaluator asks a TokenHub public model through the gateway itself.
+const (
+	semanticEvaluatorJev   = "jev"
+	semanticEvaluatorModel = "model"
+
+	defaultClassifierTimeoutMS = 3000
+	minClassifierTimeoutMS     = 100
+	maxClassifierTimeoutMS     = 10000
+)
 
 // SemanticRoutingPolicy configures the Jev strategy. Mode is retained for
 // previously saved overlays; new Jev strategies use explicit model choices.
@@ -21,6 +33,36 @@ type SemanticRoutingPolicy struct {
 	Instructions            string                     `json:"instructions,omitempty"`
 	DefaultCandidateID      string                     `json:"default_candidate_id,omitempty"`
 	Candidates              []SemanticRoutingCandidate `json:"candidates,omitempty"`
+	// Evaluator is "" or "jev" for the TypeSafe Jev decision API, or "model" for
+	// ClassifierModel, a public model called through the gateway.
+	Evaluator           string `json:"evaluator,omitempty"`
+	ClassifierModel     string `json:"classifier_model,omitempty"`
+	ClassifierTimeoutMS int    `json:"classifier_timeout_ms,omitempty"`
+}
+
+func isSemanticStrategy(strategy string) bool {
+	return strategy == RouteStrategySemantic || strategy == RouteStrategyJev
+}
+
+// semanticStrategyOf is the strategy name the model's routes were saved with.
+func semanticStrategyOf(routes []RouteSelection) string {
+	for _, route := range routes {
+		if strategy := routeStrategy(route.Route); isSemanticStrategy(strategy) {
+			return strategy
+		}
+	}
+	return RouteStrategySemantic
+}
+
+func (p SemanticRoutingPolicy) usesModelEvaluator() bool {
+	return p.Evaluator == semanticEvaluatorModel
+}
+
+func (p SemanticRoutingPolicy) classifierTimeout() time.Duration {
+	if p.ClassifierTimeoutMS <= 0 {
+		return defaultClassifierTimeoutMS * time.Millisecond
+	}
+	return time.Duration(p.ClassifierTimeoutMS) * time.Millisecond
 }
 
 type SemanticRoutingCandidate struct {
@@ -70,11 +112,35 @@ func validateSemanticRoutingPolicy(policy *SemanticRoutingPolicy) error {
 	if len(policy.Candidates) > 0 && !seen[policy.DefaultCandidateID] {
 		return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The default model must be a configured candidate")
 	}
+	return validateSemanticEvaluator(policy)
+}
+
+func validateSemanticEvaluator(policy *SemanticRoutingPolicy) error {
+	switch policy.Evaluator {
+	case "", semanticEvaluatorJev:
+		if policy.ClassifierModel != "" || policy.ClassifierTimeoutMS != 0 {
+			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "Classifier model settings require the model evaluator")
+		}
+	case semanticEvaluatorModel:
+		// Legacy overlays without explicit candidates only know TypeSafe; a model
+		// evaluator there would silently send the text to TypeSafe instead.
+		if len(policy.Candidates) == 0 {
+			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The model evaluator requires explicit candidates")
+		}
+		if strings.TrimSpace(policy.ClassifierModel) == "" || len(policy.ClassifierModel) > 200 {
+			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The model evaluator requires a classifier model")
+		}
+		if policy.ClassifierTimeoutMS != 0 && (policy.ClassifierTimeoutMS < minClassifierTimeoutMS || policy.ClassifierTimeoutMS > maxClassifierTimeoutMS) {
+			return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The classifier timeout must be between 100 and 10000 milliseconds")
+		}
+	default:
+		return NewHTTPError(http.StatusBadRequest, "invalid_semantic_routing_policy", "The smart routing evaluator must be jev or model")
+	}
 	return nil
 }
 
 func validateJevStrategyPolicy(policy ModelRoutePolicy, routes []ModelRoute) error {
-	if policy.Strategy != RouteStrategyJev {
+	if !isSemanticStrategy(policy.Strategy) {
 		return nil
 	}
 	p := policy.SemanticRouting

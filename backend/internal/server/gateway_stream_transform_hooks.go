@@ -103,7 +103,7 @@ func (w *gatewayStreamTransformWriter) handleEvent(event serverSentEvent) error 
 	if !emit {
 		return nil
 	}
-	if w.protocol == providerRouteProtocolResponses && (routeStrategy(w.route.Route) == RouteStrategyJev || w.call.JevResponseBound) {
+	if w.protocol == providerRouteProtocolResponses && (isSemanticStrategy(routeStrategy(w.route.Route)) || w.call.JevResponseBound) {
 		var upstream, public struct {
 			Response json.RawMessage `json:"response"`
 		}

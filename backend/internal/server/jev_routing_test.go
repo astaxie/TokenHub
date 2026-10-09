@@ -36,6 +36,24 @@ func jevFixture(t *testing.T) (*Server, RoutedCall, ChatCompletionRequest, Model
 	return server, routed, request, policy
 }
 
+// strategyFixture is jevFixture saved under the given smart routing strategy
+// name: "jev" or its generic name "semantic".
+func strategyFixture(t *testing.T, strategy string) (*Server, RoutedCall, ChatCompletionRequest, ModelRoutePolicy) {
+	t.Helper()
+	server, routed, req, policy := jevFixture(t)
+	if strategy == RouteStrategyJev {
+		return server, routed, req, policy
+	}
+	policy.Strategy = strategy
+	if result := doJSON(t, server.Handler(), http.MethodPatch, "/api/admin/model-routing-policies/auto-chat", policy, ""); result.Code != 200 {
+		t.Fatalf("configure %s: %d %s", strategy, result.Code, result.Body)
+	}
+	for i := range routed.Routes {
+		routed.Routes[i].Route.Strategy = strategy
+	}
+	return server, routed, req, policy
+}
+
 func TestJevStrategySelectsAcrossPriorityTiers(t *testing.T) {
 	server, routed, req, _ := jevFixture(t)
 	routed.Routes[1].Route.Priority = 9
@@ -195,77 +213,81 @@ func jevHTTPBody(responses, stream bool) map[string]any {
 }
 
 func TestJevHTTPChatResponsesStreamAndFailover(t *testing.T) {
-	for _, responses := range []bool{false, true} {
-		for _, stream := range []bool{false, true} {
-			for _, fail := range []bool{false, true} {
-				t.Run(fmt.Sprintf("responses_%v_stream_%v_failover_%v", responses, stream, fail), func(t *testing.T) {
-					server, _, _, _ := jevFixture(t)
-					hits := jevHTTPUpstreams(t, server, fail)
-					calls := 0
-					server.semanticRouter = semanticTestEvaluator(func(_ context.Context, text string, _ []semanticCandidate, _ string) (semanticDecision, error) {
-						calls++
-						if text != "synthetic task" {
-							t.Errorf("unexpected classifier text %q", text)
+	for _, strategy := range []string{RouteStrategyJev, RouteStrategySemantic} {
+		for _, responses := range []bool{false, true} {
+			for _, stream := range []bool{false, true} {
+				for _, fail := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s_responses_%v_stream_%v_failover_%v", strategy, responses, stream, fail), func(t *testing.T) {
+						server, _, _, _ := strategyFixture(t, strategy)
+						hits := jevHTTPUpstreams(t, server, fail)
+						calls := 0
+						server.semanticRouter = semanticTestEvaluator(func(_ context.Context, text string, _ []semanticCandidate, _ string) (semanticDecision, error) {
+							calls++
+							if text != "synthetic task" {
+								t.Errorf("unexpected classifier text %q", text)
+							}
+							return semanticDecision{Choice: "choice_1", Confidence: 0.9}, nil
+						})
+						path := "/v1/chat/completions"
+						if responses {
+							path = "/v1/responses"
 						}
-						return semanticDecision{Choice: "choice_1", Confidence: 0.9}, nil
+						result := doJSON(t, server.Handler(), http.MethodPost, path, jevHTTPBody(responses, stream), "thk_semantic_test")
+						if result.Code != 200 || calls != 1 || hits.Load() != 1 {
+							t.Fatalf("status=%d calls=%d hits=%d: %s", result.Code, calls, hits.Load(), result.Body)
+						}
+						want := "model_1"
+						if fail {
+							want = "model_0"
+						}
+						logs := server.store.ListRequestLogs()
+						if len(logs) != 1 || logs[0].ProviderModel != want {
+							t.Fatalf("wrong executed model: %+v", logs)
+						}
 					})
-					path := "/v1/chat/completions"
-					if responses {
-						path = "/v1/responses"
-					}
-					result := doJSON(t, server.Handler(), http.MethodPost, path, jevHTTPBody(responses, stream), "thk_semantic_test")
-					if result.Code != 200 || calls != 1 || hits.Load() != 1 {
-						t.Fatalf("status=%d calls=%d hits=%d: %s", result.Code, calls, hits.Load(), result.Body)
-					}
-					want := "model_1"
-					if fail {
-						want = "model_0"
-					}
-					logs := server.store.ListRequestLogs()
-					if len(logs) != 1 || logs[0].ProviderModel != want {
-						t.Fatalf("wrong executed model: %+v", logs)
-					}
-				})
+				}
 			}
 		}
 	}
 }
 
 func TestJevResponsesContinuationPinsSelectedRoute(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		t.Run(fmt.Sprintf("initial_stream_%v", stream), func(t *testing.T) {
-			server, _, _, _ := jevFixture(t)
-			hits := jevHTTPUpstreams(t, server, false)
-			calls := 0
-			server.semanticRouter = semanticTestEvaluator(func(context.Context, string, []semanticCandidate, string) (semanticDecision, error) {
-				calls++
-				return semanticDecision{Choice: "choice_1", Confidence: 0.9}, nil
+	for _, strategy := range []string{RouteStrategyJev, RouteStrategySemantic} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s_initial_stream_%v", strategy, stream), func(t *testing.T) {
+				server, _, _, _ := strategyFixture(t, strategy)
+				hits := jevHTTPUpstreams(t, server, false)
+				calls := 0
+				server.semanticRouter = semanticTestEvaluator(func(context.Context, string, []semanticCandidate, string) (semanticDecision, error) {
+					calls++
+					return semanticDecision{Choice: "choice_1", Confidence: 0.9}, nil
+				})
+				first := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", jevHTTPBody(true, stream), "thk_semantic_test")
+				if first.Code != 200 {
+					t.Fatal(first.Body)
+				}
+				body := jevHTTPBody(true, false)
+				body["previous_response_id"] = "resp_model_1"
+				second := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", body, "thk_semantic_test")
+				if second.Code != 200 || calls != 1 || hits.Load() != 2 {
+					t.Fatalf("continuation reclassified or switched: %d calls=%d hits=%d %s", second.Code, calls, hits.Load(), second.Body)
+				}
+				_, _, err := server.store.CreateAPIKey("prj_semantic", APIKey{ID: "key_other", Name: "Other", Status: StatusActive}, "thk_other_test")
+				if err != nil {
+					t.Fatal(err)
+				}
+				denied := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", body, "thk_other_test")
+				if denied.Code != 409 || hits.Load() != 2 {
+					t.Fatalf("cross-key continuation reached upstream: %d %s", denied.Code, denied.Body)
+				}
+				if err := server.store.(*GormStore).db.Model(&Provider{}).Where("id = ?", "provider_1").Update("status", StatusDisabled).Error; err != nil {
+					t.Fatal(err)
+				}
+				unavailable := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", body, "thk_semantic_test")
+				if unavailable.Code != 409 || calls != 1 {
+					t.Fatalf("unavailable continuation silently switched: %d %s", unavailable.Code, unavailable.Body)
+				}
 			})
-			first := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", jevHTTPBody(true, stream), "thk_semantic_test")
-			if first.Code != 200 {
-				t.Fatal(first.Body)
-			}
-			body := jevHTTPBody(true, false)
-			body["previous_response_id"] = "resp_model_1"
-			second := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", body, "thk_semantic_test")
-			if second.Code != 200 || calls != 1 || hits.Load() != 2 {
-				t.Fatalf("continuation reclassified or switched: %d calls=%d hits=%d %s", second.Code, calls, hits.Load(), second.Body)
-			}
-			_, _, err := server.store.CreateAPIKey("prj_semantic", APIKey{ID: "key_other", Name: "Other", Status: StatusActive}, "thk_other_test")
-			if err != nil {
-				t.Fatal(err)
-			}
-			denied := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", body, "thk_other_test")
-			if denied.Code != 409 || hits.Load() != 2 {
-				t.Fatalf("cross-key continuation reached upstream: %d %s", denied.Code, denied.Body)
-			}
-			if err := server.store.(*GormStore).db.Model(&Provider{}).Where("id = ?", "provider_1").Update("status", StatusDisabled).Error; err != nil {
-				t.Fatal(err)
-			}
-			unavailable := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", body, "thk_semantic_test")
-			if unavailable.Code != 409 || calls != 1 {
-				t.Fatalf("unavailable continuation silently switched: %d %s", unavailable.Code, unavailable.Body)
-			}
-		})
+		}
 	}
 }
