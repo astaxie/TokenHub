@@ -50,8 +50,8 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 		model.MaxOutputTokens = 393216
 		model.InputModalities = []string{"text"}
 		model.OutputModalities = []string{"text"}
-		model.Capabilities = []string{"chat", "reasoning", "tools", "structured_outputs"}
-		model.SupportedParameters = []string{"tools", "tool_choice", "response_format", "reasoning", "max_tokens", "max_completion_tokens", "max_output_tokens", "top_logprobs"}
+		model.Capabilities = []string{"chat", "reasoning", "tools", "structured_outputs", "temperature"}
+		model.SupportedParameters = []string{"tools", "tool_choice", "response_format", "reasoning", "max_tokens", "max_completion_tokens", "max_output_tokens", "top_logprobs", "temperature"}
 		model.Metadata = map[string]string{
 			"source": "builtin", "upstream_source": "https://api-docs.deepseek.com/quick_start/pricing/",
 			"catalog_reviewed_at": "2026-10-10", "verified_at": "2026-10-10",
@@ -61,6 +61,7 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 			"features":           "function-calling,structured-outputs,reasoning,apply-patch,web-search",
 			"top_logprobs_range": "0,20", "responses_stateful": "false",
 			"prompt_cache_mode": "automatic", "custom_tool_names": "apply_patch",
+			"temperature_note": "temperature has no effect in thinking mode.",
 		}
 		if model.ID == "deepseek-v4-pro" {
 			model.DisplayName = "DeepSeek V4 Pro 0813"

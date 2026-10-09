@@ -2540,11 +2540,13 @@ models:
     output_modalities:
     - text
     capabilities:
+    - temperature
     - chat
     - vision
     - reasoning
     - tools
     supported_parameters:
+    - temperature
     - max_tokens
     - max_output_tokens
     - image_input
@@ -3698,11 +3700,13 @@ models:
     output_modalities:
     - text
     capabilities:
+    - temperature
     - chat
     - vision
     - reasoning
     - tools
     supported_parameters:
+    - temperature
     - max_tokens
     - max_output_tokens
     - image_input
@@ -3756,10 +3760,12 @@ models:
     output_modalities:
     - text
     capabilities:
+    - temperature
     - chat
     - reasoning
     - tools
     supported_parameters:
+    - temperature
     - max_tokens
     - max_output_tokens
     - reasoning

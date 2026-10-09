@@ -27,6 +27,8 @@ Provider selection, model creation, and the Provider inventory show notices for 
 
 Lifecycle policy is matched by the Provider's `catalog_id` and the exact upstream model ID. An official API retirement is not applied globally to a third-party host or a self-hosted copy with a similar name. Existing published routes are not automatically disabled or migrated. Unrelated edits that preserve an existing route's target and status remain allowed; changing the target or re-enabling a route runs publication checks again. Existing runtime capability checks still apply.
 
+Standard templates retain their source `provider_catalog_id` and `provider_model_id`. If either identifies a different offer from the selected Provider catalog and upstream ID, inherited lifecycle annotations do not restrict that deployment. An exact match in the selected Provider catalog still applies its own lifecycle policy. DeepSeek temperature requests remain accepted; the thinking-mode qualification is descriptive metadata, not a parameter-admission restriction.
+
 ## Confirm upstream costs before publishing
 
 The catalog's price fields are reference data, not a supplier bill or an automatic update to saved Provider costs. A missing or zero reference price does not mean free usage. Prices can depend on region, subscription, context tier, time window, cache type, image quality, resolution, seconds, characters, or search units.

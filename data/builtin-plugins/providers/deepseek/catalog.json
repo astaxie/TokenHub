@@ -52,12 +52,13 @@
         "default": true
       },
       "tool_call": true,
-      "temperature": false,
+      "temperature": true,
       "category": "deepseek",
       "last_updated": "2026-10-10",
       "supported_parameters": [
         "max_tokens",
-        "max_output_tokens"
+        "max_output_tokens",
+        "temperature"
       ],
       "endpoints": "responses,chat/completions,anthropic",
       "reasoning_options": [
@@ -122,12 +123,13 @@
         "default": true
       },
       "tool_call": true,
-      "temperature": false,
+      "temperature": true,
       "category": "deepseek",
       "last_updated": "2026-10-10",
       "supported_parameters": [
         "max_tokens",
-        "max_output_tokens"
+        "max_output_tokens",
+        "temperature"
       ],
       "endpoints": "responses,chat/completions,anthropic",
       "reasoning_options": [
@@ -189,12 +191,13 @@
         "default": true
       },
       "tool_call": true,
-      "temperature": false,
+      "temperature": true,
       "category": "deepseek",
       "last_updated": "2026-10-10",
       "supported_parameters": [
         "max_tokens",
-        "max_output_tokens"
+        "max_output_tokens",
+        "temperature"
       ],
       "endpoints": "responses,chat/completions,anthropic",
       "reasoning_options": [

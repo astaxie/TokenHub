@@ -67,7 +67,18 @@ func (s *Server) catalogAdvisories() (catalogAdvisoryIndex, error) {
 }
 
 func (index catalogAdvisoryIndex) apply(provider Provider, model ProviderModel) ProviderModel {
-	current, ok := index[strings.TrimSpace(provider.Options["catalog_id"])][model.UpstreamModel]
+	catalogID := strings.TrimSpace(provider.Options["catalog_id"])
+	// Standard templates retain the source offer's provenance. Its retirement
+	// notice does not govern an independently hosted catalog or deployment ID.
+	sourceCatalogID := strings.TrimSpace(model.Metadata["provider_catalog_id"])
+	sourceModelID := strings.TrimSpace(model.Metadata["provider_model_id"])
+	if sourceCatalogID != "" && (sourceCatalogID != catalogID || sourceModelID != "" && sourceModelID != model.UpstreamModel) {
+		model.Metadata = cloneStringMap(model.Metadata)
+		for _, key := range []string{"availability", "lifecycle_status", "shutdown_at", "replacement_model", "lifecycle_source"} {
+			delete(model.Metadata, key)
+		}
+	}
+	current, ok := index[catalogID][model.UpstreamModel]
 	if !ok {
 		return model
 	}
