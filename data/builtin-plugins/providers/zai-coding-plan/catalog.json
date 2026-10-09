@@ -6,6 +6,67 @@
   "display_name": "Z.AI Coding Plan",
   "models": [
     {
+      "id": "glm-5.3-flash",
+      "name": "GLM-5.3-Flash",
+      "display_name": "GLM-5.3-Flash",
+      "family": "glm",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.z.ai/guides/vlm/glm-5.3-flash",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "pricing_note": "Subscription points, not global pay-as-you-go USD rates.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "128000",
+        "access_requirement": "Requires the named subscription plan; public API entitlement is separate."
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "category": "glm",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
       "id": "glm-4.7",
       "name": "GLM-4.7",
       "family": "glm",
@@ -271,13 +332,50 @@
     {
       "id": "glm-5.3",
       "name": "GLM-5.3",
-      "description": "Flagship GLM model for long-horizon coding, agents, and complex project delivery",
+      "display_name": "GLM-5.3",
       "family": "glm",
-      "attachment": false,
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.z.ai/guides/llm/glm-5.3",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "pricing_note": "Subscription points, not global pay-as-you-go USD rates.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "128000",
+        "access_requirement": "Requires the named subscription plan; public API entitlement is separate."
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
       "reasoning": {
         "supported": true,
         "default": true
       },
+      "tool_call": true,
+      "temperature": true,
+      "category": "glm",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
       "reasoning_options": [
         {
           "type": "effort",
@@ -288,46 +386,7 @@
           ]
         }
       ],
-      "tool_call": true,
-      "interleaved": {
-        "field": "reasoning_content"
-      },
-      "structured_output": true,
-      "temperature": true,
-      "release_date": "2026-08-14",
-      "last_updated": "2026-08-14",
-      "modalities": {
-        "input": [
-          "text"
-        ],
-        "output": [
-          "text"
-        ]
-      },
-      "open_weights": false,
-      "limit": {
-        "context": 1000000,
-        "output": 131072
-      },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
-      "display_name": "GLM-5.3",
-      "type": "chat",
-      "extra_capabilities": {
-        "reasoning": {
-          "supported": true,
-          "interleaved": true,
-          "summaries": true,
-          "visibility": "summary",
-          "continuation": [
-            "thinking_blocks"
-          ]
-        }
-      }
+      "structured_output": true
     }
   ]
 }

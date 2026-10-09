@@ -270,7 +270,15 @@
       "type": "image-generation",
       "endpoints": "images/generations,images/edits",
       "billing_mode": "subscription",
-      "pricing_unit": "credit"
+      "pricing_unit": "credit",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.stepfun.ai/docs/en/guides/image-offline-notice",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-10-10T00:00:00+08:00"
+      }
     }
   ]
 }

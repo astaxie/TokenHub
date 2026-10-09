@@ -6,6 +6,281 @@
   "display_name": "StepFun (Global)",
   "models": [
     {
+      "id": "stepaudio-3-music-preview",
+      "name": "StepAudio 3 Music Preview",
+      "display_name": "StepAudio 3 Music Preview",
+      "family": "stepaudio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-music",
+        "verified_at": "2026-10-10",
+        "availability": "preview",
+        "required_endpoint": "HTTP asynchronous task",
+        "pricing_source": "https://platform.stepfun.ai/docs/en/guides/pricing/details",
+        "limits_status": "unverified: source gives no token window or output limit",
+        "pricing_note": "Limited-time free preview; will be retired and replaced after trial. No permanent free promise or paid rates.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "category": "stepfun",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "stepaudio-3-gen-preview",
+      "name": "StepAudio 3 Gen Preview",
+      "display_name": "StepAudio 3 Gen Preview",
+      "family": "stepaudio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-gen",
+        "verified_at": "2026-10-10",
+        "availability": "preview",
+        "required_endpoint": "POST /v1/audio/generate",
+        "pricing_source": "https://platform.stepfun.ai/docs/en/guides/pricing/details",
+        "limits_status": "unverified: source gives no token window or output limit",
+        "pricing_note": "Limited-time free preview; will be retired and replaced after trial. No permanent free promise or paid rates.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "category": "stepfun",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "stepaudio-3-realtime-preview",
+      "name": "StepAudio 3 Realtime Preview",
+      "display_name": "StepAudio 3 Realtime Preview",
+      "family": "stepaudio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-realtime",
+        "verified_at": "2026-10-10",
+        "availability": "preview",
+        "required_endpoint": "Realtime WebSocket",
+        "pricing_source": "https://platform.stepfun.ai/docs/en/guides/pricing/details",
+        "limits_status": "unverified: source gives no token window or output limit",
+        "pricing_note": "Limited-time free preview; will be retired and replaced after trial. No permanent free promise or paid rates.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "category": "stepfun",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "stepaudio-3-chat-preview",
+      "name": "StepAudio 3 Chat Preview",
+      "display_name": "StepAudio 3 Chat Preview",
+      "family": "stepaudio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-realtime",
+        "verified_at": "2026-10-10",
+        "availability": "preview",
+        "required_endpoint": "Chat Completions",
+        "pricing_source": "https://platform.stepfun.ai/docs/en/guides/pricing/details",
+        "limits_status": "unverified: source gives no token window or output limit",
+        "pricing_note": "Limited-time free preview; will be retired and replaced after trial. No permanent free promise or paid rates.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "category": "stepfun",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "stepaudio-3-asr-max",
+      "name": "StepAudio 3 ASR Max",
+      "display_name": "StepAudio 3 ASR Max",
+      "family": "stepaudio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-asr",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "required_endpoint": "POST /v1/audio/asr/sse",
+        "pricing_source": "https://platform.stepfun.ai/docs/en/guides/pricing/details",
+        "limits_status": "unverified: source gives no token window or output limit",
+        "pricing_note": "Official model page $0.24/hour conflicts with price table $0.40/hour; do not infer token cost.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "category": "stepfun",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "stepaudio-3-tts",
+      "name": "StepAudio 3 TTS",
+      "display_name": "StepAudio 3 TTS",
+      "family": "stepaudio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-tts",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "required_endpoint": "POST /v1/audio/speech or WebSocket /v1/realtime/audio",
+        "pricing_source": "https://platform.stepfun.ai/docs/en/guides/pricing/details",
+        "limits_status": "unverified: source gives no token window or output limit",
+        "pricing_note": "USD $0.36 per 10000 characters; cloning $1.50/voice. Not token pricing.",
+        "pricing_status": "unverified",
+        "usd_per_10000_characters": "0.36",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "category": "stepfun",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "step-5-preview",
+      "name": "Step 5 Preview",
+      "display_name": "Step 5 Preview",
+      "family": "step",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.stepfun.ai/docs/en/guides/models/step-5-preview",
+        "verified_at": "2026-10-10",
+        "availability": "preview",
+        "reasoning_effort_options": "low,medium,high",
+        "pricing_source": "https://platform.stepfun.ai/docs/en/guides/pricing/details",
+        "pricing_note": "Global USD/MTok; cache-miss input includes cache writing.",
+        "protocols": "chat_completions,messages",
+        "reasoning_effort_parameter": "reasoning_effort (Chat), output_config.effort (Messages)",
+        "context_note": "Source specifies 1M input/context and 64k output, not binary numeric counts.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "64000",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 64000
+      },
+      "cost": {
+        "input": 1,
+        "output": 2.7,
+        "cache_read": 0.1
+      },
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "category": "stepfun",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ]
+    },
+    {
       "id": "step-1-32k",
       "name": "Step 1 (32K)",
       "description": "StepFun flash model for efficient multimodal reasoning, coding, and tool use",
@@ -38,7 +313,16 @@
         "cache_read": 0.41
       },
       "display_name": "Step 1 (32K)",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.stepfun.ai/docs/en/guides/model-migration",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "step-1o-turbo-vision",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-07-08T00:00:00+08:00"
+      }
     },
     {
       "id": "step-3.7-flash",
@@ -164,7 +448,16 @@
         "cache_read": 1.04
       },
       "display_name": "Step 2 (16K)",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.stepfun.ai/docs/en/guides/model-migration",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "step-1o-turbo-vision",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-07-08T00:00:00+08:00"
+      }
     },
     {
       "id": "step-3.5-flash",

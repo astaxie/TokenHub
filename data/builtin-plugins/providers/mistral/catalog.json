@@ -5,6 +5,62 @@
   "display_name": "Mistral",
   "models": [
     {
+      "id": "mistral-large-4",
+      "name": "Mistral Large 4",
+      "display_name": "Mistral Large 4",
+      "family": "mistral",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.mistral.ai/models/mistral-large-4-0",
+        "verified_at": "2026-10-10",
+        "availability": "preview",
+        "pricing_note": "USD per million tokens, launch promotion 50% off for two weeks from October 6. List rates input 1.36, output 4.18, cached input 0.14; exact promotion end instant not published.",
+        "pricing_source": "https://docs.mistral.ai/resources/changelogs",
+        "list_prices_usd_per_million_tokens": "{\"input\":1.36,\"output\":4.18,\"cache_read\":0.14}",
+        "reasoning_effort_options": "none,high",
+        "reasoning_source": "https://docs.mistral.ai/studio/conversations/reasoning",
+        "output_limit_status": "unverified",
+        "context_limit_label": "1M",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "endpoints": "chat/completions",
+        "reference_token_prices": "{\"input\":0.68,\"output\":2.09,\"cache_read\":0.07}",
+        "pricing_status": "unverified"
+      },
+      "limit": {
+        "context": 1000000
+      },
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "category": "mistral",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "high"
+          ]
+        }
+      ]
+    },
+    {
       "id": "codestral-latest",
       "name": "Codestral (latest)",
       "family": "codestral",
@@ -102,7 +158,14 @@
         "output": 0.25
       },
       "display_name": "Mistral 7B",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "devstral-small-2507",
@@ -136,7 +199,14 @@
         "output": 0.3
       },
       "display_name": "Devstral Small",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "ministral-3b-latest",
@@ -302,7 +372,14 @@
         "output": 0.3
       },
       "display_name": "Mistral Small 3.2",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "ministral-8b-latest",
@@ -368,7 +445,14 @@
         "output": 6
       },
       "display_name": "Mixtral 8x22B",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "mistral-medium-latest",
@@ -436,7 +520,14 @@
         "output": 0.3
       },
       "display_name": "Devstral Small 2505",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "magistral-small",
@@ -591,7 +682,14 @@
         "output": 0.7
       },
       "display_name": "Mixtral 8x7B",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "devstral-latest",
@@ -703,7 +801,14 @@
         "output": 2
       },
       "display_name": "Mistral Medium 3",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "mistral-large-2411",
@@ -736,7 +841,14 @@
         "output": 6
       },
       "display_name": "Mistral Large 2.1",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "mistral-medium-2508",
@@ -770,7 +882,14 @@
         "output": 2
       },
       "display_name": "Mistral Medium 3.1",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "open-mistral-nemo",
@@ -906,7 +1025,14 @@
         "output": 2
       },
       "display_name": "Devstral 2",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "labs-devstral-small-2512",
@@ -941,7 +1067,14 @@
         "output": 0
       },
       "display_name": "Devstral Small 2",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     },
     {
       "id": "pixtral-12b",
@@ -1043,7 +1176,14 @@
         "output": 2
       },
       "display_name": "Devstral Medium",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.mistral.ai/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "lifecycle_note": "Exact IDs appear in the combined deprecated/retired table; shutdown dates not established in this review. Do not mark all retired."
+      }
     }
   ]
 }

@@ -252,7 +252,7 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if deepSeek.ProviderPolicy.PreserveReasoningContent == nil || !*deepSeek.ProviderPolicy.PreserveReasoningContent {
 		t.Fatalf("DeepSeek preserve reasoning content policy = %v, want true", deepSeek.ProviderPolicy.PreserveReasoningContent)
 	}
-	if !reflect.DeepEqual(deepSeek.ProviderPolicy.ResponsesModelAllowlist, []string{"deepseek-v4-flash", "deepseek-v4-pro"}) {
+	if !reflect.DeepEqual(deepSeek.ProviderPolicy.ResponsesModelAllowlist, []string{"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"}) {
 		t.Fatalf("DeepSeek Responses model allowlist = %v", deepSeek.ProviderPolicy.ResponsesModelAllowlist)
 	}
 }

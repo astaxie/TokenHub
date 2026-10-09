@@ -1,3 +1,4 @@
+import { ModelCatalogNotices } from "./model-catalog-notices";
 import { Boxes, ChevronDown, ChevronRight, CircleCheck, Info, Search, SlidersHorizontal, X } from "lucide-react";
 import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { type AdminUser, type AppData, type FieldConfig, type Model, type ResourceConfig } from "../core/types";
@@ -118,7 +119,8 @@ export function ModelCreateModal({
 
   function fieldConfig(key: string, override?: Partial<FieldConfig>) {
     const field = config.fields.find((item) => item.key === key);
-    return field ? { ...field, ...override } : undefined;
+    const priceRequired = selectedModel?.modality === "chat" && selectedModel.metadata?.pricing_status === "unverified" && ["input_price_usd_per_1m", "output_price_usd_per_1m"].includes(key);
+    return field ? { ...field, ...override, ...(priceRequired ? { required: true } : {}) } : undefined;
   }
 
   function renderField(key: string, override?: Partial<FieldConfig>) {
@@ -197,7 +199,7 @@ export function ModelCreateModal({
                 return (
                   <button className={`model-create-template ${selected ? "selected" : ""}`} key={model.name} onClick={() => selectTemplate(model)} type="button">
                     <ModelBrandIcon category={modelCategoryKey} label={modelCategoryText} data={data} compact />
-                    <span><strong>{model.name}</strong><small>{model.family || modelCategoryText} · {model.modality || "chat"}</small></span>
+                    <span><strong>{model.name}</strong><small>{model.family || modelCategoryText} · {model.modality || "chat"}</small><ModelCatalogNotices metadata={model.metadata} /></span>
                     <span className="model-create-template-metrics"><b>{compactNumber(model.context_window || 0)} ctx</b><small>{priceMetric(model.input_price_usd_per_1m)} / {priceMetric(model.output_price_usd_per_1m)}</small></span>
                     {selected ? <CircleCheck size={18} /> : <ChevronRight size={18} />}
                   </button>

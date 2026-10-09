@@ -1,0 +1,96 @@
+{
+  "id": "voyage",
+  "name": "Voyage AI",
+  "api": "https://api.voyageai.com/v1",
+  "doc": "https://docs.voyageai.com/docs/reranker",
+  "models": [
+    {
+      "id": "rerank-3-lite",
+      "name": "Voyage Rerank 3 Lite",
+      "display_name": "Voyage Rerank 3 Lite",
+      "family": "voyage-rerank",
+      "type": "rerank",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "score"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.voyageai.com/docs/reranker",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_source": "https://docs.voyageai.com/docs/pricing",
+        "pricing_note": "USD per million processed tokens; processed tokens = query tokens multiplied by document count + sum of document tokens. Output scores have no output-token price.",
+        "billing_unit": "input_tokens",
+        "max_query_tokens": "8000",
+        "max_documents": "1000",
+        "max_total_tokens": "600000",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "pricing_status": "reference",
+        "call_support_scope": "text-only"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "cost": {
+        "input": 0.02
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "category": "custom",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "rerank-3",
+      "name": "Voyage Rerank 3",
+      "display_name": "Voyage Rerank 3",
+      "family": "voyage-rerank",
+      "type": "rerank",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "score"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.voyageai.com/docs/reranker",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_source": "https://docs.voyageai.com/docs/pricing",
+        "pricing_note": "USD per million processed tokens; processed tokens = query tokens multiplied by document count + sum of document tokens. Output scores have no output-token price.",
+        "billing_unit": "input_tokens",
+        "max_query_tokens": "8000",
+        "max_documents": "1000",
+        "max_total_tokens": "600000",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "pricing_status": "reference",
+        "call_support_scope": "text-only"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "cost": {
+        "input": 0.05
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "category": "custom",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    }
+  ]
+}

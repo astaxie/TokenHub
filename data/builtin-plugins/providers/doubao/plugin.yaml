@@ -26,7 +26,7 @@ capabilities:
       base_url: ""
       doc_url: "https://www.volcengine.com/docs/82379/1330310?lang=zh"
       categories: []
-      models_count: 33
+      models_count: 37
 permissions:
   network:
     allow: []

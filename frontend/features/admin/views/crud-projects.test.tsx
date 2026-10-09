@@ -1,7 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
-import { providerChannelAccountDetail, providerMonitorSamples, providerQuotaReadAction } from "./crud-projects";
+import { providerConfig } from "../resources/provider-model-config";
+import { CrudView, providerChannelAccountDetail, providerMonitorSamples, providerQuotaReadAction } from "./crud-projects";
 import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent, providerAccountQuotaStatusLabel, providerAccountQuotaUsedPercent } from "./provider-account-ui";
+
+it("waits for Provider catalog data before enabling creation", async () => {
+  const onCreate = vi.fn();
+  const props = {
+    config: providerConfig(), data: emptyData(), items: [], totalItems: 0, query: "", categoryFilter: "all",
+    pagination: { page: 1, pageSize: 20, pageCount: 1, startIndex: 0, endIndex: 0, setPage: vi.fn(), setPageSize: vi.fn() },
+    onCreate, onCategoryFilter: vi.fn(), onQuery: vi.fn(), onEdit: vi.fn(), onDelete: vi.fn(), onAction: vi.fn(), onToolbarAction: vi.fn(),
+  };
+  const view = render(<CrudView {...props} loading />);
+  const user = userEvent.setup();
+  const button = screen.getByRole("button", { name: "添加供应商" });
+  expect(button).toBeDisabled();
+  await user.click(button);
+  expect(onCreate).not.toHaveBeenCalled();
+  view.rerender(<CrudView {...props} loading={false} />);
+  await user.click(screen.getByRole("button", { name: "添加供应商" }));
+  expect(onCreate).toHaveBeenCalledOnce();
+});
 
 describe("providerQuotaReadAction", () => {
   it("matches quota plugin actions by Provider and resource type metadata", () => {

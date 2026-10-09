@@ -42,60 +42,38 @@ func deepSeekBuiltinCatalogEntry() ProviderCatalogEntry {
 		"deepseek",
 		"https://api.deepseek.com",
 		"https://api-docs.deepseek.com",
-		[]string{"deepseek-v4-flash", "deepseek-v4-pro"},
+		[]string{"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"},
 	)
 	for index := range entry.Models {
 		model := &entry.Models[index]
-		switch model.ID {
-		case "deepseek-v4-flash":
-			model.DisplayName = "DeepSeek V4 Flash"
-			model.ContextWindow = 1048576
-			model.MaxOutputTokens = 393216
-			model.InputPriceUSDPer1M = 0.14
-			model.CacheReadPriceUSDPer1M = 0.0028
-			model.OutputPriceUSDPer1M = 0.28
-			model.Metadata = map[string]string{
-				"source":                   "builtin",
-				"upstream_source":          "deepseek-api",
-				"endpoints":                "responses,chat/completions,anthropic",
-				"features":                 "function-calling,structured-outputs,reasoning,apply-patch,web-search",
-				"top_logprobs_range":       "0,20",
-				"responses_stateful":       "false",
-				"prompt_cache_mode":        "automatic",
-				"custom_tool_names":        "apply_patch",
-				"reasoning_effort_options": "low,high,max",
-				"reasoning_default":        "true",
-				"tool_call":                "true",
-				"vision":                   "false",
-			}
-		case "deepseek-v4-pro":
-			model.DisplayName = "DeepSeek V4 Pro"
-			model.ContextWindow = 1048576
-			model.MaxOutputTokens = 393216
-			model.InputPriceUSDPer1M = 0.435
-			model.CacheReadPriceUSDPer1M = 0.003625
-			model.OutputPriceUSDPer1M = 0.87
-			model.Metadata = map[string]string{
-				"source":                   "builtin",
-				"upstream_source":          "deepseek-api",
-				"endpoints":                "responses,chat/completions,anthropic",
-				"features":                 "function-calling,structured-outputs,reasoning,apply-patch,web-search",
-				"top_logprobs_range":       "0,20",
-				"responses_stateful":       "false",
-				"prompt_cache_mode":        "automatic",
-				"custom_tool_names":        "apply_patch",
-				"reasoning_effort_options": "low,high,max",
-				"reasoning_default":        "true",
-				"tool_call":                "true",
-				"vision":                   "false",
-			}
-		default:
-			continue
-		}
+		model.ContextWindow = 1000000
+		model.MaxOutputTokens = 393216
 		model.InputModalities = []string{"text"}
 		model.OutputModalities = []string{"text"}
 		model.Capabilities = []string{"chat", "reasoning", "tools", "structured_outputs"}
-		model.SupportedParameters = []string{"temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"}
+		model.SupportedParameters = []string{"tools", "tool_choice", "response_format", "reasoning", "max_tokens", "max_completion_tokens", "max_output_tokens", "top_logprobs"}
+		model.Metadata = map[string]string{
+			"source": "builtin", "upstream_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+			"catalog_reviewed_at": "2026-10-10", "verified_at": "2026-10-10",
+			"endpoints":                "responses,chat/completions,anthropic",
+			"reasoning_effort_options": "none,low,high,max", "reasoning_default": "true",
+			"pricing_status": "unverified", "pricing_note": "Configure current peak/off-peak prices and the holiday calendar before publishing.",
+			"features":           "function-calling,structured-outputs,reasoning,apply-patch,web-search",
+			"top_logprobs_range": "0,20", "responses_stateful": "false",
+			"prompt_cache_mode": "automatic", "custom_tool_names": "apply_patch",
+		}
+		if model.ID == "deepseek-v4-pro" {
+			model.DisplayName = "DeepSeek V4 Pro 0813"
+		} else {
+			model.DisplayName = "DeepSeek V4.1 Flash"
+			model.InputModalities = append(model.InputModalities, "image")
+			model.Capabilities = append(model.Capabilities, "vision")
+			model.SupportedParameters = append(model.SupportedParameters, "image_input")
+			if model.ID == "deepseek-v4-flash" {
+				model.Metadata["lifecycle_status"] = "redirected"
+				model.Metadata["replacement_model"] = "deepseek-flash"
+			}
+		}
 	}
 	return entry
 }

@@ -6,6 +6,63 @@
   "display_name": "Zhipu AI",
   "models": [
     {
+      "id": "glm-5.3",
+      "name": "GLM-5.3",
+      "display_name": "GLM-5.3",
+      "family": "glm",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "pricing_note": "China regional pricing not verified; no USD conversion inferred.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "128000"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "category": "glm",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
       "id": "glm-5.1",
       "name": "GLM-5.1",
       "family": "glm",

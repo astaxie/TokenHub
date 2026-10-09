@@ -1,8 +1,2749 @@
 # TokenHub standard model catalog.
-# Generated from ThinkInAIXYZ/PublicProviderConf dist/jiekou.json.
+# Base snapshot from ThinkInAIXYZ/PublicProviderConf, with reviewed first-party updates.
 # Source updated_at: 2026-07-08T06:38:13.852Z.
+# First-party entries reviewed: 2026-10-10. See per-model metadata for scope and sources.
 version: 1
 models:
+  - name: gpt-6.1-sol
+    title: GPT-6.1 Sol
+    description: Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters are
+      unsupported while reasoning is enabled.
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 1050000
+    input_price_usd_per_1m: 2
+    output_price_usd_per_1m: 10
+    cache_read_price_usd_per_1m: 0.1
+    cache_write_price_usd_per_1m: 2.5
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - tools
+    - response_format
+    - reasoning
+    - reasoning_effort
+    - image_input
+    metadata:
+      source: tokenhub-standard-catalog
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-6.1-sol
+      provider_catalog_id: openai
+      provider_model_id: gpt-6.1-sol
+      endpoints: responses,chat/completions
+      max_output_tokens: '128000'
+      knowledge_cutoff: '2026-04-30'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      reasoning_effort_options: low,medium,high,xhigh,max
+      verified_at: '2026-10-10'
+      tool_call_note: Tool calling requires Responses; Chat Completions supports requests without tools.
+      sampling_note: temperature, top_p and log probabilities are unsupported; this model does not support reasoning effort
+        none.
+      pricing_note: Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%;
+        configure applicable pricing separately.
+      catalog_reviewed_at: '2026-10-10'
+      availability: active
+  - name: gpt-6-sol
+    title: GPT-6 Sol
+    description: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling
+      parameters are unsupported while reasoning is enabled.
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 1050000
+    input_price_usd_per_1m: 2
+    output_price_usd_per_1m: 10
+    cache_read_price_usd_per_1m: 0.2
+    cache_write_price_usd_per_1m: 2.5
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - reasoning_effort
+    - image_input
+    metadata:
+      source: tokenhub-standard-catalog
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-6-sol
+      provider_catalog_id: openai
+      provider_model_id: gpt-6-sol
+      endpoints: responses,chat/completions
+      max_output_tokens: '128000'
+      knowledge_cutoff: '2026-04-20'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      reasoning_effort_options: none,low,medium,high,xhigh,max
+      verified_at: '2026-10-10'
+      tool_call_note: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none.
+      sampling_note: temperature, top_p and log probabilities require reasoning effort none.
+      pricing_note: Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%;
+        configure applicable pricing separately.
+      catalog_reviewed_at: '2026-10-10'
+      availability: active
+  - name: gpt-6-luna
+    title: GPT-6 Luna
+    description: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling
+      parameters are unsupported while reasoning is enabled.
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 1050000
+    input_price_usd_per_1m: 0.1
+    output_price_usd_per_1m: 0.5
+    cache_read_price_usd_per_1m: 0.01
+    cache_write_price_usd_per_1m: 0.125
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - reasoning_effort
+    - image_input
+    metadata:
+      source: tokenhub-standard-catalog
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-6-luna
+      provider_catalog_id: openai
+      provider_model_id: gpt-6-luna
+      endpoints: responses,chat/completions
+      max_output_tokens: '128000'
+      knowledge_cutoff: '2026-05-18'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      reasoning_effort_options: none,low,medium,high,xhigh,max
+      verified_at: '2026-10-10'
+      tool_call_note: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none.
+      sampling_note: temperature, top_p and log probabilities require reasoning effort none.
+      pricing_note: Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%;
+        configure applicable pricing separately.
+      catalog_reviewed_at: '2026-10-10'
+      availability: active
+  - name: gpt-image-2.5-sunburst
+    title: GPT Image 2.5 Sunburst
+    category: openai
+    family: gpt-image
+    modality: image
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - image
+    capabilities:
+    - image
+    - vision
+    supported_parameters:
+    - size
+    - quality
+    - image_input
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Text input $5/MTok (cached $1.25); image input $8/MTok (cached $2); image output $30/MTok. Separate modality
+        pricing must be configured; a flat text rate is not an image cost estimate.
+      quality_options: auto,low,medium,high,xhigh,max
+      endpoints: images/generations,images/edits
+      call_support: unsupported
+      support_note: Catalog-only until image modality billing and quality contracts are validated.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-image-2.5-sunburst
+  - name: gpt-image-2.5-flare
+    title: GPT Image 2.5 Flare
+    category: openai
+    family: gpt-image
+    modality: image
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - image
+    capabilities:
+    - image
+    - vision
+    supported_parameters:
+    - size
+    - quality
+    - image_input
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-image-2.5-flare
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Text input $5/MTok (cached $1.25); image input $8/MTok (cached $2); image output $30/MTok. Separate modality
+        pricing must be configured; a flat text rate is not an image cost estimate.
+      quality_options: auto,low,medium,high,xhigh,max
+      endpoints: images/generations,images/edits
+      call_support: unsupported
+      support_note: Catalog-only until image modality billing and quality contracts are validated.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-image-2.5-flare
+  - name: gpt-live-1
+    title: gpt-live-1
+    category: openai
+    family: gpt-audio
+    modality: audio
+    input_modalities:
+    - audio
+    - text
+    output_modalities:
+    - audio
+    - text
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/all
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      call_support: unsupported
+      endpoints: live/sessions
+      support_note: Requires an audio or live-session adapter and native-unit billing.
+      pricing_note: Voice session $0.05/minute billed per second; backend model and tools billed separately.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-live-1
+  - name: gpt-realtime-2.1
+    title: gpt-realtime-2.1
+    category: openai
+    family: gpt-audio
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/all
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      call_support: unsupported
+      endpoints: realtime
+      support_note: Requires an audio or live-session adapter and native-unit billing.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-realtime-2.1
+  - name: gpt-realtime-2.1-mini
+    title: gpt-realtime-2.1-mini
+    category: openai
+    family: gpt-audio
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/all
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      call_support: unsupported
+      endpoints: realtime
+      support_note: Requires an audio or live-session adapter and native-unit billing.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-realtime-2.1-mini
+  - name: gpt-audio-1.5
+    title: gpt-audio-1.5
+    category: openai
+    family: gpt-audio
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/all
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      call_support: unsupported
+      endpoints: chat/completions
+      support_note: Requires an audio or live-session adapter and native-unit billing.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-audio-1.5
+  - name: gpt-live-transcribe
+    title: gpt-live-transcribe
+    category: openai
+    family: gpt-audio
+    modality: audio
+    input_modalities:
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/all
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      call_support: unsupported
+      endpoints: realtime/transcription_sessions
+      support_note: Requires an audio or live-session adapter and native-unit billing.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-live-transcribe
+  - name: claude-fable-5-1
+    title: Claude Fable 5.1
+    category: claude
+    family: claude
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 10
+    output_price_usd_per_1m: 50
+    cache_read_price_usd_per_1m: 0.25
+    cache_write_5m_price_usd_per_1m: 12.5
+    cache_write_1h_price_usd_per_1m: 20
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://platform.claude.com/docs/en/models/fable-5-1/overview
+      verified_at: '2026-10-10'
+      availability: active
+      reasoning_effort_options: low,medium,high,xhigh,max
+      reasoning_effort_parameter: output_config.effort
+      sampling_note: Omit temperature, top_p and top_k; non-default sampling can fail.
+      pricing_note: Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.
+      compatibility_source: https://platform.claude.com/docs/en/release-notes/overview
+      tool_choice_allowed: auto,none
+      thinking_mode: adaptive
+      thinking_can_disable: 'false'
+      retention_note: Requires 30-day retention; ZDR only with explicit Anthropic authorization.
+      thinking_history_note: Preserve signed thinking and account affinity; changing system/tools/history or switching model/account
+        can reject or drop blocks.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: high
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: anthropic
+      max_output_tokens: '128000'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: anthropic
+      provider_model_id: claude-fable-5-1
+  - name: claude-opus-5-5
+    title: Claude Opus 5.5
+    category: claude
+    family: claude
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 4
+    output_price_usd_per_1m: 20
+    cache_read_price_usd_per_1m: 0.2
+    cache_write_5m_price_usd_per_1m: 5
+    cache_write_1h_price_usd_per_1m: 8
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://platform.claude.com/docs/en/models/opus-5-5/overview
+      verified_at: '2026-10-10'
+      availability: active
+      reasoning_effort_options: low,medium,high,xhigh,max
+      reasoning_effort_parameter: output_config.effort
+      sampling_note: Omit temperature, top_p and top_k; non-default sampling can fail.
+      pricing_note: Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.
+      compatibility_source: https://platform.claude.com/docs/en/release-notes/overview
+      tool_choice_allowed: auto,none
+      thinking_mode: adaptive
+      thinking_can_disable: 'false'
+      thinking_history_note: Preserve signed thinking and account affinity; changing system/tools/history or switching model/account
+        can reject or drop blocks.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: medium
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: anthropic
+      max_output_tokens: '128000'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: anthropic
+      provider_model_id: claude-opus-5-5
+  - name: claude-sonnet-5-5
+    title: Claude Sonnet 5.5
+    category: claude
+    family: claude
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 2
+    output_price_usd_per_1m: 10
+    cache_read_price_usd_per_1m: 0.1
+    cache_write_5m_price_usd_per_1m: 2.5
+    cache_write_1h_price_usd_per_1m: 4
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://platform.claude.com/docs/en/models/sonnet-5-5/overview
+      verified_at: '2026-10-10'
+      availability: active
+      reasoning_effort_options: low,medium,high,xhigh,max
+      reasoning_effort_parameter: output_config.effort
+      sampling_note: Omit temperature, top_p and top_k; non-default sampling can fail.
+      pricing_note: Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.
+      compatibility_source: https://platform.claude.com/docs/en/release-notes/overview
+      tool_choice_allowed: auto,none
+      thinking_mode: adaptive
+      thinking_note: Use between_tools at high effort or lower to skip up-front thinking; disabled is not the migration setting.
+      thinking_history_note: Preserve signed thinking and account affinity; changing system/tools/history or switching model/account
+        can reject or drop blocks.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: high
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: anthropic
+      max_output_tokens: '128000'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: anthropic
+      provider_model_id: claude-sonnet-5-5
+  - name: claude-haiku-5-5
+    title: Claude Haiku 5.5
+    category: claude
+    family: claude
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://platform.claude.com/docs/en/models/haiku-5-5/overview
+      verified_at: '2026-10-10'
+      availability: active
+      reasoning_effort_options: low,medium,high,xhigh,max
+      reasoning_effort_parameter: output_config.effort
+      sampling_note: Omit temperature, top_p and top_k; non-default sampling can fail.
+      pricing_note: Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.
+      cache_write_1h: '0.2'
+      compatibility_source: https://platform.claude.com/docs/en/release-notes/overview
+      thinking_mode: adaptive
+      pricing_tiers: '[{"prompt_tokens_gt":100000,"input":0.5,"output":2.5,"cache_read":0.05,"cache_write":0.625,"cache_write_1h":1}]'
+      thinking_history_note: Preserve signed thinking and account affinity; changing system/tools/history or switching model/account
+        can reject or drop blocks.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: medium
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: anthropic
+      max_output_tokens: '128000'
+      reference_token_prices: '{"input":0.1,"output":0.5,"cache_read":0.01,"cache_write":0.125}'
+      pricing_status: unverified
+      source: tokenhub-standard-catalog
+      provider_catalog_id: anthropic
+      provider_model_id: claude-haiku-5-5
+  - name: gemini-3.8-flash
+    title: Gemini 3.8 Flash
+    category: gemini
+    family: gemini
+    modality: chat
+    context_window: 1048576
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    - pdf
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - audio_input
+    - pdf_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - audio_input
+    - pdf_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+      pricing_note: Gemini Developer API standard tier, USD/MTok. Cache storage is billed separately.
+      sampling_note: Remove deprecated temperature, top_p, top_k; candidate_count and prefilled model turns unsupported.
+      protocols: generateContent,interactions
+      migration_source: https://ai.google.dev/gemini-api/docs/latest-model
+      reasoning_effort_options: low,medium,high
+      reasoning_effort_parameter: thinking_level
+      pricing_effective_until: '2026-12-31'
+      future_pricing: '{"effective_from":"2027-01-01","input":1.5,"output":7.5,"cache_read":0.15}'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: medium
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: generateContent,streamGenerateContent
+      max_output_tokens: '65536'
+      reference_token_prices: '{"input":0.75,"output":3.75,"cache_read":0.075}'
+      pricing_status: unverified
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-3.8-flash
+  - name: gemini-3.5-flash-lite
+    title: Gemini 3.5 Flash-Lite
+    category: gemini
+    family: gemini
+    modality: chat
+    context_window: 1048576
+    input_price_usd_per_1m: 0.3
+    output_price_usd_per_1m: 2.5
+    cache_read_price_usd_per_1m: 0.03
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    - pdf
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - audio_input
+    - pdf_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - audio_input
+    - pdf_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+      pricing_note: Gemini Developer API standard tier, USD/MTok. Cache storage is billed separately.
+      sampling_note: Remove deprecated temperature, top_p, top_k; candidate_count and prefilled model turns unsupported.
+      protocols: generateContent,interactions
+      migration_source: https://ai.google.dev/gemini-api/docs/latest-model
+      reasoning_default_status: unverified
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: generateContent,streamGenerateContent
+      max_output_tokens: '65536'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-3.5-flash-lite
+  - name: gemini-nano-banana-2.1
+    title: Gemini Nano Banana 2.1
+    category: gemini
+    family: gemini
+    modality: image
+    context_window: 131072
+    input_modalities:
+    - text
+    - image
+    - video
+    - pdf
+    output_modalities:
+    - image
+    - text
+    capabilities:
+    - image
+    - vision
+    - video_input
+    - pdf_input
+    - reasoning
+    supported_parameters:
+    - image_input
+    - video_input
+    - pdf_input
+    - reasoning
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-nano-banana-2.1
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+      image_output_usd_per_million_tokens: '30'
+      image_output_usd_per_image: '{"1K":0.0336,"2K":0.0504,"4K":0.113}'
+      pricing_note: output is text/thinking only; image output has separate rates. No cache support.
+      reasoning_effort_options: minimal,medium,high
+      protocols: generateContent,interactions
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: medium
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      max_output_tokens: '32768'
+      reference_token_prices: '{"input":1.5,"output":7.5}'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      pricing_status: unverified
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-nano-banana-2.1
+  - name: gemini-3.8-live
+    title: Gemini 3.8 Live
+    category: gemini
+    family: gemini
+    modality: audio
+    context_window: 131072
+    input_modalities:
+    - text
+    - image
+    - audio
+    - video
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - vision
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - image_input
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+      pricing_note: cost input/output refer to text tokens only. Audio input $3/MTok, audio output $12/MTok, image/video input
+        $1/MTok.
+      audio_input_usd_per_million_tokens: '3'
+      audio_output_usd_per_million_tokens: '12'
+      visual_input_usd_per_million_tokens: '1'
+      required_endpoint: Live API (WebSocket)
+      tool_call_note: Asynchronous function calls; extended-thinking variant only supports asynchronous function calling.
+      cache_supported: 'false'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      max_output_tokens: '65536'
+      reference_token_prices: '{"input":0.75,"output":4.5}'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      pricing_status: unverified
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-3.8-live
+  - name: gemini-3.8-live-extended-thinking
+    title: Gemini 3.8 Live Extended Thinking
+    category: gemini
+    family: gemini
+    modality: audio
+    context_window: 131072
+    input_modalities:
+    - text
+    - image
+    - audio
+    - video
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - vision
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - image_input
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+      pricing_note: cost input/output refer to text tokens only. Audio input $3/MTok, audio output $12/MTok, image/video input
+        $1/MTok.
+      audio_input_usd_per_million_tokens: '3'
+      audio_output_usd_per_million_tokens: '12'
+      visual_input_usd_per_million_tokens: '1'
+      required_endpoint: Live API (WebSocket)
+      tool_call_note: Asynchronous function calls; extended-thinking variant only supports asynchronous function calling.
+      cache_supported: 'false'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      max_output_tokens: '65536'
+      reference_token_prices: '{"input":0.75,"output":4.5}'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      pricing_status: unverified
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-3.8-live-extended-thinking
+  - name: gemini-3.8-flash-tts
+    title: Gemini 3.8 Flash TTS
+    category: gemini
+    family: gemini
+    modality: audio
+    context_window: 8192
+    input_modalities:
+    - text
+    output_modalities:
+    - audio
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+      pricing_note: Input text tokens/output audio tokens. Introductory rates through 2026-12-31; cache storage separately billed.
+      pricing_effective_until: '2026-12-31'
+      future_pricing: '{"effective_from":"2027-01-01","input":1,"output":18,"cache_read":0.25}'
+      required_endpoint: GenerateContent or Interactions audio generation; not Live API
+      audio_output_format_note: Default output WAV; raw PCM requires explicit format.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      max_output_tokens: '16384'
+      reference_token_prices: '{"input":0.5,"output":9,"cache_read":0.125}'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      pricing_status: unverified
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-3.8-flash-tts
+  - name: gemini-3.8-flash-lite-tts
+    title: Gemini 3.8 Flash-Lite TTS
+    category: gemini
+    family: gemini
+    modality: audio
+    context_window: 8192
+    input_modalities:
+    - text
+    output_modalities:
+    - audio
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-lite-tts
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+      pricing_note: Input text tokens/output audio tokens. Introductory rates through 2026-12-31; cache storage separately billed.
+      pricing_effective_until: '2026-12-31'
+      future_pricing: '{"effective_from":"2027-01-01","input":1,"output":12,"cache_read":0.25}'
+      required_endpoint: GenerateContent or Interactions audio generation; not Live API
+      audio_output_format_note: Default output WAV; raw PCM requires explicit format.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      max_output_tokens: '16384'
+      reference_token_prices: '{"input":0.5,"output":6,"cache_read":0.125}'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      pricing_status: unverified
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-3.8-flash-lite-tts
+  - name: gemini-embedding-2
+    title: Gemini Embedding 2
+    category: gemini
+    family: gemini
+    modality: embedding
+    context_window: 8192
+    input_price_usd_per_1m: 0.2
+    embedding_price_usd_per_1m: 0.2
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    - pdf
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    - vision
+    - video_input
+    - audio_input
+    - pdf_input
+    supported_parameters:
+    - image_input
+    - video_input
+    - audio_input
+    - pdf_input
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/pricing
+      pricing_note: Text input price only. Image $0.45/MTok; audio $6.50/MTok; video $12/MTok.
+      embedding_dimensions: '{"min":128,"max":3072,"recommended":[768,1536,3072]}'
+      required_endpoint: embedContent
+      status_source: https://ai.google.dev/gemini-api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      pricing_status: reference
+      call_support_scope: text-only
+      embedding_space: gemini-embedding-2
+      embedding_note: Text calls only; changing models requires an explicitly compatible vector space or rebuilding the index.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-embedding-2
+  - name: glm-5.3-flash
+    title: GLM-5.3-Flash
+    category: glm
+    family: glm
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 0.15
+    output_price_usd_per_1m: 0.5
+    cache_read_price_usd_per_1m: 0.03
+    input_modalities:
+    - text
+    - image
+    - video
+    - file
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    - temperature
+    metadata:
+      upstream_source: https://docs.z.ai/guides/vlm/glm-5.3-flash
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://docs.z.ai/guides/overview/pricing
+      pricing_note: Z.AI global USD/MTok; do not copy to China or subscription plans.
+      reasoning_effort_options: low,high,max
+      thinking_can_disable: 'false'
+      thinking_note: thinking.type must be enabled; preserve reasoning across tools; Flash/FlashX recommend clear_thinking=false.
+      sampling_note: Official examples use temperature=1 and top_p=.95.
+      protocol_note: Z.AI GLM5.3 model page lists coding/paas/v4 in table but normal paas/v4 in curl example; preserve provider
+        base URL and validate account protocol restrictions.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: max
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '128000'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: zai
+      provider_model_id: glm-5.3-flash
+  - name: glm-5.3-flashx
+    title: GLM-5.3-FlashX
+    category: glm
+    family: glm
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 0.37
+    output_price_usd_per_1m: 1.25
+    cache_read_price_usd_per_1m: 0.075
+    input_modalities:
+    - text
+    - image
+    - video
+    - file
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    - temperature
+    metadata:
+      upstream_source: https://docs.z.ai/guides/vlm/glm-5.3-flash
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://docs.z.ai/guides/overview/pricing
+      pricing_note: Z.AI global USD/MTok; do not copy to China or subscription plans.
+      reasoning_effort_options: low,high,max
+      thinking_can_disable: 'false'
+      thinking_note: thinking.type must be enabled; preserve reasoning across tools; Flash/FlashX recommend clear_thinking=false.
+      sampling_note: Official examples use temperature=1 and top_p=.95.
+      protocol_note: Z.AI GLM5.3 model page lists coding/paas/v4 in table but normal paas/v4 in curl example; preserve provider
+        base URL and validate account protocol restrictions.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: max
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '128000'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: zai
+      provider_model_id: glm-5.3-flashx
+  - name: step-5-preview
+    title: Step 5 Preview
+    category: stepfun
+    family: step
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 1
+    output_price_usd_per_1m: 2.7
+    cache_read_price_usd_per_1m: 0.1
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://platform.stepfun.ai/docs/en/guides/models/step-5-preview
+      verified_at: '2026-10-10'
+      availability: preview
+      reasoning_effort_options: low,medium,high
+      pricing_source: https://platform.stepfun.ai/docs/en/guides/pricing/details
+      pricing_note: Global USD/MTok; cache-miss input includes cache writing.
+      protocols: chat_completions,messages
+      reasoning_effort_parameter: reasoning_effort (Chat), output_config.effort (Messages)
+      context_note: Source specifies 1M input/context and 64k output, not binary numeric counts.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '64000'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: stepfun-global
+      provider_model_id: step-5-preview
+  - name: stepaudio-3-tts
+    title: StepAudio 3 TTS
+    category: stepfun
+    family: stepaudio
+    modality: audio
+    input_modalities:
+    - text
+    output_modalities:
+    - audio
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      upstream_source: https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-tts
+      verified_at: '2026-10-10'
+      availability: active
+      required_endpoint: POST /v1/audio/speech or WebSocket /v1/realtime/audio
+      pricing_source: https://platform.stepfun.ai/docs/en/guides/pricing/details
+      limits_status: 'unverified: source gives no token window or output limit'
+      pricing_note: USD $0.36 per 10000 characters; cloning $1.50/voice. Not token pricing.
+      pricing_status: unverified
+      usd_per_10000_characters: '0.36'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: stepfun-global
+      provider_model_id: stepaudio-3-tts
+  - name: stepaudio-3-asr-max
+    title: StepAudio 3 ASR Max
+    category: stepfun
+    family: stepaudio
+    modality: audio
+    input_modalities:
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-asr
+      verified_at: '2026-10-10'
+      availability: active
+      required_endpoint: POST /v1/audio/asr/sse
+      pricing_source: https://platform.stepfun.ai/docs/en/guides/pricing/details
+      limits_status: 'unverified: source gives no token window or output limit'
+      pricing_note: Official model page $0.24/hour conflicts with price table $0.40/hour; do not infer token cost.
+      pricing_status: unverified
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: stepfun-global
+      provider_model_id: stepaudio-3-asr-max
+  - name: stepaudio-3-chat-preview
+    title: StepAudio 3 Chat Preview
+    category: stepfun
+    family: stepaudio
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    - audio_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - audio_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-realtime
+      verified_at: '2026-10-10'
+      availability: preview
+      required_endpoint: Chat Completions
+      pricing_source: https://platform.stepfun.ai/docs/en/guides/pricing/details
+      limits_status: 'unverified: source gives no token window or output limit'
+      pricing_note: Limited-time free preview; will be retired and replaced after trial. No permanent free promise or paid rates.
+      pricing_status: unverified
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: stepfun-global
+      provider_model_id: stepaudio-3-chat-preview
+  - name: stepaudio-3-realtime-preview
+    title: StepAudio 3 Realtime Preview
+    category: stepfun
+    family: stepaudio
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - audio_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-realtime
+      verified_at: '2026-10-10'
+      availability: preview
+      required_endpoint: Realtime WebSocket
+      pricing_source: https://platform.stepfun.ai/docs/en/guides/pricing/details
+      limits_status: 'unverified: source gives no token window or output limit'
+      pricing_note: Limited-time free preview; will be retired and replaced after trial. No permanent free promise or paid rates.
+      pricing_status: unverified
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: stepfun-global
+      provider_model_id: stepaudio-3-realtime-preview
+  - name: stepaudio-3-gen-preview
+    title: StepAudio 3 Gen Preview
+    category: stepfun
+    family: stepaudio
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-gen
+      verified_at: '2026-10-10'
+      availability: preview
+      required_endpoint: POST /v1/audio/generate
+      pricing_source: https://platform.stepfun.ai/docs/en/guides/pricing/details
+      limits_status: 'unverified: source gives no token window or output limit'
+      pricing_note: Limited-time free preview; will be retired and replaced after trial. No permanent free promise or paid rates.
+      pricing_status: unverified
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: stepfun-global
+      provider_model_id: stepaudio-3-gen-preview
+  - name: stepaudio-3-music-preview
+    title: StepAudio 3 Music Preview
+    category: stepfun
+    family: stepaudio
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://platform.stepfun.ai/docs/en/guides/models/stepaudio-3-music
+      verified_at: '2026-10-10'
+      availability: preview
+      required_endpoint: HTTP asynchronous task
+      pricing_source: https://platform.stepfun.ai/docs/en/guides/pricing/details
+      limits_status: 'unverified: source gives no token window or output limit'
+      pricing_note: Limited-time free preview; will be retired and replaced after trial. No permanent free promise or paid rates.
+      pricing_status: unverified
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: stepfun-global
+      provider_model_id: stepaudio-3-music-preview
+  - name: mimo-v2.6-pro
+    title: MiMo V2.6 Pro
+    category: mimo
+    family: mimo
+    modality: chat
+    context_window: 1048576
+    input_price_usd_per_1m: 0.435
+    output_price_usd_per_1m: 0.87
+    cache_read_price_usd_per_1m: 0.0036
+    input_modalities:
+    - text
+    - image
+    - audio
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://mimo.mi.com/docs/en-US/quick-start/model
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://mimo.mi.com/docs/pricing
+      pricing_note: Published overseas USD per million tokens. Domestic CNY rates differ; USD is not a conversion of the domestic
+        plan.
+      reasoning_note: Thinking defaults on; temperature/top_p are forced to 1.0/0.95 in thinking mode. Tool-call history must
+        retain reasoning_content.
+      reasoning_source: https://mimo.mi.com/docs/en-US/quick-start/usage-guide/other/deep-thinking
+      context_limit_label: 1M
+      output_limit_label: 128K
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xiaomi
+      provider_model_id: mimo-v2.6-pro
+  - name: mimo-v2.6-flash
+    title: MiMo V2.6 Flash
+    category: mimo
+    family: mimo
+    modality: chat
+    context_window: 1048576
+    input_price_usd_per_1m: 0.14
+    output_price_usd_per_1m: 0.28
+    cache_read_price_usd_per_1m: 0.0028
+    input_modalities:
+    - text
+    - image
+    - audio
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://mimo.mi.com/docs/en-US/quick-start/model
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://mimo.mi.com/docs/pricing
+      pricing_note: Published overseas USD per million tokens. Domestic CNY rates differ; USD is not a conversion of the domestic
+        plan.
+      reasoning_note: Thinking defaults on; temperature/top_p are forced to 1.0/0.95 in thinking mode. Tool-call history must
+        retain reasoning_content.
+      reasoning_source: https://mimo.mi.com/docs/en-US/quick-start/usage-guide/other/deep-thinking
+      context_limit_label: 1M
+      output_limit_label: 128K
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xiaomi
+      provider_model_id: mimo-v2.6-flash
+  - name: mimo-v2.6-pro-ultraspeed
+    title: MiMo V2.6 Pro-Ultraspeed
+    category: mimo
+    family: mimo
+    modality: chat
+    context_window: 1048576
+    input_price_usd_per_1m: 4.35
+    output_price_usd_per_1m: 8.7
+    cache_read_price_usd_per_1m: 0.036
+    input_modalities:
+    - text
+    - image
+    - audio
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://mimo.mi.com/docs/en-US/quick-start/model
+      verified_at: '2026-10-10'
+      availability: restricted
+      pricing_source: https://mimo.mi.com/docs/pricing
+      pricing_note: Published overseas USD per million tokens. Domestic CNY rates differ; USD is not a conversion of the domestic
+        plan.
+      reasoning_note: Thinking defaults on; temperature/top_p are forced to 1.0/0.95 in thinking mode. Tool-call history must
+        retain reasoning_content.
+      reasoning_source: https://mimo.mi.com/docs/en-US/quick-start/usage-guide/other/deep-thinking
+      context_limit_label: 1M
+      output_limit_label: 128K
+      access_note: Official model table requires contacting Xiaomi for customized service.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      pricing_status: reference
+      access_requirement: Official model table requires contacting Xiaomi for customized service.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xiaomi
+      provider_model_id: mimo-v2.6-pro-ultraspeed
+  - name: doubao-seed-evolving
+    title: Doubao Seed Evolving
+    category: doubao
+    family: doubao
+    modality: chat
+    context_window: 1048576
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://docs.volcengine.com/docs/ark/model-list?lang=en
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Verified CNY standard online inference prices; no USD conversion supplied. Cache storage CNY 0.017 per million
+        tokens per hour; flex and priority tiers differ.
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":6,"output":30,"cache_read":1.2}'
+      pricing_source: https://docs.volcengine.com/docs/ark/model-pricing?lang=zh
+      default_output_tokens: '4096'
+      reasoning_source: https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh
+      alias_note: Rolling latest model; preserve alias semantics rather than pinning it silently.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '262144'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: doubao
+      provider_model_id: doubao-seed-evolving
+  - name: doubao-seed-2-1-pro-260915
+    title: Doubao Seed 2.1 Pro
+    category: doubao
+    family: doubao
+    modality: chat
+    context_window: 1048576
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://docs.volcengine.com/docs/ark/model-list?lang=en
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Verified CNY standard online inference prices; no USD conversion supplied. Cache storage CNY 0.017 per million
+        tokens per hour; flex and priority tiers differ.
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":6,"output":30,"cache_read":1.2}'
+      pricing_source: https://docs.volcengine.com/docs/ark/model-pricing?lang=zh
+      default_output_tokens: '4096'
+      reasoning_source: https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '262144'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: doubao
+      provider_model_id: doubao-seed-2-1-pro-260915
+  - name: doubao-seed-2-1-lite-260915
+    title: Doubao Seed 2.1 Lite
+    category: doubao
+    family: doubao
+    modality: chat
+    context_window: 1048576
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - audio_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - audio_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://docs.volcengine.com/docs/ark/model-list?lang=en
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Verified CNY standard online inference prices; no USD conversion supplied. Cache storage CNY 0.017 per million
+        tokens per hour; flex and priority tiers differ.
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":0.8,"output":2.7,"cache_read":0.16,"audio_input":12,"audio_cache_read":2.4}'
+      pricing_source: https://docs.volcengine.com/docs/ark/model-pricing?lang=zh
+      default_output_tokens: '4096'
+      reasoning_source: https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '262144'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: doubao
+      provider_model_id: doubao-seed-2-1-lite-260915
+  - name: doubao-seed-2-1-turbo-260628
+    title: Doubao Seed 2.1 Turbo
+    category: doubao
+    family: doubao
+    modality: chat
+    context_window: 262144
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://docs.volcengine.com/docs/ark/model-list?lang=en
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Verified CNY standard online inference prices; no USD conversion supplied. Cache storage CNY 0.017 per million
+        tokens per hour; flex and priority tiers differ.
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":3,"output":15,"cache_read":0.6}'
+      pricing_source: https://docs.volcengine.com/docs/ark/model-pricing?lang=zh
+      default_output_tokens: '4096'
+      reasoning_source: https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '262144'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: doubao
+      provider_model_id: doubao-seed-2-1-turbo-260628
+  - name: mistral-large-4
+    title: Mistral Large 4
+    category: mistral
+    family: mistral
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://docs.mistral.ai/models/mistral-large-4-0
+      verified_at: '2026-10-10'
+      availability: preview
+      pricing_note: USD per million tokens, launch promotion 50% off for two weeks from October 6. List rates input 1.36, output
+        4.18, cached input 0.14; exact promotion end instant not published.
+      pricing_source: https://docs.mistral.ai/resources/changelogs
+      list_prices_usd_per_million_tokens: '{"input":1.36,"output":4.18,"cache_read":0.14}'
+      reasoning_effort_options: none,high
+      reasoning_source: https://docs.mistral.ai/studio/conversations/reasoning
+      output_limit_status: unverified
+      context_limit_label: 1M
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: chat/completions
+      reference_token_prices: '{"input":0.68,"output":2.09,"cache_read":0.07}'
+      pricing_status: unverified
+      source: tokenhub-standard-catalog
+      provider_catalog_id: mistral
+      provider_model_id: mistral-large-4
+  - name: embed-v5.0-pro
+    title: Cohere Embed 5 Pro
+    category: cohere
+    family: cohere-embed
+    modality: embedding
+    context_window: 128000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    - vision
+    supported_parameters:
+    - image_input
+    metadata:
+      upstream_source: https://docs.cohere.com/docs/models
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Serverless token price not verified. Public pricing retrieved lists Model Vault instance rates; do not translate
+        those to token rates.
+      pricing_source: https://cohere.com/pricing
+      embedding_dimensions: '[256,512,768,1024,1536,2048]'
+      default_embedding_dimensions: '2048'
+      embedding_scope_note: Official model supports multimodal input; TokenHub text-only support must be evaluated separately.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support_scope: text-only
+      embedding_space: embed-v5.0-pro
+      embedding_note: Text calls only; changing models requires an explicitly compatible vector space or rebuilding the index.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: embed-v5.0-pro
+  - name: rerank-v4.0-pro
+    title: Cohere Rerank 4 Pro
+    category: cohere
+    family: cohere-rerank
+    modality: rerank
+    context_window: 32000
+    input_modalities:
+    - text
+    output_modalities:
+    - score
+    capabilities:
+    - rerank
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.cohere.com/docs/models
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Search-unit billing, not token billing. Exact current serverless USD per search unit could not be verified;
+        do not borrow an aggregator rate.
+      pricing_source: https://cohere.com/pricing
+      billing_unit: search_unit
+      search_unit_definition: One query and up to 100 document chunks; documents longer than 500 tokens including query are
+        split and count as multiple chunks.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support_scope: text-only
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: rerank-v4.0-pro
+  - name: embed-v5.0-fast
+    title: Cohere Embed 5 Fast
+    category: cohere
+    family: cohere-embed
+    modality: embedding
+    context_window: 128000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    - vision
+    supported_parameters:
+    - image_input
+    metadata:
+      upstream_source: https://docs.cohere.com/docs/models
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Serverless token price not verified. Public pricing retrieved lists Model Vault instance rates; do not translate
+        those to token rates.
+      pricing_source: https://cohere.com/pricing
+      embedding_dimensions: '[256,512,768,1024,1536,2048]'
+      default_embedding_dimensions: '2048'
+      embedding_scope_note: Official model supports multimodal input; TokenHub text-only support must be evaluated separately.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support_scope: text-only
+      embedding_space: embed-v5.0-fast
+      embedding_note: Text calls only; changing models requires an explicitly compatible vector space or rebuilding the index.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: embed-v5.0-fast
+  - name: rerank-v4.0-fast
+    title: Cohere Rerank 4 Fast
+    category: cohere
+    family: cohere-rerank
+    modality: rerank
+    context_window: 32000
+    input_modalities:
+    - text
+    output_modalities:
+    - score
+    capabilities:
+    - rerank
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.cohere.com/docs/models
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Search-unit billing, not token billing. Exact current serverless USD per search unit could not be verified;
+        do not borrow an aggregator rate.
+      pricing_source: https://cohere.com/pricing
+      billing_unit: search_unit
+      search_unit_definition: One query and up to 100 document chunks; documents longer than 500 tokens including query are
+        split and count as multiple chunks.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support_scope: text-only
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: rerank-v4.0-fast
+  - name: rerank-3
+    title: Voyage Rerank 3
+    category: custom
+    family: voyage-rerank
+    modality: rerank
+    context_window: 32000
+    input_price_usd_per_1m: 0.05
+    input_modalities:
+    - text
+    output_modalities:
+    - score
+    capabilities:
+    - rerank
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.voyageai.com/docs/reranker
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://docs.voyageai.com/docs/pricing
+      pricing_note: USD per million processed tokens; processed tokens = query tokens multiplied by document count + sum of
+        document tokens. Output scores have no output-token price.
+      billing_unit: input_tokens
+      max_query_tokens: '8000'
+      max_documents: '1000'
+      max_total_tokens: '600000'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      pricing_status: reference
+      call_support_scope: text-only
+      source: tokenhub-standard-catalog
+      provider_catalog_id: voyage
+      provider_model_id: rerank-3
+  - name: rerank-3-lite
+    title: Voyage Rerank 3 Lite
+    category: custom
+    family: voyage-rerank
+    modality: rerank
+    context_window: 32000
+    input_price_usd_per_1m: 0.02
+    input_modalities:
+    - text
+    output_modalities:
+    - score
+    capabilities:
+    - rerank
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.voyageai.com/docs/reranker
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://docs.voyageai.com/docs/pricing
+      pricing_note: USD per million processed tokens; processed tokens = query tokens multiplied by document count + sum of
+        document tokens. Output scores have no output-token price.
+      billing_unit: input_tokens
+      max_query_tokens: '8000'
+      max_documents: '1000'
+      max_total_tokens: '600000'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      pricing_status: reference
+      call_support_scope: text-only
+      source: tokenhub-standard-catalog
+      provider_catalog_id: voyage
+      provider_model_id: rerank-3-lite
+  - name: MiniMax-M3.1-Flash-Preview
+    title: MiniMax M3.1 Flash Preview
+    category: minimax
+    family: minimax
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://platform.minimax.io/docs/guides/text-generation
+      verified_at: '2026-10-10'
+      availability: preview
+      pricing_status: unverified
+      access_note: Restricted to M Plan and MiniMax Code. Subscription Key is not interchangeable with PAYG key. CN endpoint
+        availability requires separate verification.
+      pricing_note: Subscription quota only; no PAYG per-token rate verified.
+      reasoning_effort_options: low,medium,high,xhigh,max
+      reasoning_effort_default: max
+      reasoning_required: 'true'
+      output_limit_status: unverified
+      api_note: Anthropic output_config.effort; Chat Completions reasoning_effort; Responses reasoning.effort.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      access_requirement: Requires the named subscription plan; public API entitlement is separate.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: minimax-coding-plan
+      provider_model_id: MiniMax-M3.1-Flash-Preview
+  - name: speech-2.8-hd
+    title: MiniMax Speech 2.8 HD
+    category: minimax
+    family: minimax-speech
+    modality: audio
+    input_modalities:
+    - text
+    output_modalities:
+    - audio
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      upstream_source: https://platform.minimax.io/docs/api-reference/speech-t2a-http
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: USD per million input characters, not tokens. Keep cost.input/output absent.
+      billing_unit: characters
+      usd_per_million_characters: '100'
+      pricing_source: https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise
+      api_note: Native /v1/t2a_v2 or WebSocket /ws/v1/t2a_v2. Existing Anthropic base URL alone cannot invoke speech.
+      call_support_note: Catalog inclusion only; native speech adapter not verified.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: minimax
+      provider_model_id: speech-2.8-hd
+  - name: speech-2.8-turbo
+    title: MiniMax Speech 2.8 TURBO
+    category: minimax
+    family: minimax-speech
+    modality: audio
+    input_modalities:
+    - text
+    output_modalities:
+    - audio
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      upstream_source: https://platform.minimax.io/docs/api-reference/speech-t2a-http
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: USD per million input characters, not tokens. Keep cost.input/output absent.
+      billing_unit: characters
+      usd_per_million_characters: '60'
+      pricing_source: https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise
+      api_note: Native /v1/t2a_v2 or WebSocket /ws/v1/t2a_v2. Existing Anthropic base URL alone cannot invoke speech.
+      call_support_note: Catalog inclusion only; native speech adapter not verified.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: minimax
+      provider_model_id: speech-2.8-turbo
+  - name: qwen3.8-max
+    title: Qwen3.8 Max
+    category: qwen
+    family: qwen
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-8-max
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/qwen3-8-max
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":12,"output":36,"cache_read":1.5,"cache_write":15}'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      reasoning_effort_options: none,minimal,low,medium,high,xhigh,max
+      reasoning_effort_default: xhigh
+      reasoning_note: Native efforts low/medium/xhigh; minimal maps to low, high/max to xhigh, none disables thinking. Cannot
+        combine reasoning_effort and thinking_budget.
+      reasoning_source: https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions/
+      max_input_tokens: '991808'
+      max_input_tokens_thinking: '983616'
+      max_reasoning_tokens: '262144'
+      reasoning_history_note: preserve_thinking defaults true; retain historical reasoning_content in its original field.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.8-max
+  - name: qwen3.8-max-0902
+    title: Qwen3.8 Max 0902
+    category: qwen
+    family: qwen
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-8-max
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/qwen3-8-max
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":12,"output":36,"cache_read":1.5,"cache_write":15}'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      reasoning_effort_options: none,minimal,low,medium,high,xhigh,max
+      reasoning_effort_default: xhigh
+      reasoning_note: Native efforts low/medium/xhigh; minimal maps to low, high/max to xhigh, none disables thinking. Cannot
+        combine reasoning_effort and thinking_budget.
+      reasoning_source: https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions/
+      max_input_tokens: '991808'
+      max_input_tokens_thinking: '983616'
+      max_reasoning_tokens: '262144'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.8-max-0902
+  - name: qwen3.8-flash
+    title: Qwen3.8 Flash
+    category: qwen
+    family: qwen
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-8-flash
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/qwen3-8-flash
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":0.8,"output":2.7,"cache_read":0.1}'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      reasoning_effort_options: none,minimal,low,medium,high,xhigh,max
+      reasoning_effort_default: xhigh
+      reasoning_note: Native efforts low/medium/xhigh; minimal maps to low, high/max to xhigh, none disables thinking. Cannot
+        combine reasoning_effort and thinking_budget.
+      reasoning_source: https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions/
+      max_input_tokens: '991808'
+      max_input_tokens_thinking: '983616'
+      max_reasoning_tokens: '262144'
+      reasoning_history_note: preserve_thinking defaults true; retain historical reasoning_content in its original field.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.8-flash
+  - name: qwen3.8-27b
+    title: Qwen3.8 27B
+    category: qwen
+    family: qwen
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-8-27b
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/qwen3-8-27b
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":3,"output":12,"cache_read":0.6,"cache_write":3.75}'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      reasoning_effort_options: none,minimal,low,medium,high,xhigh,max
+      reasoning_effort_default: xhigh
+      reasoning_note: Native efforts low/medium/xhigh; minimal maps to low, high/max to xhigh, none disables thinking. Cannot
+        combine reasoning_effort and thinking_budget.
+      reasoning_source: https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions/
+      max_input_tokens: '991808'
+      max_input_tokens_thinking: '983616'
+      max_reasoning_tokens: '262144'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.8-27b
+  - name: qwen3.7-flash
+    title: Qwen3.7 Flash
+    category: qwen
+    family: qwen
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-7-flash
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      original_currency: CNY
+      original_unit: per_million_tokens
+      pricing_tiers: '[{"input_tokens_lte":32000,"input":0.2,"output":0.8},{"input_tokens_lte":256000,"input":0.6,"output":2.4},{"input_tokens_lte":1000000,"input":1.2,"output":4.8}]'
+      pricing_note: Entire request uses the tier selected by total input tokens. Do not flatten to the cheapest tier.
+      max_input_tokens: '991808'
+      max_reasoning_tokens: '262144'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.7-flash
+  - name: qwen3.8-omni-flash
+    title: Qwen3.8 Omni Flash
+    category: qwen
+    family: qwen-omni
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - audio
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - audio_input
+    - video_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-8-omni-flash
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      reasoning_effort_options: none,minimal,low,medium,high,xhigh,max
+      reasoning_effort_default: xhigh
+      reasoning_source: https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions/
+      context_evidence_note: Current directly opened individual model page states 1M context and 131072 output. Earlier observed
+        65536/16384 values were not reproduced in this verification.
+      previously_observed_context_conflict: Earlier research reported 65536 context/16384 output; current model page supersedes
+        that observation.
+      max_input_tokens: '991808'
+      max_input_tokens_thinking: '983616'
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":0.8,"output":2.7,"cache_read":0.1}'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '131072'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.8-omni-flash
+  - name: qwen3.7-text-embedding
+    title: Qwen3.7 Text Embedding
+    category: qwen
+    family: qwen-retrieval
+    modality: embedding
+    context_window: 131072
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters: []
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-7-text-embedding
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":0.5}'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      billing_unit: input_tokens
+      embedding_dimensions: '[256,512,768,1024,1536,2048,2560]'
+      default_embedding_dimensions: '1024'
+      max_batch_size: '20'
+      embedding_note: Native synchronous API documents 128000 max input, while model card states 131072 context; apply the smaller
+        API input limit.
+      max_input_tokens: '128000'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support_scope: text-only
+      embedding_space: qwen3.7-text-embedding
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.7-text-embedding
+  - name: qwen3.7-text-embedding-flash
+    title: Qwen3.7 Text Embedding Flash
+    category: qwen
+    family: qwen-retrieval
+    modality: embedding
+    context_window: 131072
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters: []
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-7-text-embedding-flash
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":0.125}'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      billing_unit: input_tokens
+      embedding_dimensions: '[256,512,768,1024]'
+      default_embedding_dimensions: '1024'
+      max_batch_size: '20'
+      embedding_note: Native synchronous API documents 128000 max input, while model card states 131072 context; apply the smaller
+        API input limit.
+      max_input_tokens: '128000'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support_scope: text-only
+      embedding_space: qwen3.7-text-embedding-flash
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.7-text-embedding-flash
+  - name: qwen3.7-text-rerank
+    title: Qwen3.7 Text Rerank
+    category: qwen
+    family: qwen-retrieval
+    modality: rerank
+    context_window: 32768
+    input_modalities:
+    - text
+    output_modalities:
+    - score
+    capabilities:
+    - rerank
+    supported_parameters: []
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-7-text-rerank
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":0.5}'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      billing_unit: input_tokens
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support_scope: text-only
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.7-text-rerank
+  - name: qwen-image-2.1-pro
+    title: Qwen Image 2.1 Pro
+    category: qwen
+    family: qwen-image
+    modality: image
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - image
+    capabilities:
+    - image
+    - vision
+    supported_parameters:
+    - image_input
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen-image-2-1-pro
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      billing_unit: image
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      original_currency: CNY
+      original_unit: per_output_image
+      original_prices: '{"output":0.25}'
+      max_reference_images: '10'
+      transparent_background: 'true'
+      pricing_note: Price per generated image; no token price. Account activation and image API adapter remain separate.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen-image-2.1-pro
+  - name: qwen-image-2.1-turbo
+    title: Qwen Image 2.1 Turbo
+    category: qwen
+    family: qwen-image
+    modality: image
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - image
+    capabilities:
+    - image
+    - vision
+    supported_parameters:
+    - image_input
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/newly-released-models
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_note: Released 2026-10-09 in Beijing. Current Turbo price and Singapore availability not verified; do not copy
+        Pro pricing.
+      transparent_background: 'true'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen-image-2.1-turbo
+  - name: qwen3.8-omni-flash-realtime
+    title: Qwen3.8 Omni Flash Realtime
+    category: qwen
+    family: qwen-omni
+    modality: audio
+    input_modalities:
+    - text
+    - image
+    - audio
+    - video
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - vision
+    - audio_input
+    - video_input
+    - tools
+    supported_parameters:
+    - image_input
+    - audio_input
+    - video_input
+    - tools
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-8-omni-flash-realtime
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      protocol: realtime
+      api_note: Workspace-bound WebSocket endpoint; also WebRTC/AOQ. Not an ordinary Chat Completions operation.
+      context_limit_note: 196608 is total input token cap, not combined context; maximum output is 65536.
+      max_input_tokens: '196608'
+      audio_history_seconds: '600'
+      video_history_seconds: '240'
+      pricing_note: Published China Beijing CNY prices; no USD conversion or free-price inference.
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":1.5,"output":4.5,"audio_input":6,"audio_output":12}'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      max_output_tokens: '65536'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.8-omni-flash-realtime
+  - name: qwen3.8-livetranslate-flash-realtime
+    title: Qwen3.8 LiveTranslate Flash Realtime
+    category: qwen
+    family: qwen-livetranslate
+    modality: audio
+    context_window: 53248
+    input_modalities:
+    - audio
+    - image
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    - vision
+    supported_parameters:
+    - audio_input
+    - image_input
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen3-8-livetranslate-flash-realtime
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://help.aliyun.com/zh/model-studio/qwen3-8-livetranslate-flash-realtime
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"audio_input":40,"image_input":3.3,"output":100,"audio_output":160}'
+      pricing_note: Published CNY per million modality tokens for Beijing or Singapore respectively; no USD conversion.
+      protocol: realtime
+      region: Beijing
+      max_input_tokens: '49152'
+      api_note: Workspace-bound Realtime API. Uses session.output_modalities and response.text.delta/audio_transcript.delta;
+        differs from 3.5 event semantics.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      max_output_tokens: '4096'
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen3.8-livetranslate-flash-realtime
+  - name: deepseek-flash
+    title: DeepSeek V4.1 Flash
+    category: deepseek
+    family: deepseek
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - max_output_tokens
+    - image_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://api-docs.deepseek.com/quick_start/pricing/
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://api-docs.deepseek.com/quick_start/pricing/
+      pricing_note: USD per million tokens; use time-dependent schedule rather than a single flat cost. Peak excludes Chinese
+        public holidays.
+      pricing_schedule: '{"currency":"USD","unit":"per_million_tokens","timezone":"UTC","peak_weekdays":["MO","TU","WE","TH","FR"],"peak_windows":[["01:00","04:00"],["06:00","10:00"]],"holiday_calendar":"Chinese
+        public holidays use off_peak for the entire day","peak":{"input":0.3,"output":1.2,"cache_read":0.006},"off_peak":{"input":0.15,"output":0.6,"cache_read":0.003}}'
+      model_version: DeepSeek-V4.1-Flash
+      reasoning_effort_options: none,low,high,max
+      reasoning_effort_default: high
+      reasoning_effort_aliases: '{"minimal":"low","medium":"high","xhigh":"high"}'
+      parameter_source: https://api-docs.deepseek.com/api/create-chat-completion/
+      temperature_note: temperature has no effect in thinking mode.
+      context_limit_label: 1M
+      output_limit_label: 384K (393216)
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: responses,chat/completions,anthropic
+      max_output_tokens: '393216'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: deepseek
+      provider_model_id: deepseek-flash
+  - name: grok-4.7
+    title: Grok 4.7
+    category: grok
+    family: grok
+    modality: chat
+    context_window: 500000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - max_output_tokens
+    - image_input
+    - reasoning
+    - tools
+    metadata:
+      upstream_source: https://docs.x.ai/developers/models/grok-4.7
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://docs.x.ai/developers/release-notes
+      pricing_note: USD per million tokens. Prices double for prompts exceeding 200k tokens; no output cap verified.
+      pricing_tiers: '[{"input_tokens_lte":200000,"input":2,"output":6,"cache_read":0.5},{"input_tokens_gt":200000,"input":4,"output":12,"cache_read":1}]'
+      reasoning_effort_options: low,medium,high,xhigh
+      reasoning_effort_default: high
+      output_limit_status: unverified
+      api_note: Responses always returns reasoning.encrypted_content; batch unsupported.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: responses,chat/completions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-4.7
+  - name: grok-imagine-image-2.0
+    title: Grok Imagine Image 2.0
+    category: grok
+    family: grok-imagine
+    modality: image
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - image
+    capabilities:
+    - image
+    - vision
+    supported_parameters:
+    - image_input
+    metadata:
+      upstream_source: https://docs.x.ai/developers/models/grok-imagine-image-2.0
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://docs.x.ai/developers/pricing
+      billing_unit: image
+      usd_per_input_image: '0.01'
+      usd_output_image_prices: '{"1K_low":0.04,"1.5K_low":0.05,"2K_low":0.06,"1K_medium":0.06,"1.5K_medium":0.07,"2K_medium":0.08}'
+      pricing_note: Native per-image pricing; auto quality uses low for generation and medium for editing.
+      max_source_images: '5'
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-imagine-image-2.0
+  - name: grok-imagine-video-1.5
+    title: Grok Imagine Video 1.5
+    category: grok
+    family: grok-imagine
+    modality: video
+    input_modalities:
+    - text
+    - image
+    - audio
+    output_modalities:
+    - video
+    capabilities:
+    - video
+    - vision
+    - audio_input
+    supported_parameters:
+    - image_input
+    - audio_input
+    metadata:
+      upstream_source: https://docs.x.ai/developers/models/grok-imagine-video-1.5
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://docs.x.ai/developers/pricing
+      billing_unit: video_second
+      usd_per_input_image: '0.01'
+      usd_per_output_second: '{"480p":0.08,"720p":0.14,"1080p":0.25}'
+      pricing_note: Native USD per generated second by resolution, plus image inputs; do not encode as text tokens.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-imagine-video-1.5
+  - name: grok-imagine-video-1.5-lite
+    title: Grok Imagine Video 1.5 Lite
+    category: grok
+    family: grok-imagine
+    modality: video
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - video
+    capabilities:
+    - video
+    - vision
+    supported_parameters:
+    - image_input
+    metadata:
+      upstream_source: https://docs.x.ai/developers/models/grok-imagine-video-1.5-lite
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://docs.x.ai/developers/pricing
+      billing_unit: video_second
+      usd_per_input_image: '0.01'
+      usd_per_output_second: '{"480p":0.02,"720p":0.03,"1080p":0.14}'
+      pricing_note: Native USD per generated second by resolution, plus image inputs; do not encode as text tokens.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      call_support: unsupported
+      support_note: 'Catalog only: a matching media/session adapter and native-unit billing are required.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-imagine-video-1.5-lite
+  - name: qwen3.7-plus
+    title: Qwen3.7 Plus
+    category: qwen
+    family: qwen
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    supported_parameters:
+    - image_input
+    - video_input
+    - reasoning
+    - tools
+    - temperature
+    metadata:
+      upstream_source: https://help.aliyun.com/zh/model-studio/text-generation-model
+      verified_at: '2026-10-10'
+      catalog_reviewed_at: '2026-10-10'
+      pricing_status: unverified
+      pricing_note: 'Reference only: confirm current regional pricing before publishing.'
+      availability: active
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba
+      provider_model_id: qwen3.7-plus
   - name: "jev-1.13.0"
     title: "jev-1.13.0"
     description: "TypeSafe System One model for typed semantic judgments."
@@ -327,85 +3068,126 @@ models:
       tool_call: "true"
       reasoning_supported: "true"
       reasoning_effort_supported: "false"
-  - name: "step-image-edit-2"
-    title: "Step Image Edit 2"
-    description: "StepFun's lightweight model for text-to-image generation and reference-image editing."
-    category: "stepfun"
-    family: "step"
-    modality: "image"
-    input_modalities: ["text", "image"]
-    output_modalities: ["image"]
-    capabilities: ["image", "image_edit", "vision"]
-    supported_parameters: ["image_input"]
+  - name: step-image-edit-2
+    title: Step Image Edit 2
+    description: StepFun's lightweight model for text-to-image generation and reference-image editing.
+    category: stepfun
+    family: step
+    modality: image
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - image
+    capabilities:
+    - image
+    - image_edit
+    - vision
+    supported_parameters:
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "stepfun-api"
-      provider_catalog_id: "stepfun-plan"
-      provider_model_id: "step-image-edit-2"
-      provider_model_name: "Step Image Edit 2"
-      endpoints: "images/generations,images/edits"
-      features: "text-to-image,image-edit"
-      max_prompt_characters: "512"
-      max_input_image_size: "4096x4096"
-      price_cny: "0.02"
-      pricing_unit: "image"
-      tool_call: "false"
-      vision: "true"
-      reasoning_supported: "false"
-  - name: "step-2-16k"
-    title: "Step 2 (16K)"
-    description: "StepFun's trillion-parameter general-purpose text model for planning, extraction, recommendations, and conversational applications."
-    category: "stepfun"
-    family: "step"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: stepfun-api
+      provider_catalog_id: stepfun-plan
+      provider_model_id: step-image-edit-2
+      provider_model_name: Step Image Edit 2
+      endpoints: images/generations,images/edits
+      features: text-to-image,image-edit
+      max_prompt_characters: '512'
+      max_input_image_size: 4096x4096
+      price_cny: '0.02'
+      pricing_unit: image
+      tool_call: 'false'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://platform.stepfun.ai/docs/en/guides/image-offline-notice
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      shutdown_time_note: The vendor publishes a calendar date; the date boundary is used for new-route eligibility.
+      shutdown_at: '2026-10-10T00:00:00+08:00'
+  - name: step-2-16k
+    title: Step 2 (16K)
+    description: StepFun's trillion-parameter general-purpose text model for planning, extraction, recommendations, and conversational
+      applications.
+    category: stepfun
+    family: step
+    modality: chat
     context_window: 16384
     input_price_usd_per_1m: 5.21
     cache_read_price_usd_per_1m: 1.04
     output_price_usd_per_1m: 16.44
-    input_modalities: ["text"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "tools"]
-    supported_parameters: ["temperature", "tools"]
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    supported_parameters:
+    - temperature
+    - tools
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "stepfun-api"
-      provider_catalog_id: "stepfun"
-      provider_catalog_updated_at: "2026-08-23T16:15:52.898Z"
-      provider_model_id: "step-2-16k"
-      provider_model_name: "Step 2 (16K)"
-      endpoints: "chat/completions"
-      features: "function-calling"
-      max_output_tokens: "8192"
-      release_date: "2025-01-01"
-      tool_call: "true"
-      vision: "false"
-  - name: "step-1-32k"
-    title: "Step 1 (32K)"
-    description: "StepFun's classic general-purpose text model for dialogue orchestration, customer support, rewriting, classification, and information extraction."
-    category: "stepfun"
-    family: "step"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: stepfun-api
+      provider_catalog_id: stepfun
+      provider_catalog_updated_at: '2026-08-23T16:15:52.898Z'
+      provider_model_id: step-2-16k
+      provider_model_name: Step 2 (16K)
+      endpoints: chat/completions
+      features: function-calling
+      max_output_tokens: '8192'
+      release_date: '2025-01-01'
+      tool_call: 'true'
+      vision: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://platform.stepfun.ai/docs/en/guides/model-migration
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: step-1o-turbo-vision
+      shutdown_time_note: The vendor publishes a calendar date; the date boundary is used for new-route eligibility.
+      shutdown_at: '2026-07-08T00:00:00+08:00'
+  - name: step-1-32k
+    title: Step 1 (32K)
+    description: StepFun's classic general-purpose text model for dialogue orchestration, customer support, rewriting, classification,
+      and information extraction.
+    category: stepfun
+    family: step
+    modality: chat
     context_window: 32768
     input_price_usd_per_1m: 2.05
     cache_read_price_usd_per_1m: 0.41
     output_price_usd_per_1m: 9.59
-    input_modalities: ["text"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "tools"]
-    supported_parameters: ["temperature", "tools"]
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    supported_parameters:
+    - temperature
+    - tools
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "stepfun-api"
-      provider_catalog_id: "stepfun"
-      provider_catalog_updated_at: "2026-08-23T16:15:52.898Z"
-      provider_model_id: "step-1-32k"
-      provider_model_name: "Step 1 (32K)"
-      endpoints: "chat/completions"
-      features: "function-calling"
-      max_output_tokens: "32768"
-      release_date: "2025-01-01"
-      tool_call: "true"
-      vision: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: stepfun-api
+      provider_catalog_id: stepfun
+      provider_catalog_updated_at: '2026-08-23T16:15:52.898Z'
+      provider_model_id: step-1-32k
+      provider_model_name: Step 1 (32K)
+      endpoints: chat/completions
+      features: function-calling
+      max_output_tokens: '32768'
+      release_date: '2025-01-01'
+      tool_call: 'true'
+      vision: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://platform.stepfun.ai/docs/en/guides/model-migration
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: step-1o-turbo-vision
+      shutdown_time_note: The vendor publishes a calendar date; the date boundary is used for new-route eligibility.
+      shutdown_at: '2026-07-08T00:00:00+08:00'
   - name: "claude-fable-5"
     description: "Most intelligent model for building agents and coding"
     category: "claude"
@@ -480,33 +3262,53 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "glm-5.3"
-    title: "GLM-5.3"
-    description: "GLM-5.3 is Zhipu AI's flagship model for long-horizon coding, agents, and complex project delivery. It supports a 1M-token context window, always-on reasoning with low, high, and max effort levels, tool calling, and structured outputs."
-    category: "glm"
-    family: "glm"
-    modality: "chat"
+  - name: glm-5.3
+    title: GLM-5.3
+    category: glm
+    family: glm
+    modality: chat
     context_window: 1000000
-    input_modalities: ["text"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning"]
+    input_price_usd_per_1m: 1.4
+    output_price_usd_per_1m: 4.4
+    cache_read_price_usd_per_1m: 0.26
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - reasoning
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - max_tokens
+    - reasoning
+    - tools
+    - temperature
+    - response_format
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "zhipuai-coding-plan"
-      provider_model_id: "glm-5.3"
-      provider_model_name: "GLM-5.3"
-      endpoints: "chat/completions"
-      features: "function-calling,structured-outputs,reasoning"
-      max_output_tokens: "131072"
-      billing_mode: "subscription"
-      release_date: "2026-08-14"
-      tool_call: "true"
-      vision: "false"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-      reasoning_mode: "always_on"
-      reasoning_effort_options: "low,high,max"
+      upstream_source: https://docs.z.ai/guides/llm/glm-5.3
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_source: https://docs.z.ai/guides/overview/pricing
+      pricing_note: Z.AI global USD/MTok; do not copy to China or subscription plans.
+      reasoning_effort_options: low,high,max
+      thinking_can_disable: 'false'
+      thinking_note: thinking.type must be enabled; preserve reasoning across tools; Flash/FlashX recommend clear_thinking=false.
+      sampling_note: Official examples use temperature=1 and top_p=.95.
+      protocol_note: Z.AI GLM5.3 model page lists coding/paas/v4 in table but normal paas/v4 in curl example; preserve provider
+        base URL and validate account protocol restrictions.
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: max
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions
+      max_output_tokens: '128000'
+      pricing_status: reference
+      source: tokenhub-standard-catalog
+      provider_catalog_id: zai
+      provider_model_id: glm-5.3
   - name: "zai-org/glm-5.2"
     title: "GLM 5.2"
     description: "GLM-5.2 is Z.AI's latest flagship model, meticulously engineered for long-horizon autonomous tasks. Capable of working continuously on a single assignment for up to 8 hours, it autonomously manages the entire workflow—from initial planning and execution to iterative optimization and the delivery of production-grade results. With coding and agentic capabilities that rival leading proprietary frontier models, it excels particularly in sustained execution, complex engineering optimization, and real-world development scenarios. Its context window has been expanded from 200K to 1M tokens, making it an ideal foundational model for powering advanced autonomous agents and long-horizon coding assistants."
@@ -561,34 +3363,64 @@ models:
       reasoning_supported: "true"
       reasoning_default: "true"
       reasoning_mode: "always_on"
-  - name: "kimi-k3"
-    title: "Kimi K3"
-    description: "Kimi K3 is Kimi's flagship model for long-horizon coding, knowledge work, and deep reasoning. It has native visual understanding, supports text, image, and video input, and provides a 1M-token context window with always-on thinking."
-    category: "kimi"
-    family: "kimi"
-    modality: "chat"
+  - name: kimi-k3
+    title: Kimi K3
+    description: Kimi K3 is Kimi's flagship model for long-horizon coding, knowledge work, and deep reasoning. It has native
+      visual understanding, supports text, image, and video input, and provides a 1M-token context window with always-on thinking.
+    category: kimi
+    family: kimi
+    modality: chat
     context_window: 1048576
     input_price_usd_per_1m: 3
     cache_read_price_usd_per_1m: 0.3
     output_price_usd_per_1m: 15
-    input_modalities: ["text", "image", "video"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "video_input", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["tools", "response_format", "reasoning", "image_input", "video_input"]
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - reasoning
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - tools
+    - response_format
+    - reasoning
+    - image_input
+    - video_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "kimi-api-platform"
-      provider_model_id: "kimi-k3"
-      provider_model_name: "Kimi K3"
-      endpoints: "chat/completions"
-      features: "function-calling,structured-outputs,reasoning"
-      max_output_tokens: "1048576"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-      reasoning_mode: "always_on"
-      reasoning_effort_options: "low,high,max"
+      source: tokenhub-standard-catalog
+      upstream_source: https://platform.kimi.ai/docs/guide/kimi-k3-quickstart
+      provider_model_id: kimi-k3
+      provider_model_name: Kimi K3
+      endpoints: chat/completions
+      features: function-calling,structured-outputs,reasoning
+      max_output_tokens: '1048576'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      reasoning_mode: always_on
+      reasoning_effort_options: low,high,max
+      verified_at: '2026-10-10'
+      availability: active
+      thinking_can_disable: 'false'
+      sampling_note: Fixed temperature=1, top_p=.95,n=1,penalties=0; omit.
+      vision_note: Public image URLs unsupported; use base64 or ms://file-id.
+      output_note: max_completion_tokens defaults to 131072; documented maximum 1048576; source calls context 1M.
+      pricing_note: Global homepage confirms USD/MTok input 3/output15/cache hit .30. Homepage cache-write 3 lacks TTL breakdown;
+        5min/1h separate per pricing guide, so cache_write omitted pending confirmation.
+      pricing_source: https://platform.kimi.ai/
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_effort_default: max
+      pricing_status: reference
+      provider_catalog_id: moonshot-ai
   - name: "kimi-k3-256k"
     title: "Kimi K3 256K"
     description: "Kimi K3 256K is the fixed 256K-context Kimi Code variant for routine coding and code completion; it accepts text and image input but not video."
@@ -689,29 +3521,47 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "gpt-4.1-nano"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+  - name: gpt-4.1-nano
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 1047576
     input_price_usd_per_1m: 0.95
     output_price_usd_per_1m: 3.8
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-4.1-nano"
-      endpoints: "chat/completions,responses"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "32768"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-4.1-nano
+      endpoints: chat/completions,responses
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '32768'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: deprecated
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-10-23T00:00:00Z'
   - name: "gemini-3.5-flash"
     category: "gemini"
     family: "gemini"
@@ -760,93 +3610,162 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "grok-4-fast-reasoning"
-    category: "grok"
-    family: "grok"
-    modality: "chat"
+  - name: grok-4-fast-reasoning
+    category: grok
+    family: grok
+    modality: chat
     context_window: 2000000
     input_price_usd_per_1m: 1.9
     output_price_usd_per_1m: 4.75
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "grok-4-fast-reasoning"
-      endpoints: "chat/completions,completions"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "2000000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-  - name: "deepseek-v4-flash"
-    title: "DeepSeek V4 Flash"
-    description: "Official DeepSeek V4 Flash API model with native Responses API and Codex support."
-    category: "deepseek"
-    family: "deepseek"
-    modality: "chat"
-    context_window: 1048576
-    input_price_usd_per_1m: 0.14
-    cache_read_price_usd_per_1m: 0.0028
-    output_price_usd_per_1m: 0.28
-    input_modalities: ["text"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"]
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: grok-4-fast-reasoning
+      endpoints: chat/completions,completions
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '2000000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      lifecycle_status: redirected
+      lifecycle_source: https://docs.x.ai/developers/migration/may-15-retirement
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: grok-4.3
+      shutdown_at: '2026-05-15T12:00:00-07:00'
+      lifecycle_note: Slugs continue to resolve; replacement pricing applies. Only update exact matching entries, not inferred
+        beta aliases.
+  - name: deepseek-v4-flash
+    title: DeepSeek V4.1 Flash
+    category: deepseek
+    family: deepseek
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - max_output_tokens
+    - image_input
+    - reasoning
+    - tools
+    - top_logprobs
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "deepseek-api"
-      provider_catalog_id: "deepseek"
-      provider_model_id: "deepseek-v4-flash"
-      provider_model_name: "DeepSeek V4 Flash"
-      endpoints: "responses,chat/completions,anthropic"
-      features: "function-calling,structured-outputs,reasoning,apply-patch,web-search"
-      max_output_tokens: "393216"
-      top_logprobs_range: "0,20"
-      responses_stateful: "false"
-      prompt_cache_mode: "automatic"
-      custom_tool_names: "apply_patch"
-      tool_call: "true"
-      vision: "false"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-      reasoning_effort_options: "low,high,max"
-  - name: "deepseek-v4-pro"
-    title: "DeepSeek V4 Pro"
-    description: "Official DeepSeek V4 Pro API model with native Responses API and Codex support."
-    category: "deepseek"
-    family: "deepseek"
-    modality: "chat"
-    context_window: 1048576
-    input_price_usd_per_1m: 0.435
-    cache_read_price_usd_per_1m: 0.003625
-    output_price_usd_per_1m: 0.87
-    input_modalities: ["text"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["temperature", "top_p", "top_logprobs", "tools", "tool_choice", "response_format", "reasoning"]
+      upstream_source: https://api-docs.deepseek.com/quick_start/pricing/
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://api-docs.deepseek.com/quick_start/pricing/
+      pricing_note: USD per million tokens; use time-dependent schedule rather than a single flat cost. Peak excludes Chinese
+        public holidays.
+      pricing_schedule: '{"currency":"USD","unit":"per_million_tokens","timezone":"UTC","peak_weekdays":["MO","TU","WE","TH","FR"],"peak_windows":[["01:00","04:00"],["06:00","10:00"]],"holiday_calendar":"Chinese
+        public holidays use off_peak for the entire day","peak":{"input":0.3,"output":1.2,"cache_read":0.006},"off_peak":{"input":0.15,"output":0.6,"cache_read":0.003}}'
+      model_version: DeepSeek-V4.1-Flash
+      reasoning_effort_options: none,low,high,max
+      reasoning_effort_default: high
+      reasoning_effort_aliases: '{"minimal":"low","medium":"high","xhigh":"high"}'
+      parameter_source: https://api-docs.deepseek.com/api/create-chat-completion/
+      temperature_note: temperature has no effect in thinking mode.
+      context_limit_label: 1M
+      output_limit_label: 384K (393216)
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: redirected
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: responses,chat/completions,anthropic
+      max_output_tokens: '393216'
+      replacement_model: deepseek-flash
+      source: tokenhub-standard-catalog
+      provider_catalog_id: deepseek
+      provider_model_id: deepseek-v4-flash
+      features: function-calling,structured-outputs,reasoning,apply-patch,web-search
+      top_logprobs_range: 0,20
+      responses_stateful: 'false'
+      prompt_cache_mode: automatic
+      custom_tool_names: apply_patch
+      lifecycle_source: https://api-docs.deepseek.com/quick_start/pricing/
+      lifecycle_note: Legacy model names are still accepted, served by V4.1 Flash and billed at current Flash price. Original
+        model retirement is not name rejection.
+  - name: deepseek-v4-pro
+    title: DeepSeek V4 Pro 0813
+    category: deepseek
+    family: deepseek
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - max_output_tokens
+    - reasoning
+    - tools
+    - top_logprobs
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "deepseek-api"
-      provider_catalog_id: "deepseek"
-      provider_model_id: "deepseek-v4-pro"
-      provider_model_name: "DeepSeek V4 Pro"
-      endpoints: "responses,chat/completions,anthropic"
-      features: "function-calling,structured-outputs,reasoning,apply-patch,web-search"
-      max_output_tokens: "393216"
-      top_logprobs_range: "0,20"
-      responses_stateful: "false"
-      prompt_cache_mode: "automatic"
-      custom_tool_names: "apply_patch"
-      tool_call: "true"
-      vision: "false"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-      reasoning_effort_options: "low,high,max"
+      upstream_source: https://api-docs.deepseek.com/quick_start/pricing/
+      verified_at: '2026-10-10'
+      availability: active
+      pricing_status: unverified
+      pricing_source: https://api-docs.deepseek.com/quick_start/pricing/
+      pricing_note: USD per million tokens; use time-dependent schedule rather than a single flat cost. Peak excludes Chinese
+        public holidays.
+      pricing_schedule: '{"currency":"USD","unit":"per_million_tokens","timezone":"UTC","peak_weekdays":["MO","TU","WE","TH","FR"],"peak_windows":[["01:00","04:00"],["06:00","10:00"]],"holiday_calendar":"Chinese
+        public holidays use off_peak for the entire day","peak":{"input":1.32,"output":3.96,"cache_read":0.044},"off_peak":{"input":0.66,"output":1.98,"cache_read":0.022}}'
+      model_version: DeepSeek-V4-Pro-0813
+      reasoning_effort_options: none,low,high,max
+      reasoning_effort_default: high
+      reasoning_effort_aliases: '{"minimal":"low","medium":"high","xhigh":"high"}'
+      parameter_source: https://api-docs.deepseek.com/api/create-chat-completion/
+      temperature_note: temperature has no effect in thinking mode.
+      context_limit_label: 1M
+      output_limit_label: 384K (393216)
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: responses,chat/completions,anthropic
+      max_output_tokens: '393216'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: deepseek
+      provider_model_id: deepseek-v4-pro
+      features: function-calling,structured-outputs,reasoning,apply-patch,web-search
+      top_logprobs_range: 0,20
+      responses_stateful: 'false'
+      prompt_cache_mode: automatic
+      custom_tool_names: apply_patch
   - name: "deepseek/deepseek-v4-flash"
     title: "Deepseek V4 Flash"
     description: "DeepSeek-V4-Flash is a lightweight model meticulously designed by DeepSeek to deliver the ultimate combination of lightning-fast response times and unmatched cost-effectiveness. Engineered with fewer parameters and significantly lower activation overhead, V4-Flash provides an exceptionally fast and economical API service. At its core, V4-Flash demonstrates outstanding reasoning capabilities that closely rival the V4-Pro model. While featuring a slightly streamlined repository of world knowledge, it remains highly capable of satisfying the demands of most application scenarios. In Agentic applications, V4-Flash performs on par with the Pro version when handling standard and fundamental tasks. As the premier choice for developers prioritizing high concurrency, low latency, and cost efficiency, DeepSeek-V4-Flash serves as the optimal solution for deploying large-scale, high-frequency, and lightweight AI workloads."
@@ -1385,30 +4304,51 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "false"
-  - name: "claude-sonnet-4-5-20250929"
-    category: "claude"
-    family: "claude"
-    modality: "chat"
+  - name: claude-sonnet-4-5-20250929
+    category: claude
+    family: claude
+    modality: chat
     context_window: 200000
     input_price_usd_per_1m: 28.5
     output_price_usd_per_1m: 142.5
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "claude-sonnet-4-5-20250929"
-      endpoints: "chat/completions,anthropic"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "64000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: claude-sonnet-4-5-20250929
+      endpoints: chat/completions,anthropic
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '64000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'false'
+      lifecycle_status: deprecated
+      lifecycle_source: https://platform.claude.com/docs/en/about-claude/model-deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: claude-sonnet-5-5
+      shutdown_time_note: The vendor publishes a calendar date; the date boundary is used for new-route eligibility.
+      shutdown_at: '2026-11-30T00:00:00Z'
   - name: "claude-sonnet-4-5-20250929-dd"
     category: "claude"
     family: "claude"
@@ -1651,78 +4591,136 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "false"
-  - name: "gpt-5.4-nano"
-    description: "Our cheapest GPT-5.4-class model for simple high-volume tasks"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+  - name: gpt-5.4-nano
+    description: Our cheapest GPT-5.4-class model for simple high-volume tasks
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 1.9
     output_price_usd_per_1m: 11.875
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.4-nano"
-      endpoints: "responses,chat/completions"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "false"
-  - name: "gpt-5.3-codex"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.4-nano
+      endpoints: responses,chat/completions
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'false'
+      lifecycle_status: deprecated
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-luna
+      shutdown_at: '2027-04-01T00:00:00Z'
+  - name: gpt-5.3-codex
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 16.625
     output_price_usd_per_1m: 133
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.3-codex"
-      endpoints: "responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-  - name: "gpt-5.3-chat-latest"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.3-codex
+      endpoints: responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      lifecycle_status: deprecated
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2027-04-01T00:00:00Z'
+  - name: gpt-5.3-chat-latest
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 128000
     input_price_usd_per_1m: 16.625
     output_price_usd_per_1m: 133
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.3-chat-latest"
-      endpoints: "chat/completions,responses"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "16000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.3-chat-latest
+      endpoints: chat/completions,responses
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '16000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-08-10T00:00:00Z'
   - name: "gpt-5.2-pro"
     category: "openai"
     family: "gpt"
@@ -1747,53 +4745,91 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "gpt-5.2-codex"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+  - name: gpt-5.2-codex
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 17.5
     output_price_usd_per_1m: 140
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.2-codex"
-      endpoints: "responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-  - name: "gpt-5.2-chat-latest"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.2-codex
+      endpoints: responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-07-23T00:00:00Z'
+  - name: gpt-5.2-chat-latest
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 128000
     input_price_usd_per_1m: 16.625
     output_price_usd_per_1m: 133
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.2-chat-latest"
-      endpoints: "chat/completions,responses"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "16000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.2-chat-latest
+      endpoints: chat/completions,responses
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '16000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-08-10T00:00:00Z'
   - name: "gpt-5.2"
     category: "openai"
     family: "gpt"
@@ -1818,125 +4854,223 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "false"
-  - name: "gpt-5.1-codex-max"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+  - name: gpt-5.1-codex-max
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 11.875
     output_price_usd_per_1m: 95
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.1-codex-max"
-      endpoints: "responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "false"
-  - name: "gpt-5.1-codex"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.1-codex-max
+      endpoints: responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-07-23T00:00:00Z'
+  - name: gpt-5.1-codex
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 11.875
     output_price_usd_per_1m: 95
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.1-codex"
-      endpoints: "responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "false"
-  - name: "gpt-5.1-codex-mini"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.1-codex
+      endpoints: responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-07-23T00:00:00Z'
+  - name: gpt-5.1-codex-mini
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 2.375
     output_price_usd_per_1m: 19
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.1-codex-mini"
-      endpoints: "responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "false"
-  - name: "gpt-5.1-chat-latest"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.1-codex-mini
+      endpoints: responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-luna
+      shutdown_at: '2026-07-23T00:00:00Z'
+  - name: gpt-5.1-chat-latest
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 128000
     input_price_usd_per_1m: 11.875
     output_price_usd_per_1m: 95
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.1-chat-latest"
-      endpoints: "chat/completions,responses"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "16000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
-  - name: "gpt-5.1"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.1-chat-latest
+      endpoints: chat/completions,responses
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '16000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-07-23T00:00:00Z'
+  - name: gpt-5.1
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 11.875
     output_price_usd_per_1m: 95
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5.1"
-      endpoints: "chat/completions,responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5.1
+      endpoints: chat/completions,responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'false'
+      lifecycle_status: deprecated
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2027-04-01T00:00:00Z'
   - name: "gpt-5-pro"
     category: "openai"
     family: "gpt"
@@ -1961,53 +5095,91 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "gpt-5-codex"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+  - name: gpt-5-codex
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 11.875
     output_price_usd_per_1m: 95
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5-codex"
-      endpoints: "responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-  - name: "gpt-5-chat-latest"
-    category: "openai"
-    family: "gpt"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5-codex
+      endpoints: responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-07-23T00:00:00Z'
+  - name: gpt-5-chat-latest
+    category: openai
+    family: gpt
+    modality: chat
     context_window: 400000
     input_price_usd_per_1m: 11.875
     output_price_usd_per_1m: 95
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gpt-5-chat-latest"
-      endpoints: "chat/completions,responses"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "128000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gpt-5-chat-latest
+      endpoints: chat/completions,responses
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '128000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-07-23T00:00:00Z'
   - name: "gpt-5"
     category: "openai"
     family: "gpt"
@@ -2201,31 +5373,51 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "o1"
-    description: "chatgpt-o1"
-    category: "openai"
-    family: "openai"
-    modality: "chat"
+  - name: o1
+    description: chatgpt-o1
+    category: openai
+    family: openai
+    modality: chat
     context_window: 200000
     input_price_usd_per_1m: 142.5
     output_price_usd_per_1m: 570
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "o1"
-      endpoints: "chat/completions,responses"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "100000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: o1
+      endpoints: chat/completions,responses
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '100000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      lifecycle_status: deprecated
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-10-23T00:00:00Z'
   - name: "o3"
     description: "chatgpt-o3"
     category: "openai"
@@ -2276,55 +5468,102 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "o3-mini"
-    description: "chatgpt-o3-mini"
-    category: "openai"
-    family: "o3"
-    modality: "chat"
+  - name: o3-mini
+    description: chatgpt-o3-mini
+    category: openai
+    family: o3
+    modality: chat
     context_window: 200000
     input_price_usd_per_1m: 10.45
     output_price_usd_per_1m: 41.8
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "o3-mini"
-      endpoints: "chat/completions,responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "100000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-  - name: "gemini-3.1-flash-lite-preview"
-    category: "gemini"
-    family: "gemini"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: o3-mini
+      endpoints: chat/completions,responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '100000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      lifecycle_status: deprecated
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gpt-6-sol
+      shutdown_at: '2026-10-23T00:00:00Z'
+  - name: gemini-3.1-flash-lite-preview
+    category: gemini
+    family: gemini
+    modality: chat
     context_window: 1048576
     input_price_usd_per_1m: 2.375
     output_price_usd_per_1m: 14.25
-    input_modalities: ["text", "image", "video", "audio"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "video_input", "audio_input", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input", "audio_input"]
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - audio_input
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
+    - video_input
+    - audio_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gemini-3.1-flash-lite-preview"
-      endpoints: "chat/completions,gemini,responses"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "65536"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gemini-3.1-flash-lite-preview
+      endpoints: chat/completions,gemini,responses
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '65536'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      lifecycle_status: retired
+      lifecycle_source: https://ai.google.dev/gemini-api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gemini-3.1-flash-lite
+      shutdown_time_note: The vendor publishes a calendar date; the date boundary is used for new-route eligibility.
+      shutdown_at: '2026-05-25T00:00:00Z'
   - name: "openai/gpt-oss-120b"
     title: "OpenAI GPT OSS 120B"
     description: "gpt-oss-120b is an open-weight, 117B-parameter Mixture-of-Experts (MoE) language model from OpenAI designed for high-reasoning, agentic, and general-purpose production use cases. It activates 5.1B parameters per forward pass and is optimized to run on a single H100 GPU with native MXFP4 quantization. The model supports configurable reasoning depth, full chain-of-thought access, and native tool use, including function calling, browsing, and structured output generation."
@@ -2520,30 +5759,57 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "false"
-  - name: "gemini-2.5-flash-lite-preview-09-2025"
-    category: "gemini"
-    family: "gemini"
-    modality: "chat"
+  - name: gemini-2.5-flash-lite-preview-09-2025
+    category: gemini
+    family: gemini
+    modality: chat
     context_window: 1048576
     input_price_usd_per_1m: 0.95
     output_price_usd_per_1m: 3.8
-    input_modalities: ["text", "image", "video", "audio"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "video_input", "audio_input", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input", "video_input", "audio_input"]
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - audio_input
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
+    - video_input
+    - audio_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gemini-2.5-flash-lite-preview-09-2025"
-      endpoints: "chat/completions,gemini"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "65536"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gemini-2.5-flash-lite-preview-09-2025
+      endpoints: chat/completions,gemini
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '65536'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://ai.google.dev/gemini-api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gemini-3.1-flash-lite
+      shutdown_time_note: The vendor publishes a calendar date; the date boundary is used for new-route eligibility.
+      shutdown_at: '2026-03-31T00:00:00Z'
   - name: "gemini-2.5-flash-lite"
     category: "gemini"
     family: "gemini"
@@ -2591,29 +5857,54 @@ models:
       tool_call: "true"
       vision: "true"
       reasoning_supported: "false"
-  - name: "gemini-2.0-flash-lite"
-    category: "gemini"
-    family: "gemini"
-    modality: "chat"
+  - name: gemini-2.0-flash-lite
+    category: gemini
+    family: gemini
+    modality: chat
     context_window: 1048576
     input_price_usd_per_1m: 0.712
     output_price_usd_per_1m: 2.85
-    input_modalities: ["text", "image", "video", "audio"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "video_input", "audio_input", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input", "video_input", "audio_input"]
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    - audio_input
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
+    - video_input
+    - audio_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gemini-2.0-flash-lite"
-      endpoints: "chat/completions,gemini"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "8192"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gemini-2.0-flash-lite
+      endpoints: chat/completions,gemini
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '8192'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: retired
+      lifecycle_source: https://ai.google.dev/gemini-api/docs/deprecations
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gemini-3.1-flash-lite
+      shutdown_time_note: The vendor publishes a calendar date; the date boundary is used for new-route eligibility.
+      shutdown_at: '2026-06-01T00:00:00Z'
   - name: "google/gemma-3-27b-it"
     title: "Gemma 3 27B"
     description: "Gemma 3 introduces multimodality, supporting vision-language input and text outputs. It handles context windows up to 32k tokens, understands over 140 languages, and offers improved math, reasoning, and chat capabilities, including structured outputs. Gemma 3 27B is Google's latest open source model, successor to Gemma."
@@ -2665,29 +5956,49 @@ models:
       tool_call: "false"
       vision: "true"
       reasoning_supported: "false"
-  - name: "grok-4-0709"
-    category: "grok"
-    family: "grok"
-    modality: "chat"
+  - name: grok-4-0709
+    category: grok
+    family: grok
+    modality: chat
     context_window: 256000
     input_price_usd_per_1m: 28.5
     output_price_usd_per_1m: 142.5
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "grok-4-0709"
-      endpoints: "chat/completions"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "256000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: grok-4-0709
+      endpoints: chat/completions
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '256000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: redirected
+      lifecycle_source: https://docs.x.ai/developers/migration/may-15-retirement
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: grok-4.3
+      shutdown_at: '2026-05-15T12:00:00-07:00'
+      lifecycle_note: Slugs continue to resolve; replacement pricing applies. Only update exact matching entries, not inferred
+        beta aliases.
   - name: "grok-4.20-0309-reasoning"
     description: "Grok 4.20 is our newest flagship model with industry-leading speed and agentic tool calling capabilities. It combines the lowest hallucination rate on the market with strict prompt adherance, delivering consistently precise and truthful responses."
     category: "grok"
@@ -2761,99 +6072,181 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "grok-4-1-fast-reasoning"
-    category: "grok"
-    family: "grok"
-    modality: "chat"
+  - name: grok-4-1-fast-reasoning
+    category: grok
+    family: grok
+    modality: chat
     context_window: 2000000
     input_price_usd_per_1m: 1.9
     output_price_usd_per_1m: 4.75
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "grok-4-1-fast-reasoning"
-      endpoints: "chat/completions"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "2000000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
-  - name: "grok-4-1-fast-non-reasoning"
-    category: "grok"
-    family: "grok"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: grok-4-1-fast-reasoning
+      endpoints: chat/completions
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '2000000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      lifecycle_status: redirected
+      lifecycle_source: https://docs.x.ai/developers/migration/may-15-retirement
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: grok-4.3
+      shutdown_at: '2026-05-15T12:00:00-07:00'
+      lifecycle_note: Slugs continue to resolve; replacement pricing applies. Only update exact matching entries, not inferred
+        beta aliases.
+  - name: grok-4-1-fast-non-reasoning
+    category: grok
+    family: grok
+    modality: chat
     context_window: 2000000
     input_price_usd_per_1m: 1.9
     output_price_usd_per_1m: 4.75
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "grok-4-1-fast-non-reasoning"
-      endpoints: "chat/completions"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "2000000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
-  - name: "grok-4-fast-non-reasoning"
-    category: "grok"
-    family: "grok"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: grok-4-1-fast-non-reasoning
+      endpoints: chat/completions
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '2000000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: redirected
+      lifecycle_source: https://docs.x.ai/developers/migration/may-15-retirement
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: grok-4.3
+      shutdown_at: '2026-05-15T12:00:00-07:00'
+      lifecycle_note: Slugs continue to resolve; replacement pricing applies. Only update exact matching entries, not inferred
+        beta aliases.
+  - name: grok-4-fast-non-reasoning
+    category: grok
+    family: grok
+    modality: chat
     context_window: 2000000
     input_price_usd_per_1m: 1.9
     output_price_usd_per_1m: 4.75
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "grok-4-fast-non-reasoning"
-      endpoints: "chat/completions,completions"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "2000000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
-  - name: "grok-3"
-    category: "grok"
-    family: "grok"
-    modality: "chat"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: grok-4-fast-non-reasoning
+      endpoints: chat/completions,completions
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '2000000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: redirected
+      lifecycle_source: https://docs.x.ai/developers/migration/may-15-retirement
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: grok-4.3
+      shutdown_at: '2026-05-15T12:00:00-07:00'
+      lifecycle_note: Slugs continue to resolve; replacement pricing applies. Only update exact matching entries, not inferred
+        beta aliases.
+  - name: grok-3
+    category: grok
+    family: grok
+    modality: chat
     context_window: 131072
     input_price_usd_per_1m: 28.5
     output_price_usd_per_1m: 142.5
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "grok-3"
-      endpoints: "chat/completions"
-      features: "function-calling,structured-outputs,serverless"
-      max_output_tokens: "32000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "false"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: grok-3
+      endpoints: chat/completions
+      features: function-calling,structured-outputs,serverless
+      max_output_tokens: '32000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'false'
+      lifecycle_status: redirected
+      lifecycle_source: https://docs.x.ai/developers/migration/may-15-retirement
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: grok-4.3
+      shutdown_at: '2026-05-15T12:00:00-07:00'
+      lifecycle_note: Slugs continue to resolve; replacement pricing applies. Only update exact matching entries, not inferred
+        beta aliases.
   - name: "grok-3-mini"
     category: "grok"
     family: "grok"
@@ -2878,30 +6271,52 @@ models:
       vision: "true"
       reasoning_supported: "true"
       reasoning_default: "true"
-  - name: "grok-code-fast-1"
-    category: "grok"
-    family: "grok"
-    modality: "chat"
+  - name: grok-code-fast-1
+    category: grok
+    family: grok
+    modality: chat
     context_window: 256000
     input_price_usd_per_1m: 1.9
     output_price_usd_per_1m: 14.25
-    input_modalities: ["text", "image"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs", "serverless"]
-    supported_parameters: ["temperature", "tools", "response_format", "reasoning", "image_input"]
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    - serverless
+    supported_parameters:
+    - temperature
+    - tools
+    - response_format
+    - reasoning
+    - image_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "grok-code-fast-1"
-      endpoints: "chat/completions"
-      features: "function-calling,structured-outputs,reasoning,serverless"
-      max_output_tokens: "256000"
-      tool_call: "true"
-      vision: "true"
-      reasoning_supported: "true"
-      reasoning_default: "true"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: grok-code-fast-1
+      endpoints: chat/completions
+      features: function-calling,structured-outputs,reasoning,serverless
+      max_output_tokens: '256000'
+      tool_call: 'true'
+      vision: 'true'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      lifecycle_status: redirected
+      lifecycle_source: https://docs.x.ai/developers/migration/may-15-retirement
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: grok-build-0.1
+      shutdown_at: '2026-05-15T12:00:00-07:00'
+      lifecycle_note: Slugs continue to resolve; replacement pricing applies. Only update exact matching entries, not inferred
+        beta aliases.
   - name: "deepseek/deepseek-r1-0528"
     title: "DeepSeek R1 0528"
     description: "DeepSeek R1 0528 is the latest open-source model released by the DeepSeek team, featuring impressive reasoning capabilities, particularly achieving performance comparable to OpenAI's o1 model in mathematics, coding, and reasoning tasks."
@@ -4154,28 +7569,49 @@ models:
       tool_call: "false"
       vision: "true"
       reasoning_supported: "true"
-  - name: "gemini-3.1-flash-image"
-    category: "gemini"
-    family: "gemini"
-    modality: "image"
+  - name: gemini-3.1-flash-image
+    category: gemini
+    family: gemini
+    modality: image
     context_window: 8192
     input_price_usd_per_1m: 5
     output_price_usd_per_1m: 30
-    input_modalities: ["text", "image", "video", "audio"]
-    output_modalities: ["text", "image"]
-    capabilities: ["image", "vision", "video_input", "audio_input", "reasoning", "serverless"]
-    supported_parameters: ["reasoning", "image_input", "video_input", "audio_input"]
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    output_modalities:
+    - text
+    - image
+    capabilities:
+    - image
+    - vision
+    - video_input
+    - audio_input
+    - reasoning
+    - serverless
+    supported_parameters:
+    - reasoning
+    - image_input
+    - video_input
+    - audio_input
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "public-provider-conf"
-      provider_catalog_id: "jiekou"
-      provider_catalog_updated_at: "2026-07-08T06:38:13.852Z"
-      provider_model_id: "gemini-3.1-flash-image"
-      features: "serverless"
-      max_output_tokens: "8192"
-      tool_call: "false"
-      vision: "true"
-      reasoning_supported: "true"
+      source: tokenhub-standard-catalog
+      upstream_source: public-provider-conf
+      provider_catalog_id: jiekou
+      provider_catalog_updated_at: '2026-07-08T06:38:13.852Z'
+      provider_model_id: gemini-3.1-flash-image
+      features: serverless
+      max_output_tokens: '8192'
+      tool_call: 'false'
+      vision: 'true'
+      reasoning_supported: 'true'
+      lifecycle_status: deprecated
+      lifecycle_source: https://ai.google.dev/gemini-api/docs/changelog
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      replacement_model: gemini-nano-banana-2.1
   - name: "gemini-3-pro-image"
     category: "gemini"
     family: "gemini"
@@ -4748,31 +8184,45 @@ models:
       tool_call: "true"
       vision: "false"
       reasoning_supported: "false"
-  - name: "kimi-k2.7-code-highspeed"
-    title: "Kimi K2.7 Code HighSpeed"
-    description: "High-speed Kimi K2.7 Code endpoint available through Tencent Cloud Token Plan."
-    category: "kimi"
-    family: "kimi"
-    modality: "chat"
-    context_window: 262144
-    input_price_usd_per_1m: 9.5
-    output_price_usd_per_1m: 40
-    input_modalities: ["text"]
-    output_modalities: ["text"]
-    capabilities: ["chat", "reasoning", "tools"]
-    supported_parameters: ["temperature", "tools", "reasoning"]
+  - name: kimi-k2.7-code-highspeed
+    title: Kimi K2.7 Code Highspeed
+    category: kimi
+    family: kimi
+    modality: chat
+    context_window: 256000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters:
+    - max_tokens
+    - image_input
+    - reasoning
+    - tools
     metadata:
-      source: "tokenhub-standard-catalog"
-      upstream_source: "tencent-token-plan"
-      provider_model_id: "kimi-k2.7-code-highspeed"
-      provider_model_name: "Kimi-K2.7-Code-HighSpeed"
-      endpoints: "chat/completions"
-      features: "function-calling,reasoning"
-      max_output_tokens: "262144"
-      tool_call: "true"
-      vision: "false"
-      reasoning_supported: "true"
-      reasoning_default: "true"
+      upstream_source: https://platform.kimi.ai/docs/models
+      verified_at: '2026-10-10'
+      availability: active
+      thinking_can_disable: 'false'
+      sampling_note: K2.7 Code family fixes temperature=1, top_p=.95,n=1,penalties=0.
+      tool_choice_allowed: auto,none
+      spec_source: https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart
+      output_note: 32768 is documented default max_tokens, not verified hard output limit.
+      pricing_note: Highspeed token prices not rendered in current pricing page.
+      pricing_status: unverified
+      catalog_reviewed_at: '2026-10-10'
+      lifecycle_status: active
+      reasoning_supported: 'true'
+      endpoints: chat/completions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: moonshot-ai
+      provider_model_id: kimi-k2.7-code-highspeed
   - name: "deepseek-v4-flash-202605"
     title: "DeepSeek V4 Flash 原厂直供"
     description: "DeepSeek V4 Flash direct model endpoint available through Tencent Cloud Token Plan."
@@ -4892,3 +8342,141 @@ models:
       vision: "false"
       reasoning_supported: "true"
       reasoning_default: "false"
+  - name: text-embedding-3-large
+    title: text-embedding-3-large
+    category: openai
+    family: text-embedding
+    modality: embedding
+    context_window: 8191
+    input_price_usd_per_1m: 0.13
+    embedding_price_usd_per_1m: 0.13
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters:
+    - dimensions
+    - encoding_format
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/text-embedding-3-large
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      availability: active
+      embedding_dimensions: '3072'
+      embedding_space: text-embedding-3-large
+      pricing_status: reference
+      pricing_note: Standard API input-token rate; changing embedding models requires a compatible vector space or rebuilding
+        the index.
+      endpoints: embeddings
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: text-embedding-3-large
+  - name: text-embedding-3-small
+    title: text-embedding-3-small
+    category: openai
+    family: text-embedding
+    modality: embedding
+    context_window: 8191
+    input_price_usd_per_1m: 0.02
+    embedding_price_usd_per_1m: 0.02
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters:
+    - dimensions
+    - encoding_format
+    metadata:
+      upstream_source: https://developers.openai.com/api/docs/models/text-embedding-3-small
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      availability: active
+      embedding_dimensions: '1536'
+      embedding_space: text-embedding-3-small
+      pricing_status: reference
+      pricing_note: Standard API input-token rate; changing embedding models requires a compatible vector space or rebuilding
+        the index.
+      endpoints: embeddings
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: text-embedding-3-small
+  - name: global.amazon.nova-2-sonic-v1:0
+    category: custom
+    family: nova
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.aws.amazon.com/nova/latest/nova2-userguide/core-inference.html
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      availability: active
+      call_support: unsupported
+      support_note: Catalog only; requires the Bedrock native inference and billing contract.
+      pricing_status: unverified
+      pricing_note: Confirm regional Bedrock prices and native usage units before enabling calls.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: amazon-bedrock
+      provider_model_id: global.amazon.nova-2-sonic-v1:0
+  - name: us.amazon.nova-2-sonic-v1:0
+    category: custom
+    family: nova
+    modality: audio
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.aws.amazon.com/nova/latest/nova2-userguide/core-inference.html
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      availability: active
+      call_support: unsupported
+      support_note: Catalog only; requires the Bedrock native inference and billing contract.
+      pricing_status: unverified
+      pricing_note: Confirm regional Bedrock prices and native usage units before enabling calls.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: amazon-bedrock
+      provider_model_id: us.amazon.nova-2-sonic-v1:0
+  - name: amazon.nova-2-multimodal-embeddings-v1:0
+    category: custom
+    family: nova
+    modality: embedding
+    input_modalities:
+    - text
+    - image
+    - audio
+    - video
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.aws.amazon.com/nova/latest/nova2-userguide/core-inference.html
+      catalog_reviewed_at: '2026-10-10'
+      verified_at: '2026-10-10'
+      availability: active
+      call_support: unsupported
+      support_note: Catalog only; requires the Bedrock native inference and billing contract.
+      pricing_status: unverified
+      pricing_note: Confirm regional Bedrock prices and native usage units before enabling calls.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: amazon-bedrock
+      provider_model_id: amazon.nova-2-multimodal-embeddings-v1:0
