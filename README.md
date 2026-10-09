@@ -267,6 +267,12 @@ TokenHub grows through product feedback, gateway integrations, documentation, te
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/ACwisdom">
+        <img src="https://avatars.githubusercontent.com/u/212327199?v=4" width="80px" alt="ACwisdom" />
+        <br /><sub><b>ACwisdom</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/AnxForever">
         <img src="https://avatars.githubusercontent.com/u/130662349?v=4" width="80px" alt="AnxForever" />
         <br /><sub><b>AnxForever</b></sub>
@@ -276,12 +282,6 @@ TokenHub grows through product feedback, gateway integrations, documentation, te
       <a href="https://github.com/DeanHH">
         <img src="https://avatars.githubusercontent.com/u/1842770?v=4" width="80px" alt="DeanHH" />
         <br /><sub><b>DeanHH</b></sub>
-      </a>
-    </td>
-    <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/ACwisdom">
-        <img src="https://avatars.githubusercontent.com/u/212327199?v=4" width="80px" alt="ACwisdom" />
-        <br /><sub><b>ACwisdom</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
