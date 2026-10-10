@@ -38,15 +38,17 @@ func TestGPT6SolCatalogConsistency(t *testing.T) {
 					if s.Metadata["reasoning_effort_options"] != p.Metadata["reasoning_effort_options"] || s.Metadata["endpoints"] != p.Metadata["endpoints"] {
 						t.Fatal("reasoning or endpoint metadata differs between catalogs")
 					}
-					for _, parameter := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
+					for _, parameter := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens", "tool_choice", "parallel_tool_calls", "text"} {
 						if !slices.Contains(s.SupportedParameters, parameter) || !slices.Contains(p.SupportedParameters, parameter) {
-							t.Fatalf("output budget parameter %s missing from catalog", parameter)
+							t.Fatalf("wire parameter %s missing from catalog", parameter)
 						}
 					}
 					wantEfforts := "none,low,medium,high,xhigh,max"
 					wantTopP := id != "gpt-6.1-sol"
-					if slices.Contains(s.SupportedParameters, "top_p") != wantTopP || slices.Contains(p.SupportedParameters, "top_p") != wantTopP {
-						t.Fatal("top_p must be declared only for models supporting non-reasoning sampling")
+					for _, parameter := range []string{"top_p", "logprobs", "top_logprobs"} {
+						if slices.Contains(s.SupportedParameters, parameter) != wantTopP || slices.Contains(p.SupportedParameters, parameter) != wantTopP {
+							t.Fatalf("%s must be declared only for models supporting non-reasoning sampling", parameter)
+						}
 					}
 					if id == "gpt-6.1-sol" {
 						wantEfforts = "low,medium,high,xhigh,max"

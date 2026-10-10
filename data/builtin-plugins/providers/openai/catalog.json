@@ -82,7 +82,7 @@
       },
       "endpoints": "responses,chat/completions",
       "description": "Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters are unsupported while reasoning is enabled.",
-      "supported_parameters": ["max_tokens", "max_completion_tokens", "max_output_tokens"]
+      "supported_parameters": ["max_tokens", "max_completion_tokens", "max_output_tokens", "tool_choice", "parallel_tool_calls", "text"]
     },
     {
       "id": "gpt-6-sol",
@@ -164,7 +164,7 @@
       },
       "endpoints": "responses,chat/completions",
       "description": "Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling parameters are unsupported while reasoning is enabled.",
-      "supported_parameters": ["max_tokens", "max_completion_tokens", "max_output_tokens", "top_p"]
+      "supported_parameters": ["max_tokens", "max_completion_tokens", "max_output_tokens", "top_p", "tool_choice", "parallel_tool_calls", "text", "logprobs", "top_logprobs"]
     },
     {
       "id": "gpt-6-luna",
@@ -246,7 +246,7 @@
       },
       "endpoints": "responses,chat/completions",
       "description": "Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling parameters are unsupported while reasoning is enabled.",
-      "supported_parameters": ["max_tokens", "max_completion_tokens", "max_output_tokens", "top_p"]
+      "supported_parameters": ["max_tokens", "max_completion_tokens", "max_output_tokens", "top_p", "tool_choice", "parallel_tool_calls", "text", "logprobs", "top_logprobs"]
     },
     {
       "id": "gpt-6-astra",

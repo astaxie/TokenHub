@@ -17,7 +17,7 @@ models:
     input_modalities: ["text", "image"]
     output_modalities: ["text"]
     capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "tools", "response_format", "reasoning", "reasoning_effort", "image_input"]
+    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "tools", "response_format", "reasoning", "reasoning_effort", "image_input", "tool_choice", "parallel_tool_calls", "text"]
     metadata:
       source: "tokenhub-standard-catalog"
       upstream_source: "https://developers.openai.com/api/docs/models/gpt-6.1-sol"
@@ -47,7 +47,7 @@ models:
     input_modalities: ["text", "image"]
     output_modalities: ["text"]
     capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "temperature", "tools", "response_format", "reasoning", "reasoning_effort", "image_input", "top_p"]
+    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "temperature", "tools", "response_format", "reasoning", "reasoning_effort", "image_input", "top_p", "tool_choice", "parallel_tool_calls", "text", "logprobs", "top_logprobs"]
     metadata:
       source: "tokenhub-standard-catalog"
       upstream_source: "https://developers.openai.com/api/docs/models/gpt-6-sol"
@@ -77,7 +77,7 @@ models:
     input_modalities: ["text", "image"]
     output_modalities: ["text"]
     capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
-    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "temperature", "tools", "response_format", "reasoning", "reasoning_effort", "image_input", "top_p"]
+    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "temperature", "tools", "response_format", "reasoning", "reasoning_effort", "image_input", "top_p", "tool_choice", "parallel_tool_calls", "text", "logprobs", "top_logprobs"]
     metadata:
       source: "tokenhub-standard-catalog"
       upstream_source: "https://developers.openai.com/api/docs/models/gpt-6-luna"
