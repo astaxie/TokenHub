@@ -6,97 +6,151 @@
   "display_name": "DeepSeek",
   "models": [
     {
-      "id": "deepseek-v4-flash",
-      "name": "DeepSeek V4 Flash",
-      "family": "deepseek-flash",
-      "attachment": false,
-      "reasoning": {
-        "supported": true,
-        "default": true
-      },
-      "reasoning_options": [
-        {
-          "type": "toggle"
-        },
-        {
-          "type": "effort",
-          "values": [
-            "high",
-            "max"
-          ]
-        }
-      ],
-      "tool_call": true,
-      "interleaved": {
-        "field": "reasoning_content"
-      },
-      "structured_output": true,
-      "temperature": true,
-      "knowledge": "2025-05",
-      "release_date": "2026-04-24",
-      "last_updated": "2026-04-24",
+      "id": "deepseek-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "display_name": "DeepSeek V4.1 Flash",
+      "family": "deepseek",
+      "type": "chat",
       "modalities": {
         "input": [
-          "text"
+          "text",
+          "image"
         ],
         "output": [
           "text"
         ]
       },
-      "open_weights": true,
+      "metadata": {
+        "upstream_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "pricing_note": "USD per million tokens; use time-dependent schedule rather than a single flat cost. Peak excludes Chinese public holidays.",
+        "pricing_schedule": "{\"currency\":\"USD\",\"unit\":\"per_million_tokens\",\"timezone\":\"UTC\",\"peak_weekdays\":[\"MO\",\"TU\",\"WE\",\"TH\",\"FR\"],\"peak_windows\":[[\"01:00\",\"04:00\"],[\"06:00\",\"10:00\"]],\"holiday_calendar\":\"Chinese public holidays use off_peak for the entire day\",\"peak\":{\"input\":0.3,\"output\":1.2,\"cache_read\":0.006},\"off_peak\":{\"input\":0.15,\"output\":0.6,\"cache_read\":0.003}}",
+        "model_version": "DeepSeek-V4.1-Flash",
+        "reasoning_effort_options": "none,low,high,max",
+        "reasoning_effort_default": "high",
+        "reasoning_effort_aliases": "{\"minimal\":\"low\",\"medium\":\"high\",\"xhigh\":\"high\"}",
+        "parameter_source": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "temperature_note": "temperature has no effect in thinking mode.",
+        "context_limit_label": "1M",
+        "output_limit_label": "384K (393216)",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "responses,chat/completions,anthropic",
+        "max_output_tokens": "393216"
+      },
       "limit": {
         "context": 1000000,
-        "output": 384000
+        "output": 393216
       },
-      "cost": {
-        "input": 0.14,
-        "output": 0.28,
-        "cache_read": 0.0028
+      "reasoning": {
+        "supported": true,
+        "default": true
       },
-      "display_name": "DeepSeek V4 Flash",
-      "type": "chat",
-      "extra_capabilities": {
-        "reasoning": {
-          "supported": true,
-          "interleaved": true,
-          "summaries": true,
-          "visibility": "summary",
-          "continuation": [
-            "thinking_blocks"
+      "tool_call": true,
+      "temperature": true,
+      "category": "deepseek",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens",
+        "max_output_tokens",
+        "temperature"
+      ],
+      "endpoints": "responses,chat/completions,anthropic",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "high",
+            "max"
           ]
         }
-      }
+      ]
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "display_name": "DeepSeek V4.1 Flash",
+      "family": "deepseek",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "pricing_note": "USD per million tokens; use time-dependent schedule rather than a single flat cost. Peak excludes Chinese public holidays.",
+        "pricing_schedule": "{\"currency\":\"USD\",\"unit\":\"per_million_tokens\",\"timezone\":\"UTC\",\"peak_weekdays\":[\"MO\",\"TU\",\"WE\",\"TH\",\"FR\"],\"peak_windows\":[[\"01:00\",\"04:00\"],[\"06:00\",\"10:00\"]],\"holiday_calendar\":\"Chinese public holidays use off_peak for the entire day\",\"peak\":{\"input\":0.3,\"output\":1.2,\"cache_read\":0.006},\"off_peak\":{\"input\":0.15,\"output\":0.6,\"cache_read\":0.003}}",
+        "model_version": "DeepSeek-V4.1-Flash",
+        "reasoning_effort_options": "none,low,high,max",
+        "reasoning_effort_default": "high",
+        "reasoning_effort_aliases": "{\"minimal\":\"low\",\"medium\":\"high\",\"xhigh\":\"high\"}",
+        "parameter_source": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "temperature_note": "temperature has no effect in thinking mode.",
+        "context_limit_label": "1M",
+        "output_limit_label": "384K (393216)",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "redirected",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "responses,chat/completions,anthropic",
+        "max_output_tokens": "393216",
+        "replacement_model": "deepseek-flash",
+        "lifecycle_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "lifecycle_note": "Legacy model names are still accepted, served by V4.1 Flash and billed at current Flash price. Original model retirement is not name rejection."
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 393216
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "category": "deepseek",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens",
+        "max_output_tokens",
+        "temperature"
+      ],
+      "endpoints": "responses,chat/completions,anthropic",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ],
+      "structured_output": true
     },
     {
       "id": "deepseek-v4-pro",
-      "name": "DeepSeek V4 Pro",
-      "family": "deepseek-thinking",
-      "attachment": false,
-      "reasoning": {
-        "supported": true,
-        "default": true
-      },
-      "reasoning_options": [
-        {
-          "type": "toggle"
-        },
-        {
-          "type": "effort",
-          "values": [
-            "high",
-            "max"
-          ]
-        }
-      ],
-      "tool_call": true,
-      "interleaved": {
-        "field": "reasoning_content"
-      },
-      "structured_output": true,
-      "temperature": true,
-      "knowledge": "2025-05",
-      "release_date": "2026-04-24",
-      "last_updated": "2026-04-24",
+      "name": "DeepSeek V4 Pro 0813",
+      "display_name": "DeepSeek V4 Pro 0813",
+      "family": "deepseek",
+      "type": "chat",
       "modalities": {
         "input": [
           "text"
@@ -105,29 +159,59 @@
           "text"
         ]
       },
-      "open_weights": true,
+      "metadata": {
+        "upstream_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "pricing_note": "USD per million tokens; use time-dependent schedule rather than a single flat cost. Peak excludes Chinese public holidays.",
+        "pricing_schedule": "{\"currency\":\"USD\",\"unit\":\"per_million_tokens\",\"timezone\":\"UTC\",\"peak_weekdays\":[\"MO\",\"TU\",\"WE\",\"TH\",\"FR\"],\"peak_windows\":[[\"01:00\",\"04:00\"],[\"06:00\",\"10:00\"]],\"holiday_calendar\":\"Chinese public holidays use off_peak for the entire day\",\"peak\":{\"input\":1.32,\"output\":3.96,\"cache_read\":0.044},\"off_peak\":{\"input\":0.66,\"output\":1.98,\"cache_read\":0.022}}",
+        "model_version": "DeepSeek-V4-Pro-0813",
+        "reasoning_effort_options": "none,low,high,max",
+        "reasoning_effort_default": "high",
+        "reasoning_effort_aliases": "{\"minimal\":\"low\",\"medium\":\"high\",\"xhigh\":\"high\"}",
+        "parameter_source": "https://api-docs.deepseek.com/api/create-chat-completion/",
+        "temperature_note": "temperature has no effect in thinking mode.",
+        "context_limit_label": "1M",
+        "output_limit_label": "384K (393216)",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "responses,chat/completions,anthropic",
+        "max_output_tokens": "393216"
+      },
       "limit": {
         "context": 1000000,
-        "output": 384000
+        "output": 393216
       },
-      "cost": {
-        "input": 0.435,
-        "output": 0.87,
-        "cache_read": 0.003625
+      "reasoning": {
+        "supported": true,
+        "default": true
       },
-      "display_name": "DeepSeek V4 Pro",
-      "type": "chat",
-      "extra_capabilities": {
-        "reasoning": {
-          "supported": true,
-          "interleaved": true,
-          "summaries": true,
-          "visibility": "summary",
-          "continuation": [
-            "thinking_blocks"
+      "tool_call": true,
+      "temperature": true,
+      "category": "deepseek",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens",
+        "max_output_tokens",
+        "temperature"
+      ],
+      "endpoints": "responses,chat/completions,anthropic",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "high",
+            "max"
           ]
         }
-      }
+      ],
+      "structured_output": true
     },
     {
       "id": "deepseek-reasoner",

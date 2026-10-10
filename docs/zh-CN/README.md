@@ -27,6 +27,7 @@ TokenHub 文档现在按企业 Token Governance 里的三种角色组织。默�
 | [普通用户指南](user-guide.md) | 员工和应用开发者 | 查看可用模型、创建项目 Key、调用模型 API、查看个人用量 |
 | [团队负责人指南](team-leader-guide.md) | 团队 Owner 和项目维护者 | 管理项目空间、成员、API Key、团队报表和项目成本归因 |
 | [管理员指南](administrator-guide.md) | 平台管理员和安全运维 | 配置 Provider、模型目录、路由、身份源、RBAC、审计和成本治理 |
+| [模型目录更新](model-catalog-updates.md) | 平台管理员和目录维护者 | 核查上游型号、生命周期提示、调用支持与成本确认 |
 | [文本 Embedding](embeddings.md) | 应用开发者和管理员 | 配置协议、请求稠密向量并保持向量空间兼容 |
 | [文本重排](rerank.md) | 应用开发者和管理员 | 对文档排序、配置价格并验证上游行为 |
 | [Agent Token 成本 API](agent-token-cost-api.md) | 本地报表 Agent 和平台管理员 | 创建最小权限分析凭证，以 JSON 或 CSV 拉取过滤、聚合和增量 Token 成本 |

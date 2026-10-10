@@ -66,6 +66,9 @@ func buildAnthropicRequest(providerModel string, req ChatCompletionRequest, reas
 		// prefix, so it is not an equivalent rewrite.
 		payload["tool_choice"] = anthropicToolChoice(choice, req.ParallelToolCalls)
 	}
+	if err := validateCurrentAnthropicToolChoice(providerModel, payload); err != nil {
+		return nil, err
+	}
 	return payload, nil
 }
 

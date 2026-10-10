@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       doc_url: "https://docs.z.ai/guides/overview/pricing"
       categories: []
-      models_count: 12
+      models_count: 13
 permissions:
   network:
     allow: []

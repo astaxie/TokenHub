@@ -6,6 +6,210 @@
   "display_name": "Z.AI",
   "models": [
     {
+      "id": "glm-5.3-flashx",
+      "name": "GLM-5.3-FlashX",
+      "display_name": "GLM-5.3-FlashX",
+      "family": "glm",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.z.ai/guides/vlm/glm-5.3-flash",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_source": "https://docs.z.ai/guides/overview/pricing",
+        "pricing_note": "Z.AI global USD/MTok; do not copy to China or subscription plans.",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "thinking_note": "thinking.type must be enabled; preserve reasoning across tools; Flash/FlashX recommend clear_thinking=false.",
+        "sampling_note": "Official examples use temperature=1 and top_p=.95.",
+        "protocol_note": "Z.AI GLM5.3 model page lists coding/paas/v4 in table but normal paas/v4 in curl example; preserve provider base URL and validate account protocol restrictions.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "128000",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 0.37,
+        "output": 1.25,
+        "cache_read": 0.075
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "category": "glm",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "glm-5.3-flash",
+      "name": "GLM-5.3-Flash",
+      "display_name": "GLM-5.3-Flash",
+      "family": "glm",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "file"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.z.ai/guides/vlm/glm-5.3-flash",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_source": "https://docs.z.ai/guides/overview/pricing",
+        "pricing_note": "Z.AI global USD/MTok; do not copy to China or subscription plans.",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "thinking_note": "thinking.type must be enabled; preserve reasoning across tools; Flash/FlashX recommend clear_thinking=false.",
+        "sampling_note": "Official examples use temperature=1 and top_p=.95.",
+        "protocol_note": "Z.AI GLM5.3 model page lists coding/paas/v4 in table but normal paas/v4 in curl example; preserve provider base URL and validate account protocol restrictions.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "128000",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 0.15,
+        "output": 0.5,
+        "cache_read": 0.03
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "category": "glm",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "glm-5.3",
+      "name": "GLM-5.3",
+      "display_name": "GLM-5.3",
+      "family": "glm",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.z.ai/guides/llm/glm-5.3",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_source": "https://docs.z.ai/guides/overview/pricing",
+        "pricing_note": "Z.AI global USD/MTok; do not copy to China or subscription plans.",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "thinking_note": "thinking.type must be enabled; preserve reasoning across tools; Flash/FlashX recommend clear_thinking=false.",
+        "sampling_note": "Official examples use temperature=1 and top_p=.95.",
+        "protocol_note": "Z.AI GLM5.3 model page lists coding/paas/v4 in table but normal paas/v4 in curl example; preserve provider base URL and validate account protocol restrictions.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "128000",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 1.4,
+        "output": 4.4,
+        "cache_read": 0.26
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "category": "glm",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
       "id": "glm-4.7",
       "name": "GLM-4.7",
       "family": "glm",

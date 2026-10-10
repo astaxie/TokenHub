@@ -796,6 +796,10 @@ export async function readAdminError(resp: Response, fallback: string) {
 
 function localizedAdminErrorCode(code?: string) {
   switch (code) {
+    case "provider_model_retired":
+      return tx("请选择未停用的上游模型后再发布新线路。");
+    case "provider_model_price_required":
+      return tx("请先确认并保存上游模型成本，再发布新线路。");
     case "provider_models_authentication_failed":
       return tx("上游拒绝了 Provider 凭据，请检查 API Key 或认证配置。");
     case "provider_models_rate_limited":

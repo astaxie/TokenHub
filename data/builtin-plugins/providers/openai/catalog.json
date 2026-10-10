@@ -5,8 +5,532 @@
   "display_name": "OpenAI",
   "models": [
     {
+      "id": "gpt-live-transcribe",
+      "name": "gpt-live-transcribe",
+      "display_name": "gpt-live-transcribe",
+      "family": "gpt-audio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/all",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "call_support": "unsupported",
+        "endpoints": "realtime/transcription_sessions",
+        "support_note": "Requires an audio or live-session adapter and native-unit billing.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active"
+      },
+      "category": "openai",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "gpt-audio-1.5",
+      "name": "gpt-audio-1.5",
+      "display_name": "gpt-audio-1.5",
+      "family": "gpt-audio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/all",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "call_support": "unsupported",
+        "endpoints": "chat/completions",
+        "support_note": "Requires an audio or live-session adapter and native-unit billing.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active"
+      },
+      "category": "openai",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "gpt-realtime-2.1-mini",
+      "name": "gpt-realtime-2.1-mini",
+      "display_name": "gpt-realtime-2.1-mini",
+      "family": "gpt-audio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/all",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "call_support": "unsupported",
+        "endpoints": "realtime",
+        "support_note": "Requires an audio or live-session adapter and native-unit billing.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active"
+      },
+      "category": "openai",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "gpt-realtime-2.1",
+      "name": "gpt-realtime-2.1",
+      "display_name": "gpt-realtime-2.1",
+      "family": "gpt-audio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/all",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "call_support": "unsupported",
+        "endpoints": "realtime",
+        "support_note": "Requires an audio or live-session adapter and native-unit billing.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active"
+      },
+      "category": "openai",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "gpt-live-1",
+      "name": "gpt-live-1",
+      "display_name": "gpt-live-1",
+      "family": "gpt-audio",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio",
+          "text"
+        ],
+        "output": [
+          "audio",
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/all",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "call_support": "unsupported",
+        "endpoints": "live/sessions",
+        "support_note": "Requires an audio or live-session adapter and native-unit billing.",
+        "pricing_note": "Voice session $0.05/minute billed per second; backend model and tools billed separately.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active"
+      },
+      "category": "openai",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "gpt-image-2.5-flare",
+      "name": "GPT Image 2.5 Flare",
+      "display_name": "GPT Image 2.5 Flare",
+      "family": "gpt-image",
+      "type": "image",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-image-2.5-flare",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Text input $5/MTok (cached $1.25); image input $8/MTok (cached $2); image output $30/MTok. Separate modality pricing must be configured; a flat text rate is not an image cost estimate.",
+        "quality_options": "auto,low,medium,high,xhigh,max",
+        "endpoints": "images/generations,images/edits",
+        "call_support": "unsupported",
+        "support_note": "Catalog-only until image modality billing and quality contracts are validated.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active"
+      },
+      "supported_parameters": [
+        "size",
+        "quality"
+      ],
+      "category": "openai",
+      "last_updated": "2026-10-10"
+    },
+    {
+      "id": "gpt-image-2.5-sunburst",
+      "name": "GPT Image 2.5 Sunburst",
+      "display_name": "GPT Image 2.5 Sunburst",
+      "family": "gpt-image",
+      "type": "image",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Text input $5/MTok (cached $1.25); image input $8/MTok (cached $2); image output $30/MTok. Separate modality pricing must be configured; a flat text rate is not an image cost estimate.",
+        "quality_options": "auto,low,medium,high,xhigh,max",
+        "endpoints": "images/generations,images/edits",
+        "call_support": "unsupported",
+        "support_note": "Catalog-only until image modality billing and quality contracts are validated.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active"
+      },
+      "supported_parameters": [
+        "size",
+        "quality"
+      ],
+      "category": "openai",
+      "last_updated": "2026-10-10"
+    },
+    {
+      "id": "gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "display_name": "GPT-6 Luna",
+      "family": "gpt",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2026-05-18",
+      "last_updated": "2026-10-10",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 0.1,
+        "output": 0.5,
+        "cache_read": 0.01,
+        "cache_write": 0.125,
+        "tiers": [
+          {
+            "input": 0.2,
+            "output": 0.75,
+            "cache_read": 0.02,
+            "cache_write": 0.25,
+            "tier": {
+              "type": "context",
+              "size": 272000
+            }
+          }
+        ]
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "endpoints": "responses,chat/completions",
+      "description": "Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling parameters are unsupported while reasoning is enabled.",
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "responses,chat/completions",
+        "max_output_tokens": "128000",
+        "reference_token_prices": "{\"input\":0.1,\"output\":0.5,\"cache_read\":0.01,\"cache_write\":0.125,\"tiers\":[{\"input\":0.2,\"output\":0.75,\"cache_read\":0.02,\"cache_write\":0.25,\"tier\":{\"type\":\"context\",\"size\":272000}}]}",
+        "pricing_status": "unverified",
+        "catalog_price_reference": "true",
+        "pricing_note": "Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure billing."
+      },
+      "category": "openai",
+      "supported_parameters": [
+        "max_tokens",
+        "max_output_tokens"
+      ]
+    },
+    {
+      "id": "gpt-6-sol",
+      "name": "GPT-6 Sol",
+      "display_name": "GPT-6 Sol",
+      "family": "gpt",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2026-04-20",
+      "last_updated": "2026-10-10",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.2,
+        "cache_write": 2.5,
+        "tiers": [
+          {
+            "input": 4,
+            "output": 15,
+            "cache_read": 0.4,
+            "cache_write": 5,
+            "tier": {
+              "type": "context",
+              "size": 272000
+            }
+          }
+        ]
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "endpoints": "responses,chat/completions",
+      "description": "Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling parameters are unsupported while reasoning is enabled.",
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "responses,chat/completions",
+        "max_output_tokens": "128000",
+        "reference_token_prices": "{\"input\":2,\"output\":10,\"cache_read\":0.2,\"cache_write\":2.5,\"tiers\":[{\"input\":4,\"output\":15.0,\"cache_read\":0.4,\"cache_write\":5.0,\"tier\":{\"type\":\"context\",\"size\":272000}}]}",
+        "pricing_status": "unverified",
+        "catalog_price_reference": "true",
+        "pricing_note": "Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure billing."
+      },
+      "category": "openai",
+      "supported_parameters": [
+        "max_tokens",
+        "max_output_tokens"
+      ]
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "name": "GPT-6.1 Sol",
+      "display_name": "GPT-6.1 Sol",
+      "family": "gpt",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": false,
+      "knowledge": "2026-04-30",
+      "last_updated": "2026-10-10",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_write": 2.5,
+        "tiers": [
+          {
+            "input": 4,
+            "output": 15,
+            "cache_read": 0.2,
+            "cache_write": 5,
+            "tier": {
+              "type": "context",
+              "size": 272000
+            }
+          }
+        ]
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "endpoints": "responses,chat/completions",
+      "description": "Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters are unsupported while reasoning is enabled.",
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "responses,chat/completions",
+        "max_output_tokens": "128000",
+        "reference_token_prices": "{\"input\":2,\"output\":10,\"cache_read\":0.1,\"cache_write\":2.5,\"tiers\":[{\"input\":4,\"output\":15.0,\"cache_read\":0.2,\"cache_write\":5.0,\"tier\":{\"type\":\"context\",\"size\":272000}}]}",
+        "pricing_status": "unverified",
+        "catalog_price_reference": "true",
+        "pricing_note": "Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure billing."
+      },
+      "category": "openai",
+      "supported_parameters": [
+        "max_tokens",
+        "max_output_tokens"
+      ]
+    },
+    {
       "id": "gpt-6-astra",
-      "supported_parameters": ["max_tokens", "max_completion_tokens", "max_output_tokens"],
       "name": "GPT-6 Astra",
       "display_name": "GPT-6 Astra",
       "family": "gpt",
@@ -80,6 +604,19 @@
           ],
           "visibility": "hidden"
         }
+      },
+      "supported_parameters": [
+        "max_tokens",
+        "max_completion_tokens",
+        "max_output_tokens"
+      ],
+      "metadata": {
+        "pricing_status": "unverified",
+        "catalog_price_reference": "true",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "pricing_note": "Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure billing.",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6-astra"
       }
     },
     {
@@ -162,20 +699,35 @@
           "text"
         ],
         "output": [
-          "text"
+          "embedding"
         ]
       },
       "open_weights": false,
       "limit": {
-        "context": 8191,
-        "output": 3072
+        "context": 8191
       },
       "cost": {
         "input": 0.13,
         "output": 0
       },
       "display_name": "text-embedding-3-large",
-      "type": "embedding"
+      "type": "embedding",
+      "supported_parameters": [
+        "dimensions",
+        "encoding_format"
+      ],
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/text-embedding-3-large",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "embedding_dimensions": "3072",
+        "embedding_space": "text-embedding-3-large",
+        "pricing_status": "reference",
+        "pricing_note": "Standard API input-token rate; changing embedding models requires a compatible vector space or rebuilding the index.",
+        "endpoints": "embeddings"
+      },
+      "endpoints": "embeddings"
     },
     {
       "id": "gpt-5.2-pro",
@@ -347,7 +899,15 @@
         "cache_read": 0
       },
       "display_name": "GPT-3.5-turbo",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5-pro",
@@ -478,7 +1038,15 @@
         "output": 60
       },
       "display_name": "GPT-4",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "o4-mini",
@@ -539,7 +1107,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "o3-pro",
@@ -630,7 +1206,15 @@
         "output": 8192
       },
       "display_name": "chatgpt-image-latest",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-image-2.5-flare",
+        "shutdown_at": "2026-12-01T00:00:00Z"
+      }
     },
     {
       "id": "gpt-4o-2024-05-13",
@@ -665,7 +1249,15 @@
         "output": 15
       },
       "display_name": "GPT-4o (2024-05-13)",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.4-nano",
@@ -737,7 +1329,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-luna",
+        "shutdown_at": "2027-04-01T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5-chat-latest",
@@ -776,7 +1376,15 @@
         "cache_read": 0.125
       },
       "display_name": "GPT-5 Chat (latest)",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.1-codex",
@@ -845,7 +1453,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.3-codex-spark",
@@ -987,7 +1603,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.3-chat-latest",
@@ -1023,7 +1647,15 @@
         "cache_read": 0.175
       },
       "display_name": "GPT-5.3 Chat (latest)",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-08-10T00:00:00Z"
+      }
     },
     {
       "id": "gpt-4o-2024-08-06",
@@ -1152,7 +1784,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.2",
@@ -1296,7 +1936,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2027-04-01T00:00:00Z"
+      }
     },
     {
       "id": "text-embedding-3-small",
@@ -1316,20 +1964,35 @@
           "text"
         ],
         "output": [
-          "text"
+          "embedding"
         ]
       },
       "open_weights": false,
       "limit": {
-        "context": 8191,
-        "output": 1536
+        "context": 8191
       },
       "cost": {
         "input": 0.02,
         "output": 0
       },
       "display_name": "text-embedding-3-small",
-      "type": "embedding"
+      "type": "embedding",
+      "supported_parameters": [
+        "dimensions",
+        "encoding_format"
+      ],
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/text-embedding-3-small",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "embedding_dimensions": "1536",
+        "embedding_space": "text-embedding-3-small",
+        "pricing_status": "reference",
+        "pricing_note": "Standard API input-token rate; changing embedding models requires a compatible vector space or rebuilding the index.",
+        "endpoints": "embeddings"
+      },
+      "endpoints": "embeddings"
     },
     {
       "id": "gpt-5.1-codex-mini",
@@ -1398,7 +2061,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-luna",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.1-chat-latest",
@@ -1443,7 +2114,15 @@
         "cache_read": 0.125
       },
       "display_name": "GPT-5.1 Chat",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.2-chat-latest",
@@ -1488,7 +2167,15 @@
         "cache_read": 0.175
       },
       "display_name": "GPT-5.2 Chat",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-08-10T00:00:00Z"
+      }
     },
     {
       "id": "o4-mini-deep-research",
@@ -1546,7 +2233,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-image-1.5",
@@ -1577,7 +2272,15 @@
         "output": 8192
       },
       "display_name": "gpt-image-1.5",
-      "type": "image-generation"
+      "type": "image-generation",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-image-2.5-flare",
+        "shutdown_at": "2026-12-01T00:00:00Z"
+      }
     },
     {
       "id": "gpt-4.1-nano",
@@ -1613,7 +2316,15 @@
         "cache_read": 0.025
       },
       "display_name": "GPT-4.1 nano",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-4o-2024-11-20",
@@ -1711,7 +2422,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "o1-pro",
@@ -1771,7 +2490,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.4",
@@ -2059,7 +2786,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5-mini",
@@ -2159,7 +2894,15 @@
         "output": 8192
       },
       "display_name": "gpt-image-1",
-      "type": "image-generation"
+      "type": "image-generation",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-image-2.5-sunburst",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-4.1-mini",
@@ -2231,7 +2974,15 @@
         "output": 30
       },
       "display_name": "GPT-4 Turbo",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-10-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-image-1-mini",
@@ -2262,7 +3013,15 @@
         "output": 8192
       },
       "display_name": "gpt-image-1-mini",
-      "type": "image-generation"
+      "type": "image-generation",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-image-2.5-flare",
+        "shutdown_at": "2026-12-01T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5-nano",
@@ -2586,7 +3345,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.2-codex",
@@ -2657,7 +3424,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2026-07-23T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.1",
@@ -2727,7 +3502,15 @@
           "visibility": "hidden"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "gpt-6-sol",
+        "shutdown_at": "2027-04-01T00:00:00Z"
+      }
     },
     {
       "id": "gpt-5.5",

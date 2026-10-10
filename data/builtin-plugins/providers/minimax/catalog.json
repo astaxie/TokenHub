@@ -6,6 +6,84 @@
   "display_name": "MiniMax (minimax.io)",
   "models": [
     {
+      "id": "speech-2.8-turbo",
+      "name": "MiniMax Speech 2.8 TURBO",
+      "display_name": "MiniMax Speech 2.8 TURBO",
+      "family": "minimax-speech",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "USD per million input characters, not tokens. Keep cost.input/output absent.",
+        "billing_unit": "characters",
+        "usd_per_million_characters": "60",
+        "pricing_source": "https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise",
+        "api_note": "Native /v1/t2a_v2 or WebSocket /ws/v1/t2a_v2. Existing Anthropic base URL alone cannot invoke speech.",
+        "call_support_note": "Catalog inclusion only; native speech adapter not verified.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "category": "minimax",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "speech-2.8-hd",
+      "name": "MiniMax Speech 2.8 HD",
+      "display_name": "MiniMax Speech 2.8 HD",
+      "family": "minimax-speech",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "USD per million input characters, not tokens. Keep cost.input/output absent.",
+        "billing_unit": "characters",
+        "usd_per_million_characters": "100",
+        "pricing_source": "https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise",
+        "api_note": "Native /v1/t2a_v2 or WebSocket /ws/v1/t2a_v2. Existing Anthropic base URL alone cannot invoke speech.",
+        "call_support_note": "Catalog inclusion only; native speech adapter not verified.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "category": "minimax",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
       "id": "MiniMax-M2.1",
       "name": "MiniMax-M2.1",
       "family": "minimax",

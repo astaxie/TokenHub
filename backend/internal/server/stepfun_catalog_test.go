@@ -88,9 +88,11 @@ func TestTrackedStepFunProvidersSeparateDirectAPIAndStepPlan(t *testing.T) {
 
 	directModels := []string{
 		"step-1-32k", "step-2-16k", "step-3.5-flash", "step-3.5-flash-2603",
-		"step-3.7-flash", "step-tts-2", "stepaudio-2.5-asr", "stepaudio-2.5-chat",
+		"step-3.7-flash", "step-5-preview", "step-tts-2", "stepaudio-2.5-asr", "stepaudio-2.5-chat",
+		"stepaudio-3-asr-max", "stepaudio-3-chat-preview", "stepaudio-3-gen-preview", "stepaudio-3-music-preview", "stepaudio-3-realtime-preview", "stepaudio-3-tts",
 		"stepaudio-2.5-realtime", "stepaudio-2.5-tts",
 	}
+	slices.Sort(directModels)
 	chinaPlanModels := []string{
 		"step-3.5-flash", "step-3.5-flash-2603", "step-3.7-flash", "step-image-edit-2", "step-router-v1",
 		"stepaudio-2.5-asr", "stepaudio-2.5-chat", "stepaudio-2.5-realtime", "stepaudio-2.5-tts",

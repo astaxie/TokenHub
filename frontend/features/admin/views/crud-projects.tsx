@@ -136,7 +136,7 @@ export function CrudView<T>({
         <div className="table-toolbar-actions">
           <span className="table-result-count">{resultCountLabel(totalItems, query)}</span>
           {config.create ? (
-            <button className="button" onClick={onCreate} type="button">
+            <button className="button" disabled={loading} onClick={onCreate} type="button">
               <Plus size={17} />
               {isPersonalKeyView
                 ? tx("创建 Key")

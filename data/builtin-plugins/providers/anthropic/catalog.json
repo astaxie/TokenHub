@@ -5,6 +5,293 @@
   "display_name": "Anthropic",
   "models": [
     {
+      "id": "claude-haiku-5-5",
+      "name": "Claude Haiku 5.5",
+      "display_name": "Claude Haiku 5.5",
+      "family": "claude",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "reasoning_effort_parameter": "output_config.effort",
+        "sampling_note": "Omit temperature, top_p and top_k; non-default sampling can fail.",
+        "pricing_note": "Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.",
+        "cache_write_1h": "0.2",
+        "compatibility_source": "https://platform.claude.com/docs/en/release-notes/overview",
+        "thinking_mode": "adaptive",
+        "pricing_tiers": "[{\"prompt_tokens_gt\":100000,\"input\":0.5,\"output\":2.5,\"cache_read\":0.05,\"cache_write\":0.625,\"cache_write_1h\":1}]",
+        "thinking_history_note": "Preserve signed thinking and account affinity; changing system/tools/history or switching model/account can reject or drop blocks.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "medium",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "anthropic",
+        "max_output_tokens": "128000",
+        "reference_token_prices": "{\"input\":0.1,\"output\":0.5,\"cache_read\":0.01,\"cache_write\":0.125}",
+        "pricing_status": "unverified"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "claude",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "anthropic",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "name": "Claude Sonnet 5.5",
+      "display_name": "Claude Sonnet 5.5",
+      "family": "claude",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "reasoning_effort_parameter": "output_config.effort",
+        "sampling_note": "Omit temperature, top_p and top_k; non-default sampling can fail.",
+        "pricing_note": "Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.",
+        "compatibility_source": "https://platform.claude.com/docs/en/release-notes/overview",
+        "tool_choice_allowed": "auto,none",
+        "thinking_mode": "adaptive",
+        "thinking_note": "Use between_tools at high effort or lower to skip up-front thinking; disabled is not the migration setting.",
+        "thinking_history_note": "Preserve signed thinking and account affinity; changing system/tools/history or switching model/account can reject or drop blocks.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "high",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "anthropic",
+        "max_output_tokens": "128000",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_write_5m": 2.5,
+        "cache_write_1h": 4
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "claude",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "anthropic",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-5-5",
+      "name": "Claude Opus 5.5",
+      "display_name": "Claude Opus 5.5",
+      "family": "claude",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "reasoning_effort_parameter": "output_config.effort",
+        "sampling_note": "Omit temperature, top_p and top_k; non-default sampling can fail.",
+        "pricing_note": "Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.",
+        "compatibility_source": "https://platform.claude.com/docs/en/release-notes/overview",
+        "tool_choice_allowed": "auto,none",
+        "thinking_mode": "adaptive",
+        "thinking_can_disable": "false",
+        "thinking_history_note": "Preserve signed thinking and account affinity; changing system/tools/history or switching model/account can reject or drop blocks.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "medium",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "anthropic",
+        "max_output_tokens": "128000",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_write_5m": 5,
+        "cache_write_1h": 8
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "claude",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "anthropic",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "claude-fable-5-1",
+      "name": "Claude Fable 5.1",
+      "display_name": "Claude Fable 5.1",
+      "family": "claude",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.claude.com/docs/en/models/fable-5-1/overview",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "reasoning_effort_parameter": "output_config.effort",
+        "sampling_note": "Omit temperature, top_p and top_k; non-default sampling can fail.",
+        "pricing_note": "Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.",
+        "compatibility_source": "https://platform.claude.com/docs/en/release-notes/overview",
+        "tool_choice_allowed": "auto,none",
+        "thinking_mode": "adaptive",
+        "thinking_can_disable": "false",
+        "retention_note": "Requires 30-day retention; ZDR only with explicit Anthropic authorization.",
+        "thinking_history_note": "Preserve signed thinking and account affinity; changing system/tools/history or switching model/account can reject or drop blocks.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "high",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "anthropic",
+        "max_output_tokens": "128000",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_write_5m": 12.5,
+        "cache_write_1h": 20
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "claude",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "anthropic",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
       "id": "claude-opus-4-5",
       "name": "Claude Opus 4.5 (latest)",
       "family": "claude-opus",
@@ -184,7 +471,16 @@
         "cache_write": 1
       },
       "display_name": "Claude Haiku 3.5",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-haiku-4-5-20251001",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-02-19T00:00:00Z"
+      }
     },
     {
       "id": "claude-opus-4-0",
@@ -249,6 +545,15 @@
             "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-opus-4-8",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-06-15T00:00:00Z"
       }
     },
     {
@@ -287,7 +592,16 @@
         "cache_write": 18.75
       },
       "display_name": "Claude Opus 3",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-opus-4-8",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-01-05T00:00:00Z"
+      }
     },
     {
       "id": "claude-opus-4-1-20250805",
@@ -352,6 +666,15 @@
             "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-opus-4-8",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-08-05T00:00:00Z"
       }
     },
     {
@@ -417,6 +740,15 @@
             "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-sonnet-5-5",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-11-30T00:00:00Z"
       }
     },
     {
@@ -630,7 +962,16 @@
         "cache_write": 3.75
       },
       "display_name": "Claude Sonnet 3.5 v2",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-sonnet-5-5",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2025-10-28T00:00:00Z"
+      }
     },
     {
       "id": "claude-opus-4-8",
@@ -790,6 +1131,15 @@
             "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-opus-4-8",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-06-15T00:00:00Z"
       }
     },
     {
@@ -828,7 +1178,16 @@
         "cache_write": 3.75
       },
       "display_name": "Claude Sonnet 3.5",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-sonnet-5-5",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2025-10-28T00:00:00Z"
+      }
     },
     {
       "id": "claude-sonnet-4-20250514",
@@ -893,6 +1252,15 @@
             "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-sonnet-5-5",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-06-15T00:00:00Z"
       }
     },
     {
@@ -958,6 +1326,15 @@
             "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-opus-4-8",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-08-05T00:00:00Z"
       }
     },
     {
@@ -996,7 +1373,16 @@
         "cache_write": 0.3
       },
       "display_name": "Claude Haiku 3",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-haiku-4-5-20251001",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-04-20T00:00:00Z"
+      }
     },
     {
       "id": "claude-fable-5",
@@ -1136,6 +1522,15 @@
             "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-sonnet-5-5",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-06-15T00:00:00Z"
       }
     },
     {
@@ -1201,6 +1596,15 @@
             "Anthropic uses thinking budget tokens"
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-sonnet-5-5",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-02-19T00:00:00Z"
       }
     },
     {
@@ -1432,6 +1836,15 @@
             "Interleaved thinking requires the interleaved-thinking-2025-05-14 beta header for this model family."
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-sonnet-5-5",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-11-30T00:00:00Z"
       }
     },
     {
@@ -1470,7 +1883,16 @@
         "cache_write": 0.3
       },
       "display_name": "Claude Sonnet 3",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-sonnet-5-5",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2025-07-21T00:00:00Z"
+      }
     },
     {
       "id": "claude-sonnet-4-6",
@@ -1588,7 +2010,16 @@
         "cache_write": 1
       },
       "display_name": "Claude Haiku 3.5 (latest)",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "claude-haiku-4-5-20251001",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-02-19T00:00:00Z"
+      }
     }
   ]
 }

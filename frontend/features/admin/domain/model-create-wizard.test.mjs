@@ -80,3 +80,9 @@ test("retrieval template prices preserve explicit free and native unit values", 
   assert.equal(values.search_unit_price_usd, "0.002");
   assert.equal(values.retrieval_pricing_confirmed, "true");
 });
+
+test("unverified reference prices require explicit client pricing", () => {
+  const values = externalModelTemplateValues({ name: "regional-model", family: "test", modality: "chat", input_price_usd_per_1m: 0, output_price_usd_per_1m: 0, metadata: { pricing_status: "unverified" } });
+  assert.equal(values.input_price_usd_per_1m, "");
+  assert.equal(values.output_price_usd_per_1m, "");
+});

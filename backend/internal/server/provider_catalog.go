@@ -388,9 +388,7 @@ func normalizeProviderCatalogModelWithCategories(raw map[string]any, modelCatego
 	} else {
 		canonicalName = canonicalModelNameWithDefinitions(canonicalName, canonicalName, modelCategories)
 	}
-	metadata := map[string]string{
-		"source": "local-provider-catalog",
-	}
+	metadata := catalogModelMetadata(raw)
 	for _, key := range []string{"knowledge", "release_date", "last_updated", "endpoints", "billing_mode", "pricing_unit"} {
 		if value := catalogStringField(raw, key); value != "" {
 			metadata[key] = value

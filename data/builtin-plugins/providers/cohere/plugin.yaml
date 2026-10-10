@@ -26,7 +26,7 @@ capabilities:
       base_url: ""
       doc_url: "https://docs.cohere.com/docs/models"
       categories: []
-      models_count: 14
+      models_count: 18
 permissions:
   network:
     allow: []
