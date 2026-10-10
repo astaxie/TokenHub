@@ -213,11 +213,13 @@ Provider 模型价格代表真实上游成本，用于内部审计；模型目�
 
 「发布状态」与「运行健康」相互独立。模型要出现在 `GET /v1/models` 中，必须同时满足：对外 `Model` 已启用、至少有一条已启用 `ModelRoute`，且在 API Key 配置了模型白名单时获得授权。Provider 或 Provider Resource 短时不健康不会改变该列表，只会影响当前请求能否成功，并在目录和路由诊断中单独展示。下线对外模型会将它从 `GET /v1/models` 移除，但保留映射，便于之后重新发布。
 
-### GPT-6 Astra
+### GPT-6 模型
 
 标准模型目录和内置 OpenAI Provider 库存已包含 `gpt-6-astra`。创建模型时选择它，并配置有访问权限的上游路由；目录收录不代表获得上游权限。Codex 订阅库存仍从账户发现。支持的推理档位为 `low`、`medium`、`high`、`xhigh`、`max`；Codex 探测和 Anthropic 到 Codex 的转换会保留 `max`。
 
 模板采用 OpenAI Standard 每百万 token 价格：输入 10 美元、缓存读取 1 美元、缓存写入 12.50 美元、输出 50 美元。输入超过 272,000 token 时，OpenAI 对整个请求的输入及缓存价格乘以 2，输出价格乘以 1.5。Provider 阶梯元数据记录了该差异；标准模板的固定价格不会自动应用上下文阶梯或 Batch/Flex/Fast 折扣及加价，请单独配置适用价格。参见 [OpenAI 模型说明](https://developers.openai.com/api/docs/models/gpt-6-astra)。
+
+同一目录还包含 `gpt-6.1-sol`、`gpt-6-sol` 和 `gpt-6-luna`，上下文窗口均为 1,050,000 token，最大输出均为 128,000 token。GPT-6.1 Sol 支持 `low`、`medium`、`high`、`xhigh`、`max` 推理档位；工具调用必须使用 Responses，Chat Completions 仅支持不带工具的请求。GPT-6 Sol 和 GPT-6 Luna 还支持 `none`；通过 Chat Completions 调用工具时须设置 `reasoning_effort=none`，启用推理的工具调用须使用 Responses。启用推理时不支持采样参数。这些条目仅补充目录元数据，使用前仍须配置有权限的 Provider 路由并验证上游访问。参见 [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) 和 [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) 官方说明。
 
 
 ## 自定义上游请求头

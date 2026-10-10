@@ -3,6 +3,96 @@
 # Source updated_at: 2026-07-08T06:38:13.852Z.
 version: 1
 models:
+  - name: "gpt-6.1-sol"
+    title: "GPT-6.1 Sol"
+    description: "Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters are unsupported while reasoning is enabled."
+    category: "openai"
+    family: "gpt"
+    modality: "chat"
+    context_window: 1050000
+    input_price_usd_per_1m: 2
+    output_price_usd_per_1m: 10
+    cache_read_price_usd_per_1m: 0.1
+    cache_write_price_usd_per_1m: 2.5
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "tools", "response_format", "reasoning", "reasoning_effort", "image_input", "tool_choice", "parallel_tool_calls", "text"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "https://developers.openai.com/api/docs/models/gpt-6.1-sol"
+      provider_catalog_id: "openai"
+      provider_model_id: "gpt-6.1-sol"
+      endpoints: "responses,chat/completions"
+      max_output_tokens: "128000"
+      knowledge_cutoff: "2026-04-30"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_options: "low,medium,high,xhigh,max"
+      verified_at: "2026-10-09"
+      tool_call_note: "Tool calling requires Responses; Chat Completions supports requests without tools."
+      sampling_note: "temperature, top_p and log probabilities are unsupported; this model does not support reasoning effort none."
+      pricing_note: "Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%; configure applicable pricing separately."
+  - name: "gpt-6-sol"
+    title: "GPT-6 Sol"
+    description: "Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling parameters are unsupported while reasoning is enabled."
+    category: "openai"
+    family: "gpt"
+    modality: "chat"
+    context_window: 1050000
+    input_price_usd_per_1m: 2
+    output_price_usd_per_1m: 10
+    cache_read_price_usd_per_1m: 0.2
+    cache_write_price_usd_per_1m: 2.5
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "temperature", "tools", "response_format", "reasoning", "reasoning_effort", "image_input", "top_p", "tool_choice", "parallel_tool_calls", "text", "logprobs", "top_logprobs"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "https://developers.openai.com/api/docs/models/gpt-6-sol"
+      provider_catalog_id: "openai"
+      provider_model_id: "gpt-6-sol"
+      endpoints: "responses,chat/completions"
+      max_output_tokens: "128000"
+      knowledge_cutoff: "2026-04-20"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_options: "none,low,medium,high,xhigh,max"
+      verified_at: "2026-10-09"
+      tool_call_note: "Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none."
+      sampling_note: "temperature, top_p and log probabilities require reasoning effort none."
+      pricing_note: "Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%; configure applicable pricing separately."
+  - name: "gpt-6-luna"
+    title: "GPT-6 Luna"
+    description: "Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling parameters are unsupported while reasoning is enabled."
+    category: "openai"
+    family: "gpt"
+    modality: "chat"
+    context_window: 1050000
+    input_price_usd_per_1m: 0.1
+    output_price_usd_per_1m: 0.5
+    cache_read_price_usd_per_1m: 0.01
+    cache_write_price_usd_per_1m: 0.125
+    input_modalities: ["text", "image"]
+    output_modalities: ["text"]
+    capabilities: ["chat", "vision", "reasoning", "tools", "structured_outputs"]
+    supported_parameters: ["max_tokens", "max_completion_tokens", "max_output_tokens", "temperature", "tools", "response_format", "reasoning", "reasoning_effort", "image_input", "top_p", "tool_choice", "parallel_tool_calls", "text", "logprobs", "top_logprobs"]
+    metadata:
+      source: "tokenhub-standard-catalog"
+      upstream_source: "https://developers.openai.com/api/docs/models/gpt-6-luna"
+      provider_catalog_id: "openai"
+      provider_model_id: "gpt-6-luna"
+      endpoints: "responses,chat/completions"
+      max_output_tokens: "128000"
+      knowledge_cutoff: "2026-05-18"
+      reasoning_supported: "true"
+      reasoning_default: "true"
+      reasoning_effort_options: "none,low,medium,high,xhigh,max"
+      verified_at: "2026-10-09"
+      tool_call_note: "Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none."
+      sampling_note: "temperature, top_p and log probabilities require reasoning effort none."
+      pricing_note: "Standard rates. Above 272000 input tokens, input and cache rates double and output rates increase by 50%; configure applicable pricing separately."
   - name: "jev-1.13.0"
     title: "jev-1.13.0"
     description: "TypeSafe System One model for typed semantic judgments."
