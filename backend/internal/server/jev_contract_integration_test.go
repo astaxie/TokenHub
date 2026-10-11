@@ -26,6 +26,7 @@ func TestJevContractHTTPAdmissionAndDiagnostics(t *testing.T) {
 	for _, id := range []string{"gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"} {
 		for _, tc := range []struct{ name, endpoint, extra, reason string }{
 			{"protocol controls", "responses", `"include":["reasoning.encrypted_content"],"truncation":"disabled","service_tier":"auto"`, ""},
+			{"comma separated deny", "responses", `"service_tier":"priority"`, "parameter_explicitly_denied"},
 			{"default sampling", "responses", `"temperature":0.5`, "sampling_reasoning_conflict"},
 			{"invalid effort", "responses", `"reasoning":{"effort":"minimal"}`, "reasoning_effort_unsupported"},
 			{"wrong endpoint field", "responses", `"response_format":{"type":"json_object"}`, "parameter_endpoint_mismatch"},
@@ -35,6 +36,10 @@ func TestJevContractHTTPAdmissionAndDiagnostics(t *testing.T) {
 		} {
 			t.Run(id+"/"+tc.name, func(t *testing.T) {
 				model := models[id]
+				model.Metadata = cloneStringMap(model.Metadata)
+				if tc.name == "comma separated deny" {
+					model.Metadata["request_parameter_denied"] = "temperature, service_tier"
+				}
 				if model.ID == "" {
 					t.Fatal("model missing")
 				}
@@ -49,7 +54,7 @@ func TestJevContractHTTPAdmissionAndDiagnostics(t *testing.T) {
 						t.Error(err)
 						return
 					}
-					if got["service_tier"] != "auto" || got["truncation"] != "disabled" {
+					if tc.reason == "" && (got["service_tier"] != "auto" || got["truncation"] != "disabled") {
 						t.Errorf("wire controls changed: %+v", got)
 					}
 					_ = json.NewEncoder(w).Encode(map[string]any{"id": "resp_contract", "object": "response", "status": "completed", "model": id, "output": []any{}})
@@ -164,4 +169,23 @@ func TestJevProfileStreamingContinuation(t *testing.T) {
 	if second.Code != 200 || hits.Load() != 2 || evaluations.Load() != 1 {
 		t.Fatalf("continuation: %d %s hits=%d evaluations=%d", second.Code, second.Body, hits.Load(), evaluations.Load())
 	}
+	metadata = `{"request_parameter_profile":"openai-chat-responses-v1","endpoints":"responses","request_parameter_denied":"temperature, service_tier"}`
+	if err := store.db.Model(&ProviderModel{}).Where("provider_id = ?", "provider_1").Update("metadata", metadata).Error; err != nil {
+		t.Fatal(err)
+	}
+	body["service_tier"] = "priority"
+	denied := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", body, "thk_semantic_test")
+	if denied.Code != 409 || hits.Load() != 2 || evaluations.Load() != 1 {
+		t.Fatalf("denied bound request reached upstream: %d hits=%d evaluations=%d", denied.Code, hits.Load(), evaluations.Load())
+	}
+	found := false
+	for _, event := range store.ListAuditEvents() {
+		if event.Action == "routing.jev_admission" && strings.Contains(event.AfterSnapshot, `"parameter":"service_tier"`) && strings.Contains(event.AfterSnapshot, `"reason":"parameter_explicitly_denied"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("bound denial missing safe diagnostic")
+	}
+
 }

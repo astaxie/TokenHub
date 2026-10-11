@@ -89,7 +89,7 @@ func jevCheckRequest(model ProviderModel, endpoint string, raw map[string]json.R
 	}
 	slices.Sort(keys)
 	for _, key := range keys {
-		if slices.Contains(strings.Split(model.Metadata["request_parameter_denied"], ","), key) {
+		if jevCSVContains(model.Metadata["request_parameter_denied"], key) {
 			return jevReject("parameter_explicitly_denied", key)
 		}
 		if slices.Contains(strings.Fields(structural), key) {
@@ -117,6 +117,18 @@ func jevCheckRequest(model ProviderModel, endpoint string, raw map[string]json.R
 		return jevCheckConditions(model, endpoint, raw)
 	}
 	return jevCompatibility{}
+}
+
+// Normalize metadata lists, not request values. Empty entries never grant
+// support or match a denied field.
+func jevCSVContains(list, wanted string) bool {
+	for _, item := range strings.Split(list, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" && item == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func jevHasEndpoint(endpoints, wanted string) bool {
@@ -194,7 +206,7 @@ func jevCheckConditions(model ProviderModel, endpoint string, raw map[string]jso
 			return jevReject("invalid_reasoning_effort", "reasoning_effort")
 		}
 	}
-	if options := model.Metadata["reasoning_effort_options"]; effort != "" && options != "" && !slices.Contains(strings.Split(options, ","), effort) {
+	if options := model.Metadata["reasoning_effort_options"]; effort != "" && options != "" && !jevCSVContains(options, effort) {
 		return jevReject("reasoning_effort_unsupported", "reasoning")
 	}
 	required := model.Metadata["sampling_requires_reasoning_effort"]

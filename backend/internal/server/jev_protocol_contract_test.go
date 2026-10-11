@@ -64,6 +64,14 @@ func TestJevProtocolConditionsAndLegacyBoundary(t *testing.T) {
 		{"Responses stream options", "responses", `{"stream":true,"stream_options":{"include_obfuscation":false}}`, "", nil},
 		{"no implicit profile for legacy inventory", "responses", `{"truncation":"disabled"}`, "parameter_not_declared", func(m *ProviderModel) { delete(m.Metadata, "request_parameter_profile") }},
 		{"deny overrides protocol baseline", "responses", `{"service_tier":"auto"}`, "parameter_explicitly_denied", func(m *ProviderModel) { m.Metadata["request_parameter_denied"] = "service_tier" }},
+		{"deny list comma spaces", "responses", `{"service_tier":"priority"}`, "parameter_explicitly_denied", func(m *ProviderModel) { m.Metadata["request_parameter_denied"] = "temperature, service_tier" }},
+		{"deny list tabs and empty entries", "responses", `{"service_tier":"priority"}`, "parameter_explicitly_denied", func(m *ProviderModel) { m.Metadata["request_parameter_denied"] = " , temperature, \tservice_tier\n, " }},
+		{"effort list comma spaces", "responses", `{"reasoning":{"effort":"low"}}`, "", func(m *ProviderModel) { m.Metadata["reasoning_effort_options"] = " none, low, medium " }},
+		{"request effort whitespace remains invalid", "responses", `{"reasoning":{"effort":" low "}}`, "reasoning_effort_unsupported", nil},
+		{"legacy declared field still denied with spaces", "responses", `{"temperature":0.5}`, "parameter_explicitly_denied", func(m *ProviderModel) {
+			delete(m.Metadata, "request_parameter_profile")
+			m.Metadata["request_parameter_denied"] = "service_tier, temperature "
+		}},
 		{"plain text config needs no structured capability", "responses", `{"text":{"verbosity":"low"}}`, "", func(m *ProviderModel) { m.SupportedParameters = nil }},
 		{"schema requires structured capability", "responses", `{"text":{"format":{"type":"json_schema"}}}`, "capability_missing", func(m *ProviderModel) { m.SupportedParameters = nil }},
 		{"probability include follows effort", "responses", `{"include":["message.output_text.logprobs"]}`, "sampling_reasoning_conflict", nil},
