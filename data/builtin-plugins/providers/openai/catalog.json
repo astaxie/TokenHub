@@ -6,6 +6,10 @@
   "models": [
     {
       "id": "gpt-6.1-sol",
+      "request_parameter_profile": "openai-chat-responses-v1",
+      "reasoning_effort_default": "medium",
+      "sampling_requires_reasoning_effort": "none",
+      "chat_tools_requires_reasoning_effort": "unsupported",
       "name": "GPT-6.1 Sol",
       "display_name": "GPT-6.1 Sol",
       "family": "gpt",
@@ -86,6 +90,10 @@
     },
     {
       "id": "gpt-6-sol",
+      "request_parameter_profile": "openai-chat-responses-v1",
+      "reasoning_effort_default": "medium",
+      "sampling_requires_reasoning_effort": "none",
+      "chat_tools_requires_reasoning_effort": "none",
       "name": "GPT-6 Sol",
       "display_name": "GPT-6 Sol",
       "family": "gpt",
@@ -168,6 +176,10 @@
     },
     {
       "id": "gpt-6-luna",
+      "request_parameter_profile": "openai-chat-responses-v1",
+      "reasoning_effort_default": "medium",
+      "sampling_requires_reasoning_effort": "none",
+      "chat_tools_requires_reasoning_effort": "none",
       "name": "GPT-6 Luna",
       "display_name": "GPT-6 Luna",
       "family": "gpt",

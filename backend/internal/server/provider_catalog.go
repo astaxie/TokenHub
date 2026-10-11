@@ -391,7 +391,7 @@ func normalizeProviderCatalogModelWithCategories(raw map[string]any, modelCatego
 	metadata := map[string]string{
 		"source": "local-provider-catalog",
 	}
-	for _, key := range []string{"knowledge", "release_date", "last_updated", "endpoints", "billing_mode", "pricing_unit"} {
+	for _, key := range []string{"knowledge", "release_date", "last_updated", "endpoints", "billing_mode", "pricing_unit", "request_parameter_profile", "request_parameter_denied", "reasoning_effort_default", "sampling_requires_reasoning_effort", "chat_tools_requires_reasoning_effort"} {
 		if value := catalogStringField(raw, key); value != "" {
 			metadata[key] = value
 		}

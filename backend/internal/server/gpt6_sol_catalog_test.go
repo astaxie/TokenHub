@@ -43,6 +43,11 @@ func TestGPT6SolCatalogConsistency(t *testing.T) {
 							t.Fatalf("wire parameter %s missing from catalog", parameter)
 						}
 					}
+					for _, key := range []string{"request_parameter_profile", "reasoning_effort_default", "sampling_requires_reasoning_effort", "chat_tools_requires_reasoning_effort"} {
+						if s.Metadata[key] == "" || s.Metadata[key] != p.Metadata[key] {
+							t.Fatalf("request contract metadata %s differs between catalogs", key)
+						}
+					}
 					wantEfforts := "none,low,medium,high,xhigh,max"
 					wantTopP := id != "gpt-6.1-sol"
 					for _, parameter := range []string{"top_p", "logprobs", "top_logprobs"} {

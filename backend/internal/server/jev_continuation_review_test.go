@@ -101,7 +101,7 @@ func TestJevBackgroundBindingWaitsForOutputApproval(t *testing.T) {
 }
 
 func TestJevContinuationRevalidatesCandidateMetadata(t *testing.T) {
-	for _, state := range []string{"disabled", "missing", "parameters", "context", "modalities"} {
+	for _, state := range []string{"disabled", "missing", "parameters", "context", "modalities", "profile"} {
 		t.Run(state, func(t *testing.T) {
 			server, _, _, _ := jevFixture(t)
 			hits := jevHTTPUpstreams(t, server, false)
@@ -117,6 +117,8 @@ func TestJevContinuationRevalidatesCandidateMetadata(t *testing.T) {
 			models := server.store.(*GormStore).db.Model(&ProviderModel{}).Where("provider_id = ?", "provider_1")
 			var err error
 			switch state {
+			case "profile":
+				err = models.Update("metadata", `{"request_parameter_profile":"unknown","endpoints":"responses"}`).Error
 			case "disabled":
 				err = models.Update("status", StatusDisabled).Error
 			case "missing":
