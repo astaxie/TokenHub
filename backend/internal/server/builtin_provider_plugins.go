@@ -339,7 +339,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		}
 		if adapterType == "deepseek" {
 			adapter.preserveReasoningContent = boolPointer(true)
-			adapter.responsesModelAllowlist = []string{"deepseek-v4-flash", "deepseek-v4-pro"}
+			adapter.responsesModelAllowlist = []string{"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"}
 		}
 		if err := register("tokenhub.provider."+adapterType, adapterType, adapter); err != nil {
 			return err

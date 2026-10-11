@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
       doc_url: "https://www.alibabacloud.com/help/en/model-studio/models"
       categories: []
-      models_count: 81
+      models_count: 91
 permissions:
   network:
     allow: []

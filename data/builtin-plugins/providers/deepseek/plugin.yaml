@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.deepseek.com"
       doc_url: "https://api-docs.deepseek.com/quick_start/pricing"
       categories: []
-      models_count: 4
+      models_count: 5
 permissions:
   network:
     allow: []

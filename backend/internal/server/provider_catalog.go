@@ -362,7 +362,7 @@ func normalizeProviderCatalogEntryWithPolicy(id string, raw map[string]any, cata
 			if model.ID == "" {
 				continue
 			}
-			entry.Models = append(entry.Models, model)
+			entry.Models = append(entry.Models, catalogModelWithProvenance(model, entry.ID))
 		}
 	}
 	entry.ModelsCount = len(entry.Models)
@@ -388,9 +388,7 @@ func normalizeProviderCatalogModelWithCategories(raw map[string]any, modelCatego
 	} else {
 		canonicalName = canonicalModelNameWithDefinitions(canonicalName, canonicalName, modelCategories)
 	}
-	metadata := map[string]string{
-		"source": "local-provider-catalog",
-	}
+	metadata := catalogModelMetadata(raw)
 	for _, key := range []string{"knowledge", "release_date", "last_updated", "endpoints", "billing_mode", "pricing_unit", "request_parameter_profile", "request_parameter_denied", "reasoning_effort_default", "sampling_requires_reasoning_effort", "chat_tools_requires_reasoning_effort"} {
 		if value := catalogStringField(raw, key); value != "" {
 			metadata[key] = value
@@ -510,7 +508,7 @@ func catalogModelParameters(raw map[string]any, model ProviderCatalogModel) []st
 			parameters = append(parameters, modality+"_input")
 		}
 	}
-	return catalogUniqueStrings(parameters)
+	return catalogUniqueStrings(catalogReasoningParameters(parameters, model.Type, model.Metadata))
 }
 
 func customProviderCatalogEntry() ProviderCatalogEntry {

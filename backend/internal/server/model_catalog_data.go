@@ -134,7 +134,7 @@ func buildCatalogModel(seed modelCatalogSeed) (Model, error) {
 		InputModalities:           seed.InputModalities,
 		OutputModalities:          seed.OutputModalities,
 		Capabilities:              capabilities,
-		SupportedParameters:       supportedParameters,
+		SupportedParameters:       catalogReasoningParameters(supportedParameters, modality, metadata),
 		InputPriceUSDPer1M:        inputPrice,
 		CacheReadPriceUSDPer1M:    seed.CacheReadPriceUSDPer1M,
 		CacheWritePriceUSDPer1M:   catalogOptionalPrice(seed.CacheWritePriceUSDPer1M),

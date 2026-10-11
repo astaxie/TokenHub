@@ -1,3 +1,4 @@
+import { ModelCatalogNotices } from "./model-catalog-notices";
 import { preserveRetrievalCatalog } from "../domain/retrieval-settings";
 import { AlertCircle, Ban, Check, Copy, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -376,7 +377,6 @@ export function ProviderUpsertModal({
     catalogReloadKey,
     mode,
   ]);
-
   useEffect(() => {
     if (mode !== "edit" || !editingAccountProvider || !editingAccountProviderCatalogEntry?.id || selectedAccountResources.length === 0) {
       setAccountCatalogs({});
@@ -1447,7 +1447,7 @@ export function ProviderUpsertModal({
                     type="checkbox"
                   />
                   <div>
-                    <strong>{model.display_name || model.name}</strong>
+                    <strong>{model.display_name || model.name}</strong><ModelCatalogNotices metadata={model.metadata} />
                     <span>{model.canonical_name || model.id} ← {model.id}</span>
                     <small>
                       {modelCategoryLabel(modelCategoryForCatalog(model, modelCategoryData), modelCategoryData)} · {model.family || "model"} · {model.type || "chat"} · {formatModelPrice(model)} · {model.context_window ? `${compactNumber(model.context_window)} ctx` : "ctx -"}

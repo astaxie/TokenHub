@@ -1,3 +1,4 @@
+import { ModelCatalogNotices } from "./model-catalog-notices";
 import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
@@ -323,7 +324,7 @@ export function ProviderAPIQuickConnect({
                   return (
                     <article className={enabled ? "provider-quick-model-item active" : "provider-quick-model-item"} key={model.id}>
                       <div>
-                        <strong>{model.display_name || model.name}</strong>
+                        <strong>{model.display_name || model.name}</strong><ModelCatalogNotices metadata={model.metadata} />
                         <span>{model.canonical_name || model.id} ← {model.id} · {model.family || model.category || model.type || "model"} · {tx("渠道成本")} {formatModelPrice(model)}</span>
                       </div>
                       <button

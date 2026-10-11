@@ -5,6 +5,170 @@
   "display_name": "Cohere",
   "models": [
     {
+      "id": "rerank-v4.0-fast",
+      "name": "Cohere Rerank 4 Fast",
+      "display_name": "Cohere Rerank 4 Fast",
+      "family": "cohere-rerank",
+      "type": "rerank",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "score"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/docs/models",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Search-unit billing, not token billing. Exact current serverless USD per search unit could not be verified; do not borrow an aggregator rate.",
+        "pricing_source": "https://cohere.com/pricing",
+        "billing_unit": "search_unit",
+        "search_unit_definition": "One query and up to 100 document chunks; documents longer than 500 tokens including query are split and count as multiple chunks.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support_scope": "text-only"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "category": "cohere",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "embed-v5.0-fast",
+      "name": "Cohere Embed 5 Fast",
+      "display_name": "Cohere Embed 5 Fast",
+      "family": "cohere-embed",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/docs/models",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Serverless token price not verified. Public pricing retrieved lists Model Vault instance rates; do not translate those to token rates.",
+        "pricing_source": "https://cohere.com/pricing",
+        "embedding_dimensions": "[256,512,768,1024,1536,2048]",
+        "default_embedding_dimensions": "2048",
+        "embedding_scope_note": "Official model supports multimodal input; TokenHub text-only support must be evaluated separately.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support_scope": "text-only",
+        "embedding_space": "embed-v5.0-fast",
+        "embedding_note": "Text calls only; changing models requires an explicitly compatible vector space or rebuilding the index."
+      },
+      "limit": {
+        "context": 128000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "category": "cohere",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "rerank-v4.0-pro",
+      "name": "Cohere Rerank 4 Pro",
+      "display_name": "Cohere Rerank 4 Pro",
+      "family": "cohere-rerank",
+      "type": "rerank",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "score"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/docs/models",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Search-unit billing, not token billing. Exact current serverless USD per search unit could not be verified; do not borrow an aggregator rate.",
+        "pricing_source": "https://cohere.com/pricing",
+        "billing_unit": "search_unit",
+        "search_unit_definition": "One query and up to 100 document chunks; documents longer than 500 tokens including query are split and count as multiple chunks.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support_scope": "text-only"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "category": "cohere",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "embed-v5.0-pro",
+      "name": "Cohere Embed 5 Pro",
+      "display_name": "Cohere Embed 5 Pro",
+      "family": "cohere-embed",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/docs/models",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Serverless token price not verified. Public pricing retrieved lists Model Vault instance rates; do not translate those to token rates.",
+        "pricing_source": "https://cohere.com/pricing",
+        "embedding_dimensions": "[256,512,768,1024,1536,2048]",
+        "default_embedding_dimensions": "2048",
+        "embedding_scope_note": "Official model supports multimodal input; TokenHub text-only support must be evaluated separately.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support_scope": "text-only",
+        "embedding_space": "embed-v5.0-pro",
+        "embedding_note": "Text calls only; changing models requires an explicitly compatible vector space or rebuilding the index."
+      },
+      "limit": {
+        "context": 128000
+      },
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": false,
+      "temperature": false,
+      "category": "cohere",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
       "id": "c4ai-aya-expanse-32b",
       "name": "Aya Expanse 32B",
       "attachment": false,
@@ -151,7 +315,16 @@
         "output": 4000
       },
       "display_name": "Aya Vision 8B",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://docs.cohere.com/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-04-04T00:00:00Z",
+        "lifecycle_note": "No automatic replacement inferred; this refers only to Cohere hosted API, not third-party open-weight hosting."
+      }
     },
     {
       "id": "command-r-08-2024",
@@ -494,7 +667,16 @@
         "output": 4000
       },
       "display_name": "Aya Expanse 8B",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://docs.cohere.com/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-04-04T00:00:00Z",
+        "lifecycle_note": "No automatic replacement inferred; this refers only to Cohere hosted API, not third-party open-weight hosting."
+      }
     }
   ]
 }

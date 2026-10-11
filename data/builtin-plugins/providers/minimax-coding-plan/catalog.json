@@ -6,6 +6,68 @@
   "display_name": "MiniMax Token Plan (minimax.io)",
   "models": [
     {
+      "id": "MiniMax-M3.1-Flash-Preview",
+      "name": "MiniMax M3.1 Flash Preview",
+      "display_name": "MiniMax M3.1 Flash Preview",
+      "family": "minimax",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.minimax.io/docs/guides/text-generation",
+        "verified_at": "2026-10-10",
+        "availability": "preview",
+        "pricing_status": "unverified",
+        "access_note": "Restricted to M Plan and MiniMax Code. Subscription Key is not interchangeable with PAYG key. CN endpoint availability requires separate verification.",
+        "pricing_note": "Subscription quota only; no PAYG per-token rate verified.",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "reasoning_effort_default": "max",
+        "reasoning_required": "true",
+        "output_limit_status": "unverified",
+        "api_note": "Anthropic output_config.effort; Chat Completions reasoning_effort; Responses reasoning.effort.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "access_requirement": "Requires the named subscription plan; public API entitlement is separate."
+      },
+      "limit": {
+        "context": 1000000
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "category": "minimax",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
       "id": "MiniMax-M2.1",
       "name": "MiniMax-M2.1",
       "family": "minimax",

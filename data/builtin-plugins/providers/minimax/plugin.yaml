@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.minimax.io/anthropic/v1"
       doc_url: "https://platform.minimax.io/docs/guides/quickstart"
       categories: []
-      models_count: 7
+      models_count: 9
 permissions:
   network:
     allow: []

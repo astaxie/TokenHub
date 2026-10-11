@@ -1,0 +1,16 @@
+.model-catalog-notices {
+  display: grid;
+  gap: 3px;
+  margin-top: 5px;
+  min-width: 0;
+  color: var(--muted);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.model-catalog-notices small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+}

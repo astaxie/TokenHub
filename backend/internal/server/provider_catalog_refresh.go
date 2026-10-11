@@ -87,12 +87,21 @@ func mergeCuratedProviderCatalogEntries(upstream []ProviderCatalogEntry, local [
 			delete(localByID, entry.ID)
 			continue
 		}
+		for _, reviewed := range local {
+			if reviewed.ID == entry.ID {
+				entry = mergeReviewedCatalogModels(entry, reviewed)
+				break
+			}
+		}
 		merged = append(merged, entry)
 	}
 	for _, entry := range local {
 		if replacement, ok := localByID[entry.ID]; ok {
 			merged = append(merged, replacement)
 			delete(localByID, entry.ID)
+		}
+		if !providerCatalogHasEntry(merged, entry.ID) && hasReviewedCatalogModels(entry) {
+			merged = append(merged, entry)
 		}
 	}
 	return merged

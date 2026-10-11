@@ -38,7 +38,7 @@ func TestGPT6SolCatalogConsistency(t *testing.T) {
 					if s.Metadata["reasoning_effort_options"] != p.Metadata["reasoning_effort_options"] || s.Metadata["endpoints"] != p.Metadata["endpoints"] {
 						t.Fatal("reasoning or endpoint metadata differs between catalogs")
 					}
-					for _, parameter := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens", "tool_choice", "parallel_tool_calls", "text", "include", "truncation"} {
+					for _, parameter := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens", "tool_choice", "parallel_tool_calls", "text", "include", "truncation", "service_tier", "safety_identifier", "prompt_cache_options", "prompt_cache_retention", "max_tool_calls", "stream_options", "store"} {
 						if !slices.Contains(s.SupportedParameters, parameter) || !slices.Contains(p.SupportedParameters, parameter) {
 							t.Fatalf("wire parameter %s missing from catalog", parameter)
 						}

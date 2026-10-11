@@ -14,6 +14,7 @@ import (
 // into a ratchet: a newly inferred category cannot silently become Provider-only,
 // and an exception must be removed once its first standard template is added.
 var providerOnlyModelCategoryExceptions = map[string]string{
+	"wanx":         "Video API calls are not supported; this provider family has no reviewed public template",
 	"baichuan":     "Provider aliases do not yet have a reviewed canonical template and client-facing price",
 	"microsoft":    "Phi aliases span several Providers and do not yet have a reviewed canonical template and client-facing price",
 	"paddlepaddle": "PaddlePaddle aliases do not yet have a reviewed canonical template and client-facing price",

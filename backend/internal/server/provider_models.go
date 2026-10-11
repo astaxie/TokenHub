@@ -101,9 +101,15 @@ func (s *Server) handleAdminProviderModels(w http.ResponseWriter, r *http.Reques
 		providers[provider.ID] = provider
 	}
 	resources := s.store.ListProviderResources()
+	advisories, err := s.catalogAdvisories()
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
 	for i := range models {
 		if provider, ok := providers[models[i].ProviderID]; ok {
-			supported := s.providerInventoryRetrievalSupport(provider, models[i], resources)
+			models[i] = advisories.apply(provider, models[i])
+			supported := s.providerInventoryRetrievalSupport(provider, models[i], resources) && catalogModelPublicationError(models[i].Metadata, time.Now()) == nil
 			models[i].CallSupported = &supported
 		}
 	}

@@ -63,6 +63,9 @@ func (s *Server) validateRetrievalRoute(route ModelRoute, pending *Model, provid
 			return nil
 		}
 	}
+	if err := s.validateCatalogModelPublication(provider, route); err != nil {
+		return err
+	}
 	var model Model
 	found := false
 	if pending != nil {

@@ -367,7 +367,7 @@ func (s *Server) importSelectedProviderCatalogModels(providerID string, catalog 
 		if !selected[model.ID] {
 			continue
 		}
-		s.store.AddProviderModel(providerModelFromCatalog(providerID, model))
+		s.store.AddProviderModel(providerModelFromCatalog(providerID, catalogModelWithProvenance(model, catalog.ID)))
 		imported++
 	}
 	return imported

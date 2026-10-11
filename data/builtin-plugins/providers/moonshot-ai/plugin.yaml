@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.moonshot.ai/v1"
       doc_url: "https://platform.moonshot.ai/docs/api/chat"
       categories: []
-      models_count: 8
+      models_count: 10
 permissions:
   network:
     allow: []

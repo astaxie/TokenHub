@@ -26,7 +26,7 @@ capabilities:
       base_url: ""
       doc_url: "https://ai.google.dev/gemini-api/docs/models"
       categories: []
-      models_count: 26
+      models_count: 34
 permissions:
   network:
     allow: []

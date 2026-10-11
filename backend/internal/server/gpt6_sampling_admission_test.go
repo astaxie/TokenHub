@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -63,7 +65,18 @@ func TestJevGPT6CatalogCapabilityAdmission(t *testing.T) {
 					}
 					hits.Add(1)
 					if tc.responses {
-						_ = json.NewEncoder(w).Encode(map[string]any{"id": "resp_capability", "object": "response", "status": "completed", "model": id, "output": []any{}})
+						response := map[string]any{"id": "resp_capability", "object": "response", "status": "completed", "model": id, "output": []any{}}
+						if got["stream"] == true {
+							w.Header().Set("Content-Type", "text/event-stream")
+							data, err := json.Marshal(map[string]any{"type": "response.completed", "response": response})
+							if err != nil {
+								t.Error(err)
+								return
+							}
+							_, _ = fmt.Fprintf(w, "event: response.completed\ndata: %s\n\n", data)
+						} else {
+							_ = json.NewEncoder(w).Encode(response)
+						}
 					} else {
 						_ = json.NewEncoder(w).Encode(map[string]any{"id": "chat_sampling", "model": id, "choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": "ok"}}}})
 					}
@@ -102,6 +115,10 @@ func TestJevGPT6CatalogCapabilityAdmission(t *testing.T) {
 				if result.Code != http.StatusOK || hits.Load() != 1 {
 					t.Fatalf("catalog capability: %d %s hits=%d", result.Code, result.Body, hits.Load())
 				}
+				if tc.parameters["stream"] == true && !strings.Contains(result.Body, "response.completed") {
+					t.Fatalf("stream did not complete: %s", result.Body)
+				}
+
 			})
 		}
 	}
@@ -117,6 +134,11 @@ func gpt6CapabilityRequests() []gpt6CapabilityRequest {
 	schema := map[string]any{"type": "object", "properties": map[string]any{"answer": map[string]any{"type": "string"}}, "required": []string{"answer"}, "additionalProperties": false}
 	function := map[string]any{"name": "get_answer", "parameters": schema, "strict": true}
 	return []gpt6CapabilityRequest{
+		{name: "responses_service_tier", responses: true, parameters: map[string]any{"service_tier": "auto"}},
+		{name: "responses_protocol_controls", responses: true, parameters: map[string]any{"service_tier": "auto", "safety_identifier": "synthetic-user", "prompt_cache_options": map[string]any{"mode": "implicit", "ttl": "30m"}, "prompt_cache_retention": "24h", "max_tool_calls": 1, "store": false}},
+		{name: "responses_stream_controls", responses: true, parameters: map[string]any{"stream": true, "stream_options": map[string]any{"include_obfuscation": false}}},
+		{name: "chat_protocol_controls", parameters: map[string]any{"service_tier": "auto", "safety_identifier": "synthetic-user", "store": false}},
+
 		{name: "responses_encrypted_include", responses: true, parameters: map[string]any{"store": false, "include": []string{"reasoning.encrypted_content"}}},
 		{name: "responses_truncation_disabled", responses: true, parameters: map[string]any{"truncation": "disabled"}},
 		{name: "chat_top_p", nonReasoning: true, parameters: map[string]any{"reasoning_effort": "none", "top_p": .9}},

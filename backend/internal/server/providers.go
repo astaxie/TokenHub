@@ -547,6 +547,9 @@ func applyAnthropicProviderAuth(req *http.Request, provider Provider) {
 func (a AnthropicAdapter) buildRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
 	reasoningEffort := normalizedReasoningEffort(req.ReasoningEffort)
 	if reasoningEffort != nil && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
+		if currentAnthropicModelContract(providerModel) != "" {
+			return nil, NewHTTPError(http.StatusBadRequest, "unsupported_reasoning_effort", "This model requires a supported adaptive reasoning effort; use low, medium, high, xhigh, or max")
+		}
 		reasoningEffort = nil
 	}
 	return buildAnthropicRequest(providerModel, req, reasoningEffort)
@@ -841,7 +844,7 @@ func isReasoningEffortRejection(err error) bool {
 func anthropicReasoningEffortSupported(model string, effort string) bool {
 	effort = strings.TrimSpace(effort)
 	switch anthropicReasoningEffortModelFamily(model) {
-	case "claude-fable-5", "claude-mythos-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5":
+	case "claude-fable-5", "claude-mythos-5", "claude-opus-5", "claude-haiku-5-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5":
 		return effort == "low" || effort == "medium" || effort == "high" || effort == "xhigh" || effort == "max"
 	case "claude-mythos-preview", "claude-opus-4-6", "claude-sonnet-4-6":
 		return effort == "low" || effort == "medium" || effort == "high" || effort == "max"
@@ -858,6 +861,8 @@ func anthropicReasoningEffortModelFamily(model string) string {
 		"claude-mythos-preview",
 		"claude-fable-5",
 		"claude-mythos-5",
+		"claude-opus-5",
+		"claude-haiku-5-5",
 		"claude-opus-4-8",
 		"claude-opus-4-7",
 		"claude-opus-4-6",

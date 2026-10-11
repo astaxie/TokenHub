@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.z.ai/api/coding/paas/v4"
       doc_url: "https://docs.z.ai/devpack/overview"
       categories: []
-      models_count: 6
+      models_count: 7
 permissions:
   network:
     allow: []

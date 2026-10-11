@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.xiaomimimo.com/v1"
       doc_url: "https://platform.xiaomimimo.com/#/docs"
       categories: []
-      models_count: 6
+      models_count: 9
 permissions:
   network:
     allow: []

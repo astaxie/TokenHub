@@ -6,11 +6,15 @@ import (
 	"tokenhub/backend/internal/metering"
 )
 
-// Legacy inventory stores missing prices as zero. Only a positive legacy value,
-// a configured cache-write price, or an explicit period override proves a rate.
+// Legacy inventory stores missing prices as zero. A positive legacy value,
+// an explicit inventory confirmation, or a period override proves a base rate.
 // Exact cards retain their own presence and may always declare free categories.
 func providerLegacyMeteringRates(original, resolved Model, rates metering.Rates, at time.Time) metering.Rates {
-	confirmedRetrieval := (original.Modality == "embedding" || original.Modality == "rerank") && original.Metadata["retrieval_pricing_confirmed"] == "true"
+	retrieval := original.Modality == "embedding" || original.Modality == "rerank"
+	// Retrieval's compact editor only confirms its input or native-unit price;
+	// it does not expose the output and cache-read rates in the full cost form.
+	confirmedInventory := !retrieval && original.Metadata["pricing_status"] == "configured"
+	confirmedRetrieval := retrieval && original.Metadata["retrieval_pricing_confirmed"] == "true"
 	var period ModelPricingPeriod
 	for _, candidate := range original.PricingPeriods {
 		if pricingPeriodMatches(candidate, at) {
@@ -18,13 +22,13 @@ func providerLegacyMeteringRates(original, resolved Model, rates metering.Rates,
 			break
 		}
 	}
-	if resolved.InputPriceUSDPer1M == 0 && period.InputPriceUSDPer1M == nil && !confirmedRetrieval {
+	if resolved.InputPriceUSDPer1M == 0 && period.InputPriceUSDPer1M == nil && !confirmedRetrieval && !confirmedInventory {
 		rates.Input = ""
 	}
-	if resolved.OutputPriceUSDPer1M == 0 && period.OutputPriceUSDPer1M == nil {
+	if resolved.OutputPriceUSDPer1M == 0 && period.OutputPriceUSDPer1M == nil && !confirmedInventory {
 		rates.Output = ""
 	}
-	if resolved.CacheReadPriceUSDPer1M == 0 && period.CacheReadPriceUSDPer1M == nil {
+	if resolved.CacheReadPriceUSDPer1M == 0 && period.CacheReadPriceUSDPer1M == nil && !confirmedInventory {
 		rates.CacheRead = ""
 	}
 	if !resolved.CacheWritePriceConfigured {

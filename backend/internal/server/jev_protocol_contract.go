@@ -33,7 +33,11 @@ func jevChatCompatibility(model ProviderModel, req ChatCompletionRequest) jevCom
 	if json.Unmarshal(data, &raw) != nil {
 		return jevReject("invalid_request", "")
 	}
-	return jevCheckRequest(model, "chat/completions", raw, len(data), jevOutputBudget(raw, req.MaxTokens), req.Messages)
+	result := jevCheckRequest(model, "chat/completions", raw, len(data), jevOutputBudget(raw, req.MaxTokens), req.Messages)
+	if result.Reason == "" && !catalogReasoningEffortFits(model, req.ReasoningEffort) {
+		return jevReject("reasoning_effort_unsupported", "reasoning_effort")
+	}
+	return result
 }
 
 func jevResponsesCompatibility(model ProviderModel, req ResponsesRequest) jevCompatibility {
@@ -45,10 +49,15 @@ func jevResponsesCompatibility(model ProviderModel, req ResponsesRequest) jevCom
 	if json.Unmarshal(data, &raw) != nil {
 		return jevReject("invalid_request", "")
 	}
-	return jevCheckRequest(model, "responses", raw, len(data), req.MaxTokens, req.Input)
+	result := jevCheckRequest(model, "responses", raw, len(data), req.MaxTokens, req.Input)
+	if result.Reason == "" && !catalogReasoningEffortFits(model, responsesReasoningEffort(req)) {
+		return jevReject("reasoning_effort_unsupported", "reasoning")
+	}
+	return result
 }
 
 func jevCheckRequest(model ProviderModel, endpoint string, raw map[string]json.RawMessage, size, budget int, input any) jevCompatibility {
+	model.SupportedParameters = catalogReasoningParameters(model.SupportedParameters, model.Modality, model.Metadata)
 	if model.Status != StatusActive {
 		return jevReject("model_disabled", "")
 	}

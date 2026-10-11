@@ -117,7 +117,16 @@
           ]
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-08-31T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2-turbo-preview",
@@ -151,7 +160,16 @@
         "cache_read": 0.6
       },
       "display_name": "Kimi K2 Turbo",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2-0711-preview",
@@ -185,7 +203,16 @@
         "cache_read": 0.15
       },
       "display_name": "Kimi K2 0711",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2-thinking",
@@ -234,7 +261,16 @@
           ]
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2-thinking-turbo",
@@ -283,7 +319,16 @@
           ]
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2-0905-preview",
@@ -317,7 +362,16 @@
         "cache_read": 0.15
       },
       "display_name": "Kimi K2 0905",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2.7-code",

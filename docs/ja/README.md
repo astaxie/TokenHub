@@ -27,6 +27,7 @@ TokenHub のドキュメントは、エンタープライズ Token Governance �
 | [利用者ガイド](user-guide.md) | 社員、アプリケーション開発者 | 利用可能モデルの確認、Project Key の作成、モデル API 呼び出し、個人利用量の確認 |
 | [チームリーダーガイド](team-leader-guide.md) | チーム Owner、プロジェクト保守者 | Project、メンバー、API Key、チームレポート、Project コスト配賦の管理 |
 | [管理者ガイド](administrator-guide.md) | プラットフォーム管理者、セキュリティ運用者 | Provider、モデルカタログ、ルーティング、ID プロバイダー、RBAC、監査、コスト統制の設定 |
+| [モデルカタログの更新](model-catalog-updates.md) | 管理者とカタログ保守者 | 上流モデル、ライフサイクル、呼び出し対応、コスト確認 |
 | [テキスト埋め込み](embeddings.md) | アプリケーション開発者と管理者 | プロトコル設定、密ベクトル取得、ベクトル空間の互換性維持 |
 | [テキスト再ランキング](rerank.md) | アプリケーション開発者と管理者 | 文書の順位付け、料金設定、上流動作の検証 |
 | [Agent Token コスト API](agent-token-cost-api.md) | ローカルレポート Agent、プラットフォーム管理者 | 最小権限の分析 Credential を作成し、フィルター・集計・差分 Token コストを JSON/CSV で取得 |
