@@ -468,13 +468,30 @@ func validCardLength(value string) bool {
 	return length >= 13 && length <= 19
 }
 
+// calendarDatePattern mirrors the labelled birth-date shape, which accepts one-
+// or two-digit month and day components. Parsing through a fixed-width layout
+// instead ("20060102") would silently reject every date written as e.g.
+// 1990年1月5日, because its digits are only six long.
+var calendarDatePattern = regexp.MustCompile(`^\s*((?:18|19|20)[0-9]{2})\s*(?:年|[-/.])\s*([0-9]{1,2})\s*(?:月|[-/.])\s*([0-9]{1,2})\s*日?\s*$`)
+
 func validCalendarDate(value string) bool {
-	digits := digitsOnly(value)
-	if len(digits) != 8 {
+	matches := calendarDatePattern.FindStringSubmatch(value)
+	if matches == nil {
 		return false
 	}
-	_, err := time.Parse("20060102", digits)
-	return err == nil
+	year, yearErr := strconv.Atoi(matches[1])
+	month, monthErr := strconv.Atoi(matches[2])
+	day, dayErr := strconv.Atoi(matches[3])
+	if yearErr != nil || monthErr != nil || dayErr != nil {
+		return false
+	}
+	if month < 1 || month > 12 || day < 1 {
+		return false
+	}
+	// time.Date normalizes impossible dates (Feb 30 becomes Mar 2), so compare
+	// the parsed components back to the requested ones to reject them.
+	parsed := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	return parsed.Year() == year && int(parsed.Month()) == month && parsed.Day() == day
 }
 
 func validLuhnCard(value string) bool {
