@@ -177,6 +177,11 @@ func (s *Server) applyJevResponsesRouting(ctx context.Context, routed *RoutedCal
 				}
 			}
 		}
+		reason := "bound_route_unavailable"
+		if !permitted {
+			reason = "bound_candidate_removed"
+		}
+		s.recordJevAdmission(routed.Call.RequestID, []jevCandidateRejection{{RouteID: binding.RouteID, jevCompatibility: jevReject(reason, "")}})
 		return NewHTTPError(409, "jev_previous_route_unavailable", "Previous response route is no longer available or allowed")
 	}
 	routed.Call.JevResponseBound = protected

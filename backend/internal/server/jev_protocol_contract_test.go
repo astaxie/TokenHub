@@ -51,6 +51,8 @@ func TestJevProtocolConditionsAndLegacyBoundary(t *testing.T) {
 		name, endpoint, body, reason string
 		change                       func(*ProviderModel)
 	}{
+		{"chat tools explicitly disabled", "chat/completions", `{"tool_choice":"none"}`, "", nil},
+		{"chat tools disabled despite parallel flag", "chat/completions", `{"tool_choice":"none","parallel_tool_calls":false}`, "", nil},
 		{"chat tool default effort", "chat/completions", `{"tools":[{"type":"function"}]}`, "tools_reasoning_conflict", nil},
 		{"chat tool explicit none", "chat/completions", `{"tools":[{"type":"function"}],"reasoning_effort":"none"}`, "", nil},
 		{"tools forbidden on chat", "chat/completions", `{"tools":[{"type":"function"}],"reasoning_effort":"none"}`, "tools_endpoint_unsupported", func(m *ProviderModel) { m.Metadata["chat_tools_requires_reasoning_effort"] = "unsupported" }},

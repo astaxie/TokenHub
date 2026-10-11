@@ -265,6 +265,14 @@ func jevCheckConditions(model ProviderModel, endpoint string, raw map[string]jso
 }
 
 func jevUsesTools(raw map[string]json.RawMessage) bool {
+	// The exact sentinel disables tool calls, including when parallel/tool
+	// definitions are present. Do not normalize other request values.
+	if value, ok := raw["tool_choice"]; ok {
+		var choice string
+		if json.Unmarshal(value, &choice) == nil && choice == "none" {
+			return false
+		}
+	}
 	for _, key := range []string{"tool_choice", "parallel_tool_calls"} {
 		if v, ok := raw[key]; ok && string(v) != "null" {
 			return true

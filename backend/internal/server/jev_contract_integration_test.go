@@ -25,6 +25,7 @@ func TestJevContractHTTPAdmissionAndDiagnostics(t *testing.T) {
 	}
 	for _, id := range []string{"gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"} {
 		for _, tc := range []struct{ name, endpoint, extra, reason string }{
+			{"tools disabled", "chat/completions", `"tool_choice":"none"`, ""},
 			{"protocol controls", "responses", `"include":["reasoning.encrypted_content"],"truncation":"disabled","service_tier":"auto"`, ""},
 			{"comma separated deny", "responses", `"service_tier":"priority"`, "parameter_explicitly_denied"},
 			{"default sampling", "responses", `"temperature":0.5`, "sampling_reasoning_conflict"},
@@ -54,10 +55,17 @@ func TestJevContractHTTPAdmissionAndDiagnostics(t *testing.T) {
 						t.Error(err)
 						return
 					}
-					if tc.reason == "" && (got["service_tier"] != "auto" || got["truncation"] != "disabled") {
+					if tc.name == "protocol controls" && (got["service_tier"] != "auto" || got["truncation"] != "disabled") {
 						t.Errorf("wire controls changed: %+v", got)
 					}
-					_ = json.NewEncoder(w).Encode(map[string]any{"id": "resp_contract", "object": "response", "status": "completed", "model": id, "output": []any{}})
+					if tc.endpoint == "chat/completions" {
+						if tc.reason == "" && got["tool_choice"] != "none" {
+							t.Errorf("tool disabling sentinel changed: %+v", got)
+						}
+						_ = json.NewEncoder(w).Encode(map[string]any{"id": "chat_contract", "model": id, "choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": "ok"}}}})
+					} else {
+						_ = json.NewEncoder(w).Encode(map[string]any{"id": "resp_contract", "object": "response", "status": "completed", "model": id, "output": []any{}})
+					}
 				}))
 				defer upstream.Close()
 				store := server.store.(*GormStore)
