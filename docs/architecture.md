@@ -23,6 +23,10 @@ flowchart TB
         modelApi["Model API\n/v1/*"]
         governance["Access and governance\nKeys, RBAC, quotas, concurrency, IP allowlists"]
         routing["Routing\ncandidates, strategy, weight, failover, affinity"]
+        adminAdapters["Billing and reconciliation\nadmin adapters"]
+        billing["Billing application"]
+        reconciliation["Reconciliation application"]
+        reconciliationPersistence["Reconciliation persistence\nSQLite/PostgreSQL"]
         adapters["Adapter registry"]
         builtin["Built-in provider plugins"]
         plugins["Plugin registry and runtime"]
@@ -31,7 +35,12 @@ flowchart TB
         store["GORM Store"]
 
         adminApi --> governance
-        adminApi --> store
+        adminApi -->|"remaining domains"| store
+        adminApi --> adminAdapters
+        adminAdapters --> billing
+        adminAdapters --> reconciliation
+        billing --> store
+        reconciliation --> reconciliationPersistence
         modelApi --> governance --> routing --> adapters
         modelApi --> operations --> store
         adminApi --> operations
@@ -72,6 +81,8 @@ flowchart TB
     builtin --> codex
     store --> sqlite
     store --> postgres
+    reconciliationPersistence --> sqlite
+    reconciliationPersistence --> postgres
     catalog --> store
 ```
 
@@ -129,7 +140,7 @@ Installation and marketplace code provide checksum verification, signed-marketpl
 | Component | Location | Responsibility |
 | --- | --- | --- |
 | Admin console | `frontend/` | Role-aware console; reads its backend address at runtime from `TOKENHUB_API_BASE_URL`, with `NEXT_PUBLIC_API_BASE_URL` retained only as a compatibility fallback |
-| HTTP server and composition | `backend/internal/server/http.go`, `billing_composition.go` | Route registration, authentication, authorization, transport callbacks, and explicit billing/reconciliation dependency wiring; other domains still have implementations in `server` |
+| HTTP server and composition | `backend/internal/server/http.go`, `backend/internal/server/billing_composition.go` | Route registration, authentication, authorization, transport callbacks, and explicit billing/reconciliation dependency wiring; other domains still have implementations in `server` |
 | Administrative HTTP adapters | `backend/internal/admin/` | Billing and reconciliation request/response mapping and CSV transport through application interfaces; no direct database access |
 | Reconciliation application | `backend/internal/reconciliation/` | Rules, matching, execution, scheduling, locking, recalculation, and export policy; owns the `Store` and `BillingReader` ports |
 | Reconciliation persistence | `backend/internal/reconciliation/persistence/` | GORM rows and transactions for SQLite/PostgreSQL, usage cost evidence, and billing projections adapted to reconciliation ports |
@@ -137,14 +148,6 @@ Installation and marketplace code provide checksum verification, signed-marketpl
 | Adapter registry and integration service | `adapter_registry.go`, `integration_service.go` | Declares provider capabilities and runs provider/resource probes |
 | Provider adapters | `builtin_provider_plugins.go`, `provider_plugin_adapter.go`, `provider_account_codex.go` | Protocol translation; Codex subscription OAuth, refresh, and session affinity |
 | Remaining server store | `backend/internal/server/store.go` | Database setup and remaining domain access, quotas, credential encryption, SQLite backups, PostgreSQL leases, and cluster locks; reconciliation operations belong to its module adapter |
-
-### Incremental migration: reconciliation adapters (issue #169)
-
-This phase moves reconciliation persistence and administrative HTTP handling out of `server`. Dependency direction is `server → admin → reconciliation` and `server → reconciliation/persistence → reconciliation`. The domain package imports neither `server`, HTTP handlers, nor GORM. `admin` defines the application interface it consumes; persistence implements the domain-owned ports. The persistence `BillingReader` converts the narrow `BillingSource` projection from `billing` into reconciliation values without exposing connector credentials or raw payloads.
-
-`cmd/tokenhub` supplies `ApplicationDependenciesForStore` to `NewWithConfigAndDependencies`. `server` still opens the database, wires the shared persistence mutex and audit callbacks, and enforces route authorization before calling the admin adapter. The global server `Store` no longer declares reconciliation operations. Compatibility constructors and temporary server test projections remain; this is not yet the final composition-only server architecture.
-
-Compatibility is covered by domain, admin transport, and SQLite adapter tests, plus the integration-tagged `TestPostgresStoreBackfillUsesThePublicPort` in the PostgreSQL CI job, which checks concurrent snapshot backfill through the production adapter. Existing HTTP contracts, table names, schema migrations, attribution snapshots, and explicit zero-cost evidence remain part of the compatibility contract. The next migration phase is analytics: extract query/application capabilities and consumer-owned persistence ports, move its administrative transport into `admin`, and retain existing aggregation and authorization behavior. Migrate remaining server tests to public module boundaries and remove obsolete compatibility projections as their callers disappear; provider/protocol, project/routing, and usage/audit extraction remain later phases.
 
 The following are the operational built-in Provider registrations. Effective capabilities come from the enabled built-in plugin and adapter descriptors, Provider policy, and model/resource support. External manifests may describe additional Provider types for package inspection and Devkit contract testing, but current TokenHub releases do not activate their command-backed adapters.
 

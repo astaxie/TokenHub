@@ -23,6 +23,10 @@ flowchart TB
         modelApi["モデル API\n/v1/*"]
         governance["認証とガバナンス\nKey、RBAC、クォータ、並行数、IP 許可リスト"]
         routing["ルーティング\n候補、戦略、重み、フェイルオーバー、アフィニティ"]
+        adminAdapters["Billing と reconciliation\n管理アダプター"]
+        billing["Billing アプリケーション"]
+        reconciliation["照合アプリケーション"]
+        reconciliationPersistence["照合の永続化\nSQLite/PostgreSQL"]
         adapters["アダプターレジストリ"]
         builtin["内蔵 Provider プラグイン"]
         plugins["プラグインレジストリとランタイム"]
@@ -31,7 +35,12 @@ flowchart TB
         store["GORM Store"]
 
         adminApi --> governance
-        adminApi --> store
+        adminApi -->|"残りのドメイン"| store
+        adminApi --> adminAdapters
+        adminAdapters --> billing
+        adminAdapters --> reconciliation
+        billing --> store
+        reconciliation --> reconciliationPersistence
         modelApi --> governance --> routing --> adapters
         modelApi --> operations --> store
         adminApi --> operations
@@ -72,6 +81,8 @@ flowchart TB
     builtin --> codex
     store --> sqlite
     store --> postgres
+    reconciliationPersistence --> sqlite
+    reconciliationPersistence --> postgres
     catalog --> store
 ```
 
@@ -129,7 +140,7 @@ flowchart LR
 | コンポーネント | 場所 | 責務 |
 | --- | --- | --- |
 | 管理コンソール | `frontend/` | ロール対応コンソール。バックエンド URL は実行時に `TOKENHUB_API_BASE_URL` から読み取り、`NEXT_PUBLIC_API_BASE_URL` は互換フォールバックのみ |
-| HTTP サーバーと依存関係の組み立て | `backend/internal/server/http.go`、`billing_composition.go` | ルート登録、認証・認可、トランスポートのコールバック、billing/reconciliation の明示的な依存注入。他のドメインの実装は一部 `server` に残る |
+| HTTP サーバーと依存関係の組み立て | `backend/internal/server/http.go`、`backend/internal/server/billing_composition.go` | ルート登録、認証・認可、トランスポートのコールバック、billing/reconciliation の明示的な依存注入。他のドメインの実装は一部 `server` に残る |
 | 管理 HTTP アダプター | `backend/internal/admin/` | アプリケーションインターフェースを通じた billing と reconciliation のリクエスト/レスポンス変換および CSV 転送。データベースへ直接アクセスしない |
 | 照合アプリケーション | `backend/internal/reconciliation/` | ルール、照合、実行、スケジュール、ロック、再計算、エクスポート方針。`Store` と `BillingReader` ポートを所有する |
 | 照合の永続化 | `backend/internal/reconciliation/persistence/` | SQLite/PostgreSQL の GORM 行モデルとトランザクション、使用量のコスト証跡、照合ポート向けの請求データ投影 |
@@ -137,14 +148,6 @@ flowchart LR
 | アダプターレジストリと統合サービス | `adapter_registry.go`、`integration_service.go` | Provider 能力の宣言と Provider/リソースのプローブ |
 | Provider アダプター | `builtin_provider_plugins.go`、`provider_plugin_adapter.go`、`provider_account_codex.go` | プロトコル変換、Codex Subscription の OAuth、更新、セッションアフィニティ |
 | server に残る Store | `backend/internal/server/store.go` | データベース初期化と残りのドメインのデータアクセス、クォータ、認証情報暗号化、SQLite バックアップ、PostgreSQL リース、クラスタロック。照合操作はモジュールのアダプターが担当する |
-
-### 段階的な移行：照合アダプター（issue #169）
-
-この段階では、照合の永続化と管理 HTTP 処理を `server` から移します。依存方向は `server → admin → reconciliation` および `server → reconciliation/persistence → reconciliation` です。ドメインパッケージは `server`、HTTP ハンドラー、GORM をインポートしません。`admin` は自身が利用するアプリケーションインターフェースを定義し、永続化アダプターはドメインが所有するポートを実装します。永続化パッケージの `BillingReader` は、`billing` の狭い `BillingSource` 投影を照合用の値に変換し、コネクターの認証情報や生のペイロードを公開しません。
-
-`cmd/tokenhub` は `ApplicationDependenciesForStore` の依存関係を `NewWithConfigAndDependencies` に渡します。`server` は引き続きデータベースを開き、共有の永続化ミューテックスと監査コールバックを注入し、管理アダプターを呼ぶ前にルートの認可を行います。グローバルな server `Store` は照合操作を宣言しなくなりました。互換コンストラクターと一時的な server テスト用の投影は残っており、server が依存関係の組み立てだけを担う最終構成にはまだ到達していません。
-
-互換性はドメイン、管理トランスポート、SQLite アダプターのテストで検証します。PostgreSQL CI job では integration タグ付きの `TestPostgresStoreBackfillUsesThePublicPort` も実行し、本番アダプター経由でスナップショットの並行バックフィルを検証します。既存の HTTP 契約、テーブル名、スキーマ移行、帰属スナップショット、明示的なゼロコスト証跡も互換性の契約に含まれます。次の移行段階は analytics です。クエリ/アプリケーション機能と利用側が所有する永続化ポートを抽出し、管理トランスポートを `admin` に移し、既存の集計と認可の動作を維持します。残る server テストを公開モジュール境界に移し、呼び出し元の移行後に不要な互換投影を削除します。provider/protocol、project/routing、usage/audit の抽出はそれ以降の段階です。
 
 以下は現在動作する内蔵 Provider 登録です。実際の能力は有効な内蔵プラグインとアダプターの記述、Provider ポリシー、モデルとリソースの対応状況で決まります。外部 manifest はパッケージ検査と Devkit 契約テスト用に追加の Provider 型を記述できますが、現行 TokenHub リリースはコマンド型アダプターを有効化しません。
 
