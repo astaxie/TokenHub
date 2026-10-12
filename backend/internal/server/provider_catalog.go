@@ -362,7 +362,7 @@ func normalizeProviderCatalogEntryWithPolicy(id string, raw map[string]any, cata
 			if model.ID == "" {
 				continue
 			}
-			entry.Models = append(entry.Models, model)
+			entry.Models = append(entry.Models, catalogModelWithProvenance(model, entry.ID))
 		}
 	}
 	entry.ModelsCount = len(entry.Models)
@@ -388,9 +388,7 @@ func normalizeProviderCatalogModelWithCategories(raw map[string]any, modelCatego
 	} else {
 		canonicalName = canonicalModelNameWithDefinitions(canonicalName, canonicalName, modelCategories)
 	}
-	metadata := map[string]string{
-		"source": "local-provider-catalog",
-	}
+	metadata := catalogModelMetadata(raw)
 	for _, key := range []string{"knowledge", "release_date", "last_updated", "endpoints", "billing_mode", "pricing_unit"} {
 		if value := catalogStringField(raw, key); value != "" {
 			metadata[key] = value
@@ -447,7 +445,10 @@ func catalogModelCategoryWithDefinitions(raw map[string]any, id string, displayN
 }
 
 func catalogModelCapabilities(raw map[string]any, model ProviderCatalogModel) []string {
-	capabilities := []string{normalizeModelModality(model.Type)}
+	capabilities := catalogStringSliceField(raw, "capabilities")
+	if len(capabilities) == 0 {
+		capabilities = []string{normalizeModelModality(model.Type)}
+	}
 	if catalogBoolField(raw, "attachment") {
 		capabilities = append(capabilities, "attachment")
 	}
@@ -507,7 +508,7 @@ func catalogModelParameters(raw map[string]any, model ProviderCatalogModel) []st
 			parameters = append(parameters, modality+"_input")
 		}
 	}
-	return catalogUniqueStrings(parameters)
+	return catalogUniqueStrings(catalogReasoningParameters(parameters, model.Type, model.Metadata))
 }
 
 func customProviderCatalogEntry() ProviderCatalogEntry {
@@ -756,6 +757,12 @@ func customProviderModelsFromPayloadWithDefinitions(payload map[string]any, mode
 		seen[id] = true
 		displayName = firstNonEmpty(displayName, id)
 		modelType := normalizeModelModality(strings.Join([]string{id, displayName, object}, " "))
+		if item, ok := raw.(map[string]any); ok {
+			switch explicit := firstNonEmpty(catalogStringField(item, "type"), catalogStringField(item, "modality"), catalogStringField(item, "model_type")); explicit {
+			case "rerank", "embedding", "chat", "audio", "image", "video", "ocr":
+				modelType = explicit
+			}
+		}
 		metadata := map[string]string{"source": "custom-upstream"}
 		if object != "" {
 			metadata["object"] = object
@@ -839,13 +846,20 @@ func normalizeProviderBaseURL(id string, raw string) string {
 }
 
 func normalizeModelModality(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "decision") {
+		return "decision"
+	}
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch {
-	case strings.Contains(value, "embed"):
+	case strings.Contains(value, "rerank"):
+		return "rerank"
+	case strings.Contains(value, "embed") || isKnownEmbeddingModelName(value):
 		return "embedding"
 	case strings.Contains(value, "image"):
 		return "image"
-	case strings.Contains(value, "audio"):
+	case strings.Contains(value, "video"):
+		return "video"
+	case strings.Contains(value, "audio") || value == "music":
 		return "audio"
 	default:
 		return "chat"

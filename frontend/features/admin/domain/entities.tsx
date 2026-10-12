@@ -156,7 +156,7 @@ export function providerModelSelectOptions(data: AppData, _currentUser?: AdminUs
   if (imageProfile) return [{ value: imageProfile.upstreamModel, label: imageProfile.upstreamModel }];
   const seen = new Set<string>();
   return data.providerModels
-    .filter((model) => model.provider_id === providerID)
+    .filter((model) => model.provider_id === providerID && model.call_supported !== false)
     .filter((model) => {
       if (seen.has(model.upstream_model)) return false;
       seen.add(model.upstream_model);

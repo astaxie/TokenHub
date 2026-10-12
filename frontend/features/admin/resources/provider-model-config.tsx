@@ -15,10 +15,10 @@ import { ModelNameCell, ModelRouteProviders, providerTypeOptionsFromData, Status
 export function providerConfig(): ResourceConfig<Provider> {
   return {
     view: "providers",
-    title: "Provider 渠道",
-    eyebrow: "Provider 列表",
-    description: "Provider 是上游渠道实例；先选择并引入它实际提供的模型，再分别维护渠道成本、对外模型和路由。",
-    createLabel: "新增 Provider",
+    title: "供应商",
+    eyebrow: "供应商列表",
+    description: "选择供应商，配置连接并引入它提供的模型。",
+    createLabel: "添加供应商",
     columns: [
       { key: "name", label: "名称", render: (item, ctx) => providerDisplayName(item, ctx.providerResources) },
       { key: "type", label: "类型", render: (item, ctx) => providerTypeLabelFromData(ctx, providerDisplayType(item, ctx.providerResources)) },
@@ -507,7 +507,7 @@ export function modelConfig(): ResourceConfig<Model> {
       },
       { key: "category", label: "模型类型", type: "select", options: modelCategoryFormOptions(), required: true },
       { key: "family", label: "系列", required: true },
-      { key: "modality", label: "能力", type: "select", options: ["chat", "embedding", "image", "video", "audio", "ocr", "rerank"], required: true },
+      { key: "modality", label: "能力", type: "select", options: ["chat", "embedding", "image", "video", "audio", "ocr", "rerank", "decision"], required: true },
       { key: "input_modalities", label: "输入模态", type: "tag-select", options: ["text", "image", "video", "audio", "pdf"], help: "选择模型实际支持的输入类型。" },
       { key: "context_window", label: "上下文窗口", type: "number" },
       { key: "input_price_usd_per_1m", label: "对外输入价 USD/1M", type: "number", help: "用于客户端用量计费和额度；实际 Provider 成本在 Provider 模型库存中单独维护。" },
@@ -544,6 +544,8 @@ export function modelConfig(): ResourceConfig<Model> {
         visible: (values) => values.modality !== "embedding",
       },
       { key: "output_price_usd_per_1m", label: "对外输出价 USD/1M", type: "number" },
+      { key: "search_unit_price_usd", label: "搜索单元价格 USD/次", type: "number", visible: (values) => values.modality === "rerank" },
+      { key: "retrieval_pricing_confirmed", label: "确认检索模型收费配置（包含免费价格）", type: "boolean", visible: (values) => values.modality === "rerank" || values.modality === "embedding" },
       { key: "embedding_price_usd_per_1m", label: "对外 Embedding 价 USD/1M", type: "number" },
       {
         key: "pricing_periods",

@@ -427,6 +427,10 @@ func (s *GormStore) GetQuotaPolicyUsage(scope string, scopeID string) (QuotaPoli
 	if err != nil {
 		return QuotaPolicyUsage{}, false, err
 	}
+	periods, err := currentQuotaPeriods(s.db, now)
+	if err != nil {
+		return QuotaPolicyUsage{}, false, err
+	}
 	usage := QuotaPolicyUsage{}
 	lookupAttribution := unattributedQuotaUserID
 	if scope == "user" {
@@ -437,8 +441,8 @@ func (s *GormStore) GetQuotaPolicyUsage(scope string, scopeID string) (QuotaPoli
 		bucket  string
 		counter *QuotaCounter
 	}{
-		{scope: "day", bucket: dayBucket(now), counter: &usage.Daily},
-		{scope: "month", bucket: monthBucket(now), counter: &usage.Monthly},
+		{scope: "day", bucket: periods.Day, counter: &usage.Daily},
+		{scope: "month", bucket: periods.Month, counter: &usage.Monthly},
 	} {
 		var item QuotaBucket
 		attributionQuery := "attributed_user_id = ?"
@@ -532,6 +536,32 @@ func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 		usage.TotalTokens = saturatingAddNonNegative(usage.PromptTokens, usage.CompletionTokens)
 	}
 	usage = clampBillableInputTokens(usage)
+	if model.Modality == "embedding" || model.Modality == "rerank" {
+		// Retrieval plugins supply usage evidence, never authoritative tenant fees.
+		// Reprice both paid and free requests using the host's tenant configuration.
+		usage.CostUSD, usage.InputCostUSD, usage.OutputCostUSD = 0, 0, 0
+		usage.CacheReadCostUSD, usage.CacheWriteCostUSD = 0, 0
+	}
+	if evidence := usage.RetrievalEvidence; evidence != nil && (evidence.Quantity == nil || evidence.Source == "invalid" || (evidence.Unit == "token" && usage.MeteringInvalid)) {
+		usage.CostUSD = 0
+		usage.InputCostUSD = 0
+		usage.OutputCostUSD = 0
+		usage.CacheReadCostUSD = 0
+		usage.CacheWriteCostUSD = 0
+		return usage
+	}
+	if model.Modality == "embedding" && model.EmbeddingPriceUSDPer1M == 0 && model.Metadata["retrieval_pricing_confirmed"] == "true" {
+		// Explicitly free tenant embeddings never inherit a legacy chat rate or
+		// an adapter-supplied tenant charge. Procurement evidence stays intact.
+		usage.CostUSD, usage.InputCostUSD, usage.OutputCostUSD = 0, 0, 0
+		usage.CacheReadCostUSD, usage.CacheWriteCostUSD = 0, 0
+		return usage
+	}
+	if cost, known := nativeRetrievalCost(model, usage); known {
+		usage.InputCostUSD = cost
+		usage.CostUSD = cost
+		return usage
+	}
 	if usage.CostUSD == 0 {
 		model = modelPriceAt(model, requestStartedAt)
 		if model.Modality == "embedding" && model.EmbeddingPriceUSDPer1M > 0 {

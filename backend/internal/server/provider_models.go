@@ -96,6 +96,23 @@ func (s *Server) handleAdminProviderModels(w http.ResponseWriter, r *http.Reques
 		}
 		models = filtered
 	}
+	providers := make(map[string]Provider)
+	for _, provider := range s.store.ListProviders() {
+		providers[provider.ID] = provider
+	}
+	resources := s.store.ListProviderResources()
+	advisories, err := s.catalogAdvisories()
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	for i := range models {
+		if provider, ok := providers[models[i].ProviderID]; ok {
+			models[i] = advisories.apply(provider, models[i])
+			supported := s.providerInventoryRetrievalSupport(provider, models[i], resources) && catalogModelPublicationError(models[i].Metadata, time.Now()) == nil
+			models[i].CallSupported = &supported
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": models})
 }
 
@@ -274,7 +291,7 @@ func providerModelFromCatalog(providerID string, model ProviderCatalogModel) Pro
 		CanonicalName:             firstNonEmpty(model.CanonicalName, canonicalModelName(model.ID, model.DisplayName)),
 		Category:                  standardModelCategory(firstNonEmpty(model.Category, inferModelCategory(model.ID, model.DisplayName))),
 		Family:                    firstNonEmpty(model.Family, inferModelFamily(model.ID)),
-		Modality:                  firstNonEmpty(model.Type, normalizeModelModality(model.ID)),
+		Modality:                  importedRetrievalModality(model.Type, model.ID),
 		ContextWindow:             model.ContextWindow,
 		InputPriceUSDPer1M:        model.InputPriceUSDPer1M,
 		CacheReadPriceUSDPer1M:    model.CacheReadPriceUSDPer1M,
@@ -327,6 +344,7 @@ func providerModelHasRoutes(id string, models []ProviderModel, routes []ModelRou
 }
 
 func backfillProviderModelsFromRoutes(store Store) {
+	reconcileLegacyRetrievalInventory(store)
 	existing := map[string]bool{}
 	for _, model := range store.ListProviderModels() {
 		existing[providerModelRouteKey(model.ProviderID, model.UpstreamModel, "")] = true
@@ -400,7 +418,9 @@ func providerModelFromRoute(route ModelRoute, models []Model) ProviderModel {
 		}
 		providerModel.Category = model.Category
 		providerModel.Family = model.Family
-		providerModel.Modality = model.Modality
+		if providerModel.Modality != "rerank" || normalizeModelModality(model.Modality) != "chat" {
+			providerModel.Modality = canonicalProviderModality(model.Modality)
+		}
 		providerModel.ContextWindow = model.ContextWindow
 		providerModel.InputPriceUSDPer1M = model.InputPriceUSDPer1M
 		providerModel.CacheReadPriceUSDPer1M = model.CacheReadPriceUSDPer1M

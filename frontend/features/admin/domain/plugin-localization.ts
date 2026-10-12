@@ -123,6 +123,7 @@ function localeCandidates(locale: string) {
   if (language === "zh") candidates.push("zh-cn", "zh-hans", "zh-hans-cn");
   if (language === "en") candidates.push("en-us", "en-gb");
   if (language === "ja") candidates.push("ja-jp");
+  if (language === "ru") candidates.push("ru-ru");
   if (language !== "en") candidates.push("en-us", "en");
   return unique(candidates);
 }

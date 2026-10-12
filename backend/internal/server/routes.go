@@ -17,6 +17,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodGet, "/docs/swagger-ui-dist.LICENSE", s.handleDocsSwaggerUIDistLicense, jsonMethodNotAllowed(http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/openapi.json", s.handleOpenAPIJSON, jsonMethodNotAllowed(http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/openapi.yaml", s.handleOpenAPIYAML, jsonMethodNotAllowed(http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/playground/rerank", s.handleAdminRerankTest, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerModelRoutes()
 	// The in-flight gauge covers exactly the endpoints that route to an upstream, so
 	// it stays comparable with requests_total. Catalog lookups and count_tokens are
@@ -33,9 +34,12 @@ func (s *Server) routes() {
 	s.registerPublicDirectMethodRoute(http.MethodPost, "/v1/responses/compact", s.gatewayInFlight(s.handleResponsesCompact))
 	s.mux.HandleFunc(http.MethodGet+" /v1/responses/compact", jsonMethodNotAllowed(http.MethodPost))
 	s.mux.HandleFunc("/v1/responses/", s.handleResponseJob)
+	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/rerank", s.gatewayInFlight(s.handleRerank), jsonMethodNotAllowed(http.MethodPost))
+	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/systemone", s.gatewayInFlight(s.handleSystemOne), jsonMethodNotAllowed(http.MethodPost))
 	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/embeddings", s.gatewayInFlight(s.handleEmbeddings), jsonMethodNotAllowed(http.MethodPost))
-	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/images/generations", s.handleImageGenerations, jsonMethodNotAllowed(http.MethodPost))
-	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/images/edits", s.handleImageEdits, jsonMethodNotAllowed(http.MethodPost))
+	s.registerMediaRoutes()
+	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/images/generations", s.gatewayInFlight(s.handleCompatibleImages), jsonMethodNotAllowed(http.MethodPost))
+	s.registerPublicSingleMethodRoute(http.MethodPost, "/v1/images/edits", s.gatewayInFlight(s.handleCompatibleImages), jsonMethodNotAllowed(http.MethodPost))
 	s.registerPublicDynamicGETRoute("/v1/image-jobs/{job_id}", s.handleImageJobGet, jsonMethodNotAllowed(http.MethodGet))
 	s.registerDynamicGETRoute("/v1/image-jobs/{job_id}/{$}", s.handleImageJobGet, jsonMethodNotAllowed(http.MethodGet))
 	s.mux.HandleFunc("/v1/image-jobs/", s.handleImageJob)
@@ -246,6 +250,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/invoices/{invoice_id}/confirm", s.handleAdminInvoiceConfirmPost, s.adminMethodNotAllowed("usage", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/invoices/{invoice_id}/reject", s.handleAdminInvoiceRejectPost, s.adminMethodNotAllowed("usage", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/monitors/{monitor_id}/run", s.handleAdminMonitorRunPost, s.adminMethodNotAllowed("provider", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/resources/notification-channels/{channel_id}/test", s.handleAdminNotificationChannelTestPost, s.adminMethodNotAllowed("alert", http.MethodPost))
 	s.mux.HandleFunc("/api/admin/resources/", s.handleAdminResources)
 	s.registerMethodRoutes("/api/admin/sqlite/backups", func(allowedMethods string) http.HandlerFunc {
 		return s.adminMethodNotAllowed("backup", allowedMethods)
@@ -266,6 +271,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/admin/export/", s.handleAdminExport)
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/summary", s.handleAdminUsageSummary, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/daily", s.handleAdminUsageDaily, s.adminMethodNotAllowed("usage", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/report", s.handleAdminUsageReport, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/breakdown", s.handleAdminUsageBreakdown, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/usage/timeseries", s.handleAdminUsageTimeseries, s.adminMethodNotAllowed("usage", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/audit/requests", s.handleAdminRequestLogs, s.adminMethodNotAllowed("audit", http.MethodGet))

@@ -47,7 +47,7 @@ func (s *Server) runGatewayResponsePostHooks(ctx context.Context, call CallConte
 			continue
 		}
 		var patched any
-		if err := decodeGatewayHookPayload(patch.Value, &patched, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response"); err != nil {
+		if err := decodeGatewayPostHookResponsePayload(patch.Value, &patched, protocol); err != nil {
 			return nil, err
 		}
 		output = patched
@@ -104,7 +104,7 @@ func (s *Server) runGatewayGuardrailPostHooks(ctx context.Context, call CallCont
 			continue
 		}
 		var patched any
-		if err := decodeGatewayHookPayload(patch.Value, &patched, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response"); err != nil {
+		if err := decodeGatewayPostHookResponsePayload(patch.Value, &patched, protocol); err != nil {
 			return nil, err
 		}
 		output = patched

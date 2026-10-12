@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { PluginDetailView } from "./plugin-detail";
@@ -307,7 +307,7 @@ describe("PluginDetailView", () => {
     render(<PluginDetailView api={api} data={appData()} pluginID="example.detail" section="settings" onBack={vi.fn()} onNavigate={onNavigate} />);
 
     expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
-    expect(onNavigate).toHaveBeenCalledWith("example.detail", "overview");
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("example.detail", "overview"));
     expect(screen.queryByRole("tab", { name: "设置" })).not.toBeInTheDocument();
     expect(screen.queryByText("权限声明")).not.toBeInTheDocument();
     expect(screen.queryByText(/placeholder/)).not.toBeInTheDocument();
@@ -346,7 +346,7 @@ describe("PluginDetailView", () => {
     render(<PluginDetailView api={api} data={appData()} pluginID="example.detail" section="files" onBack={vi.fn()} onNavigate={onNavigate} />);
 
     expect(await screen.findByRole("heading", { name: "Detail Example" })).toBeInTheDocument();
-    expect(onNavigate).toHaveBeenCalledWith("example.detail", "overview");
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith("example.detail", "overview"));
     expect(screen.queryByRole("tab", { name: "文件" })).not.toBeInTheDocument();
     expect(screen.queryByText("该内置插件没有独立安装包。")).not.toBeInTheDocument();
   });

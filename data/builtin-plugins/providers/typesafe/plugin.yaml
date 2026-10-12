@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider.typesafe"
+name: "TypeSafe"
+version: 1.0.0
+summary: "Connect TokenHub to TypeSafe."
+description: "Connect TokenHub to TypeSafe. Connection behavior is provided by the host-managed typesafe adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "typesafe"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "typesafe"
+  provider:
+    default_base_url: "https://api.typesafe.ai/v1"
+    catalog:
+      id: "typesafe"
+      name: "TypeSafe"
+      display_name: "TypeSafe"
+      type: "typesafe"
+      base_url: "https://api.typesafe.ai/v1"
+      doc_url: "https://docs.typesafe.ai/models"
+      categories: ["typesafe"]
+      models_count: 3
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

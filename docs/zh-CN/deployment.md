@@ -91,6 +91,10 @@ docker compose --env-file deploy/.env \
 
 使用 `./deploy/test-multi-instance.sh` 运行真实的双实例 PostgreSQL E2E 测试。
 
+### Kubernetes（Helm）
+
+Kubernetes 集群使用 `deploy/helm/tokenhub` 提供的 Helm chart。每个 Pod 在单个容器中同时运行两个进程,生产环境搭配托管 PostgreSQL 服务(快速测试可启用内置子 chart),并且默认无状态:运行时安装的插件包在 Pod 替换后即被清除,除非打进镜像。可选的 PodMonitor 和 ExternalSecret 支持需要集群安装对应的 Operator CRD。安装步骤、路由和升级行为参见 [Kubernetes 部署](kubernetes.md)。
+
 ## 原生 Release + systemd
 
 单机 Linux 使用 systemd 时，可以选择原生 Release 安装方式。原生安装包支持 `linux/amd64` 和 `linux/arm64`，其中包含 Go 后端、独立运行的 Next.js 管理后台和匹配的 Node.js 运行时。

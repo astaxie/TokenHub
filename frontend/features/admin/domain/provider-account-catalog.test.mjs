@@ -5,6 +5,7 @@ import { importTypeScript } from "./typescript-test-loader.mjs";
 const {
   accountProviderCatalogEntryFromProvider,
   accountProviderCatalogOptionsFromPlugins,
+  accountProviderTypesFromPlugins,
   directProviderCatalogOptions,
 } = await importTypeScript(new URL("./provider-account-catalog.ts", import.meta.url));
 
@@ -115,4 +116,20 @@ test("account Provider catalog entry can be synthesized from an existing Provide
     models_count: 0,
     source: "provider",
   });
+});
+
+
+test("account Provider types are available without a catalog entry", () => {
+  const plugins = [{
+    capabilities: [
+      { kind: "provider_resource_type", name: "kimi_oauth_account", subject: "plugin_account" },
+      { kind: "provider_policy", name: "credentials_scope", subject: "policy_account", value: "resource" },
+    ],
+  }];
+  const adapters = [
+    { type: "adapter_account", provider_policy: { credentials_scope: "resource" } },
+    { type: "direct_api", provider_policy: { credentials_scope: "provider" } },
+  ];
+  assert.deepEqual(accountProviderTypesFromPlugins(plugins, adapters), ["adapter_account", "plugin_account", "policy_account"]);
+  assert.deepEqual(accountProviderCatalogOptionsFromPlugins([], plugins, adapters), []);
 });

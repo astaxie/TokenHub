@@ -5,7 +5,7 @@ import { type AdminResource, type APIKey, type AppData, type FieldConfig, type P
 import { projectKeyDownloadFilename, projectKeyDownloadTemplates } from "../core/project-key-download-templates";
 import { apiKeyCanManage } from "../domain/api-key-management-authz";
 import { apiKeyOwnerSelectOptions, apiKeyOwnerUserID, costCenterLabel, costCenterSelectOptions, ownerUserLabel, projectMemberCanIssueLabel, projectMemberProjectSelectOptions, projectMemberRoleLabel, projectMemberRoleOptions, projectName, projectOwnerLabel, projectSelectOptions, projectTeamLabel, stringifyForm, stringifyValue, teamLabel, teamSelectOptions, truthyValue, userSelectOptions } from "../domain/entities";
-import { formatTranslationTemplate, tx } from "../i18n/runtime";
+import { countWithUnit, formatTranslationTemplate, tx } from "../i18n/runtime";
 import { openAPIKeyAccess } from "../shared/api-key-access";
 import { adminDelete, adminFetch, adminMutate, keyPatchPayload, projectQuotaSummary, readAdminError, updateAPIKeyStatus } from "./payloads";
 import { StatusPill } from "../shared/ui";
@@ -65,7 +65,7 @@ export function ProjectTeamListCell({ data, project }: { data: AppData; project:
         <strong>{primaryTeamID ? teamLabel(data, primaryTeamID) : tx("未配置主团队")}</strong>
         {primaryTeamID ? <em>{tx("主团队")}</em> : null}
       </span>
-      {additionalCount > 0 ? <small>+{additionalCount} {tx("协作团队")}</small> : null}
+      {additionalCount > 0 ? <small>+{countWithUnit(additionalCount, "个团队", "team", "チーム")}</small> : null}
     </div>
   );
 }

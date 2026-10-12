@@ -23,8 +23,8 @@ func TestStandardCatalogIncludesNativeDeepSeekV4Models(t *testing.T) {
 	if !ok {
 		t.Fatal("expected native DeepSeek V4 Flash in standard catalog")
 	}
-	if flash.ContextWindow != 1048576 || flash.InputPriceUSDPer1M != 0.14 ||
-		flash.CacheReadPriceUSDPer1M != 0.0028 || flash.OutputPriceUSDPer1M != 0.28 ||
+	if flash.ContextWindow != 1000000 || flash.Metadata["pricing_status"] != "unverified" ||
+		flash.Metadata["lifecycle_status"] != "redirected" || flash.Metadata["replacement_model"] != "deepseek-flash" ||
 		flash.Metadata["endpoints"] != "responses,chat/completions,anthropic" {
 		t.Fatalf("unexpected native DeepSeek V4 Flash metadata: %+v", flash)
 	}

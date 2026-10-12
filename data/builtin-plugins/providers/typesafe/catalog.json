@@ -1,0 +1,106 @@
+{
+  "id": "typesafe",
+  "type": "typesafe",
+  "api": "https://api.typesafe.ai/v1",
+  "name": "TypeSafe",
+  "display_name": "TypeSafe",
+  "doc": "https://docs.typesafe.ai/models",
+  "models": [
+    {
+      "id": "jev-1.13.0",
+      "name": "jev-1.13.0",
+      "display_name": "jev-1.13.0",
+      "category": "typesafe",
+      "family": "jev",
+      "type": "decision",
+      "capabilities": [
+        "systemone"
+      ],
+      "supported_parameters": [
+        "state",
+        "questions"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 64000
+      },
+      "cost": {
+        "input": 0.042,
+        "output": 0
+      },
+      "endpoints": "systemone"
+    },
+    {
+      "id": "jev-latest",
+      "name": "jev-latest",
+      "display_name": "jev-latest",
+      "category": "typesafe",
+      "family": "jev",
+      "type": "decision",
+      "capabilities": [
+        "systemone"
+      ],
+      "supported_parameters": [
+        "state",
+        "questions"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 64000
+      },
+      "cost": {
+        "input": 0.042,
+        "output": 0
+      },
+      "endpoints": "systemone"
+    },
+    {
+      "id": "jev-preview",
+      "name": "jev-preview",
+      "display_name": "jev-preview",
+      "category": "typesafe",
+      "family": "jev",
+      "type": "decision",
+      "capabilities": [
+        "systemone"
+      ],
+      "supported_parameters": [
+        "state",
+        "questions"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 64000
+      },
+      "cost": {
+        "input": 0.042,
+        "output": 0
+      },
+      "endpoints": "systemone"
+    }
+  ],
+  "categories": [
+    "typesafe"
+  ]
+}

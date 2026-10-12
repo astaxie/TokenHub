@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -80,6 +81,10 @@ func redactNotificationChannelSecrets(message string, channel AdminResource) str
 			continue
 		}
 		patterns = append(patterns, providerSecretRepresentations(secret)...)
+		// SMTP diagnostics use Go quoting, which differs from JSON escaping for
+		// HTML characters and nonprintable bytes. Match the quoted content too.
+		quoted := strconv.Quote(secret)
+		patterns = append(patterns, quoted[1:len(quoted)-1])
 	}
 	sort.Slice(patterns, func(left, right int) bool { return len(patterns[left]) > len(patterns[right]) })
 	for _, pattern := range patterns {

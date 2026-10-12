@@ -1,7 +1,43 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type { UsageReport } from "../core/usage-report-types";
 import { emptyData } from "../domain/catalog";
-import { DailyUsageSection } from "./usage-billing";
+import { DailyUsageSection, UsageView } from "./usage-billing";
+
+describe("UsageView project attribution", () => {
+  it.each(["admin", "user", "team_leader"] as const)("resolves project names and preserves unavailable identifiers for %s", async (role) => {
+    const data = emptyData();
+    data.projects = [{ id: "prj_design", name: "Design Platform", status: "active" }];
+    data.breakdown.projects = ["prj_design", "prj_archived", "unknown", "prj_default"].map((id) => ({
+      id, request_count: 2, input_tokens: 100, cached_input_tokens: 20,
+      output_tokens: 50, total_tokens: 150, estimated_cost_usd: 0.25,
+    }));
+    const user = { id: "usr_reviewer", username: "reviewer", name: "Usage Reviewer", email: "reviewer@example.test", role, status: "active" };
+    data.users = [user];
+    data.breakdown.members = [{ ...data.breakdown.projects[0], id: user.id }];
+
+    const report: UsageReport = {
+      range: "today", timezone: "UTC", window_start: "2026-09-07T00:00:00Z", window_end: "2026-09-07T02:00:00Z",
+      granularity: "hour", summary: data.summary, breakdown: data.breakdown, timeseries: [],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(report))));
+    render(<UsageView api={{ baseURL: "http://example.test", adminToken: "synthetic-session" }} data={data} user={user} />);
+
+    const projectSection = (await screen.findByRole("heading", { name: "项目归因" })).closest("section")!;
+    const projects = within(projectSection);
+    const cost = new Intl.NumberFormat("zh-CN", { style: "currency", currency: "USD" }).format(0.25);
+    expect(projects.getByRole("row", { name: `Design Platform 2 150 20 ${cost}` })).toBeInTheDocument();
+    expect(projects.queryByRole("cell", { name: "prj_design" })).not.toBeInTheDocument();
+    expect(projects.getByRole("cell", { name: "prj_archived" })).toBeInTheDocument();
+    expect(projects.getByRole("cell", { name: "unknown" })).toBeInTheDocument();
+    expect(projects.getByRole("cell", { name: "默认项目空间" })).toBeInTheDocument();
+    if (role === "team_leader") {
+      fireEvent.click(screen.getByText("更多用量明细"));
+      const members = screen.getByRole("heading", { name: "成员用量" }).closest("section")!;
+      expect(within(members).getByRole("cell", { name: "Usage Reviewer / reviewer@example.test" })).toBeInTheDocument();
+    }
+  });
+});
 
 describe("DailyUsageSection", () => {
   it("shows mutually exclusive daily token type rows", () => {

@@ -6,6 +6,179 @@
   "display_name": "Xiaomi",
   "models": [
     {
+      "id": "mimo-v2.6-pro-ultraspeed",
+      "name": "MiMo V2.6 Pro-Ultraspeed",
+      "display_name": "MiMo V2.6 Pro-Ultraspeed",
+      "family": "mimo",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://mimo.mi.com/docs/en-US/quick-start/model",
+        "verified_at": "2026-10-10",
+        "availability": "restricted",
+        "pricing_source": "https://mimo.mi.com/docs/pricing",
+        "pricing_note": "Published overseas USD per million tokens. Domestic CNY rates differ; USD is not a conversion of the domestic plan.",
+        "reasoning_note": "Thinking defaults on; temperature/top_p are forced to 1.0/0.95 in thinking mode. Tool-call history must retain reasoning_content.",
+        "reasoning_source": "https://mimo.mi.com/docs/en-US/quick-start/usage-guide/other/deep-thinking",
+        "context_limit_label": "1M",
+        "output_limit_label": "128K",
+        "access_note": "Official model table requires contacting Xiaomi for customized service.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "131072",
+        "pricing_status": "reference",
+        "access_requirement": "Official model table requires contacting Xiaomi for customized service."
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 131072
+      },
+      "cost": {
+        "input": 4.35,
+        "output": 8.7,
+        "cache_read": 0.036
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "mimo",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "name": "MiMo V2.6 Flash",
+      "display_name": "MiMo V2.6 Flash",
+      "family": "mimo",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://mimo.mi.com/docs/en-US/quick-start/model",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_source": "https://mimo.mi.com/docs/pricing",
+        "pricing_note": "Published overseas USD per million tokens. Domestic CNY rates differ; USD is not a conversion of the domestic plan.",
+        "reasoning_note": "Thinking defaults on; temperature/top_p are forced to 1.0/0.95 in thinking mode. Tool-call history must retain reasoning_content.",
+        "reasoning_source": "https://mimo.mi.com/docs/en-US/quick-start/usage-guide/other/deep-thinking",
+        "context_limit_label": "1M",
+        "output_limit_label": "128K",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "131072",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 131072
+      },
+      "cost": {
+        "input": 0.14,
+        "output": 0.28,
+        "cache_read": 0.0028
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "mimo",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "mimo-v2.6-pro",
+      "name": "MiMo V2.6 Pro",
+      "display_name": "MiMo V2.6 Pro",
+      "family": "mimo",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://mimo.mi.com/docs/en-US/quick-start/model",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_source": "https://mimo.mi.com/docs/pricing",
+        "pricing_note": "Published overseas USD per million tokens. Domestic CNY rates differ; USD is not a conversion of the domestic plan.",
+        "reasoning_note": "Thinking defaults on; temperature/top_p are forced to 1.0/0.95 in thinking mode. Tool-call history must retain reasoning_content.",
+        "reasoning_source": "https://mimo.mi.com/docs/en-US/quick-start/usage-guide/other/deep-thinking",
+        "context_limit_label": "1M",
+        "output_limit_label": "128K",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "131072",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 131072
+      },
+      "cost": {
+        "input": 0.435,
+        "output": 0.87,
+        "cache_read": 0.0036
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "mimo",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
       "id": "mimo-v2.5-pro-ultraspeed",
       "name": "MiMo-V2.5-Pro-UltraSpeed",
       "family": "mimo",
@@ -131,6 +304,15 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://mimo.mi.com/docs/en-US",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "mimo-v2.6-flash",
+        "shutdown_at": "2026-10-21T10:00:00+08:00",
+        "lifecycle_note": "Official notice says legacy names will stop working after shutdown. Do not rewrite live routes automatically."
       }
     },
     {
@@ -383,6 +565,15 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://mimo.mi.com/docs/en-US",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "mimo-v2.6-pro",
+        "shutdown_at": "2026-10-21T10:00:00+08:00",
+        "lifecycle_note": "Official notice says legacy names will stop working after shutdown. Do not rewrite live routes automatically."
       }
     }
   ]

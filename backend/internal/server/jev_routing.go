@@ -35,7 +35,7 @@ func (s *Server) applySemanticRouting(ctx context.Context, routed *RoutedCall, r
 		data, _ := json.Marshal(req)
 		parameters := map[string]bool{"max_tokens": req.MaxTokens != 0, "temperature": req.Temperature != nil, "top_p": req.TopP != nil, "tools": req.Tools != nil, "tool_choice": req.ToolChoice != nil, "parallel_tool_calls": req.ParallelToolCalls != nil, "response_format": req.ResponseFormat != nil, "reasoning_effort": req.ReasoningEffort != nil, "stop": req.Stop != nil, "presence_penalty": req.PresencePenalty != nil, "frequency_penalty": req.FrequencyPenalty != nil, "min_p": req.MinP != nil, "top_k": req.TopK != nil}
 		parameters = jevRequestParameters(req.raw, parameters, []string{"model", "messages", "stream", "stream_options", "user", "metadata", "prompt_cache_key"})
-		return jevModelFits(model, len(data), jevOutputBudget(req.raw, req.MaxTokens), parameters) && jevInputModalitiesFit(model, req.Messages)
+		return jevModelFits(model, len(data), jevOutputBudget(req.raw, req.MaxTokens), parameters) && catalogReasoningEffortFits(model, req.ReasoningEffort) && jevInputModalitiesFit(model, req.Messages)
 	})
 }
 
@@ -88,8 +88,9 @@ func jevModelFits(model ProviderModel, size, budget int, parameters map[string]b
 	if model.ContextWindow > 0 && (int64(size) > model.ContextWindow || int64(budget) > model.ContextWindow-int64(size)) {
 		return false
 	}
+	supported := catalogReasoningParameters(model.SupportedParameters, model.Modality, model.Metadata)
 	for parameter, used := range parameters {
-		if used && len(model.SupportedParameters) > 0 && !slices.Contains(model.SupportedParameters, parameter) {
+		if used && len(supported) > 0 && !slices.Contains(supported, parameter) {
 			return false
 		}
 	}

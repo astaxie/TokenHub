@@ -8,6 +8,7 @@ import (
 type ProviderErrorDisposition string
 
 const (
+	ProviderErrorOutcomeUnknown   ProviderErrorDisposition = "outcome_unknown"
 	ProviderErrorClient           ProviderErrorDisposition = "client_error"
 	ProviderErrorPolicy           ProviderErrorDisposition = "policy_rejection"
 	ProviderErrorTransientSame    ProviderErrorDisposition = "transient_retry_same"

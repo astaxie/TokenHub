@@ -11,6 +11,9 @@ func quotaActualTokens(call CallContext, usage Usage) int64 {
 	if call.StreamOutputCommitted && providerTokens == 0 && actualTokens < call.ReservedTokens {
 		actualTokens = call.ReservedTokens
 	}
+	if retrievalTokenQuantityUnknown(usage) && actualTokens < call.ReservedTokens {
+		actualTokens = call.ReservedTokens
+	}
 	return actualTokens
 }
 

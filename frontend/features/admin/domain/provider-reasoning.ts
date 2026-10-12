@@ -1,14 +1,19 @@
+import { rerankFormValues } from "./provider-rerank-options";
+import { embeddingFormValues } from "./provider-embedding-options";
 import { type FieldConfig } from "../core/types";
 import { tx } from "../i18n/runtime";
 import {
   providerHasReasoningOverrides,
-  providerReasoningFormValues,
+  providerReasoningFormValues as baseProviderReasoningFormValues,
   providerReasoningOverrideFormValues,
   serializeProviderReasoningOptions,
 } from "./provider-reasoning-options";
 export { providerTypeSupportsReasoningConfig } from "./provider-reasoning-policy";
 
-export { providerHasReasoningOverrides, providerReasoningFormValues, providerReasoningOverrideFormValues };
+export { providerHasReasoningOverrides, providerReasoningOverrideFormValues };
+export function providerReasoningFormValues(options?: Record<string, string>) {
+  return { ...baseProviderReasoningFormValues(options), ...embeddingFormValues(options), ...rerankFormValues(options) };
+}
 
 export function providerReasoningFieldConfigs(visible?: FieldConfig["visible"]): FieldConfig[] {
   return [

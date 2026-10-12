@@ -63,6 +63,8 @@ test("a reference template pre-fills the external model contract", () => {
     cache_write_1h_price_usd_per_1m: "",
     output_price_usd_per_1m: "6",
     embedding_price_usd_per_1m: "",
+    search_unit_price_usd: "",
+    retrieval_pricing_confirmed: "false",
     pricing_periods: "",
     capabilities: "chat, tools",
     supported_parameters: "temperature",
@@ -71,4 +73,16 @@ test("a reference template pre-fills the external model contract", () => {
     initial_provider_models: "",
     status: "active",
   });
+});
+
+test("retrieval template prices preserve explicit free and native unit values", () => {
+  const values = externalModelTemplateValues({ name: "rerank", family: "cohere", modality: "rerank", metadata: { search_unit_price_usd: "0.002", retrieval_pricing_confirmed: "true" } });
+  assert.equal(values.search_unit_price_usd, "0.002");
+  assert.equal(values.retrieval_pricing_confirmed, "true");
+});
+
+test("unverified reference prices require explicit client pricing", () => {
+  const values = externalModelTemplateValues({ name: "regional-model", family: "test", modality: "chat", input_price_usd_per_1m: 0, output_price_usd_per_1m: 0, metadata: { pricing_status: "unverified" } });
+  assert.equal(values.input_price_usd_per_1m, "");
+  assert.equal(values.output_price_usd_per_1m, "");
 });

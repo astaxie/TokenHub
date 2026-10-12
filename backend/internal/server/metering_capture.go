@@ -12,19 +12,20 @@ import (
 )
 
 type meteringRequestSnapshot struct {
-	ModelName   string                 `json:"model"`
-	LegacyPrice *meteringPriceSnapshot `json:"legacy_price,omitempty"`
-	RequestID   string                 `json:"request_id"`
-	ProjectID   string                 `json:"project_id"`
-	ProjectName string                 `json:"project_name"`
-	APIKeyID    string                 `json:"api_key_id"`
-	APIKeyName  string                 `json:"api_key_name"`
-	UserID      string                 `json:"user_id"`
-	TeamID      string                 `json:"team_id,omitempty"`
-	CostCenter  string                 `json:"cost_center,omitempty"`
-	BudgetDay   string                 `json:"budget_day_utc"`
-	BudgetMonth string                 `json:"budget_month_utc"`
-	Price       meteringPriceSnapshot  `json:"price"`
+	QuotaPeriods *quotaPeriods          `json:"quota_periods,omitempty"`
+	ModelName    string                 `json:"model"`
+	LegacyPrice  *meteringPriceSnapshot `json:"legacy_price,omitempty"`
+	RequestID    string                 `json:"request_id"`
+	ProjectID    string                 `json:"project_id"`
+	ProjectName  string                 `json:"project_name"`
+	APIKeyID     string                 `json:"api_key_id"`
+	APIKeyName   string                 `json:"api_key_name"`
+	UserID       string                 `json:"user_id"`
+	TeamID       string                 `json:"team_id,omitempty"`
+	CostCenter   string                 `json:"cost_center,omitempty"`
+	BudgetDay    string                 `json:"budget_day_utc"`
+	BudgetMonth  string                 `json:"budget_month_utc"`
+	Price        meteringPriceSnapshot  `json:"price"`
 }
 
 type meteringAttemptSnapshot struct {
@@ -43,13 +44,14 @@ type meteringAttemptSnapshot struct {
 }
 
 type meteringShadowCharge struct {
-	Status      string                 `json:"status"`
-	Reason      string                 `json:"reason,omitempty"`
-	UsageSource string                 `json:"usage_source"`
-	Price       *meteringPriceSnapshot `json:"price,omitempty"`
-	Units       metering.Units         `json:"units"`
-	Charge      *metering.Charge       `json:"charge,omitempty"`
-	LegacyUSD   string                 `json:"legacy_usd"`
+	Evidence    *RetrievalUsageEvidence `json:"usage_evidence,omitempty"`
+	Status      string                  `json:"status"`
+	Reason      string                  `json:"reason,omitempty"`
+	UsageSource string                  `json:"usage_source"`
+	Price       *meteringPriceSnapshot  `json:"price,omitempty"`
+	Units       metering.Units          `json:"units"`
+	Charge      *metering.Charge        `json:"charge,omitempty"`
+	LegacyUSD   string                  `json:"legacy_usd"`
 }
 
 func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPriceSnapshot {
@@ -66,7 +68,7 @@ func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPrice
 			rates.Input = dec(resolved.InputPriceUSDPer1M)
 		}
 	}
-	snapshot := meteringPriceSnapshot{Currency: "USD", Source: "legacy_float_configuration", At: at, Rates: rates}
+	snapshot := meteringPriceSnapshot{SearchUnitPrice: model.Metadata[retrievalSearchUnitPriceKey], Currency: "USD", Source: "legacy_float_configuration", At: at, Rates: rates}
 	for _, period := range model.PricingPeriods {
 		if pricingPeriodMatches(period, at) {
 			snapshot.Period = period.Name
@@ -79,7 +81,7 @@ func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPrice
 	return snapshot
 }
 
-func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext) error {
+func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext, periods quotaPeriods) error {
 	if call.RequestID == "" {
 		return nil
 	}
@@ -92,7 +94,7 @@ func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext) error 
 		price = card.at(call.StartedAt)
 	}
 	legacyPrice := legacyMeteringPrice(call.Model, call.StartedAt, false)
-	snapshot := meteringRequestSnapshot{ModelName: call.Model.Name, LegacyPrice: &legacyPrice, RequestID: call.RequestID, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
+	snapshot := meteringRequestSnapshot{QuotaPeriods: &periods, ModelName: call.Model.Name, LegacyPrice: &legacyPrice, RequestID: call.RequestID, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
 	return saveMeteringEntry(tx, call.RequestID+":admission", "admission", call.RequestID, snapshot, call.StartedAt)
 }
 
@@ -147,6 +149,39 @@ func (s *GormStore) PrepareMeteringAttempt(requestID string, number int, route R
 
 func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) meteringShadowCharge {
 	result := meteringShadowCharge{Status: "pending", UsageSource: "legacy_adapter_unverified", Price: price, LegacyUSD: strconv.FormatFloat(legacy, 'f', -1, 64)}
+	result.Evidence = usage.RetrievalEvidence
+	if evidence := usage.RetrievalEvidence; evidence != nil {
+		result.UsageSource = evidence.Source
+		if usage.MeteringInvalid && !validNativeRetrievalEvidence(evidence) {
+			result.Reason = "inconsistent_usage"
+			return result
+		}
+		if evidence.Quantity == nil {
+			result.Reason = "usage_presence_unknown"
+			return result
+		}
+		if evidence.Unit == "search_unit" {
+			if !validNativeRetrievalEvidence(evidence) {
+				result.Reason = "inconsistent_usage"
+				return result
+			}
+			if price == nil {
+				result.Reason = "missing_price"
+				return result
+			}
+			charge, err := metering.PriceNative(evidence.Unit, *evidence.Quantity, price.SearchUnitPrice, price.Currency, price.ExchangeRate)
+			if err != nil {
+				result.Reason = "native_unit_price_required"
+				return result
+			}
+			result.Charge = &charge
+			result.Status = "estimated"
+			if usage.MeteringInvalid {
+				result.Reason = "auxiliary_token_usage_invalid"
+			}
+			return result
+		}
+	}
 	if price == nil {
 		result.Reason = "missing_price"
 		return result
@@ -163,7 +198,7 @@ func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) mete
 		return result
 	}
 	result.Units = units
-	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.RetrievalEvidence == nil {
 		result.Reason = "usage_presence_unknown"
 		return result
 	}

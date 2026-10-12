@@ -5,6 +5,173 @@
   "display_name": "xai",
   "models": [
     {
+      "id": "grok-imagine-video-1.5-lite",
+      "name": "Grok Imagine Video 1.5 Lite",
+      "display_name": "Grok Imagine Video 1.5 Lite",
+      "family": "grok-imagine",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/models/grok-imagine-video-1.5-lite",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.x.ai/developers/pricing",
+        "billing_unit": "video_second",
+        "usd_per_input_image": "0.01",
+        "usd_per_output_second": "{\"480p\":0.02,\"720p\":0.03,\"1080p\":0.14}",
+        "pricing_note": "Native USD per generated second by resolution, plus image inputs; do not encode as text tokens.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "tool_call": false,
+      "category": "grok",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "grok-imagine-video-1.5",
+      "name": "Grok Imagine Video 1.5",
+      "display_name": "Grok Imagine Video 1.5",
+      "family": "grok-imagine",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/models/grok-imagine-video-1.5",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.x.ai/developers/pricing",
+        "billing_unit": "video_second",
+        "usd_per_input_image": "0.01",
+        "usd_per_output_second": "{\"480p\":0.08,\"720p\":0.14,\"1080p\":0.25}",
+        "pricing_note": "Native USD per generated second by resolution, plus image inputs; do not encode as text tokens.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "tool_call": false,
+      "category": "grok",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "grok-imagine-image-2.0",
+      "name": "Grok Imagine Image 2.0",
+      "display_name": "Grok Imagine Image 2.0",
+      "family": "grok-imagine",
+      "type": "image",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/models/grok-imagine-image-2.0",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.x.ai/developers/pricing",
+        "billing_unit": "image",
+        "usd_per_input_image": "0.01",
+        "usd_output_image_prices": "{\"1K_low\":0.04,\"1.5K_low\":0.05,\"2K_low\":0.06,\"1K_medium\":0.06,\"1.5K_medium\":0.07,\"2K_medium\":0.08}",
+        "pricing_note": "Native per-image pricing; auto quality uses low for generation and medium for editing.",
+        "max_source_images": "5",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: a matching media/session adapter and native-unit billing are required."
+      },
+      "tool_call": false,
+      "category": "grok",
+      "last_updated": "2026-10-10",
+      "supported_parameters": []
+    },
+    {
+      "id": "grok-4.7",
+      "name": "Grok 4.7",
+      "display_name": "Grok 4.7",
+      "family": "grok",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/models/grok-4.7",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.x.ai/developers/release-notes",
+        "pricing_note": "USD per million tokens. Prices double for prompts exceeding 200k tokens; no output cap verified.",
+        "pricing_tiers": "[{\"input_tokens_lte\":200000,\"input\":2,\"output\":6,\"cache_read\":0.5},{\"input_tokens_gt\":200000,\"input\":4,\"output\":12,\"cache_read\":1}]",
+        "reasoning_effort_options": "low,medium,high,xhigh",
+        "reasoning_effort_default": "high",
+        "output_limit_status": "unverified",
+        "api_note": "Responses always returns reasoning.encrypted_content; batch unsupported.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "responses,chat/completions"
+      },
+      "limit": {
+        "context": 500000
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "category": "grok",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens",
+        "max_output_tokens"
+      ],
+      "endpoints": "responses,chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ]
+    },
+    {
       "id": "grok-4.20-multi-agent-0309",
       "name": "Grok 4.20 Multi-Agent",
       "family": "grok",
@@ -223,7 +390,18 @@
         "output": 8192
       },
       "display_name": "Grok Imagine Image Quality",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "redirected",
+        "lifecycle_source": "https://docs.x.ai/developers/migration/imagine-image-quality-nov-2",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "grok-imagine-image-2.0",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "redirect_at": "2026-11-02T00:00:00Z",
+        "replacement_note": "From 2026-11-02, the alias resolves to Image 2.0 at low quality.",
+        "lifecycle_note": "Future automatic redirect at low quality; current slug still active as of verification. grok-imagine-image 1.0 unaffected."
+      }
     },
     {
       "id": "grok-imagine-video",

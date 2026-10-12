@@ -1,6 +1,6 @@
 type ProviderModelSelectionData = {
   providers: Array<{ id: string; name: string; priority: number; status: string }>;
-  providerModels: Array<{ provider_id: string; upstream_model: string; display_name?: string; status: string }>;
+  providerModels: Array<{ provider_id: string; upstream_model: string; display_name?: string; call_supported?: boolean; status: string }>;
 };
 
 export type InitialModelRoute = {
@@ -73,7 +73,7 @@ export function availableProviderModelSelectOptions(data: ProviderModelSelection
     .flatMap((model) => {
       const provider = activeProviders.get(model.provider_id);
       const value = providerModelSelectionValue(model.provider_id, model.upstream_model);
-      if (!provider || model.status !== "active" || seen.has(value)) return [];
+      if (!provider || model.call_supported === false || model.status !== "active" || seen.has(value)) return [];
       seen.add(value);
       const displayName = model.display_name && model.display_name !== model.upstream_model ? ` / ${model.display_name}` : "";
       return [{

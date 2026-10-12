@@ -17,20 +17,23 @@ func TestEmbeddingsCacheLookupHookCanShortCircuit(t *testing.T) {
 		HookID:        "embedding-hit",
 		Stage:         pluginmeta.StageCacheLookup,
 		Priority:      1000,
-		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+		Reads:         []pluginmeta.GatewayDataClass{pluginmeta.DataCacheKey},
+		Writes:        []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage, pluginmeta.DataCacheKey},
 		FailurePolicy: pluginmeta.FailurePolicyFailOpen,
 	}
 	if err := server.gatewayChain.RegisterHook(hook); err != nil {
 		t.Fatalf("register cache lookup hook: %v", err)
 	}
-	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
-		return rawProviderCallResult(t, map[string]any{
+	if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+		result := rawProviderCallResult(t, map[string]any{
 			"object": "list",
 			"model":  "text-embedding-3-small",
 			"data": []map[string]any{
 				{"object": "embedding", "index": 0, "embedding": []float64{0.25, 0.75}},
 			},
-		}, Usage{PromptTokens: 2, TotalTokens: 2}), nil
+		}, Usage{PromptTokens: 2, TotalTokens: 2})
+		result.Writes[pluginmeta.DataCacheKey] = pluginmeta.RawPatch{Value: input.Data[pluginmeta.DataCacheKey]}
+		return result, nil
 	})); err != nil {
 		t.Fatalf("register cache lookup handler: %v", err)
 	}

@@ -6,10 +6,12 @@ import (
 )
 
 const (
+	providerRouteProtocolSystemOne       = "systemone"
 	providerRouteProtocolAnthropic       = "anthropic"
 	providerRouteProtocolChatCompletions = "chat/completions"
 	providerRouteProtocolCodexResponses  = "codex/responses"
 	providerRouteProtocolEmbeddings      = "embeddings"
+	providerRouteProtocolRerank          = "rerank"
 	providerRouteProtocolGemini          = "gemini"
 	providerRouteProtocolImageGeneration = "images/generations"
 	providerRouteProtocolResponses       = "responses"
@@ -17,6 +19,20 @@ const (
 
 func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[string]bool {
 	protocols := map[string]bool{}
+	if adapterSupports(descriptor, AdapterCapabilityGeminiMedia) {
+		protocols[providerRouteProtocolGemini] = true
+	}
+	if adapterSupports(descriptor, AdapterCapabilityMedia) {
+		for _, protocol := range []string{"audio/speech", "audio/transcriptions", "audio/translations", providerRouteProtocolImageGeneration, "images/edits", "images/variations"} {
+			protocols[protocol] = true
+		}
+	}
+	if adapterSupports(descriptor, AdapterCapabilityRerank) {
+		protocols[providerRouteProtocolRerank] = true
+	}
+	if adapterSupports(descriptor, AdapterCapabilitySystemOne) {
+		protocols[providerRouteProtocolSystemOne] = true
+	}
 	if adapterSupports(descriptor, AdapterCapabilityChat) || adapterSupports(descriptor, AdapterCapabilityChatStream) {
 		protocols[providerRouteProtocolChatCompletions] = true
 	}

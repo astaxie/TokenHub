@@ -83,11 +83,11 @@ describe("ProviderUpsertModal", () => {
       "http://localhost:8080/api/admin/provider-catalog/quality-provider",
       expect.any(Object),
     ));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: /Quality Provider/ }));
     await user.type(screen.getByLabelText("Tenant ID"), "tenant-001");
     if (apiKeyRequired) await user.type(screen.getByLabelText("API Key", { exact: true }), "provider-secret");
     else expect(screen.getByLabelText("认证密钥（可选）")).not.toBeRequired();
-    await user.click(screen.getByRole("button", { name: "新增 Provider" }));
+    await user.click(screen.getByRole("button", { name: "添加供应商并引入模型" }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     const createCall = fetchMock.mock.calls.find(([input, init]) =>
@@ -376,8 +376,8 @@ describe("ProviderUpsertModal", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("tab", { name: "高级" }));
+    await user.click(screen.getByRole("button", { name: /Quality Provider/ }));
+    await user.click(screen.getByText("高级连接设置"));
 
     expect(screen.getByText("认证方式").closest("label")?.querySelector("select")).toHaveValue("bearer");
   });
@@ -418,14 +418,12 @@ describe("ProviderUpsertModal", () => {
       />,
     );
 
-    await user.click(screen.getByRole("radio", { name: /账号资源池/ }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: /OpenAI Codex/ }));
 
     expect(screen.getByDisplayValue("https://callback.example/provider/oauth")).toBeInTheDocument();
   });
 
-  it("filters account provider catalogs from create mode by plugin metadata", async () => {
+  it("shows API and account provider cards together using plugin metadata", async () => {
     const user = userEvent.setup();
     setActiveLanguage("zh-CN");
     const kimiAccountCatalog = {
@@ -466,11 +464,12 @@ describe("ProviderUpsertModal", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "下一步" }));
-
     expect(screen.getByRole("button", { name: /Quality Provider/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /moonshot/i })).not.toBeInTheDocument();
-    expect(screen.queryByText("Kimi Subscription")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Kimi Subscription/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Kimi Subscription/ }));
+    expect(screen.getByRole("textbox", { name: /账号资源名称/ })).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "选择接入方式" })).not.toBeInTheDocument();
   });
 
   it("loads account catalogs for non-Codex Provider plugins", async () => {

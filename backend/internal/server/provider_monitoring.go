@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -61,7 +60,7 @@ type ProviderMonitoringSnapshot struct {
 	Trend                []string                 `json:"trend"`
 }
 
-func (s *Server) providerMonitoringSnapshots(ctx context.Context, providerID string) []ProviderMonitoringSnapshot {
+func (s *Server) providerMonitoringSnapshots(providerID string) []ProviderMonitoringSnapshot {
 	providers := s.store.ListProviders()
 	resources := s.store.ListProviderResources()
 	routes := s.store.ListRoutes()
@@ -76,7 +75,7 @@ func (s *Server) providerMonitoringSnapshots(ctx context.Context, providerID str
 		snapshot := buildProviderMonitoringSnapshot(now, provider, descriptor, resources, routes, observations)
 		snapshots = append(snapshots, snapshot)
 	}
-	s.populateProviderQuotaSummaries(ctx, snapshots, resources)
+	s.populateProviderQuotaSummaries(snapshots, resources)
 	sort.Slice(snapshots, func(i, j int) bool {
 		if snapshots[i].Provider.Priority != snapshots[j].Provider.Priority {
 			return snapshots[i].Provider.Priority < snapshots[j].Provider.Priority
@@ -333,13 +332,7 @@ func startOfUTCDay(value time.Time) time.Time {
 	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-func (s *Server) populateProviderQuotaSummaries(ctx context.Context, snapshots []ProviderMonitoringSnapshot, resources []ProviderResource) {
-	type result struct {
-		providerIndex int
-		account       ProviderQuotaAccountSummary
-	}
-	results := make(chan result)
-	var wait sync.WaitGroup
+func (s *Server) populateProviderQuotaSummaries(snapshots []ProviderMonitoringSnapshot, resources []ProviderResource) {
 	for providerIndex := range snapshots {
 		if !snapshots[providerIndex].Quota.Supported {
 			continue
@@ -348,36 +341,21 @@ func (s *Server) populateProviderQuotaSummaries(ctx context.Context, snapshots [
 			if resource.ProviderID != snapshots[providerIndex].Provider.ID || resource.Status != StatusActive {
 				continue
 			}
-			wait.Add(1)
-			go func(index int, item ProviderResource) {
-				defer wait.Done()
-				account := ProviderQuotaAccountSummary{ResourceID: item.ID, ResourceName: item.Name}
-				quota, err := s.queryProviderMonitoringQuota(ctx, snapshots[index].Provider, item)
-				if err != nil {
-					account.ErrorCode = AsHTTPError(err).Code
-				} else {
-					account.Quota = quota
-				}
-				select {
-				case results <- result{providerIndex: index, account: account}:
-				case <-ctx.Done():
-				}
-			}(providerIndex, resource)
+			account := ProviderQuotaAccountSummary{ResourceID: resource.ID, ResourceName: resource.Name}
+			if quota, ok := s.cachedProviderMonitoringQuota(resource.ID, 0); ok {
+				account.Quota = quota
+			} else {
+				account.ErrorCode = "quota_not_cached"
+			}
+			summary := &snapshots[providerIndex].Quota
+			summary.Accounts = append(summary.Accounts, account)
+			if len(account.Quota) == 0 {
+				summary.FailedAccounts++
+				continue
+			}
+			summary.SuccessfulAccounts++
+			mergeProviderQuotaSummary(summary, account.Quota)
 		}
-	}
-	go func() {
-		wait.Wait()
-		close(results)
-	}()
-	for item := range results {
-		summary := &snapshots[item.providerIndex].Quota
-		summary.Accounts = append(summary.Accounts, item.account)
-		if len(item.account.Quota) == 0 {
-			summary.FailedAccounts++
-			continue
-		}
-		summary.SuccessfulAccounts++
-		mergeProviderQuotaSummary(summary, item.account.Quota)
 	}
 	for index := range snapshots {
 		sort.Slice(snapshots[index].Quota.Accounts, func(i, j int) bool {

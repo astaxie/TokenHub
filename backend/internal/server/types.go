@@ -231,6 +231,7 @@ type ProviderCatalogModel struct {
 // inventory, not a public API model: publication happens only through a
 // ModelRoute that connects a Model to this provider/upstream-model pair.
 type ProviderModel struct {
+	CallSupported             *bool   `json:"call_supported,omitempty" gorm:"-"`
 	ID                        string  `json:"id" gorm:"primaryKey"`
 	ProviderID                string  `json:"provider_id" gorm:"uniqueIndex:idx_provider_upstream;index"`
 	UpstreamModel             string  `json:"upstream_model" gorm:"uniqueIndex:idx_provider_upstream"`
@@ -301,6 +302,7 @@ type ProviderCreateRequest struct {
 	SensitiveHeaders            []string          `json:"sensitive_headers"`
 	Options                     map[string]string `json:"options"`
 	CatalogID                   string            `json:"catalog_id"`
+	PreserveCatalog             bool              `json:"preserve_catalog,omitempty"`
 	ModelCategory               string            `json:"model_category"`
 	SystemPromptTransformPolicy *string           `json:"system_prompt_transform_policy,omitempty"`
 	// ClaudeCodeAttributionPolicy is a legacy write-only alias for system prompt transform policy.
@@ -436,31 +438,32 @@ type ModelRoutePolicy struct {
 }
 
 type Usage struct {
-	MeteringRaw              *metering.Units `json:"-"`
-	MeteringInvalid          bool            `json:"-"`
-	PromptTokens             int64           `json:"prompt_tokens"`
-	CachedInputTokens        int64           `json:"cached_input_tokens,omitempty"`
-	CacheWriteInputTokens    int64           `json:"cache_write_input_tokens,omitempty"`
-	CacheWrite5mInputTokens  int64           `json:"cache_write_5m_input_tokens,omitempty"`
-	CacheWrite1hInputTokens  int64           `json:"cache_write_1h_input_tokens,omitempty"`
-	InputAudioTokens         int64           `json:"input_audio_tokens,omitempty"`
-	CompletionTokens         int64           `json:"completion_tokens"`
-	ReasoningOutputTokens    int64           `json:"reasoning_output_tokens,omitempty"`
-	OutputAudioTokens        int64           `json:"output_audio_tokens,omitempty"`
-	AcceptedPredictionTokens int64           `json:"accepted_prediction_tokens,omitempty"`
-	RejectedPredictionTokens int64           `json:"rejected_prediction_tokens,omitempty"`
-	TotalTokens              int64           `json:"total_tokens"`
-	InputCostUSD             float64         `json:"input_cost_usd,omitempty"`
-	CacheReadCostUSD         float64         `json:"cache_read_cost_usd,omitempty"`
-	CacheWriteCostUSD        float64         `json:"cache_write_cost_usd,omitempty"`
-	OutputCostUSD            float64         `json:"output_cost_usd,omitempty"`
-	CostUSD                  float64         `json:"estimated_cost_usd,omitempty"`
-	ProviderCostUSD          float64         `json:"-"`
-	UpstreamRequestID        string          `json:"upstream_request_id,omitempty"`
-	ServedModel              string          `json:"served_model,omitempty"`
-	ModelETag                string          `json:"model_etag,omitempty"`
-	Transport                string          `json:"transport,omitempty"`
-	ResponseHeaders          http.Header     `json:"-"`
+	RetrievalEvidence        *RetrievalUsageEvidence `json:"retrieval_evidence,omitempty"`
+	MeteringRaw              *metering.Units         `json:"-"`
+	MeteringInvalid          bool                    `json:"-"`
+	PromptTokens             int64                   `json:"prompt_tokens"`
+	CachedInputTokens        int64                   `json:"cached_input_tokens,omitempty"`
+	CacheWriteInputTokens    int64                   `json:"cache_write_input_tokens,omitempty"`
+	CacheWrite5mInputTokens  int64                   `json:"cache_write_5m_input_tokens,omitempty"`
+	CacheWrite1hInputTokens  int64                   `json:"cache_write_1h_input_tokens,omitempty"`
+	InputAudioTokens         int64                   `json:"input_audio_tokens,omitempty"`
+	CompletionTokens         int64                   `json:"completion_tokens"`
+	ReasoningOutputTokens    int64                   `json:"reasoning_output_tokens,omitempty"`
+	OutputAudioTokens        int64                   `json:"output_audio_tokens,omitempty"`
+	AcceptedPredictionTokens int64                   `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int64                   `json:"rejected_prediction_tokens,omitempty"`
+	TotalTokens              int64                   `json:"total_tokens"`
+	InputCostUSD             float64                 `json:"input_cost_usd,omitempty"`
+	CacheReadCostUSD         float64                 `json:"cache_read_cost_usd,omitempty"`
+	CacheWriteCostUSD        float64                 `json:"cache_write_cost_usd,omitempty"`
+	OutputCostUSD            float64                 `json:"output_cost_usd,omitempty"`
+	CostUSD                  float64                 `json:"estimated_cost_usd,omitempty"`
+	ProviderCostUSD          float64                 `json:"-"`
+	UpstreamRequestID        string                  `json:"upstream_request_id,omitempty"`
+	ServedModel              string                  `json:"served_model,omitempty"`
+	ModelETag                string                  `json:"model_etag,omitempty"`
+	Transport                string                  `json:"transport,omitempty"`
+	ResponseHeaders          http.Header             `json:"-"`
 	// RateLimitTokens is the total metered across every invoked failover attempt.
 	// It is internal quota state: billing, request logs and provider attribution
 	// continue to use the usage reported by the final route only.
@@ -586,9 +589,13 @@ type ImageJob struct {
 	TotalTokens                                                 int64      `json:"total_tokens,omitempty"`
 	ErrorCode                                                   string     `json:"error_code,omitempty"`
 	ErrorMessage                                                string     `json:"error_message,omitempty"`
-	CreatedAt                                                   time.Time  `json:"created_at"`
-	StartedAt                                                   *time.Time `json:"started_at,omitempty"`
-	CompletedAt                                                 *time.Time `json:"completed_at,omitempty"`
+	// WorkerInstance identifies the server instance that owns the job (its
+	// heartbeat instance ID). Recovery sweeps fail only jobs whose owner
+	// stopped, so overlapping replicas never fail each other's work.
+	WorkerInstance string     `json:"worker_instance,omitempty" gorm:"index"`
+	CreatedAt      time.Time  `json:"created_at"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
 }
 
 const (
@@ -1117,7 +1124,7 @@ type ResponsesReasoning struct {
 func (r *ResponsesRequest) UnmarshalJSON(data []byte) error {
 	type requestAlias ResponsesRequest
 	var decoded requestAlias
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	if err := decodeResponsesJSON(data, &decoded); err != nil {
 		return err
 	}
 	var raw map[string]json.RawMessage
@@ -1206,11 +1213,6 @@ func cloneRawJSON(source map[string]json.RawMessage, extra int) map[string]json.
 	return cloned
 }
 
-type EmbeddingsRequest struct {
-	Model string `json:"model"`
-	Input any    `json:"input"`
-}
-
 type RouteSelection struct {
 	MeteringSnapshot *meteringAttemptSnapshot `json:"-"`
 	Provider         Provider
@@ -1283,6 +1285,9 @@ type RoutedCall struct {
 }
 
 type CallContext struct {
+	// Cache keys bind retrieval results to their input, caller and route contracts.
+	RerankCacheKey          string
+	EmbeddingCacheKey       string
 	JevResponseBound        bool
 	jevResponseBinding      *pendingJevResponseBinding
 	RoutingStrategyOverride string

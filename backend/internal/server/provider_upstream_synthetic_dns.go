@@ -347,6 +347,9 @@ func validateProviderSyntheticDNSSettings(resource AdminResource) error {
 	if resource.ID != "" && resource.ID != gatewaySettingsID {
 		return nil
 	}
+	if _, err := quotaLocation(stringField(resource.Fields, quotaTimezoneField)); err != nil {
+		return err
+	}
 	if timezone := strings.TrimSpace(stringField(resource.Fields, dashboardTimezoneField)); timezone != "" {
 		if _, err := time.LoadLocation(timezone); err != nil {
 			return NewHTTPError(http.StatusBadRequest, "invalid_dashboard_timezone", "dashboard_timezone must be a valid IANA timezone")
@@ -383,6 +386,10 @@ func ensureProviderSyntheticDNSSettings(store Store) error {
 		}
 		if _, ok := setting.Fields[syntheticDNSAllowPrivateField]; !ok {
 			setting.Fields[syntheticDNSAllowPrivateField] = false
+			changed = true
+		}
+		if strings.TrimSpace(stringField(setting.Fields, quotaTimezoneField)) == "" {
+			setting.Fields[quotaTimezoneField] = "UTC"
 			changed = true
 		}
 		if strings.TrimSpace(stringField(setting.Fields, dashboardTimezoneField)) == "" {

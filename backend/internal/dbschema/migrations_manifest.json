@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "baselines": {
-    "postgres": "480bd423b47864df5a076c55f2f03362e17aa2f55d282cfff58924d994291294",
-    "sqlite": "36ecbd5b00d8f964bf34d3f3b7d3b6e7532cc7ad98011efd4749c60bccad6127"
+    "postgres": "39778256e5e0c25c1c708d8ede7269d16f906e245db55a2125124f3d93c8290d",
+    "sqlite": "868083cd5191efa1bfcebd5dc37e152aa0d9955d4e427015dba17e51d87edb07"
   },
   "migrations": [
     {
@@ -49,6 +49,15 @@
       "checksum": "d4fffe9ce0a02dcf7bf27d5d44541f121f8ffd76384b8e1168365d8c26199a80",
       "lock_timeout_seconds": 30,
       "statement_budget": 10
+    },
+    {
+      "version": 7,
+      "name": "add-image-job-worker-instance",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "tokenhub-schema-image-job-worker-instance-v1",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 8
     }
   ]
 }

@@ -20,7 +20,7 @@ Console login tokens cannot call model APIs. Use a project API key from **Key Ma
 1. Open **Key Management** and create or copy an API key. New keys are shown only once.
 2. TokenHub automatically attributes a personal key to an assigned project, or to the platform default project when none is assigned.
 3. Call `GET /v1/models` to see the model list available to that key.
-4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, or `POST /v1/embeddings`.
+4. Use one model ID in `POST /v1/chat/completions`, `POST /v1/messages`, `POST /v1/responses`, `POST /v1/embeddings`, or `POST /v1/rerank`.
 5. Review **Usage Analytics** and **Request Logs** for requests, tokens, cost, and errors.
 
 The console **API Documentation** page remains the guided onboarding view. For the complete interactive and machine-readable gateway contract, open `http://localhost:8080/docs` in a private deployment or import `http://localhost:8080/openapi.json` into an API client, SDK generator, test tool, or enterprise API catalog. The documentation page keeps any entered project key in browser memory only.
@@ -37,7 +37,7 @@ Creating a key opens this setup window automatically with the complete key, read
 
 In **Key Management**, select **Usage** for a Key to open its dedicated usage page. The page reports requests, success rate, latency, detailed token categories, estimated client cost, model and error breakdowns, and paginated request details. Use the 7-, 30-, or 90-day presets, or select a custom UTC range of up to 366 days.
 
-The quota section compares the current UTC day and month counters with the effective limits after Key, Project, Team, and global quota policies are combined. Usage belongs only to the selected saved Key ID. A rotated predecessor or successor is shown as related information but is never merged into the totals. Request payloads, when audit capture is enabled, follow the existing redaction and truncation rules; the complete API Key is never returned.
+The quota section compares the current day and month counters in the administrator-configured quota timezone (`quota_timezone`, UTC by default) with the effective limits after Key, Project, Team, and global quota policies are combined. Daily quotas reset at midnight in that timezone, and monthly quotas reset at midnight on the first day of the month. Usage date filters remain in UTC. Usage belongs only to the selected saved Key ID. A rotated predecessor or successor is shown as related information but is never merged into the totals. Request payloads, when audit capture is enabled, follow the existing redaction and truncation rules; the complete API Key is never returned.
 
 ## Test a Model in the Playground
 

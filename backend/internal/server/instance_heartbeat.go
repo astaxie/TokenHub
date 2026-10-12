@@ -101,6 +101,12 @@ func publishInitialInstanceHeartbeat(db *gorm.DB, release string) (string, error
 	return instanceID, nil
 }
 
+// InstanceID returns the heartbeat identity this instance publishes. Image
+// jobs stamp it as their owner so recovery sweeps stay instance-scoped.
+func (s *GormStore) InstanceID() string {
+	return s.instanceHeartbeatID
+}
+
 // StartInstanceHeartbeat publishes this instance and refreshes it until the
 // returned stop function removes the row. Publication failures fail closed via
 // DatabaseEvolutionStatus so contract maintenance can never miss a serving

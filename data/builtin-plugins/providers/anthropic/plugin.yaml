@@ -26,7 +26,7 @@ capabilities:
       base_url: ""
       doc_url: "https://docs.anthropic.com/en/docs/about-claude/models"
       categories: []
-      models_count: 25
+      models_count: 29
 permissions:
   network:
     allow: []

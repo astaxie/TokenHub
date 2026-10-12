@@ -162,6 +162,9 @@ func TestExternalMockProviderFixtureServesGatewayCoreEndpoints(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			server, secret := newExternalMockProviderGatewayServer(t, tc.model, tc.modality, tc.providerModel)
+			if tc.modality == "embedding" {
+				configureEmbeddingTestModel(t, server.store, tc.model)
+			}
 			response := doJSON(t, server.Handler(), http.MethodPost, tc.path, tc.request, secret)
 			if response.Code != http.StatusOK {
 				t.Fatalf("gateway %s through external mock provider fixture: expected 200, got %d: %s", tc.name, response.Code, response.Body)

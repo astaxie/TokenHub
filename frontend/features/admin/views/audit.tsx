@@ -1,3 +1,4 @@
+import { RequestErrorSummary, requestErrorInfo } from "./request-error-summary";
 import { Activity, AlertCircle, Check, Copy, Gauge, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { canViewAdminAudit } from "../core/navigation";
@@ -479,29 +480,39 @@ export function RequestDetailPanel({
       <div className="request-detail-grid">
         <DetailField label="时间" value={formatTime(log.created_at)} />
         <DetailField label="延迟" value={`${log.latency_ms || 0}ms`} />
-        <DetailField label="项目" value={projectName(data, log.project_id)} />
-        <DetailField label="API Key" value={apiKeyAuditLabel(data, log.api_key_id)} />
         <DetailField label="最终 Provider" value={providerAuditLabel(data, log)} />
-        <DetailField label="Provider 资源" value={providerResourceAuditLabel(data, log.provider_resource_id)} />
         <DetailField label="上游模型" value={log.provider_model || "-"} />
-        <DetailField label="作用域策略" value={log.routing_policy_id || tx("无绑定策略")} />
-        <DetailField label="策略作用域 / 优先级" value={log.routing_policy_id ? `${tx(log.routing_policy_scope || "-")} / P${log.routing_policy_priority || 0}` : "-"} />
-        <DetailField label="客户端 IP" value={log.client_ip || "-"} />
       </div>
 
-      {log.error_code ? (
-        <div className="request-error-box">
-          <strong>{log.error_code}</strong>
-        </div>
-      ) : null}
 
-      <RequestPayloadSection payload={detail.payload ?? null} />
+
+      {log.error_code ? (
+        <RequestErrorSummary code={log.error_code} responseBody={detail.payload?.response_body} />
+      ) : null}
 
       <div className="request-subsection">
         <div className="request-subsection-title">
           <span>{tx("Token 与成本")}</span>
           <strong>{detail.usage.length ? countWithUnit(detail.usage.length, "条记录", "record", "件の記録") : tx("暂无记录")}</strong>
         </div>
+        <div className="request-usage-total">
+          <UsageStat label="总量" value={detail.usage.length ? formatNumber(usageTotals.total_tokens) : "—"} />
+          <UsageStat label="对外计费" value={detail.usage.length ? `$${formatMoney(usageTotals.estimated_cost_usd)}` : "—"} />
+          {showProviderCost ? <UsageStat label="渠道真实成本" value={detail.usage.length ? `$${formatMoney(usageTotals.provider_cost_usd)}` : "—"} /> : null}
+        </div>
+      </div>
+
+      <RequestPayloadSection key={requestID} payload={detail.payload ?? null} />
+
+      <details className="request-secondary-details" key={`metadata-${requestID}`}><summary>{tx("详情")}</summary><div className="request-detail-grid">
+        <DetailField label="项目" value={projectName(data, log.project_id)} />
+        <DetailField label="API Key" value={apiKeyAuditLabel(data, log.api_key_id)} />
+        <DetailField label="Provider 资源" value={providerResourceAuditLabel(data, log.provider_resource_id)} />
+        <DetailField label="作用域策略" value={log.routing_policy_id || tx("无绑定策略")} />
+        <DetailField label="策略作用域 / 优先级" value={log.routing_policy_id ? `${tx(log.routing_policy_scope || "-")} / P${log.routing_policy_priority || 0}` : "-"} />
+        <DetailField label="客户端 IP" value={log.client_ip || "-"} />
+      </div></details>
+      <details className="request-secondary-details" key={`usage-${requestID}`}><summary>{tx("Token 与成本")} · {tx("详情")}</summary>
         <div className="request-usage-breakdown">
           <UsageBreakdownGroup
             label="输入"
@@ -525,12 +536,8 @@ export function RequestDetailPanel({
             ]}
           />
         </div>
-        <div className="request-usage-total">
-          <UsageStat label="总量" value={formatNumber(usageTotals.total_tokens)} />
-          <UsageStat label="对外计费" value={`$${formatMoney(usageTotals.estimated_cost_usd)}`} />
-          {showProviderCost ? <UsageStat label="渠道真实成本" value={`$${formatMoney(usageTotals.provider_cost_usd)}`} /> : null}
-        </div>
-      </div>
+      </details>
+
 
       <div className="request-subsection">
         <div className="request-subsection-title">
@@ -538,7 +545,7 @@ export function RequestDetailPanel({
           <strong>{routeAttemptCountText(detail.attempts.length)}</strong>
         </div>
         {detail.attempts.length === 0 ? (
-          <div className="compact-empty">{tx("没有记录到路由尝试")}</div>
+          <div className="compact-empty">{requestErrorInfo(detail.payload?.response_body)?.beforeUpstream ? tx("请求在路由检查阶段被拒绝，尚未发送到上游。") : tx("没有记录到路由尝试")}</div>
         ) : (
           <div className="attempt-timeline">
             {detail.attempts.map((attempt) => (
@@ -625,30 +632,16 @@ export function UsageBreakdownGroup({
 }
 
 export function RequestPayloadSection({ payload }: { payload: RequestPayloadLog | null }) {
-  return (
-    <div className="request-subsection">
-      <div className="request-subsection-title">
-        <span>{tx("请求与响应")}</span>
-        <strong>{payload ? tx("已记录快照") : tx("未记录")}</strong>
+  const [active, setActive] = useState<"request" | "response">("response");
+  return <div className="request-subsection">
+    <div className="request-subsection-title"><span>{tx("请求与响应")}</span><strong>{payload ? tx("已记录快照") : tx("未记录")}</strong></div>
+    {!payload ? <div className="compact-empty">{tx("这条历史记录没有保存 request / response 快照")}</div> : <>
+      <div className="request-filter-tabs payload-tabs" role="tablist" aria-label={tx("请求与响应")}>
+        {(["request", "response"] as const).map((tab) => <button key={tab} type="button" role="tab" aria-selected={active === tab} className={active === tab ? "active" : ""} onClick={() => setActive(tab)}>{tab === "request" ? "Request" : "Response"}</button>)}
       </div>
-      {!payload ? (
-        <div className="compact-empty">{tx("这条历史记录没有保存 request / response 快照")}</div>
-      ) : (
-        <div className="payload-grid">
-          <PayloadBlock
-            title="Request"
-            body={payload.request_body || tx("未记录请求内容")}
-            truncated={payload.request_truncated}
-          />
-          <PayloadBlock
-            title="Response"
-            body={payload.response_body || tx("未记录响应内容")}
-            truncated={payload.response_truncated}
-          />
-        </div>
-      )}
-    </div>
-  );
+      <div role="tabpanel" aria-label={active === "request" ? "Request" : "Response"}><PayloadBlock title={active === "request" ? "Request" : "Response"} body={active === "request" ? payload.request_body || tx("未记录请求内容") : payload.response_body || tx("未记录响应内容")} truncated={active === "request" ? payload.request_truncated : payload.response_truncated} /></div>
+    </>}
+  </div>;
 }
 
 export function PayloadBlock({ title, body, truncated }: { title: string; body: string; truncated: boolean }) {

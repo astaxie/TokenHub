@@ -35,6 +35,9 @@ func providerModelCostDecodeError(err error) error {
 }
 
 func validateProviderModelCosts(model ProviderModel) error {
+	if err := validateRetrievalPriceMetadata(model.Metadata); err != nil {
+		return err
+	}
 	if err := validateModelPricingPeriods(model.PricingPeriods); err != nil {
 		return err
 	}
@@ -66,6 +69,9 @@ func (s *GormStore) providerCostUSD(route RouteSelection, usage Usage) float64 {
 }
 
 func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, requestStartedAt time.Time) float64 {
+	if e := usage.RetrievalEvidence; e != nil && (e.Quantity == nil || e.Source == "invalid" || (e.Unit == "token" && usage.MeteringInvalid)) {
+		return 0
+	}
 	providerID := strings.TrimSpace(route.Provider.ID)
 	upstreamModel := strings.TrimSpace(route.ProviderModel)
 	if providerID == "" || upstreamModel == "" {
@@ -78,8 +84,17 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 		}
 		providerModel = route.MeteringSnapshot.LegacyModel.providerModelCost(ProviderModel{Modality: route.MeteringSnapshot.LegacyModel.Modality})
 		providerModel.PricingPeriods = route.MeteringSnapshot.LegacyModel.PricingPeriods
+		providerModel.Metadata = route.MeteringSnapshot.LegacyModel.Metadata
 		requestStartedAt = route.MeteringSnapshot.At
 	} else if err := s.db.Where("provider_id = ? AND upstream_model = ?", providerID, upstreamModel).First(&providerModel).Error; err != nil {
+		return 0
+	}
+	if cost, known := nativeRetrievalCost(providerModelCostModel(providerModel), usage); known {
+		return cost
+	}
+	if evidence := usage.RetrievalEvidence; evidence != nil && evidence.Unit == "search_unit" {
+		// Auxiliary token counters cannot price an unknown native-unit cost.
+		// The metering snapshot preserves why this legacy amount is unknown.
 		return 0
 	}
 	if usage.TotalTokens == 0 {
@@ -102,6 +117,7 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 
 func providerModelCostModel(providerModel ProviderModel) Model {
 	return Model{
+		Metadata:                  providerModel.Metadata,
 		Modality:                  providerModel.Modality,
 		InputPriceUSDPer1M:        providerModel.InputPriceUSDPer1M,
 		CacheReadPriceUSDPer1M:    providerModel.CacheReadPriceUSDPer1M,

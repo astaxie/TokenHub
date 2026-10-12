@@ -189,7 +189,7 @@ func TestKronkAdapterForwardsInferenceAndUsage(t *testing.T) {
 			})
 		case "/v1/embeddings":
 			writeJSON(w, http.StatusOK, map[string]any{
-				"data":  []map[string]any{{"embedding": []float64{0.1, 0.2}}},
+				"data":  []map[string]any{{"index": 0, "embedding": []float64{0.1, 0.2}}},
 				"usage": map[string]any{"prompt_tokens": 7, "total_tokens": 7},
 			})
 		default:
@@ -222,7 +222,7 @@ func TestKronkAdapterForwardsInferenceAndUsage(t *testing.T) {
 	if readErr != nil || !strings.Contains(string(responseStreamBody), "response.completed") {
 		t.Fatalf("responses stream body=%q err=%v", responseStreamBody, readErr)
 	}
-	_, embeddingUsage, err := adapter.Embeddings(context.Background(), provider, "embed/model:f16", EmbeddingsRequest{})
+	_, embeddingUsage, err := adapter.Embeddings(context.Background(), provider, "embed/model:f16", EmbeddingsRequest{Model: "public-embedding", Input: "hello"})
 	if err != nil || embeddingUsage.TotalTokens != 7 {
 		t.Fatalf("embeddings usage=%+v err=%v", embeddingUsage, err)
 	}

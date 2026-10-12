@@ -205,6 +205,9 @@ func appendTenantStatement(out *statementResult, item *statementEvidence, model 
 		}
 		if price != nil {
 			charge, err := metering.Price(price.Rates, t.Units, "USD", "")
+			if validNativeRetrievalEvidence(t.Evidence) {
+				charge, err = metering.PriceNative(t.Evidence.Unit, *t.Evidence.Quantity, price.SearchUnitPrice, "USD", "")
+			}
 			if err == nil && equalStatementMoney(charge.Amount, t.LegacyUSD) && t.Status == "estimated" {
 				row.Status = "estimated"
 				row.Reason = "recorded_tenant_charge"

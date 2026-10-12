@@ -1,5 +1,6 @@
 "use client";
 
+import { ModelCatalogNotices } from "./model-catalog-notices";
 import { StatementLauncher } from "./billing-statements";
 import { Save } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -10,6 +11,7 @@ import { adminFetch, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 
 type CostDraft = {
+  searchUnit: string;
   input: string;
   cache: string;
   cacheWrite: string;
@@ -20,6 +22,7 @@ type CostDraft = {
 
 function costDraft(model: ProviderModel): CostDraft {
   return {
+    searchUnit: model.metadata?.search_unit_price_usd ?? "",
     input: String(model.input_price_usd_per_1m ?? 0),
     cache: String(model.cache_read_price_usd_per_1m ?? 0),
     cacheWrite: configuredPriceFormValue(model.cache_write_price_usd_per_1m, model.cache_write_price_configured),
@@ -73,6 +76,7 @@ export function ProviderModelInventory({
       const resp = await adminFetch(api, `/api/admin/provider-models/${encodeURIComponent(model.id)}`, {
         method: "PATCH",
         body: JSON.stringify({
+          metadata: { ...model.metadata, pricing_status: "configured", ...(model.modality === "rerank" || model.modality === "embedding" ? { retrieval_pricing_confirmed: "true", search_unit_price_usd: draft.searchUnit.trim() } : {}) },
           input_price_usd_per_1m: costs.input,
           cache_read_price_usd_per_1m: costs.cache,
           cache_write_price_usd_per_1m: costs.cacheWrite,
@@ -109,11 +113,26 @@ export function ProviderModelInventory({
         <div>
           <strong>{tx("已引入模型与渠道成本")}</strong>
           <span>{tx("渠道成本价用于请求审计和真实成本核算，不会改变模型目录中的对外统一价。")}</span>
+          <span>{tx("保存成本会确认当前填写的价格，包括 0；未确认的零值不代表免费。")}</span>
         </div>
         <em>{models.length}</em>
       </div>
       {notice ? <p className="provider-inventory-notice success">{notice}</p> : null}
       {error ? <p className="provider-inventory-notice error">{error}</p> : null}
+      <div className="retrieval-cost-list">
+        {models.filter((model) => model.modality === "embedding" || model.modality === "rerank").map((model) => {
+          const draft = drafts[model.id] ?? costDraft(model);
+          return <div className="retrieval-cost-row" key={model.id}>
+            <div className="retrieval-cost-identity"><strong>{model.display_name || model.upstream_model}</strong>{model.display_name && model.display_name !== model.upstream_model ? <span>{model.upstream_model}</span> : null}<span className="retrieval-cost-kind">{model.modality} <StatusPill status={model.status} /></span><ModelCatalogNotices metadata={model.metadata} />{model.call_supported === false ? <span>{tx("当前渠道暂不支持此模型调用")}</span> : null}{model.modality === "embedding" && (model.input_price_usd_per_1m ?? 0) === 0 ? <span>{tx(model.metadata?.retrieval_pricing_confirmed === "true" ? "输入成本已确认免费" : "输入成本尚未确认（不阻断已有线路）")}</span> : null}</div>
+            <div className="retrieval-cost-fields">
+              <label><span>{tx("输入成本 USD/1M")}</span><input aria-label={`${tx("输入成本 USD/1M")}: ${model.upstream_model}`} min="0" step="0.000001" type="number" value={draft.input} onChange={(event) => update(model.id, "input", event.target.value)} /></label>
+              {model.modality === "rerank" ? <label><span>{tx("搜索单元价格 USD/次")}</span><input aria-label={`${tx("搜索单元价格 USD/次")}: ${model.upstream_model}`} type="number" min="0" step="0.000001" value={draft.searchUnit} onChange={(event) => update(model.id, "searchUnit", event.target.value)} /></label> : null}
+            </div>
+            <div className="retrieval-cost-actions"><button className="text-button provider-cost-save" disabled={savingID === model.id} onClick={() => void save(model)} type="button"><Save size={14} />{tx(savingID === model.id ? "保存中" : "保存成本")}</button><StatementLauncher api={api} side="provider" providerID={model.provider_id} model={model.upstream_model} /></div>
+          </div>;
+        })}
+      </div>
+      {models.some((model) => model.modality !== "embedding" && model.modality !== "rerank") ? (
       <div className="provider-model-inventory-table-wrap">
         <table className="provider-model-inventory-table">
           <thead>
@@ -130,11 +149,11 @@ export function ProviderModelInventory({
             </tr>
           </thead>
           <tbody>
-            {models.map((model) => {
+            {models.filter((model) => model.modality !== "embedding" && model.modality !== "rerank").map((model) => {
               const draft = drafts[model.id] ?? costDraft(model);
               return (
                 <tr key={model.id}>
-                  <td><strong>{model.display_name || model.upstream_model}</strong><span>{model.upstream_model}</span></td>
+                  <td><strong>{model.display_name || model.upstream_model}</strong><span>{model.upstream_model}</span><ModelCatalogNotices metadata={model.metadata} />{model.call_supported === false ? <span>{tx("当前渠道暂不支持此模型调用")}</span> : null}{model.modality === "embedding" && (model.input_price_usd_per_1m ?? 0) === 0 ? <span>{tx(model.metadata?.retrieval_pricing_confirmed === "true" ? "输入成本已确认免费" : "输入成本尚未确认（不阻断已有线路）")}</span> : null}{model.modality === "rerank" ? <label><span>{tx("搜索单元价格 USD/次")}</span><input type="number" min="0" step="0.000001" value={draft.searchUnit} onChange={(event) => update(model.id, "searchUnit", event.target.value)} /></label> : null}</td>
                   {(["input", "cache", "cacheWrite", "cacheWrite5m", "cacheWrite1h", "output"] as const).map((key) => (
                     <td key={key}>
                       <input min="0" onChange={(event) => update(model.id, key, event.target.value)} step="0.000001" type="number" value={draft[key]} />
@@ -153,6 +172,7 @@ export function ProviderModelInventory({
           </tbody>
         </table>
       </div>
+      ) : null}
     </section>
   );
 }

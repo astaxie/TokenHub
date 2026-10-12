@@ -6,6 +6,120 @@
   "display_name": "Moonshot AI",
   "models": [
     {
+      "id": "kimi-k2.7-code-highspeed",
+      "name": "Kimi K2.7 Code Highspeed",
+      "display_name": "Kimi K2.7 Code Highspeed",
+      "family": "kimi",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.kimi.ai/docs/models",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "thinking_can_disable": "false",
+        "sampling_note": "K2.7 Code family fixes temperature=1, top_p=.95,n=1,penalties=0.",
+        "tool_choice_allowed": "auto,none",
+        "spec_source": "https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart",
+        "output_note": "32768 is documented default max_tokens, not verified hard output limit.",
+        "pricing_note": "Highspeed token prices not rendered in current pricing page.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "endpoints": "chat/completions"
+      },
+      "limit": {
+        "context": 256000
+      },
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "kimi",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "kimi-k3",
+      "name": "Kimi K3",
+      "display_name": "Kimi K3",
+      "family": "kimi",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.kimi.ai/docs/guide/kimi-k3-quickstart",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "sampling_note": "Fixed temperature=1, top_p=.95,n=1,penalties=0; omit.",
+        "vision_note": "Public image URLs unsupported; use base64 or ms://file-id.",
+        "output_note": "max_completion_tokens defaults to 131072; documented maximum 1048576; source calls context 1M.",
+        "pricing_note": "Global homepage confirms USD/MTok input 3/output15/cache hit .30. Homepage cache-write 3 lacks TTL breakdown; 5min/1h separate per pricing guide, so cache_write omitted pending confirmation.",
+        "pricing_source": "https://platform.kimi.ai/",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "1048576",
+        "pricing_status": "reference"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 1048576
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "cost": {
+        "input": 3,
+        "output": 15,
+        "cache_read": 0.3
+      },
+      "category": "kimi",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
       "id": "kimi-k2-0905-preview",
       "name": "Kimi K2 0905",
       "family": "kimi-k2",
@@ -37,7 +151,16 @@
         "cache_read": 0.15
       },
       "display_name": "Kimi K2 0905",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2-thinking-turbo",
@@ -86,7 +209,16 @@
           ]
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2.7-code",
@@ -190,7 +322,16 @@
           ]
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2-0711-preview",
@@ -224,7 +365,16 @@
         "cache_read": 0.15
       },
       "display_name": "Kimi K2 0711",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2-turbo-preview",
@@ -258,7 +408,16 @@
         "cache_read": 0.6
       },
       "display_name": "Kimi K2 Turbo",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-05-25T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2.5",
@@ -315,7 +474,16 @@
           ]
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "lifecycle_source": "https://platform.kimi.ai/docs/models",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "kimi-k3",
+        "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
+        "shutdown_at": "2026-08-31T00:00:00+08:00"
+      }
     },
     {
       "id": "kimi-k2.6",

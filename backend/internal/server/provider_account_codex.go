@@ -17,8 +17,8 @@ const (
 	openAICodexBaseURL           = "https://chatgpt.com/backend-api/codex"
 	openAICodexResponsesURL      = openAICodexBaseURL + "/responses"
 	openAICodexModelsURL         = openAICodexBaseURL + "/models"
-	openAICodexVersion           = "0.155.0"
-	openAICodexUserAgent         = "codex_cli_rs/0.155.0 (Mac OS 15.0.0; arm64) xterm-256color"
+	openAICodexVersion           = "0.159.3"
+	openAICodexUserAgent         = "codex_cli_rs/0.159.3 (Mac OS 15.0.0; arm64) xterm-256color"
 	openAICodexDefaultProbeModel = "gpt-5.6-luna"
 	openAICodexMaxRequestRetries = 4
 	openAICodexStreamIdleTimeout = 5 * time.Minute
@@ -460,7 +460,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, tracker)
 			streamWriter = transformer
 		}
-		response, _, usage, streamErr := consumeCodexResponsesStream(opened.Body, streamWriter)
+		response, _, usage, streamErr := consumeRoutedResponsesStream(routed.Call, prepared.Provider, opened.Body, streamWriter)
 		if transformer != nil {
 			if closeErr := transformer.Close(); streamErr == nil && closeErr != nil {
 				streamErr = closeErr

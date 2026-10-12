@@ -568,6 +568,10 @@ func (s *GormStore) rollbackResponseJobAdmission(tx *gorm.DB, job ResponseJob) e
 	if job.AdmittedAt == nil {
 		return fmt.Errorf("response job %s has no admission timestamp", job.ID)
 	}
+	periods, err := admittedQuotaPeriods(tx, job.RequestID, *job.AdmittedAt)
+	if err != nil {
+		return err
+	}
 	if err := s.lockScopeForUpdate(tx, "api_key", job.APIKeyID); err != nil {
 		return err
 	}
@@ -621,8 +625,8 @@ func (s *GormStore) rollbackResponseJobAdmission(tx *gorm.DB, job ResponseJob) e
 		scope  string
 		bucket string
 	}{
-		{scope: "day", bucket: dayBucket(*job.AdmittedAt)},
-		{scope: "month", bucket: monthBucket(*job.AdmittedAt)},
+		{scope: "day", bucket: periods.Day},
+		{scope: "month", bucket: periods.Month},
 	} {
 		bucket, err := s.quotaBucketForUpdate(tx, job.APIKeyID, period.scope, period.bucket)
 		if err != nil {
@@ -950,12 +954,16 @@ func (s *GormStore) refundUndispatchedResponseJobReservation(tx *gorm.DB, job Re
 			}
 		}
 		if job.AdmittedAt != nil {
+			periods, err := admittedQuotaPeriods(tx, job.RequestID, *job.AdmittedAt)
+			if err != nil {
+				return err
+			}
 			for _, period := range []struct {
 				scope  string
 				bucket string
 			}{
-				{scope: "day", bucket: dayBucket(*job.AdmittedAt)},
-				{scope: "month", bucket: monthBucket(*job.AdmittedAt)},
+				{scope: "day", bucket: periods.Day},
+				{scope: "month", bucket: periods.Month},
 			} {
 				counter, err := s.quotaBucketForUpdate(tx, userQuotaID, period.scope, period.bucket, job.AttributedUserID)
 				if err != nil {

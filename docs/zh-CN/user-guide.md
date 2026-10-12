@@ -20,7 +20,7 @@ Language: [English](../user-guide.md) | 简体中文 | [日本語](../ja/user-gu
 1. 打开 **Key 管理**，创建或复制 API Key。新 Key 只展示一次。
 2. TokenHub 会自动把个人 Key 归入已分配项目；尚未分配项目时归入平台默认项目。
 3. 调用 `GET /v1/models` 查看这个 Key 可用的模型列表。
-4. 选择一个模型 ID，调用 `POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1/responses` 或 `POST /v1/embeddings`。
+4. 选择一个模型 ID，调用 `POST /v1/chat/completions`、`POST /v1/messages`、`POST /v1/responses`、`POST /v1/embeddings`、`POST /v1/rerank`。
 5. 在 **用量统计** 和 **请求日志** 中查看请求、Token、成本和错误。
 
 控制台中的「接口文档」仍是面向上手的引导页。需要完整的交互式和机器可读网关合约时，请在私有部署中打开 `http://localhost:8080/docs`，或将 `http://localhost:8080/openapi.json` 导入 API 客户端、SDK 生成器、测试工具或企业 API 目录。文档页中输入的项目 Key 只保存在浏览器内存中。
@@ -37,7 +37,7 @@ Language: [English](../user-guide.md) | 简体中文 | [日本語](../ja/user-gu
 
 在 **Key 管理** 中点击某个 Key 的「用量」，即可打开独立用量页。页面展示请求数、成功率、延迟、详细 Token 分类、对外预估成本、模型与错误分布，以及可分页的请求明细。可以选择最近 7 天、30 天、90 天，或者最长 366 天的自定义 UTC 日期范围。
 
-额度区域会把当前 UTC 日/月计数与有效上限进行比较；有效上限由 Key、项目、团队和全局额度策略合并后得出。统计严格属于当前保存的 Key ID，轮换前后的 Key 只展示关联关系，不会合并用量。启用审计快照时，请求内容仍遵循现有的脱敏和截断规则，接口永远不会返回完整 API Key。
+额度区域会按管理员配置的配额时区（`quota_timezone`，默认 UTC）统计当前日/月计数，并与有效上限比较；有效上限由 Key、项目、团队和全局额度策略合并后得出。每日配额在该时区的零点重置，每月配额在该时区每月第一天的零点重置。用量日期筛选仍使用 UTC。统计严格属于当前保存的 Key ID，轮换前后的 Key 只展示关联关系，不会合并用量。启用审计快照时，请求内容仍遵循现有的脱敏和截断规则，接口永远不会返回完整 API Key。
 
 ## 在演练场测试模型
 

@@ -14,6 +14,11 @@ export const adminWorkflowTranslations = {
     "请设置新的控制台登录密码。": "Set a new console login password.",
     "重置密码": "Reset Password",
     "首次登录授权": "First-login Authorization",
+    "适合 {name} 企业应用，常用端点和 Claim 已预置。": "Best for {name} enterprise apps; common endpoints and claims are prefilled.",
+    "当前账号没有访问 {label} 的权限。页面已隐藏无权限数据；如需查看或管理，请联系管理员调整角色或项目成员权限。": "This account does not have permission to access {label}. Data outside your permission scope is hidden; ask an admin to adjust your role or project membership if needed.",
+    "已隐藏无权限数据：{summary}。当前页面只展示你有权限查看的内容。": "Hidden due to insufficient permission: {summary}. This page only shows content you can access.",
+    "{seconds}s 后可关闭": "Close in {seconds}s",
+    "第 {start}-{end} 条，共 {total} 条": "{start}-{end} of {total}",
   },
   ja: {
     "SSO": "SSO",
@@ -30,5 +35,10 @@ export const adminWorkflowTranslations = {
     "请设置新的控制台登录密码。": "コンソールログイン用の新しいパスワードを設定してください。",
     "重置密码": "パスワードをリセット",
     "首次登录授权": "初回ログイン認可",
+    "适合 {name} 企业应用，常用端点和 Claim 已预置。": "{name} の企業アプリ向けです。一般的なエンドポイントと Claim を事前入力します。",
+    "当前账号没有访问 {label} 的权限。页面已隐藏无权限数据；如需查看或管理，请联系管理员调整角色或项目成员权限。": "このアカウントには {label} へのアクセス権限がありません。権限外のデータは非表示です。必要に応じて管理者にロールまたはプロジェクトメンバー権限の調整を依頼してください。",
+    "已隐藏无权限数据：{summary}。当前页面只展示你有权限查看的内容。": "権限不足のため非表示: {summary}。このページにはアクセス可能な内容のみ表示します。",
+    "{seconds}s 后可关闭": "{seconds} 秒後に閉じる",
+    "第 {start}-{end} 条，共 {total} 条": "{start}-{end} / {total} 件",
   },
 } satisfies Record<"en" | "ja", Record<string, string>>;

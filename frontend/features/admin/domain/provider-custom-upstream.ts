@@ -59,12 +59,12 @@ export function providerCatalogDiscoveryRouteID(catalogID: string, entry: Provid
 }
 
 export function providerCatalogAPIKeyRequired(catalogID: string, entry: ProviderCatalogEntry | undefined, actions: PluginActionDescriptor[] = [], providerTypeOptions: ProviderAuthModeOption[] = [], currentProviderType = "") {
-  const providerType = catalogID === "custom" ? currentProviderType || defaultProviderTypeValue(providerTypeOptions) : entry?.type;
+  const providerType = currentProviderType || (catalogID === "custom" ? defaultProviderTypeValue(providerTypeOptions) : entry?.type);
   const option = providerTypeOptions.find((item) => item.value === providerType);
   if (option?.apiKeyRequired === false) return false;
   if (option?.apiKeyRequired === true) return true;
   if (catalogID === "custom") return true;
-  const action = providerCatalogModelsPreviewAction(entry, actions);
+  const action = providerCatalogModelsPreviewAction(entry && providerType ? { ...entry, type: providerType } : entry, actions);
   if (!action) return true;
   return pluginActionRequiredFields(action).has("api_key");
 }

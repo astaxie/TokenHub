@@ -78,11 +78,12 @@ TokenHub separates everyday model usage, team governance, and platform administr
 - Cost controls for token budgets, provider spend comparison, model choice, and future caching-driven savings.
 - Identity source configuration for OAuth/OIDC enterprise sign-in, plus RBAC and audit trails.
 - OpenAI-compatible model APIs: `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`; Anthropic Messages APIs: `/v1/messages`, `/v1/messages/count_tokens`.
+- Text retrieval: [dense embeddings](docs/embeddings.md) through `/v1/embeddings` and [document reranking](docs/rerank.md) through `/v1/rerank`, with provider-specific protocol configuration.
 - OpenAI-compatible image generation and reference-image editing through `/v1/images/generations` and `/v1/images/edits`, with asynchronous jobs and server-side image retention.
 - Clean console with compact role-aware navigation, global search, light/dark mode, and split-view API documentation.
 - SQLite-first private deployment with native systemd and Docker Compose options.
 - PostgreSQL supports multi-instance deployments: share state through remote PostgreSQL, scale frontend and backend replicas horizontally, and configure connection pools. See the [deployment guide](docs/deployment.md) and [PostgreSQL setup guide](docs/postgresql-setup.md).
-- Console language switching for English, Chinese, and Japanese.
+- Console language switching for English, Chinese, Japanese, and Russian.
 
 ## Provider Ecosystem
 
@@ -210,9 +211,21 @@ TokenHub grows through product feedback, gateway integrations, documentation, te
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/FaustMont">
+        <img src="https://avatars.githubusercontent.com/u/9304306?v=4" width="80px" alt="FaustMont" />
+        <br /><sub><b>FaustMont</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/wangle201210">
         <img src="https://avatars.githubusercontent.com/u/19949348?v=4" width="80px" alt="wangle201210" />
         <br /><sub><b>wangle201210</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/jackiesre721">
+        <img src="https://avatars.githubusercontent.com/u/8868514?v=4" width="80px" alt="jackiesre721" />
+        <br /><sub><b>jackiesre721</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -233,6 +246,8 @@ TokenHub grows through product feedback, gateway integrations, documentation, te
         <br /><sub><b>exgliuzhi</b></sub>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/hoorayman">
         <img src="https://avatars.githubusercontent.com/u/73151874?v=4" width="80px" alt="hoorayman" />
@@ -245,8 +260,6 @@ TokenHub grows through product feedback, gateway integrations, documentation, te
         <br /><sub><b>debin-ge</b></sub>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/ocass-chen">
         <img src="https://avatars.githubusercontent.com/u/172055494?v=4" width="80px" alt="ocass-chen" />
@@ -254,9 +267,21 @@ TokenHub grows through product feedback, gateway integrations, documentation, te
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/ACwisdom">
+        <img src="https://avatars.githubusercontent.com/u/212327199?v=4" width="80px" alt="ACwisdom" />
+        <br /><sub><b>ACwisdom</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/AnxForever">
         <img src="https://avatars.githubusercontent.com/u/130662349?v=4" width="80px" alt="AnxForever" />
         <br /><sub><b>AnxForever</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/DeanHH">
+        <img src="https://avatars.githubusercontent.com/u/1842770?v=4" width="80px" alt="DeanHH" />
+        <br /><sub><b>DeanHH</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -271,6 +296,8 @@ TokenHub grows through product feedback, gateway integrations, documentation, te
         <br /><sub><b>longzhang83</b></sub>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/lxm">
         <img src="https://avatars.githubusercontent.com/u/1918195?v=4" width="80px" alt="lxm" />

@@ -103,13 +103,14 @@ func (s *Server) runGatewayResponsesRequestTransformHooksForProtocol(ctx context
 
 func (s *Server) runGatewayEmbeddingsRequestTransformHooks(ctx context.Context, call CallContext, route RouteSelection, req *EmbeddingsRequest) error {
 	return s.runGatewayRequestTransformHooks(ctx, call, route, *req, providerRouteProtocolEmbeddings, func(data json.RawMessage) error {
-		originalModel := req.Model
-		var patched EmbeddingsRequest
-		if err := decodeGatewayHookRequestPatch(data, &patched); err != nil {
+		patched := *req
+		if err := applyEmbeddingsGatewayRequestPatch(&patched, data); err != nil {
 			return err
 		}
-		if patched.Model != originalModel {
-			return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin cannot change the requested model")
+		before, _ := json.Marshal(req.Input)
+		after, _ := json.Marshal(patched.Input)
+		if string(before) != string(after) {
+			return NewHTTPError(502, "gateway_hook_patch_invalid", "Route-scoped embedding hooks cannot change input after cache lookup")
 		}
 		*req = patched
 		return nil

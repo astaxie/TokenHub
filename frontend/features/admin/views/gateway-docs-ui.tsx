@@ -6,6 +6,7 @@ import { type AppLanguage, tx } from "../i18n/runtime";
 export function gatewayLanguageLabel(language: AppLanguage) {
   if (language === "zh-CN") return "中文";
   if (language === "ja") return "日本語";
+  if (language === "ru") return "Русский";
   return "English";
 }
 

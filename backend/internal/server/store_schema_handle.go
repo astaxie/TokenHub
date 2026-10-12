@@ -139,7 +139,47 @@ func SchemaMigrationRegistry() []dbschema.Migration {
 					ADD COLUMN IF NOT EXISTS "redis_user_lease_held" boolean`,
 			},
 		},
+		{
+			// Version 6 belongs to add-jev-response-bindings on the main
+			// line; this expansion registers as 7 so the frozen registry
+			// keeps one migration per version.
+			Version: 7,
+			Name:    "add-image-job-worker-instance",
+			Go:      addImageJobWorkerInstance,
+			// The column plus its index per dialect.
+			StatementBudget:  8,
+			ChecksumOverride: "tokenhub-schema-image-job-worker-instance-v1",
+		},
 	}
+}
+
+func addImageJobWorkerInstance(ctx context.Context, db dbschema.MigrationExecer) error {
+	// current_schema() is available on PostgreSQL; SQLite reports an ordinary
+	// statement error without aborting its transaction, so this stays a safe,
+	// read-only dialect probe (same pattern as the audit correlation migration).
+	var schema string
+	if err := db.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err == nil {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE "image_jobs" ADD COLUMN IF NOT EXISTS "worker_instance" text`); err != nil {
+			return fmt.Errorf("add postgres column image_jobs.worker_instance: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS "idx_image_jobs_worker_instance" ON "image_jobs" ("worker_instance")`); err != nil {
+			return fmt.Errorf("index postgres column image_jobs.worker_instance: %w", err)
+		}
+		return nil
+	}
+	exists, err := sqliteColumnExists(ctx, db, "image_jobs", "worker_instance")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE "image_jobs" ADD COLUMN "worker_instance" text`); err != nil {
+			return fmt.Errorf("add sqlite column image_jobs.worker_instance: %w", err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS "idx_image_jobs_worker_instance" ON "image_jobs" ("worker_instance")`); err != nil {
+		return fmt.Errorf("index sqlite column image_jobs.worker_instance: %w", err)
+	}
+	return nil
 }
 
 func addGranularBillingColumnsSQLite(ctx context.Context, db dbschema.MigrationExecer) error {

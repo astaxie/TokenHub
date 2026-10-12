@@ -85,14 +85,14 @@ func TestCodexSubscriptionModelsUsesLiveVisibleCatalog(t *testing.T) {
 
 func TestCodexSubscriptionModelsUsesGPT6CapableClientFingerprint(t *testing.T) {
 	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		if got := req.URL.Query().Get("client_version"); got != "0.155.0" {
-			t.Fatalf("client_version = %q, want 0.155.0", got)
+		if got := req.URL.Query().Get("client_version"); got != "0.159.3" {
+			t.Fatalf("client_version = %q, want 0.159.3", got)
 		}
-		if got := req.Header.Get("Version"); got != "0.155.0" {
-			t.Fatalf("Version header = %q, want 0.155.0", got)
+		if got := req.Header.Get("Version"); got != "0.159.3" {
+			t.Fatalf("Version header = %q, want 0.159.3", got)
 		}
-		if got := req.Header.Get("User-Agent"); !strings.HasPrefix(got, "codex_cli_rs/0.155.0 ") {
-			t.Fatalf("User-Agent = %q, want Codex CLI 0.155.0", got)
+		if got := req.Header.Get("User-Agent"); !strings.HasPrefix(got, "codex_cli_rs/0.159.3 ") {
+			t.Fatalf("User-Agent = %q, want Codex CLI 0.159.3", got)
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,

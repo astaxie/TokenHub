@@ -10,6 +10,8 @@ const defaultOutputTokenReservation int64 = 4096
 
 func requestTokenReservation(payload any) int64 {
 	switch request := payload.(type) {
+	case SystemOneRequest:
+		return systemOneTokenReservation(request)
 	case ChatCompletionRequest:
 		input := saturatingAddNonNegative(estimateChatMessagesTokens(request.Messages), estimateJSONTokens(request.Tools))
 		input = saturatingAddNonNegative(input, estimateJSONTokens(request.ToolChoice))
@@ -20,8 +22,14 @@ func requestTokenReservation(payload any) int64 {
 		input = saturatingAddNonNegative(input, estimateRawJSONTokens(request.raw["tools"]))
 		input = saturatingAddNonNegative(input, estimateRawJSONTokens(request.raw["text"]))
 		return saturatingAddNonNegative(input, outputTokenReservation(int64(request.MaxTokens)))
+	case RerankRequest:
+		tokens := EstimateTextTokens(request.Instruction)
+		for _, document := range request.Documents {
+			tokens = saturatingAddNonNegative(tokens, EstimateTextTokens(request.Query+" "+document))
+		}
+		return tokens
 	case EmbeddingsRequest:
-		return EstimateTextTokens(EmbeddingInputText(request.Input))
+		return embeddingTokenReservation(request.Input)
 	case map[string]json.RawMessage:
 		return compactResponsesTokenReservation(request)
 	default:

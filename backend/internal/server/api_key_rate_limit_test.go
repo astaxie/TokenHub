@@ -530,6 +530,20 @@ func TestProjectMinuteLimitsApplyIndependentlyPerKeyUnderConcurrency(t *testing.
 
 func TestAPIKeyRPMIsSharedAcrossCompatibleEndpoints(t *testing.T) {
 	store, secret := newRateLimitedGateway(t, APIKey{RateLimitRPM: int64Pointer(2)})
+	store.AddModel(Model{Name: "rpm-embedding", Modality: "embedding", EmbeddingPriceUSDPer1M: 1, Status: StatusActive})
+	for _, route := range store.ListRoutes() {
+		if route.ModelName == "gpt-4.1-mini" {
+			route.ID = "rpm-embedding-route"
+			route.ModelName = "rpm-embedding"
+			store.AddRoute(route)
+			break
+		}
+	}
+	key := store.ListAPIKeys()[0]
+	key.Allowed = append(key.Allowed, "rpm-embedding")
+	if _, err := store.UpdateAPIKey(key.ID, key); err != nil {
+		t.Fatal(err)
+	}
 	app := New(store).Handler()
 	responses := doJSON(t, app, http.MethodPost, "/v1/responses", map[string]any{
 		"model":             "gpt-4.1-mini",
@@ -540,7 +554,7 @@ func TestAPIKeyRPMIsSharedAcrossCompatibleEndpoints(t *testing.T) {
 		t.Fatalf("responses request expected 200, got %d: %s", responses.Code, responses.Body)
 	}
 	embeddings := doJSON(t, app, http.MethodPost, "/v1/embeddings", map[string]any{
-		"model": "gpt-4.1-mini",
+		"model": "rpm-embedding",
 		"input": "two",
 	}, secret)
 	if embeddings.Code != http.StatusOK {

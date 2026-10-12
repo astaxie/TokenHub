@@ -16,19 +16,20 @@ import (
 // type advertises. Capabilities gate routing and the admin adapter listing, so
 // an unintended change here is a product behaviour change, not a refactor.
 var builtinAdapterCapabilities = map[string][]AdapterCapability{
+	providerTypeSafe: {AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilitySystemOne},
 	ProviderMock: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityResponses,
 	},
 	ProviderOpenAI: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
-		AdapterCapabilityEmbeddings, AdapterCapabilityImageGenerate,
+		AdapterCapabilityEmbeddings, AdapterCapabilityImageGenerate, AdapterCapabilityMedia,
 		AdapterCapabilityProbe, AdapterCapabilityResponses,
 		AdapterCapabilityResponseStream,
 	},
 	ProviderOpenAICompatible: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
-		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
+		AdapterCapabilityEmbeddings, AdapterCapabilityMedia, AdapterCapabilityProbe, AdapterCapabilityRerank,
 		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
 	},
 	ProviderOpenAICodex: {
@@ -47,7 +48,7 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	},
 	ProviderGemini: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
-		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
+		AdapterCapabilityEmbeddings, AdapterCapabilityGeminiMedia, AdapterCapabilityProbe,
 	},
 	ProviderDify: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
@@ -66,17 +67,18 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	},
 	"qwen": {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
-		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
+		AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityRerank,
 		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
 	},
 	"local": {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
-		AdapterCapabilityEmbeddings, AdapterCapabilityProbe,
+		AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityRerank,
 		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
 	},
 }
 
 var builtinAdapterPlugins = map[string]string{
+	providerTypeSafe:         "tokenhub.provider.typesafe",
 	ProviderMock:             "tokenhub.provider.mock",
 	ProviderOpenAI:           "tokenhub.provider.openai",
 	ProviderOpenAICompatible: "tokenhub.provider.openai-compatible",
@@ -239,7 +241,7 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !compatible.ProviderPolicy.DefaultCatalogProviderType {
 		t.Fatal("OpenAI-compatible should declare itself as the default catalog provider type")
 	}
-	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"chat/completions", "embeddings", "responses"}) {
+	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"audio/speech", "audio/transcriptions", "audio/translations", "chat/completions", "embeddings", "images/edits", "images/generations", "images/variations", "rerank", "responses"}) {
 		t.Fatalf("OpenAI-compatible route protocols = %v", compatible.ProviderPolicy.RouteProtocols)
 	}
 
@@ -250,7 +252,7 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if deepSeek.ProviderPolicy.PreserveReasoningContent == nil || !*deepSeek.ProviderPolicy.PreserveReasoningContent {
 		t.Fatalf("DeepSeek preserve reasoning content policy = %v, want true", deepSeek.ProviderPolicy.PreserveReasoningContent)
 	}
-	if !reflect.DeepEqual(deepSeek.ProviderPolicy.ResponsesModelAllowlist, []string{"deepseek-v4-flash", "deepseek-v4-pro"}) {
+	if !reflect.DeepEqual(deepSeek.ProviderPolicy.ResponsesModelAllowlist, []string{"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"}) {
 		t.Fatalf("DeepSeek Responses model allowlist = %v", deepSeek.ProviderPolicy.ResponsesModelAllowlist)
 	}
 }

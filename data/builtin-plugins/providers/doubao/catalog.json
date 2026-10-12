@@ -10,6 +10,212 @@
   },
   "models": [
     {
+      "id": "doubao-seed-2-1-turbo-260628",
+      "name": "Doubao Seed 2.1 Turbo",
+      "display_name": "Doubao Seed 2.1 Turbo",
+      "family": "doubao",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.volcengine.com/docs/ark/model-list?lang=en",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Verified CNY standard online inference prices; no USD conversion supplied. Cache storage CNY 0.017 per million tokens per hour; flex and priority tiers differ.",
+        "original_currency": "CNY",
+        "original_unit": "per_million_tokens",
+        "original_prices": "{\"input\":3,\"output\":15,\"cache_read\":0.6}",
+        "pricing_source": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh",
+        "default_output_tokens": "4096",
+        "reasoning_source": "https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "262144"
+      },
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "category": "doubao",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "doubao-seed-2-1-lite-260915",
+      "name": "Doubao Seed 2.1 Lite",
+      "display_name": "Doubao Seed 2.1 Lite",
+      "family": "doubao",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.volcengine.com/docs/ark/model-list?lang=en",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Verified CNY standard online inference prices; no USD conversion supplied. Cache storage CNY 0.017 per million tokens per hour; flex and priority tiers differ.",
+        "original_currency": "CNY",
+        "original_unit": "per_million_tokens",
+        "original_prices": "{\"input\":0.8,\"output\":2.7,\"cache_read\":0.16,\"audio_input\":12,\"audio_cache_read\":2.4}",
+        "pricing_source": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh",
+        "default_output_tokens": "4096",
+        "reasoning_source": "https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "262144"
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 262144
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "category": "doubao",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "doubao-seed-2-1-pro-260915",
+      "name": "Doubao Seed 2.1 Pro",
+      "display_name": "Doubao Seed 2.1 Pro",
+      "family": "doubao",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.volcengine.com/docs/ark/model-list?lang=en",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Verified CNY standard online inference prices; no USD conversion supplied. Cache storage CNY 0.017 per million tokens per hour; flex and priority tiers differ.",
+        "original_currency": "CNY",
+        "original_unit": "per_million_tokens",
+        "original_prices": "{\"input\":6,\"output\":30,\"cache_read\":1.2}",
+        "pricing_source": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh",
+        "default_output_tokens": "4096",
+        "reasoning_source": "https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "262144"
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 262144
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "category": "doubao",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "doubao-seed-evolving",
+      "name": "Doubao Seed Evolving",
+      "display_name": "Doubao Seed Evolving",
+      "family": "doubao",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.volcengine.com/docs/ark/model-list?lang=en",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "pricing_status": "unverified",
+        "pricing_note": "Verified CNY standard online inference prices; no USD conversion supplied. Cache storage CNY 0.017 per million tokens per hour; flex and priority tiers differ.",
+        "original_currency": "CNY",
+        "original_unit": "per_million_tokens",
+        "original_prices": "{\"input\":6,\"output\":30,\"cache_read\":1.2}",
+        "pricing_source": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh",
+        "default_output_tokens": "4096",
+        "reasoning_source": "https://docs.volcengine.com/docs/ark/deep-thinking?lang=zh",
+        "alias_note": "Rolling latest model; preserve alias semantics rather than pinning it silently.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "262144"
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 262144
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "category": "doubao",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
       "id": "deepseek-v3-2-251201",
       "name": "deepseek-v3-2-251201",
       "display_name": "deepseek-v3-2-251201",
@@ -141,28 +347,20 @@
       },
       "metadata": {
         "source": "volcengine-docs",
-        "max_thinking_tokens": 384000,
-        "max_input_tokens": 1024000,
+        "max_thinking_tokens": "384000",
+        "max_input_tokens": "1024000",
         "canonical_id": "deepseek-v4-pro",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=deepseek-v4-pro",
-        "section_titles": [
-          "上下文缓存能力",
-          "工具调用能力",
-          "文本生成能力",
-          "深度思考能力"
-        ],
-        "capabilities": [
-          "工具调用",
-          "文本生成",
-          "深度思考"
-        ],
-        "raw_limits": [
-          "上下文窗口: 1024k 最大输入: 1024k 最大回答(默认 4k): 384k 最大思维链: 384k",
-          "最大 RPM: 15000 最大 TPM: 1500000"
-        ],
-        "features": [
-          "context-cache"
-        ]
+        "section_titles": "上下文缓存能力,工具调用能力,文本生成能力,深度思考能力",
+        "capabilities": "工具调用,文本生成,深度思考",
+        "raw_limits": "上下文窗口: 1024k 最大输入: 1024k 最大回答(默认 4k): 384k 最大思维链: 384k,最大 RPM: 15000 最大 TPM: 1500000",
+        "features": "context-cache",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "deepseek-v4-1-flash-260910",
+        "shutdown_at": "2026-11-24T14:00:00+08:00"
       }
     },
     {
@@ -378,15 +576,15 @@
         "source": "volcengine-docs",
         "canonical_id": "doubao-embedding-vision",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-embedding-vision",
-        "section_titles": [
-          "向量化能力"
-        ],
-        "capabilities": [
-          "多模态向量化"
-        ],
-        "raw_limits": [
-          "最大 RPM: 15000 最大 TPM: 1200000"
-        ]
+        "section_titles": "向量化能力",
+        "capabilities": "多模态向量化",
+        "raw_limits": "最大 RPM: 15000 最大 TPM: 1200000",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-embedding-vision-251215",
+        "lifecycle_note": "EOM only, existing endpoints continue; no EOS applies. Rebuild stored vector indexes before embedding migration."
       }
     },
     {
@@ -813,31 +1011,20 @@
       },
       "metadata": {
         "source": "volcengine-docs",
-        "max_thinking_tokens": 128000,
-        "max_input_tokens": 224000,
+        "max_thinking_tokens": "128000",
+        "max_input_tokens": "224000",
         "canonical_id": "doubao-seed-2-0-code",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-code",
-        "section_titles": [
-          "上下文缓存能力",
-          "工具调用能力",
-          "文本生成能力",
-          "深度思考能力",
-          "视觉理解能力"
-        ],
-        "capabilities": [
-          "多模态理解",
-          "工具调用",
-          "文本生成",
-          "深度思考",
-          "视觉定位"
-        ],
-        "raw_limits": [
-          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
-          "最大 RPM: 30000 最大 TPM: 5000000"
-        ],
-        "features": [
-          "context-cache"
-        ]
+        "section_titles": "上下文缓存能力,工具调用能力,文本生成能力,深度思考能力,视觉理解能力",
+        "capabilities": "多模态理解,工具调用,文本生成,深度思考,视觉定位",
+        "raw_limits": "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k,最大 RPM: 30000 最大 TPM: 5000000",
+        "features": "context-cache",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-seed-evolving",
+        "shutdown_at": "2026-11-24T14:00:00+08:00"
       }
     },
     {
@@ -870,33 +1057,20 @@
       },
       "metadata": {
         "source": "volcengine-docs",
-        "max_thinking_tokens": 128000,
-        "max_input_tokens": 224000,
+        "max_thinking_tokens": "128000",
+        "max_input_tokens": "224000",
         "canonical_id": "doubao-seed-2-0-lite",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-lite",
-        "section_titles": [
-          "上下文缓存能力",
-          "工具调用能力",
-          "文本生成能力",
-          "深度思考能力",
-          "结构化输出能力(beta)",
-          "视觉理解能力"
-        ],
-        "capabilities": [
-          "多模态理解",
-          "工具调用",
-          "文本生成",
-          "深度思考",
-          "结构化输出",
-          "视觉定位"
-        ],
-        "raw_limits": [
-          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
-          "最大 RPM: 30000 最大 TPM: 5000000"
-        ],
-        "features": [
-          "context-cache"
-        ]
+        "section_titles": "上下文缓存能力,工具调用能力,文本生成能力,深度思考能力,结构化输出能力(beta),视觉理解能力",
+        "capabilities": "多模态理解,工具调用,文本生成,深度思考,结构化输出,视觉定位",
+        "raw_limits": "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k,最大 RPM: 30000 最大 TPM: 5000000",
+        "features": "context-cache",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-seed-2-1-lite-260915",
+        "shutdown_at": "2026-10-22T14:00:00+08:00"
       }
     },
     {
@@ -984,33 +1158,20 @@
       },
       "metadata": {
         "source": "volcengine-docs",
-        "max_thinking_tokens": 128000,
-        "max_input_tokens": 224000,
+        "max_thinking_tokens": "128000",
+        "max_input_tokens": "224000",
         "canonical_id": "doubao-seed-2-0-mini",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-mini",
-        "section_titles": [
-          "上下文缓存能力",
-          "工具调用能力",
-          "文本生成能力",
-          "深度思考能力",
-          "结构化输出能力(beta)",
-          "视觉理解能力"
-        ],
-        "capabilities": [
-          "多模态理解",
-          "工具调用",
-          "文本生成",
-          "深度思考",
-          "结构化输出",
-          "视觉定位"
-        ],
-        "raw_limits": [
-          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
-          "最大 RPM: 30000 最大 TPM: 5000000"
-        ],
-        "features": [
-          "context-cache"
-        ]
+        "section_titles": "上下文缓存能力,工具调用能力,文本生成能力,深度思考能力,结构化输出能力(beta),视觉理解能力",
+        "capabilities": "多模态理解,工具调用,文本生成,深度思考,结构化输出,视觉定位",
+        "raw_limits": "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k,最大 RPM: 30000 最大 TPM: 5000000",
+        "features": "context-cache",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-seed-2-0-mini-260428",
+        "shutdown_at": "2026-10-22T14:00:00+08:00"
       }
     },
     {
@@ -1097,31 +1258,20 @@
       },
       "metadata": {
         "source": "volcengine-docs",
-        "max_thinking_tokens": 128000,
-        "max_input_tokens": 224000,
+        "max_thinking_tokens": "128000",
+        "max_input_tokens": "224000",
         "canonical_id": "doubao-seed-2-0-pro",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seed-2-0-pro",
-        "section_titles": [
-          "上下文缓存能力",
-          "工具调用能力",
-          "文本生成能力",
-          "深度思考能力",
-          "视觉理解能力"
-        ],
-        "capabilities": [
-          "多模态理解",
-          "工具调用",
-          "文本生成",
-          "深度思考",
-          "视觉定位"
-        ],
-        "raw_limits": [
-          "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k",
-          "最大 RPM: 30000 最大 TPM: 5000000"
-        ],
-        "features": [
-          "context-cache"
-        ]
+        "section_titles": "上下文缓存能力,工具调用能力,文本生成能力,深度思考能力,视觉理解能力",
+        "capabilities": "多模态理解,工具调用,文本生成,深度思考,视觉定位",
+        "raw_limits": "上下文窗口: 256k 最大输入: 224k 最大回答(默认 4k): 128k 最大思维链: 128k,最大 RPM: 30000 最大 TPM: 5000000",
+        "features": "context-cache",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-seed-2-1-pro-260915",
+        "shutdown_at": "2026-11-24T14:00:00+08:00"
       }
     },
     {
@@ -1299,16 +1449,15 @@
         "source": "volcengine-docs",
         "canonical_id": "doubao-seedance-1-0-pro",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedance-1-0-pro&projectName=default",
-        "section_titles": [
-          "视频生成能力"
-        ],
-        "capabilities": [
-          "图生视频",
-          "文生视频"
-        ],
-        "raw_limits": [
-          "default: 最大 RPM: 600 最大并发: 10 flex: 最大 TPD: 5000亿"
-        ]
+        "section_titles": "视频生成能力",
+        "capabilities": "图生视频,文生视频",
+        "raw_limits": "default: 最大 RPM: 600 最大并发: 10 flex: 最大 TPD: 5000亿",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-seedance-2-0-mini-260615",
+        "shutdown_at": "2026-11-24T14:00:00+08:00"
       }
     },
     {
@@ -1340,16 +1489,15 @@
         "source": "volcengine-docs",
         "canonical_id": "doubao-seedance-1-0-pro-fast",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedance-1-0-pro-fast&projectName=default",
-        "section_titles": [
-          "视频生成能力"
-        ],
-        "capabilities": [
-          "图生视频",
-          "文生视频"
-        ],
-        "raw_limits": [
-          "default: 最大 RPM: 600 最大并发: 10 flex: 最大 TPD: 5000亿"
-        ]
+        "section_titles": "视频生成能力",
+        "capabilities": "图生视频,文生视频",
+        "raw_limits": "default: 最大 RPM: 600 最大并发: 10 flex: 最大 TPD: 5000亿",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-seedance-2-0-mini-260615",
+        "shutdown_at": "2026-11-24T14:00:00+08:00"
       }
     },
     {
@@ -1501,9 +1649,13 @@
         "source": "volcengine-docs",
         "canonical_id": "doubao-seedream-4-0",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedream-4-0",
-        "section_titles": [
-          "图片生成能力"
-        ]
+        "section_titles": "图片生成能力",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-seedream-4-0-20260415",
+        "shutdown_at": "2026-11-24T14:00:00+08:00"
       }
     },
     {
@@ -1530,9 +1682,13 @@
         "source": "volcengine-docs",
         "canonical_id": "doubao-seedream-4-5",
         "detail_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model/detail?Id=doubao-seedream-4-5",
-        "section_titles": [
-          "图片生成能力"
-        ]
+        "section_titles": "图片生成能力",
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "doubao-seedream-5-0-pro-260628",
+        "shutdown_at": "2026-11-24T14:00:00+08:00"
       }
     },
     {

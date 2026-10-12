@@ -1,0 +1,172 @@
+# Default values for the TokenHub Helm chart.
+#
+# One pod serves both the Go API/gateway (port 8080) and the Next.js admin
+# console (port 3000) via tokenhub-run; the container exits when either process
+# dies, so Kubernetes restarts the pod on any process failure. All durable
+# state lives in PostgreSQL; runtime-installed plugin packages live on an
+# emptyDir, and generated image bytes need the shared storage configured under
+# imageStorage when more than one replica runs.
+
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/astaxie/tokenhub-backend
+  # Defaults to the chart appVersion when empty. Any configuration that lets
+  # two pods overlap needs an image with instance-scoped image-job recovery,
+  # first shipped in a release after 0.8.0; see confirmInstanceScopedRecovery.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# One replica never runs two pods at once, which keeps image-job recovery
+# safe even with the 0.8.0 image (see confirmInstanceScopedRecovery). Scale
+# above one only after pinning such an image.
+replicaCount: 1
+
+# Recreate fully terminates the old pod before the replacement starts, so
+# upgrades and `kubectl rollout restart` never overlap pods. RollingUpdate
+# keeps the old pod serving while the new one starts; it allows overlap and
+# therefore needs the same instance-scoped recovery image as multi-replica
+# installs (see confirmInstanceScopedRecovery).
+strategy: Recreate
+
+# Attestation for pod overlap. The published 0.8.0 image fails every
+# unfinished image job in the shared database when any replica starts or
+# stops, including jobs still running on a live peer. The chart refuses to
+# render any configuration that lets two pods overlap (replicaCount above 1,
+# or strategy RollingUpdate) unless image.tag pins a release containing
+# instance-scoped image-job recovery (first shipped in a release after 0.8.0)
+# and this is set to true to confirm it.
+confirmInstanceScopedRecovery: false
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Backend run environment. "prod" rejects the built-in development admin token
+# and credentialed cross-origin requests; override only for local experiments.
+environment: prod
+
+# Browser-facing API base URL the admin console calls from the browser.
+# Derived from the ingress scheme and host when ingress.enabled is true; set
+# it explicitly when the console is published another way (load balancer,
+# remote port-forward). Unset with no ingress keeps the frontend default,
+# which only works for port-forwarding on the operator's own machine.
+apiBaseUrl: ""
+
+# Storage for generated images. The database stores asset metadata while the
+# image bytes live in the directory below, so every replica must see the same
+# volume. "ephemeral" keeps bytes in the container filesystem: acceptable for
+# a single test replica, but lost on pod replacement and unreadable by peer
+# replicas. Use "pvc" (the chart renders a ReadWriteMany claim) or
+# "existingClaim" for multi-replica production installs.
+imageStorage:
+  # ephemeral | pvc | existingClaim
+  type: ephemeral
+  # Rendered when type is pvc.
+  size: 10Gi
+  storageClass: ""
+  # Required when type is existingClaim.
+  existingClaim: ""
+  mountPath: /app/data/images
+
+# The ingress mirrors deploy/nginx.multi-instance.conf: API and probe paths go
+# to the API port, every other path serves the console port. The default
+# annotations assume ingress-nginx; override them for other controllers.
+# Streaming responses (SSE) need buffering off and read/send timeouts above
+# TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS. Keep proxy-body-size at or
+# above TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES (32 MiB by default).
+ingress:
+  enabled: false
+  className: ""
+  # Required when ingress.enabled is true, for example tokenhub.example.com.
+  host: ""
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
+
+# Required: PostgreSQL connection URL, either inline or from an existing
+# secret. Example:
+#   postgresql://tokenhub:password@postgres.example.com:5432/tokenhub?sslmode=require
+database:
+  url: ""
+  existingSecret: ""
+
+# Optional built-in PostgreSQL for quick testing only; not sized or tuned for
+# production. Any bitnami/postgresql subchart value can be added here, for
+# example postgresql.primary.persistence.size=20Gi.
+postgresql:
+  enabled: false
+  auth:
+    username: tokenhub
+    database: tokenhub
+    password: ""
+  # Pinned chart 16.2.1 references tags removed from docker.io/bitnami when
+  # Broadcom reorganized the bitnami images; point at the legacy repository.
+  image:
+    repository: bitnamilegacy/postgresql
+    tag: 17.1.0-debian-12-r0
+
+# Name of an existing secret providing the credential keys; when set, the
+# chart does not render a credentials secret of its own. The database URL is
+# unaffected: it still comes from database.url, database.existingSecret, the
+# bundled PostgreSQL, or the External Secrets Operator.
+credentialsSecret: ""
+
+# Secret-valued environment entries. In chart-managed mode each entry is
+# rendered into the credentials secret and referenced as an env entry:
+# TOKENHUB_SECRET_KEY and TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD are required
+# explicit values (the bootstrap password is never generated); any other
+# non-empty key except TOKENHUB_DATABASE_URL is stored as given. With
+# credentialsSecret or externalSecret.enabled the same keys are referenced
+# from that secret instead of being rendered, so provide them there.
+secretEnv:
+  TOKENHUB_SECRET_KEY: ""
+  TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD: ""
+  TOKENHUB_DATABASE_URL: ""
+  # TOKENHUB_METRICS_TOKEN: ""
+
+# Additional environment entries appended after the fixed chart wiring,
+# standard Kubernetes syntax. Use this for any TOKENHUB_* variable documented
+# in docs/deployment.md, for example:
+#
+# extraEnv:
+#   - name: TOKENHUB_METRICS_ENABLED
+#     value: "true"
+#   - name: TOKENHUB_BILLING_REDIS_URL
+#     value: redis://redis.default.svc:6379
+extraEnv: []
+
+# PodMonitor (monitoring.coreos.com/v1) scraping /metrics every 30s. Requires
+# the Prometheus Operator CRDs and TOKENHUB_METRICS_ENABLED=true (enable it via
+# extraEnv, otherwise scrapes fail). The metrics endpoint requires a bearer
+# token: set bearerTokenSecret to the secret holding TOKENHUB_METRICS_TOKEN.
+podMonitor:
+  enabled: false
+  # Labels the Prometheus installation selects, for example: release: prometheus
+  additionalLabels: {}
+  # bearerTokenSecret:
+  #   name: tokenhub-credentials
+  #   key: TOKENHUB_METRICS_TOKEN
+
+# ExternalSecret (external-secrets.io/v1beta1) syncing the credentials secret
+# from an external secret manager (Vault, AWS Secrets Manager, GCP, ...) every
+# 5 minutes. Requires the External Secrets Operator CRDs and a
+# ClusterSecretStore. The remote secret is extracted 1:1 into the chart
+# credentials secret: provide TOKENHUB_SECRET_KEY,
+# TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD, and TOKENHUB_DATABASE_URL there (optional
+# keys such as TOKENHUB_METRICS_TOKEN are picked up too). Mutually exclusive
+# with postgresql.enabled; secretEnv values must stay empty.
+externalSecret:
+  enabled: false
+  # ClusterSecretStore name to sync from.
+  secretStore: ""
+  # Remote secret id, for example tokenhub/prod.
+  sourceSecretId: ""

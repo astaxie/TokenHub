@@ -4,10 +4,28 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestNotificationSecretsRedactSMTPQuotedErrors(t *testing.T) {
+	for _, tt := range []struct{ name, secret string }{
+		{"plain", "smtp-private-password"},
+		{"quote_and_html", `smtp<"private&password>`},
+		{"backslash_and_html", `smtp<\private&password>`},
+		{"control_character", "smtp\x1bprivate-password"},
+		{"nonbreaking_space", "smtp\u00a0private-password"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			channel := AdminResource{Fields: map[string]any{"smtp_password": tt.secret}}
+			diagnostic := (&textproto.Error{Code: 535, Msg: "Rejected password " + tt.secret}).Error()
+			got := redactNotificationChannelSecrets(diagnostic, channel)
+			assertRedactedSMTPRejection(t, got, "")
+		})
+	}
+}
 
 func TestAlertDeliveryCredentialsAreRedactedAcrossAdminSurfaces(t *testing.T) {
 	store := NewMemoryStore()

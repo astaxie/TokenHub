@@ -12,11 +12,13 @@ import (
 type AdapterCapability string
 
 const (
+	AdapterCapabilitySystemOne      AdapterCapability = "systemone"
 	AdapterCapabilityChat           AdapterCapability = "chat"
 	AdapterCapabilityChatStream     AdapterCapability = "chat_stream"
 	AdapterCapabilityResponses      AdapterCapability = "responses"
 	AdapterCapabilityResponseStream AdapterCapability = "responses_stream"
 	AdapterCapabilityEmbeddings     AdapterCapability = "embeddings"
+	AdapterCapabilityRerank         AdapterCapability = "rerank"
 	AdapterCapabilityModels         AdapterCapability = "models"
 	AdapterCapabilityProbe          AdapterCapability = "probe"
 	AdapterCapabilityQuota          AdapterCapability = "quota"
@@ -25,6 +27,8 @@ const (
 	AdapterCapabilityCompact        AdapterCapability = "responses_compact"
 	AdapterCapabilityWebSocket      AdapterCapability = "responses_websocket"
 	AdapterCapabilityImageGenerate  AdapterCapability = "image_generation"
+	AdapterCapabilityMedia          AdapterCapability = "media"
+	AdapterCapabilityGeminiMedia    AdapterCapability = "gemini_media"
 )
 
 type AdapterDescriptor struct {

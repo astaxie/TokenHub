@@ -45,10 +45,14 @@ func (s *Server) hasGatewayStreamTransformHooksForRoute(route RouteSelection, pr
 func (s *Server) newGatewayStreamTransformWriter(ctx context.Context, call CallContext, route RouteSelection, protocol string, sink io.Writer) *gatewayStreamTransformWriter {
 	writer := &gatewayStreamTransformWriter{server: s, ctx: ctx, call: call, route: route, protocol: protocol, sink: sink}
 	writer.decoder = newSSEStreamWriter(writer.handleEvent)
+	if modelHasMediaOutput(call.Model) {
+		writer.decoder.assembler.limit = maxMediaResponseBytes
+	}
 	return writer
 }
 
 func (s *Server) streamChatRouteWithGatewayTransforms(ctx context.Context, call CallContext, route RouteSelection, req ChatCompletionRequest, headers http.Header, writer io.Writer) (Usage, error) {
+	ctx = withMediaChatStreamLimit(ctx, call.Model)
 	streamWriter := writer
 	var transformer *gatewayStreamTransformWriter
 	if s.hasGatewayStreamTransformHooksForRoute(route, providerRouteProtocolChatCompletions) {

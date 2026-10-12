@@ -14,6 +14,14 @@ func (s *Server) runGatewayProviderCallHooks(ctx context.Context, call CallConte
 }
 
 func (s *Server) runGatewayProviderCallHooksOutput(ctx context.Context, call CallContext, route RouteSelection, payload any, protocol string, stream io.Writer) (any, Usage, bool, error) {
+	return s.runGatewayProviderCallHooksOutputWithUsagePresence(ctx, call, route, payload, protocol, stream, nil)
+}
+
+// Usage presence distinguishes an explicit zero override from absent metering.
+func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.Context, call CallContext, route RouteSelection, payload any, protocol string, stream io.Writer, usageReported *bool) (any, Usage, bool, error) {
+	if usageReported != nil {
+		*usageReported = false
+	}
 	hooks := s.gatewayProviderCallHooksForRoute(call, route, protocol, stream != nil)
 	if len(hooks) == 0 {
 		return nil, Usage{}, false, nil
@@ -64,7 +72,7 @@ func (s *Server) runGatewayProviderCallHooksOutput(ctx context.Context, call Cal
 	handled := false
 	for _, result := range report.Results {
 		if patch, ok := result.Writes[pluginmeta.DataProviderResponse]; ok {
-			if err := decodeGatewayHookPayload(patch.Value, &response, "gateway_hook_response_invalid", "Gateway plugin returned an invalid response"); err != nil {
+			if err := decodeGatewayHookResponsePayload(patch.Value, &response, protocol); err != nil {
 				return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
 			}
 			if stream == nil {
@@ -86,6 +94,9 @@ func (s *Server) runGatewayProviderCallHooksOutput(ctx context.Context, call Cal
 		if patch, ok := result.Writes[pluginmeta.DataUsage]; ok {
 			if err := decodeGatewayHookPayload(patch.Value, &usage, "gateway_hook_usage_invalid", "Gateway plugin returned invalid usage"); err != nil {
 				return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+			}
+			if usageReported != nil {
+				*usageReported = true
 			}
 		}
 	}

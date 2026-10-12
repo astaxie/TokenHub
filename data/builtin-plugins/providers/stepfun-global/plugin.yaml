@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.stepfun.ai/v1"
       doc_url: "https://platform.stepfun.ai/docs/en/overview/concept"
       categories: []
-      models_count: 10
+      models_count: 17
 permissions:
   network:
     allow: []

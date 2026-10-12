@@ -676,6 +676,7 @@ export type ProviderCatalogEntry = {
 };
 
 export type ProviderModel = {
+  call_supported?: boolean;
   id: string;
   provider_id: string;
   upstream_model: string;

@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContext, payload any) (any, Usage, bool, error) {
-	if responsesNeedRouteBinding(call, payload) {
+	if responsesNeedRouteBinding(call, payload) || mediaRequestBypassesCache(call, payload) {
 		return nil, Usage{}, false, nil
 	}
 	if !s.hasGatewayHookStage(pluginmeta.StageCacheLookup) {
@@ -30,6 +30,8 @@ func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContex
 		},
 		Data: gatewayHookCallData(call, body),
 	}
+	addEmbeddingCacheContract(&input, call)
+	addRerankCacheContract(&input, call)
 	report, err := s.runAuditedGatewayHookStage(ctx, call, pluginmeta.StageCacheLookup, input)
 	if err != nil {
 		return nil, Usage{}, false, gatewayHookHTTPError(pluginmeta.StageCacheLookup, err)
@@ -38,6 +40,9 @@ func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContex
 		return nil, Usage{}, false, nil
 	}
 	result := report.Results[len(report.Results)-1]
+	if !embeddingCacheHitMatches(call, result) || !rerankCacheHitMatches(call, result) {
+		return nil, Usage{}, false, nil
+	}
 	responsePatch, ok := result.Writes[pluginmeta.DataProviderResponse]
 	if !ok {
 		return nil, Usage{}, false, NewHTTPError(http.StatusBadGateway, "gateway_hook_cache_hit_invalid", "Gateway cache plugin did not return a response")
@@ -56,7 +61,7 @@ func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContex
 }
 
 func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext, route RouteSelection, payload any, response any, usage Usage, protocol string) {
-	if responsesNeedRouteBinding(call, payload) {
+	if responsesNeedRouteBinding(call, payload) || mediaRequestBypassesCache(call, payload) {
 		return
 	}
 	hooks := s.gatewayRouteHooksForRoute(pluginmeta.StageCacheWrite, route, protocol, true)
@@ -84,6 +89,8 @@ func (s *Server) runGatewayCacheWriteHooks(ctx context.Context, call CallContext
 		},
 		Data: gatewayHookCallData(call, body),
 	}
+	addEmbeddingCacheContract(&input, call)
+	addRerankCacheContract(&input, call)
 	input.Data[pluginmeta.DataProviderResponse] = responseBody
 	if encodedUsage, ok := marshalGatewayHookData(usage); ok {
 		input.Data[pluginmeta.DataUsage] = encodedUsage

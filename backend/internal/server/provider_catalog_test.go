@@ -288,11 +288,11 @@ func TestBuiltinDeepSeekCatalogDescribesNativeV4Capabilities(t *testing.T) {
 	if !ok {
 		t.Fatal("expected native deepseek-v4-flash model")
 	}
-	if flash.ContextWindow != 1048576 || flash.MaxOutputTokens != 393216 ||
-		flash.InputPriceUSDPer1M != 0.14 || flash.CacheReadPriceUSDPer1M != 0.0028 || flash.OutputPriceUSDPer1M != 0.28 {
+	if flash.ContextWindow != 1000000 || flash.MaxOutputTokens != 393216 ||
+		flash.Metadata["pricing_status"] != "unverified" || flash.Metadata["replacement_model"] != "deepseek-flash" {
 		t.Fatalf("unexpected V4 Flash limits or pricing: %+v", flash)
 	}
-	if flash.Metadata["endpoints"] != "responses,chat/completions,anthropic" || flash.Metadata["reasoning_effort_options"] != "low,high,max" {
+	if flash.Metadata["endpoints"] != "responses,chat/completions,anthropic" || flash.Metadata["reasoning_effort_options"] != "none,low,high,max" {
 		t.Fatalf("unexpected V4 Flash protocol metadata: %+v", flash.Metadata)
 	}
 	pro, ok := models["deepseek-v4-pro"]
@@ -314,9 +314,13 @@ func TestBuiltinDeepSeekCatalogDescribesNativeV4Capabilities(t *testing.T) {
 
 func TestResponsesCapabilityUsesProviderPolicyAllowlist(t *testing.T) {
 	server := New(NewMemoryStore())
+	currentFlash := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-flash"}
 	flash := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-v4-flash"}
 	pro := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-v4-pro"}
 	legacy := RouteSelection{Provider: Provider{Type: "deepseek"}, ProviderModel: "deepseek-chat"}
+	if !server.routeSupportsAdapterCapability(currentFlash, AdapterCapabilityResponses) || !server.routeSupportsAdapterCapability(currentFlash, AdapterCapabilityResponseStream) {
+		t.Fatal("V4.1 Flash must support Responses and streaming Responses")
+	}
 	if !server.routeSupportsAdapterCapability(flash, AdapterCapabilityResponses) ||
 		!server.routeSupportsAdapterCapability(flash, AdapterCapabilityResponseStream) {
 		t.Fatal("V4 Flash must support Responses and streaming Responses")
@@ -443,11 +447,15 @@ func TestProviderCatalogServiceUsesPluginCatalogTypes(t *testing.T) {
 	server := New(NewMemoryStore())
 	service := newProviderCatalogService(store, catalogFile)
 	service.UsePluginCatalogTypes(server.adapterRegistry)
-	entry, _, ok, err := service.Get(context.Background(), "anthropic", true)
-	if err != nil || !ok {
-		t.Fatalf("expected plugin-typed provider entry, ok=%v err=%v", ok, err)
+	entries, err := service.loadLocalProviderCatalog()
+	if err != nil {
+		t.Fatalf("load plugin-typed local catalog: %v", err)
 	}
-	if entry.Type != ProviderAnthropic {
+	index := slices.IndexFunc(entries, func(entry ProviderCatalogEntry) bool { return entry.ID == "anthropic" })
+	if index < 0 {
+		t.Fatal("missing plugin-typed provider entry")
+	}
+	if entry := entries[index]; entry.Type != ProviderAnthropic {
 		t.Fatalf("expected plugin catalog provider type, got %q", entry.Type)
 	}
 }

@@ -116,7 +116,7 @@ export function alertEventConfig(): ResourceConfig<AlertEvent> {
       { key: "code", label: "事件" },
       { key: "scope_type", label: "对象" },
       { key: "scope_id", label: "对象 ID" },
-      { key: "message", label: "说明" },
+      { key: "message", label: "说明", render: (item) => tx(item.message) },
     ],
     fields: [],
     list: (ctx) => ctx.alerts,

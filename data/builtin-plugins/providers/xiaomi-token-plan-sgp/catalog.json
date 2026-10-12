@@ -6,6 +6,106 @@
   "display_name": "Xiaomi Token Plan (Singapore)",
   "models": [
     {
+      "id": "mimo-v2.6-flash",
+      "name": "MiMo V2.6 Flash",
+      "display_name": "MiMo V2.6 Flash",
+      "family": "mimo",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://mimo.mi.com/docs/en-US/quick-start/model",
+        "verified_at": "2026-10-10",
+        "availability": "restricted",
+        "pricing_status": "unverified",
+        "pricing_note": "Subscription quota; PAYG per-token prices must not be reused.",
+        "access_source": "https://mimo.mi.com/docs/en-US/quick-start/faq/token-plan/Plans%26Pricing",
+        "reasoning_note": "Thinking defaults on; temperature/top_p are forced to 1.0/0.95 in thinking mode. Tool-call history must retain reasoning_content.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "131072",
+        "access_requirement": "Requires the named subscription plan; public API entitlement is separate."
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 131072
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "custom",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "mimo-v2.6-pro",
+      "name": "MiMo V2.6 Pro",
+      "display_name": "MiMo V2.6 Pro",
+      "family": "mimo",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://mimo.mi.com/docs/en-US/quick-start/model",
+        "verified_at": "2026-10-10",
+        "availability": "restricted",
+        "pricing_status": "unverified",
+        "pricing_note": "Subscription quota; PAYG per-token prices must not be reused.",
+        "access_source": "https://mimo.mi.com/docs/en-US/quick-start/faq/token-plan/Plans%26Pricing",
+        "reasoning_note": "Thinking defaults on; temperature/top_p are forced to 1.0/0.95 in thinking mode. Tool-call history must retain reasoning_content.",
+        "catalog_reviewed_at": "2026-10-10",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "131072",
+        "access_requirement": "Requires the named subscription plan; public API entitlement is separate."
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 131072
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "custom",
+      "last_updated": "2026-10-10",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
+    },
+    {
       "id": "mimo-v2.5-tts",
       "name": "MiMo-V2.5-TTS",
       "family": "mimo",
@@ -83,6 +183,15 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://mimo.mi.com/docs/en-US",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "mimo-v2.6-pro",
+        "shutdown_at": "2026-10-21T10:00:00+08:00",
+        "lifecycle_note": "Official notice says legacy names will stop working after shutdown. Do not rewrite live routes automatically."
       }
     },
     {
@@ -268,6 +377,15 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "lifecycle_status": "deprecated",
+        "lifecycle_source": "https://mimo.mi.com/docs/en-US",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "replacement_model": "mimo-v2.6-flash",
+        "shutdown_at": "2026-10-21T10:00:00+08:00",
+        "lifecycle_note": "Official notice says legacy names will stop working after shutdown. Do not rewrite live routes automatically."
       }
     },
     {

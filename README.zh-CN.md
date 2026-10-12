@@ -78,11 +78,12 @@ TokenHub 将日常模型使用、团队治理和平台运维拆成清晰的角�
 - 成本治理：支持 Token 预算、Provider 花费对比、模型选择和未来基于缓存的降本策略。
 - 身份源配置：支持 OAuth/OIDC 企业登录，并配合 RBAC 和审计追踪。
 - OpenAI-Compatible 模型 API：`/v1/chat/completions`、`/v1/responses`、`/v1/embeddings`；Anthropic Messages API：`/v1/messages`、`/v1/messages/count_tokens`。
+- 文本检索：通过 `/v1/embeddings` 调用[稠密文本向量](docs/zh-CN/embeddings.md)，通过 `/v1/rerank` 调用[文档重排](docs/zh-CN/rerank.md)，并按供应商配置实际协议。
 - OpenAI-Compatible 生图与参考图编辑 API：`/v1/images/generations`、`/v1/images/edits`，支持异步任务和服务端图片留存。
 - 简洁控制台：分角色导航、全局搜索、黑白主题，以及左侧 API 导航 + 右侧详情的接口文档。
 - SQLite-first 私有化部署，提供原生 systemd 和 Docker Compose 两种方式。
 - PostgreSQL 支持多实例部署：通过远端 PostgreSQL 共享状态，实现前后端实例横向扩展，并提供连接池配置。参见[部署指南](docs/zh-CN/deployment.md)。
-- 管理后台支持英文、中文、日文切换。
+- 管理后台支持英文、中文、日文和俄文切换。
 
 ## Provider 生态
 
@@ -210,9 +211,21 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/FaustMont">
+        <img src="https://avatars.githubusercontent.com/u/9304306?v=4" width="80px" alt="FaustMont" />
+        <br /><sub><b>FaustMont</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/wangle201210">
         <img src="https://avatars.githubusercontent.com/u/19949348?v=4" width="80px" alt="wangle201210" />
         <br /><sub><b>wangle201210</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/jackiesre721">
+        <img src="https://avatars.githubusercontent.com/u/8868514?v=4" width="80px" alt="jackiesre721" />
+        <br /><sub><b>jackiesre721</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -233,6 +246,8 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
         <br /><sub><b>exgliuzhi</b></sub>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/hoorayman">
         <img src="https://avatars.githubusercontent.com/u/73151874?v=4" width="80px" alt="hoorayman" />
@@ -245,8 +260,6 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
         <br /><sub><b>debin-ge</b></sub>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/ocass-chen">
         <img src="https://avatars.githubusercontent.com/u/172055494?v=4" width="80px" alt="ocass-chen" />
@@ -254,9 +267,21 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/ACwisdom">
+        <img src="https://avatars.githubusercontent.com/u/212327199?v=4" width="80px" alt="ACwisdom" />
+        <br /><sub><b>ACwisdom</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/AnxForever">
         <img src="https://avatars.githubusercontent.com/u/130662349?v=4" width="80px" alt="AnxForever" />
         <br /><sub><b>AnxForever</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/DeanHH">
+        <img src="https://avatars.githubusercontent.com/u/1842770?v=4" width="80px" alt="DeanHH" />
+        <br /><sub><b>DeanHH</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -271,6 +296,8 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
         <br /><sub><b>longzhang83</b></sub>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/lxm">
         <img src="https://avatars.githubusercontent.com/u/1918195?v=4" width="80px" alt="lxm" />

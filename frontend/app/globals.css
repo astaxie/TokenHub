@@ -41,3 +41,12 @@
 @import "./styles/legacy/routing-policies.css";
 @import "./styles/legacy/api-key-usage.css";
 @import "./styles/legacy/semantic-routing.css";
+
+@import "./styles/redesign/retrieval-readability.css";
+@import "./styles/redesign/provider-management.css";
+@import "./styles/redesign/provider-onboarding.css";
+@import "./styles/redesign/model-management.css";
+@import "./styles/redesign/model-catalog-notices.css";
+@import "./styles/redesign/route-management.css";
+
+@import "./styles/redesign/global-usage.css";

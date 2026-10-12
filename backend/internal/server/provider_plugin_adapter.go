@@ -220,6 +220,18 @@ func (a providerPluginAdapter) CompactWithHeaders(ctx context.Context, provider 
 	return result.Response, result.Usage, nil
 }
 
+func (a providerPluginAdapter) Rerank(ctx context.Context, provider Provider, providerModel string, req RerankRequest) (any, Usage, error) {
+	var result providerPluginResponse
+	if err := a.executeProviderCommand(ctx, providerPluginRequest{Operation: "rerank", Provider: providerPluginProviderFromRuntime(provider), ProviderModel: providerModel, Request: req, Credentials: providerPluginCredentialsFromRuntime(provider, nil)}, &result); err != nil {
+		return nil, Usage{}, err
+	}
+	usage, err := pluginRetrievalUsage(result.Response, result.Usage, providerRerankProtocol(provider) == "cohere")
+	if err != nil {
+		return nil, usage, err
+	}
+	return result.Response, usage, nil
+}
+
 func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
 	var result providerPluginResponse
 	if err := a.executeProviderCommand(ctx, providerPluginRequest{
@@ -231,7 +243,12 @@ func (a providerPluginAdapter) Embeddings(ctx context.Context, provider Provider
 	}, &result); err != nil {
 		return nil, Usage{}, err
 	}
-	return result.Response, result.Usage, nil
+	usage, err := pluginRetrievalUsage(result.Response, result.Usage, false)
+	if err != nil {
+		return nil, usage, err
+	}
+	response, err := normalizeEmbeddingResult(result.Response, req)
+	return response, usage, err
 }
 
 func (a providerPluginAdapter) GenerateImage(ctx context.Context, provider Provider, providerModel string, req ProviderImageGenerationRequest) ([]byte, string, Usage, error) {
@@ -367,7 +384,7 @@ func externalProviderAdapterCapabilities(capabilities []string) []AdapterCapabil
 	supported := []AdapterCapability{}
 	for _, capability := range capabilities {
 		switch AdapterCapability(strings.TrimSpace(capability)) {
-		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityImageGenerate, AdapterCapabilityCompact, AdapterCapabilityAffinity:
+		case AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityEmbeddings, AdapterCapabilityRerank, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityImageGenerate, AdapterCapabilityCompact, AdapterCapabilityAffinity:
 			supported = append(supported, AdapterCapability(strings.TrimSpace(capability)))
 		}
 	}

@@ -14,6 +14,7 @@ const (
 	OperationResponses       = "responses"
 	OperationResponsesStream = "responses_stream"
 	OperationEmbeddings      = "embeddings"
+	OperationRerank          = "rerank"
 	OperationModels          = "models"
 	OperationProbe           = "probe"
 )
@@ -74,12 +75,21 @@ type ProviderCredentials struct {
 	PlanType       string `json:"plan_type,omitempty"`
 }
 
+// RetrievalEvidence distinguishes native billing units and explicit zero from
+// unreported usage. Source is upstream, plugin, unreported or invalid.
+type RetrievalEvidence struct {
+	Unit     string `json:"unit"`
+	Quantity *int64 `json:"quantity,omitempty"`
+	Source   string `json:"source,omitempty"`
+}
+
 type Usage struct {
-	PromptTokens     int64 `json:"prompt_tokens,omitempty"`
-	CompletionTokens int64 `json:"completion_tokens,omitempty"`
-	TotalTokens      int64 `json:"total_tokens,omitempty"`
-	InputTokens      int64 `json:"input_tokens,omitempty"`
-	OutputTokens     int64 `json:"output_tokens,omitempty"`
+	RetrievalEvidence *RetrievalEvidence `json:"retrieval_evidence,omitempty"`
+	PromptTokens      int64              `json:"prompt_tokens,omitempty"`
+	CompletionTokens  int64              `json:"completion_tokens,omitempty"`
+	TotalTokens       int64              `json:"total_tokens,omitempty"`
+	InputTokens       int64              `json:"input_tokens,omitempty"`
+	OutputTokens      int64              `json:"output_tokens,omitempty"`
 }
 
 type StreamEvent struct {

@@ -10,6 +10,11 @@ describe("adminNavGroups", () => {
     expect(navGroupViews(safetyOps?.items ?? []).includes("plugins")).toBe(true);
     expect(navGroupViews(safetyOps?.items ?? [])).toEqual(expect.arrayContaining(["settings", "plugins"]));
   });
+
+  it("labels the provider entry as suppliers in the admin navigation", () => {
+    const aiResources = adminNavGroups.find((group) => group.title === "AI 资源");
+    expect(aiResources?.items).toEqual(expect.arrayContaining([expect.objectContaining({ view: "providers", label: "供应商" })]));
+  });
 });
 
 function navGroupViews(items: NonNullable<typeof adminNavGroups[number]>["items"]) {

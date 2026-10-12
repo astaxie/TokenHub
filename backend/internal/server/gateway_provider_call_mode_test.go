@@ -24,6 +24,7 @@ func TestProviderCallModePreservesAdaptersAndObservers(t *testing.T) {
 				payload = map[string]any{"model": "gpt-background", "stream": stream, "messages": []any{map[string]any{"role": "user", "content": "hello"}}}
 			} else if endpoint == "embeddings" {
 				path = "/v1/embeddings"
+				configureEmbeddingTestModel(t, store, "gpt-background")
 			}
 			wrongOutput := pluginmeta.DataStreamEvents
 			if stream {

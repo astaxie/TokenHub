@@ -47,6 +47,7 @@ type Server struct {
 	reconciliationAdmin              *admin.ReconciliationHandler
 	credentialRefresh                *ProviderCredentialRefreshService
 	payloadRetention                 *requestPayloadRetentionService
+	providerMonitoring               *providerMonitoringScheduler
 	mux                              *http.ServeMux
 	publicGatewayOperations          map[gatewayOperation]bool
 	config                           Config
@@ -238,6 +239,7 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		syntheticDNSPolicy:  syntheticDNSPolicy,
 		providerProxyPolicy: providerProxyPolicy,
 	}
+	s.providerMonitoring = newProviderMonitoringScheduler(store, s.runProviderMonitoring)
 	s.pluginBackgroundRunner.SetSchedulerSnapshotLocker(s.pluginRuntimeMu.RLocker())
 	s.installServerPluginHandlers(&pluginBootstrap)
 	if err := pluginmeta.NewRuntime(config.PluginDir).CompleteRuntimeRestart(); err != nil {
@@ -273,11 +275,11 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 			s.recordAdminAuditWithStatus(r, AdminUser{ID: actor.ID, Name: actor.Name, Role: actor.Role}, event.Action, event.ResourceType, event.ResourceID, event.Status, event.Message, event.Before, event.After)
 		},
 	})
-	if jobs, err := store.FailUnfinishedImageJobs("image_worker_restarted", "Image generation stopped because the server restarted"); err != nil {
-		log.Printf("[tokenhub] failed to mark unfinished image jobs after startup: %v", err)
-	} else if len(jobs) > 0 {
-		log.Printf("[tokenhub] marked %d unfinished image jobs as failed after startup", len(jobs))
-	}
+	// Startup recovery claims only jobs whose owner stopped publishing a
+	// heartbeat: a live peer's running image jobs must survive this
+	// instance's start, and the periodic sweep keeps recovering orphans for
+	// the lifetime of the server.
+	s.startImageJobRecovery()
 	if gormStore, ok := store.(*GormStore); ok {
 		s.stopHeartbeat = gormStore.StartInstanceHeartbeat(config.AppVersion)
 	}

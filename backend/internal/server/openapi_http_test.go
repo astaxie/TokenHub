@@ -333,7 +333,7 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireRequestContentType(t, document, "/v1/images/edits", "post", "multipart/form-data")
 	requireRequestExampleFieldForMedia(t, document, "/v1/images/edits", "post", "multipart/form-data", "editWithMask", "image", "@portrait.png")
 	requireRequestContentType(t, document, "/v1/images/edits", "post", "application/json")
-	requireRequestSchemaRef(t, document, "/v1/images/edits", "post", "#/components/schemas/NativeCodexImageEditRequest")
+	requireRequestSchemaRef(t, document, "/v1/images/edits", "post", "#/components/schemas/MediaRequest")
 	requireRequestExampleField(t, document, "/v1/images/edits", "post", "nativeCodexEdit", "model", openAIImageModelName)
 	requireSchemaRequired(t, document, "NativeCodexImageEditRequest", []string{"model", "prompt", "images"})
 	requireSchemaArrayBounds(t, document, "NativeCodexImageEditRequest", "images", 1, maxImageEditInputCount)
@@ -398,7 +398,7 @@ func assertRepresentativeGatewayBehaviors(t *testing.T, document map[string]any)
 	requireSchemaEnum(t, document, "ResponsesReasoning", "effort", []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"})
 	requireSchemaRequired(t, document, "ResponseTool", []string{"type"})
 	requireSchemaPropertyNoConst(t, document, "ResponseTool", "type")
-	requireArrayItemsRef(t, document, "ResponsesResponse", "output", "#/components/schemas/ResponseOutputItem")
+	requireOneOfContainsRef(t, document, "ResponsesResponse", "output", "#/components/schemas/ResponseOutputItem")
 	requireArrayItemsRef(t, document, "ChatCompletionResponse", "choices", "#/components/schemas/ChatCompletionChoice")
 	requireOperationSecuritySchemes(t, document, "/v1/chat/completions", "post", []string{"TokenHubProjectKey"})
 	requireOperationSecuritySchemes(t, document, "/v1beta/models/{model}:generateContent", "post", []string{"TokenHubProjectKey", "TokenHubGoogleAPIKey"})
@@ -582,8 +582,14 @@ func providerRoutedOperation(operation gatewayOperation) bool {
 		"/v1/responses/compact",
 		"/v1/messages",
 		"/v1/embeddings",
+		"/v1/rerank",
+		"/v1/systemone",
 		"/v1/images/generations",
 		"/v1/images/edits",
+		"/v1/images/variations",
+		"/v1/audio/speech",
+		"/v1/audio/transcriptions",
+		"/v1/audio/translations",
 		"/v1beta/models/{model}:generateContent",
 		"/v1beta/models/{model}:streamGenerateContent":
 		return true
@@ -594,7 +600,8 @@ func providerRoutedOperation(operation gatewayOperation) bool {
 
 func providerCapabilityOperation(operation gatewayOperation) bool {
 	switch operation.Path {
-	case "/v1/responses",
+	case "/v1/systemone",
+		"/v1/responses",
 		"/v1/responses/compact",
 		"/v1/messages",
 		"/v1beta/models/{model}:generateContent",
@@ -613,8 +620,14 @@ func modelAccessControlledOperation(operation gatewayOperation) bool {
 		"/v1/messages",
 		"/v1/messages/count_tokens",
 		"/v1/embeddings",
+		"/v1/rerank",
+		"/v1/systemone",
 		"/v1/images/generations",
 		"/v1/images/edits",
+		"/v1/images/variations",
+		"/v1/audio/speech",
+		"/v1/audio/transcriptions",
+		"/v1/audio/translations",
 		"/v1beta/models/{model}:generateContent",
 		"/v1beta/models/{model}:streamGenerateContent",
 		"/v1beta/models/{model}:countTokens":
@@ -939,6 +952,9 @@ func requireOneOfContainsRef(t *testing.T, document map[string]any, schemaName s
 	schema := asMap(t, localRefValue(document, "components/schemas/"+schemaName), "components.schemas."+schemaName)
 	properties := asMap(t, schema["properties"], "components.schemas."+schemaName+".properties")
 	propertySchema := asMap(t, properties[property], "components.schemas."+schemaName+".properties."+property)
+	if reference, ok := propertySchema["$ref"].(string); ok {
+		propertySchema = asMap(t, localRefValue(document, strings.TrimPrefix(reference, "#/")), reference)
+	}
 	for _, rawOption := range asSlice(t, propertySchema["oneOf"], "oneOf") {
 		option := asMap(t, rawOption, "oneOf option")
 		if got := option["$ref"]; got == want {

@@ -224,7 +224,7 @@ func jevResponsesModelFits(model ProviderModel, req ResponsesRequest) bool {
 		parameters[key] = ok && string(raw) != "null"
 	}
 	parameters = jevRequestParameters(req.raw, parameters, []string{"model", "input", "instructions", "stream", "background", "store", "user", "metadata", "prompt_cache_key", "previous_response_id", "client_metadata"})
-	return jevModelFits(model, len(data), req.MaxTokens, parameters) && jevInputModalitiesFit(model, req.Input)
+	return jevModelFits(model, len(data), req.MaxTokens, parameters) && catalogReasoningEffortFits(model, responsesReasoningEffort(req)) && jevInputModalitiesFit(model, req.Input)
 }
 
 func jevResponsesText(req ResponsesRequest) (string, bool) {

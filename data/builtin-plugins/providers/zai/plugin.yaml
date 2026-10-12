@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.z.ai/api/paas/v4"
       doc_url: "https://docs.z.ai/guides/overview/pricing"
       categories: []
-      models_count: 13
+      models_count: 16
 permissions:
   network:
     allow: []

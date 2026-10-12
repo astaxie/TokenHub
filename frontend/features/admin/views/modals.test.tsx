@@ -55,6 +55,7 @@ describe("APIKeyWizardModal", () => {
       name: "quality-smoke-key",
       group: "ci",
       rate_limit_rpm: "60",
+      model_access_mode: "inherit",
       allowed_models: "",
       status: "active",
     }));
@@ -62,6 +63,7 @@ describe("APIKeyWizardModal", () => {
 
   it("only offers models allowed by a restricted project", async () => {
     const user = userEvent.setup();
+    const onCreate = vi.fn();
     const currentUser = {
       id: "usr_admin",
       username: "admin",
@@ -92,7 +94,7 @@ describe("APIKeyWizardModal", () => {
         initialValues={{ project_id: "prj_restricted", owner_user_id: currentUser.id }}
         loading={false}
         onClose={vi.fn()}
-        onCreate={vi.fn()}
+        onCreate={onCreate}
       />,
     );
 
@@ -103,6 +105,16 @@ describe("APIKeyWizardModal", () => {
 
     expect(screen.getByText("deepseek-v4-flash-0731")).toBeInTheDocument();
     expect(screen.queryByText("gpt-5.4-mini")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: /deepseek-v4-flash-0731/ }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+    await user.click(screen.getByRole("button", { name: "生成 Key" }));
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      model_access_mode: "restricted",
+      allowed_models: "deepseek-v4-flash-0731",
+    }));
   });
 });
 

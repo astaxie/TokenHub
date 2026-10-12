@@ -184,9 +184,17 @@ func (s *Server) handleGeminiGenerate(w http.ResponseWriter, r *http.Request, mo
 	}
 	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, geminiGuardrailTargets(payload))
 	auditPayload := guardrailRequestAuditPayload(model, decision, payload)
+	if modelHasMediaOutput(call.Model) {
+		decision.Replacements = nil
+		auditPayload = guardrailAuditSummary{Model: model, Guardrail: decision}
+	}
 	if err != nil {
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, auditPayload)
 		writeError(w, r, err)
+		return
+	}
+	if modelHasMediaOutput(call.Model) {
+		s.handleGeminiMedia(w, r, call, payload, guardrailAuditSummary{Model: model, Guardrail: decision})
 		return
 	}
 	if !stream {
@@ -491,13 +499,19 @@ func geminiModelAllowed(models []Model, name string) bool {
 
 // geminiAccessibleModels only advertises models that this native Gemini
 // surface can actually execute. AccessibleModels deliberately answers the
-// broader gateway question and may include chat-only routes; Gemini requests
-// are translated through the Codex Responses compatibility protocol, which is
-// declared by provider plugins instead of inferred from a provider type.
+// broader gateway question and may include chat-only routes. Text models need
+// a plugin-declared Codex Responses bridge; media models need native Gemini
+// execution or a matching provider_call hook.
 func (s *Server) geminiAccessibleModels(key APIKey) []Model {
 	models := s.store.AccessibleModels(key)
 	compatible := make([]Model, 0, len(models))
 	for _, model := range models {
+		if modelHasMediaOutput(model) {
+			if s.geminiMediaModelAccessible(model, key) {
+				compatible = append(compatible, model)
+			}
+			continue
+		}
 		if model.Modality == "image" || model.Modality == "embedding" {
 			continue
 		}

@@ -88,6 +88,9 @@ func (s *Server) discoverProviderCatalogFromCreateRequest(ctx context.Context, u
 	if err != nil || supported {
 		return catalog, err
 	}
+	if adapter, ok := resolveTypedAdapter[ProviderModelDiscoverer](s.adapterRegistry, req.Type); ok {
+		return adapter.DiscoverModels(ctx, req)
+	}
 	descriptor, _ := s.adapterRegistry.Describe(req.Type)
 	return CustomProviderCatalogFromUpstreamWithDescriptor(ctx, s.upstreamClient, req, descriptor)
 }

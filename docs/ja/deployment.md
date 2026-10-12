@@ -91,6 +91,10 @@ docker compose --env-file deploy/.env \
 
 `./deploy/test-multi-instance.sh` で実際の 2 インスタンス PostgreSQL E2E テストを実行できます。
 
+### Kubernetes（Helm）
+
+Kubernetes クラスターでは `deploy/helm/tokenhub` の Helm チャートを使用します。各 Pod は 1 つのコンテナで両プロセスを実行し、本番ではマネージド PostgreSQL と組み合わせ(クイックテストには組み込みサブチャートを利用可能)、デフォルトでステートレスです。実行時にインストールしたプラグインパッケージは、イメージに焼き込まない限り Pod の入れ替えで失われます。オプションの PodMonitor と ExternalSecret 対応には、対応する Operator CRD が必要です。インストール手順、ルーティング、アップグレードの動作は [Kubernetes デプロイ](kubernetes.md) を参照してください。
+
 ## ネイティブ Release + systemd
 
 systemd を使用する単一 Linux ホストでは、ネイティブ Release インストールを利用できます。ネイティブパッケージは `linux/amd64` と `linux/arm64` に対応し、Go バックエンド、スタンドアロン Next.js コンソール、対応する Node.js ランタイムを含みます。

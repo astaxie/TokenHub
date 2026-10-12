@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://token-plan-cn.xiaomimimo.com/v1"
       doc_url: "https://platform.xiaomimimo.com/#/docs"
       categories: []
-      models_count: 8
+      models_count: 10
 permissions:
   network:
     allow: []

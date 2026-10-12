@@ -32,6 +32,10 @@ func chatUpstream(t *testing.T, captured *capturedRequest) *httptest.Server {
 		captured.header = r.Header.Clone()
 		decodeFixtureRequest(t, r.Body, &captured.body)
 		w.Header().Set("content-type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/embeddings") {
+			writeFixture(t, w, `{"data":[{"index":0,"embedding":[0.1,0.2]}],"usage":{"prompt_tokens":1,"total_tokens":1}}`)
+			return
+		}
 		writeFixture(t, w, `{"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`)
 	}))
 }

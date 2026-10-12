@@ -91,6 +91,10 @@ All replicas must use the same `TOKENHUB_SECRET_KEY`. Size `TOKENHUB_DB_MAX_OPEN
 
 Run the real two-instance PostgreSQL E2E suite with `./deploy/test-multi-instance.sh`.
 
+### Kubernetes (Helm)
+
+Kubernetes clusters use the Helm chart at `deploy/helm/tokenhub`. Every pod runs both processes in one container, pairs with a managed PostgreSQL service in production (a built-in subchart is available for quick testing), and is stateless by default: runtime-installed plugin packages are removed on pod replacement unless they are baked into the image. Optional PodMonitor and ExternalSecret support requires the matching operator CRDs. See [Kubernetes Deployment](kubernetes.md) for install steps, routing, and upgrade behavior.
+
 ## Native Release with systemd
 
 Use the native Release installer for a single Linux host with systemd. Native packages support `linux/amd64` and `linux/arm64`, and bundle the Go backend, the standalone Next.js console, and a matching Node.js runtime.

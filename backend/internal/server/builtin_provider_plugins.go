@@ -86,6 +86,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			[]string{"gpt-5", "gpt-5-mini", "gpt-4.1-mini", "text-embedding-3-small"},
 		),
 		capabilities: []AdapterCapability{
+			AdapterCapabilityMedia,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityResponses,
@@ -105,11 +106,13 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		reasoningConfigurable:      boolPointer(true),
 		managedHeaders:             []string{"api-key", "x-api-key", "openai-organization", "openai-project"},
 		capabilities: []AdapterCapability{
+			AdapterCapabilityMedia,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityResponses,
 			AdapterCapabilityResponseStream,
 			AdapterCapabilityEmbeddings,
+			AdapterCapabilityRerank,
 			AdapterCapabilityProbe,
 		},
 	}); err != nil {
@@ -273,12 +276,16 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			[]string{"gemini-2.5-pro", "gemini-2.5-flash"},
 		),
 		capabilities: []AdapterCapability{
+			AdapterCapabilityGeminiMedia,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityEmbeddings,
 			AdapterCapabilityProbe,
 		},
 	}); err != nil {
+		return err
+	}
+	if err := register("tokenhub.provider.typesafe", "TypeSafe", typeSafeBuiltinAdapter(adapters[providerTypeSafe])); err != nil {
 		return err
 	}
 	if err := register("tokenhub.provider.dify", "Dify", builtinProviderAdapter{
@@ -327,9 +334,12 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 				AdapterCapabilityProbe,
 			},
 		}
+		if adapterType == "qwen" || adapterType == "local" {
+			adapter.capabilities = append(adapter.capabilities, AdapterCapabilityRerank)
+		}
 		if adapterType == "deepseek" {
 			adapter.preserveReasoningContent = boolPointer(true)
-			adapter.responsesModelAllowlist = []string{"deepseek-v4-flash", "deepseek-v4-pro"}
+			adapter.responsesModelAllowlist = []string{"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"}
 		}
 		if err := register("tokenhub.provider."+adapterType, adapterType, adapter); err != nil {
 			return err

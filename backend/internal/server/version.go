@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	DefaultAppVersion = "0.8.0"
+	DefaultAppVersion = "0.9.0"
 
 	defaultBuildType         = "source"
 	releaseBuildType         = "release"

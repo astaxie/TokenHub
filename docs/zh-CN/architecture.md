@@ -129,12 +129,23 @@ flowchart LR
 | 组件 | 位置 | 责任 |
 | --- | --- | --- |
 | 管理后台 | `frontend/` | 分角色控制台；服务端运行时通过 `TOKENHUB_API_BASE_URL` 读取后端地址，`NEXT_PUBLIC_API_BASE_URL` 仅作兼容回退 |
-| HTTP 服务 | `backend/internal/server/http.go` | 注册 API、执行鉴权、路由调用、写入响应和健康检查 |
+| HTTP 服务与依赖组装 | `backend/internal/server/http.go`、`billing_composition.go` | 注册路由、认证授权、提供传输回调，显式注入 billing/reconciliation 依赖；其他领域的实现仍有部分留在 `server` |
+| 管理 HTTP 适配器 | `backend/internal/admin/` | 通过应用接口完成 billing 和 reconciliation 的请求/响应映射及 CSV 传输，不直接访问数据库 |
+| 对账应用 | `backend/internal/reconciliation/` | 规则、匹配、执行、调度、锁定、重算与导出策略；拥有 `Store` 和 `BillingReader` 端口 |
+| 对账持久化 | `backend/internal/reconciliation/persistence/` | SQLite/PostgreSQL 的 GORM 行模型和事务、用量成本证据，以及面向对账端口的账单投影适配 |
 | 路由编排 | `backend/internal/server/http.go` | 为统一模型名选择候选路由，按优先级、资源优先级、策略、权重和亲和性确定尝试顺序 |
 | 适配器注册与探测 | `adapter_registry.go`、`integration_service.go` | 声明各 Provider 的能力，执行 Provider 与资源探测 |
 | Provider 适配层 | `builtin_provider_plugins.go`、`provider_plugin_adapter.go`、`provider_account_codex.go` | 将统一请求转换为上游协议；管理 Codex 订阅资源的 OAuth、刷新与会话亲和 |
-| 持久化层 | `store.go` | GORM 数据访问、配额计数、凭证加密、SQLite 备份、PostgreSQL 租约和集群锁 |
+| server 中剩余的 Store | `backend/internal/server/store.go` | 数据库初始化及其他领域的数据访问、配额计数、凭证加密、SQLite 备份、PostgreSQL 租约和集群锁；对账操作由模块自己的适配器负责 |
 | 模型目录 | `data/model-catalog.yaml` | 为镜像构建提供标准模型元数据，启动时同步到数据库 |
+
+### 渐进迁移：对账适配器（issue #169）
+
+本阶段将对账持久化与管理 HTTP 处理移出 `server`。依赖方向为 `server → admin → reconciliation` 和 `server → reconciliation/persistence → reconciliation`。领域包不导入 `server`、HTTP handler 或 GORM。`admin` 定义自己消费的应用接口，持久化适配器实现领域拥有的端口。持久化包的 `BillingReader` 将 `billing` 的窄接口 `BillingSource` 投影转换为对账数据，不暴露连接器凭证或原始载荷。
+
+`cmd/tokenhub` 将 `ApplicationDependenciesForStore` 提供的依赖传给 `NewWithConfigAndDependencies`。`server` 仍负责打开数据库、注入共享持久化互斥锁和审计回调，并在调用管理适配器之前执行路由授权。全局 server `Store` 不再声明对账操作。兼容构造器与临时的 server 测试投影仍然保留，当前还没有达到 server 仅负责依赖组装的最终架构。
+
+兼容性由领域、管理传输与 SQLite 适配器测试覆盖；PostgreSQL CI job 还运行带 integration 标签的 `TestPostgresStoreBackfillUsesThePublicPort`，通过生产适配器验证并发快照回填。现有 HTTP 契约、表名、数据库迁移、归属快照和显式零成本证据都属于兼容契约。下一迁移阶段是 analytics：提取查询/应用能力及由消费者定义的持久化端口，将其管理传输移入 `admin`，保持现有聚合与授权行为。后续继续将 server 测试迁往公开模块边界，在调用方迁完后移除过时的兼容投影；provider/protocol、project/routing 和 usage/audit 的提取属于更后面的阶段。
 
 Provider 类型与主要能力如下：
 
@@ -155,7 +166,7 @@ Provider 类型与主要能力如下：
 
 下图概括 Core 请求流程。在适用的阶段，请求链执行器向已注册 Hook 投影获准数据，并在 Core 继续执行前校验结果。Hook 阶段覆盖隐私与内容安全、上下文与缓存、候选选择与排序、请求响应转换、用量、结算和追踪导出。声明了阶段不代表每个端点或已安装插件都实现了相应能力；仍以端点支持和阶段规则为准。
 
-`Model` 是对外 API 契约，`ProviderModel` 是某个 Provider 下持久化的上游模型库存，`ModelRoute` 在两者之间建立映射。对外模型带有明确且持久化的目录角色，因此删除最后一条路由后会保留为草稿，而不会重新变成候选模板；创建或编辑路由时，所选 `ProviderModel` 必须已经存在于库存中。唯一的窄例外是订阅制虚拟模型 `codex-gpt-image-2`：它的路由必须指向 OpenAI Codex Provider，并固定使用上游模型 `gpt-image-2`；这是执行能力，不属于聊天模型库存。这既支持同名 1:1 映射，也支持自定义别名，调用方无需感知具体 Provider 模型名。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact` 和 `POST /v1/embeddings` 都遵循相同的鉴权、配额与路由起点。
+`Model` 是对外 API 契约，`ProviderModel` 是某个 Provider 下持久化的上游模型库存，`ModelRoute` 在两者之间建立映射。对外模型带有明确且持久化的目录角色，因此删除最后一条路由后会保留为草稿，而不会重新变成候选模板；创建或编辑路由时，所选 `ProviderModel` 必须已经存在于库存中。唯一的窄例外是订阅制虚拟模型 `codex-gpt-image-2`：它的路由必须指向 OpenAI Codex Provider，并固定使用上游模型 `gpt-image-2`；这是执行能力，不属于聊天模型库存。这既支持同名 1:1 映射，也支持自定义别名，调用方无需感知具体 Provider 模型名。`POST /v1/chat/completions`、`POST /v1/responses`、`POST /v1/responses/compact`、`POST /v1/embeddings`、`POST /v1/rerank` 都遵循相同的鉴权、配额与路由起点。
 
 ```mermaid
 sequenceDiagram

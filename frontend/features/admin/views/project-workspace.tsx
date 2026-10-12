@@ -619,7 +619,7 @@ function ProjectTeamsOverview({ data, project }: { data: AppData; project: Proje
             <strong>{tx("协作团队")}</strong>
             <span>{tx("通过团队关系获得项目访问权限。")}</span>
           </div>
-          <span>{countWithUnit(additional.length, "个", "team", "チーム")}</span>
+          <span>{countWithUnit(additional.length, "个团队", "team", "チーム")}</span>
         </div>
         {additional.length === 0 ? (
           <div className="project-team-empty"><UsersRound size={18} /><span>{tx("暂无协作团队。需要跨团队协作时可添加。")}</span></div>

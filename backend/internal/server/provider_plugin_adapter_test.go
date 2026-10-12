@@ -587,7 +587,7 @@ func TestExternalProviderPluginAdapterExecutesResponsesAndEmbeddings(t *testing.
 	}
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "provider")
-	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"chat", "responses", "embeddings"})
+	writeProviderPluginManifestWithCapabilities(t, pluginDir, true, []string{"chat", "responses", "embeddings", "rerank"})
 	if err := os.WriteFile(filepath.Join(pluginDir, "provider.sh"), []byte(`#!/bin/sh
 payload="$(cat)"
 case "$payload" in
@@ -595,7 +595,10 @@ case "$payload" in
     printf '{"response":{"id":"resp_plugin","object":"response","output_text":"response plugin"},"usage":{"prompt_tokens":5,"completion_tokens":6,"total_tokens":11}}'
     ;;
   *'"operation":"embeddings"'*)
-    printf '{"response":{"object":"list","data":[{"embedding":[0.1,0.2]}]},"usage":{"prompt_tokens":7,"total_tokens":7}}'
+    printf '{"response":{"object":"list","data":[{"index":0,"embedding":[0.1,0.2]}]},"usage":{"prompt_tokens":7,"total_tokens":7}}'
+    ;;
+  *'"operation":"rerank"'*)
+    printf '{"response":{"model":"public-rerank","results":[{"index":0,"relevance_score":0.9}]},"usage":{"retrieval_evidence":{"unit":"search_unit","quantity":2,"source":"upstream"}}}'
     ;;
   *)
     printf 'unexpected provider payload: %s' "$payload" >&2
@@ -639,6 +642,16 @@ esac
 	if response.(map[string]any)["object"] != "list" || usage.TotalTokens != 7 {
 		t.Fatalf("embeddings result = %+v usage=%+v", response, usage)
 	}
+	reranker, ok := adapter.(ProviderReranker)
+	if !ok {
+		t.Fatal("plugin does not implement rerank")
+	}
+	provider := Provider{Type: "custom_stdio", APIKey: "provider-secret", Options: map[string]string{"rerank_protocol": "cohere"}}
+	_, nativeUsage, nativeErr := reranker.Rerank(context.Background(), provider, "native-model", RerankRequest{Model: "public-rerank", Query: "q", Documents: []string{"d"}})
+	if nativeErr != nil || nativeUsage.RetrievalEvidence == nil || nativeUsage.RetrievalEvidence.Quantity == nil || *nativeUsage.RetrievalEvidence.Quantity != 2 {
+		t.Fatalf("native plugin usage lost: %+v %v", nativeUsage, nativeErr)
+	}
+
 }
 
 func TestExternalProviderPluginAdapterExecutesResponsesStreamCommand(t *testing.T) {

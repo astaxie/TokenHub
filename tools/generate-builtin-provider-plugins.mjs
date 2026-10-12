@@ -10,6 +10,7 @@ const license = await readFile(path.join(repositoryRoot, "LICENSE"), "utf8");
 const catalog = JSON.parse(await readFile(catalogPath, "utf8"));
 
 const nativePlugins = new Map([
+  ["typesafe", { id: "tokenhub.provider.typesafe", adapter: "typesafe" }],
   ["anthropic", { id: "tokenhub.provider.anthropic", adapter: "anthropic" }],
   ["deepseek", { id: "tokenhub.provider.deepseek", adapter: "deepseek" }],
   ["google", { id: "tokenhub.provider.gemini", adapter: "gemini" }],

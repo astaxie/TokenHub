@@ -5,6 +5,91 @@
   "display_name": "Amazon Bedrock",
   "models": [
     {
+      "id": "amazon.nova-2-multimodal-embeddings-v1:0",
+      "name": "amazon.nova-2-multimodal-embeddings-v1:0",
+      "display_name": "amazon.nova-2-multimodal-embeddings-v1:0",
+      "family": "nova",
+      "category": "custom",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.aws.amazon.com/nova/latest/nova2-userguide/core-inference.html",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only; requires the Bedrock native inference and billing contract.",
+        "pricing_status": "unverified",
+        "pricing_note": "Confirm regional Bedrock prices and native usage units before enabling calls."
+      }
+    },
+    {
+      "id": "us.amazon.nova-2-sonic-v1:0",
+      "name": "us.amazon.nova-2-sonic-v1:0",
+      "display_name": "us.amazon.nova-2-sonic-v1:0",
+      "family": "nova",
+      "category": "custom",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.aws.amazon.com/nova/latest/nova2-userguide/core-inference.html",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only; requires the Bedrock native inference and billing contract.",
+        "pricing_status": "unverified",
+        "pricing_note": "Confirm regional Bedrock prices and native usage units before enabling calls."
+      }
+    },
+    {
+      "id": "global.amazon.nova-2-sonic-v1:0",
+      "name": "global.amazon.nova-2-sonic-v1:0",
+      "display_name": "global.amazon.nova-2-sonic-v1:0",
+      "family": "nova",
+      "category": "custom",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://docs.aws.amazon.com/nova/latest/nova2-userguide/core-inference.html",
+        "catalog_reviewed_at": "2026-10-10",
+        "verified_at": "2026-10-10",
+        "availability": "active",
+        "call_support": "unsupported",
+        "support_note": "Catalog only; requires the Bedrock native inference and billing contract.",
+        "pricing_status": "unverified",
+        "pricing_note": "Confirm regional Bedrock prices and native usage units before enabling calls."
+      }
+    },
+    {
       "id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
       "name": "Claude Haiku 4.5 (Global)",
       "family": "claude-haiku",

@@ -33,6 +33,7 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 	}
 	return builtinProviderRuntime{
 		adapters: map[string]any{
+			providerTypeSafe:         TypeSafeAdapter{Client: deps.Client},
 			ProviderMock:             MockAdapter{},
 			ProviderOpenAI:           openai,
 			ProviderOpenAICompatible: openai,

@@ -243,6 +243,17 @@ describe("Sidebar", () => {
 describe("PageHeader breadcrumbs", () => {
   const admin = { id: "usr_admin", username: "admin", name: "Admin", email: "admin@example.test", role: "admin", status: "active" } as const;
 
+  it("reports provider enablement without interpreting configuration health as an observation", () => {
+    const data = emptyData();
+    data.providers = [
+      { id: "enabled", name: "Enabled provider", type: "mock", priority: 1, status: "active", healthy: false },
+      { id: "disabled", name: "Disabled provider", type: "mock", priority: 2, status: "disabled", healthy: false },
+    ];
+    render(<PageHeader activeView="providers" data={data} meta={{ title: "供应商列表", description: "" }} user={admin} />);
+    expect(screen.getByText("已启用供应商").parentElement).toHaveTextContent("1/2");
+    expect(screen.queryByText("健康 Provider")).not.toBeInTheDocument();
+  });
+
   it("marks the billing page as the current location and returns home from TokenHub", async () => {
     const onSelect = vi.fn();
     render(
