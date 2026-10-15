@@ -173,15 +173,15 @@ TokenHub grows through product feedback, gateway integrations, documentation, te
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/cngump">
-        <img src="https://avatars.githubusercontent.com/u/108251?v=4" width="80px" alt="cngump" />
-        <br /><sub><b>cngump</b></sub>
-      </a>
-    </td>
-    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/bailu-ZZ">
         <img src="https://avatars.githubusercontent.com/u/311096537?v=4" width="80px" alt="bailu-ZZ" />
         <br /><sub><b>bailu-ZZ</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/cngump">
+        <img src="https://avatars.githubusercontent.com/u/108251?v=4" width="80px" alt="cngump" />
+        <br /><sub><b>cngump</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">

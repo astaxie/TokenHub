@@ -343,7 +343,11 @@
         "max_tool_calls",
         "stream_options",
         "store"
-      ]
+      ],
+      "request_parameter_profile": "openai-chat-responses-v1",
+      "reasoning_effort_default": "medium",
+      "sampling_requires_reasoning_effort": "none",
+      "chat_tools_requires_reasoning_effort": "none"
     },
     {
       "id": "gpt-6-sol",
@@ -460,7 +464,11 @@
         "max_tool_calls",
         "stream_options",
         "store"
-      ]
+      ],
+      "request_parameter_profile": "openai-chat-responses-v1",
+      "reasoning_effort_default": "medium",
+      "sampling_requires_reasoning_effort": "none",
+      "chat_tools_requires_reasoning_effort": "none"
     },
     {
       "id": "gpt-6.1-sol",
@@ -577,7 +585,11 @@
         "max_tool_calls",
         "stream_options",
         "store"
-      ]
+      ],
+      "request_parameter_profile": "openai-chat-responses-v1",
+      "reasoning_effort_default": "medium",
+      "sampling_requires_reasoning_effort": "none",
+      "chat_tools_requires_reasoning_effort": "unsupported"
     },
     {
       "id": "gpt-6-astra",

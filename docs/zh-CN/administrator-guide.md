@@ -261,6 +261,16 @@ Provider 连接信息和项目限制仍按线路配置。编辑单条 Provider �
 
 项目作用域也会影响模型发现：除了模型启用状态和 API Key 模型白名单外，只有调用方 API Key 所属项目至少存在一条已启用且符合项目作用域的路由时，对外模型才会出现在 `GET /v1/models` 中。
 
+### Jev 请求兼容性
+
+Jev 在语义选模前检查请求接口、模型输入／输出能力、上下文预算、参数声明及配置的推理条件。Responses 续接请求也使用同一检查。空的 `supported_parameters` 不再代表支持所有参数：可选模型参数须有显式声明或已配置的能力契约。未知参数仍会被拒绝，除非管理员显式声明支持。
+
+已导入的 Provider 模型可在 metadata 中指定 `request_parameter_profile: openai-chat-responses-v1`，同时明确配置 `endpoints`。该协议配置提供 `include`、`truncation`、`service_tier`、`safety_identifier` 等通用控制字段，并根据工具能力识别工具控制字段。Responses 的 `text.format` 请求结构化格式时，仍要求模型支持结构化输出；采样字段仍需模型声明。`reasoning_effort_options` 和 `reasoning_effort_default` 描述推理档位；`sampling_requires_reasoning_effort` 限制采样条件，`chat_tools_requires_reasoning_effort` 指定 Chat 工具调用所需档位或 `unsupported`。可选的 `request_parameter_denied` 是逗号分隔的显式禁用列表，优先于其他允许规则。协议配置不授予上游账号权限，也不替代上游请求格式校验。
+
+GPT-6 Sol／Luna 系列目录条目已携带这些配置，已导入的库存不会自动重写，未启用协议配置的旧线路保留已有协议桥接行为。即使语义评估器关闭、Jev 使用确定性回退，准入检查仍会执行。升级已有 Jev 线路前，应检查其 Provider 模型并测试代表性请求，尤其要检查参数声明为空的库存。更新已有条目时只调整 metadata，保留其他元数据及已配置价格。重新导入会替换 Provider 模型记录，包括价格和状态，不能当作仅更新元数据的操作。其他供应商应使用已核实的自身声明；仅因接口接收 OpenAI 形状的 JSON，不能推断其支持该协议配置。
+
+管理员可在审计中查看 action 为 `routing.jev_admission` 的候选淘汰事件，其中记录候选或绑定路由、固定原因码及已识别的参数名；未知字段名统一替换为 `unknown`。事件不记录提示词、请求参数值、凭据或完整请求体。原因码包括 `parameter_not_declared`、`sampling_reasoning_conflict` 和 `parameter_endpoint_mismatch`。公开错误仍为 `jev_no_eligible_candidates`（503）或 `jev_previous_route_unavailable`（409），不披露候选库存。
+
 ### 作用域路由策略
 
 可在「作用域策略」中为全局网关、项目或 API Key 绑定独立路由策略。TokenHub 按 API Key、项目、全局的顺序解析且只选择一个有效策略。一旦命中更高优先级的绑定，即使该策略已停用、存在冲突或筛选后无合格候选，也会安全拒绝而不会回退到低优先级作用域。每个作用域对象最多绑定一个策略；未绑定的策略定义可以提前准备，不影响流量。

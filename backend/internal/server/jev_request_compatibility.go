@@ -5,17 +5,6 @@ import (
 	"slices"
 )
 
-// Check the actual wire parameter names. A candidate's declaration of a
-// different protocol's budget field never implies an adapter translation.
-func jevRequestParameters(raw map[string]json.RawMessage, parameters map[string]bool, structural []string) map[string]bool {
-	for key, value := range raw {
-		if !slices.Contains(structural, key) && string(value) != "null" {
-			parameters[key] = true
-		}
-	}
-	return parameters
-}
-
 func jevOutputBudget(raw map[string]json.RawMessage, budget int) int {
 	for _, key := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
 		var value int

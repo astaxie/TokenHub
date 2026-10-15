@@ -16,6 +16,11 @@ import (
 func jevFixture(t *testing.T) (*Server, RoutedCall, ChatCompletionRequest, ModelRoutePolicy) {
 	t.Helper()
 	server, routed, request := semanticFixture(t)
+	// Synthetic upstreams implement budgets and function tools; an empty
+	// declaration is no longer interpreted as support for every parameter.
+	if err := server.store.(*GormStore).db.Model(&ProviderModel{}).Where("1 = 1").Update("supported_parameters", `["max_tokens","max_completion_tokens","max_output_tokens","tools"]`).Error; err != nil {
+		t.Fatal(err)
+	}
 	policy := ModelRoutePolicy{Strategy: RouteStrategyJev, SemanticRouting: &SemanticRoutingPolicy{Mode: "enforce", MinConfidence: 0.65, Instructions: "Use the configured task criteria.", DefaultCandidateID: "choice_0"}}
 	for i, route := range routed.Routes {
 		policy.Routes = append(policy.Routes, ModelRoutePolicyRoute{RouteID: route.Route.ID, Weight: 100, QualityScore: 50, CostScore: 50})
@@ -136,7 +141,7 @@ func TestJevStrategyPolicyRejectsInvalidCandidatesAtomically(t *testing.T) {
 	}
 }
 
-func jevHTTPUpstreams(t *testing.T, server *Server, failSelected bool) *atomic.Int32 {
+func jevHTTPUpstreams(t *testing.T, server *Server, failSelected bool, verify ...func(map[string]any)) *atomic.Int32 {
 	t.Helper()
 	hits := &atomic.Int32{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -144,6 +149,9 @@ func jevHTTPUpstreams(t *testing.T, server *Server, failSelected bool) *atomic.I
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 			return
+		}
+		for _, check := range verify {
+			check(body)
 		}
 		model, _ := body["model"].(string)
 		if model == "model_1" {

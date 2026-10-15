@@ -31,11 +31,8 @@ func (s *Server) applySemanticRouting(ctx context.Context, routed *RoutedCall, r
 	}
 	text, eligible := jevChatText(req)
 	_, scope := chatCompletionSessionIdentifier(headers, req)
-	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel) bool {
-		data, _ := json.Marshal(req)
-		parameters := map[string]bool{"max_tokens": req.MaxTokens != 0, "temperature": req.Temperature != nil, "top_p": req.TopP != nil, "tools": req.Tools != nil, "tool_choice": req.ToolChoice != nil, "parallel_tool_calls": req.ParallelToolCalls != nil, "response_format": req.ResponseFormat != nil, "reasoning_effort": req.ReasoningEffort != nil, "stop": req.Stop != nil, "presence_penalty": req.PresencePenalty != nil, "frequency_penalty": req.FrequencyPenalty != nil, "min_p": req.MinP != nil, "top_k": req.TopK != nil}
-		parameters = jevRequestParameters(req.raw, parameters, []string{"model", "messages", "stream", "stream_options", "user", "metadata", "prompt_cache_key"})
-		return jevModelFits(model, len(data), jevOutputBudget(req.raw, req.MaxTokens), parameters) && catalogReasoningEffortFits(model, req.ReasoningEffort) && jevInputModalitiesFit(model, req.Messages)
+	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel) jevCompatibility {
+		return jevChatCompatibility(model, req)
 	})
 }
 
@@ -75,29 +72,7 @@ func jevTextContent(content any) (string, bool) {
 	return jevTextContent(strings.Join(texts, "\n"))
 }
 
-func jevModelFits(model ProviderModel, size, budget int, parameters map[string]bool) bool {
-	if model.Status != StatusActive || budget < 0 || !catalogOutputBudgetFits(model, budget) {
-		return false
-	}
-	if len(model.InputModalities) > 0 && !slices.Contains(model.InputModalities, "text") {
-		return false
-	}
-	if len(model.OutputModalities) > 0 && !slices.Contains(model.OutputModalities, "text") {
-		return false
-	}
-	if model.ContextWindow > 0 && (int64(size) > model.ContextWindow || int64(budget) > model.ContextWindow-int64(size)) {
-		return false
-	}
-	supported := catalogReasoningParameters(model.SupportedParameters, model.Modality, model.Metadata)
-	for parameter, used := range parameters {
-		if used && len(supported) > 0 && !slices.Contains(supported, parameter) {
-			return false
-		}
-	}
-	return true
-}
-
-func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text string, eligible bool, fits func(ProviderModel) bool) error {
+func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text string, eligible bool, fits func(ProviderModel) jevCompatibility) error {
 	policy := modelSemanticRoutingPolicy(routed.Call.Model)
 	timeout := s.config.SemanticRoutingTimeoutMS
 	if timeout <= 0 {
@@ -132,10 +107,16 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 	}
 	groups := map[string][]RouteSelection{}
 	candidates := []semanticCandidate{}
+	rejections := []jevCandidateRejection{}
 	for _, candidate := range policy.Candidates {
 		key := semanticModelKey{candidate.ProviderID, candidate.ProviderModel}
 		model, exists := metadata[key]
-		if !exists || !fits(model) {
+		if !exists {
+			rejections = append(rejections, jevCandidateRejection{CandidateID: candidate.ID, jevCompatibility: jevReject("model_metadata_missing", "")})
+			continue
+		}
+		if result := fits(model); result.Reason != "" {
+			rejections = append(rejections, jevCandidateRejection{CandidateID: candidate.ID, jevCompatibility: result})
 			continue
 		}
 		for _, route := range routed.Routes {
@@ -144,10 +125,12 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 			}
 		}
 		if len(groups[candidate.ID]) == 0 {
+			rejections = append(rejections, jevCandidateRejection{CandidateID: candidate.ID, jevCompatibility: jevReject("route_unavailable", "")})
 			continue
 		}
 		candidates = append(candidates, semanticCandidate{ID: candidate.ID, Model: candidate.ProviderModel, Criteria: candidate.Criteria})
 	}
+	s.recordJevAdmission(routed.Call.RequestID, rejections)
 	if len(candidates) == 0 {
 		return NewHTTPError(503, "jev_no_eligible_candidates", "No configured Jev model can serve this request")
 	}

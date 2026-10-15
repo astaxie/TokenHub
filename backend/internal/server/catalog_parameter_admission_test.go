@@ -61,6 +61,9 @@ func TestReviewedCatalogParametersReachJevUpstream(t *testing.T) {
 						return semanticDecision{Choice: "choice_0", Confidence: 0.9}, nil
 					})
 					body := jevHTTPBody(false, false)
+					// This test isolates effort/sampling declarations. Tool
+					// compatibility is covered by the protocol contract matrix.
+					delete(body, "tools")
 					if parameter == "top_p" {
 						body[parameter] = 0.99
 					} else {
@@ -79,19 +82,25 @@ func TestReviewedCatalogParametersReachJevUpstream(t *testing.T) {
 func TestCatalogEffortDeclarationPreservesOtherEligibilityChecks(t *testing.T) {
 	parameters := []string{"max_tokens"}
 	model := ProviderModel{Modality: "chat", Status: StatusActive, SupportedParameters: parameters, Metadata: map[string]string{"reasoning_effort_options": "high,max"}}
-	if !jevModelFits(model, 10, 10, map[string]bool{"reasoning_effort": true}) {
-		t.Fatal("declared legacy effort control was not admitted")
+	effort := "high"
+	request := ChatCompletionRequest{MaxTokens: 10, ReasoningEffort: &effort}
+	if result := jevChatCompatibility(model, request); result.Reason != "" {
+		t.Fatalf("declared legacy effort control rejected: %+v", result)
 	}
-	if jevModelFits(model, 10, 10, map[string]bool{"frequency_penalty": true}) || len(parameters) != 1 {
+	penalty := 0.5
+	request.FrequencyPenalty = &penalty
+	if result := jevChatCompatibility(model, request); result.Reason == "" || len(parameters) != 1 {
 		t.Fatal("effort declaration admitted an unrelated parameter or mutated inventory")
 	}
+	request.FrequencyPenalty = nil
 	model.Metadata = nil
-	if jevModelFits(model, 10, 10, map[string]bool{"reasoning_effort": true}) {
+	if jevChatCompatibility(model, request).Reason == "" {
 		t.Fatal("undeclared effort bypassed the parameter allowlist")
 	}
 	model.SupportedParameters = nil
 	model.Metadata = map[string]string{"reasoning_effort_options": "high,max"}
-	if !jevModelFits(model, 10, 10, map[string]bool{"temperature": true, "max_tokens": true}) {
-		t.Fatal("effort inference narrowed legacy unrestricted parameter metadata")
+	request = ChatCompletionRequest{MaxTokens: 10, Temperature: &penalty}
+	if jevChatCompatibility(model, request).Reason == "" {
+		t.Fatal("empty parameter metadata became an unrestricted wildcard")
 	}
 }
