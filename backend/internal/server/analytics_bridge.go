@@ -168,7 +168,8 @@ func analyticsHTTPError(err error) error {
 	if errors.As(err, &httpErr) {
 		return err
 	}
-	status, code, message := http.StatusBadRequest, "invalid_analytics_query", err.Error()
+	status := http.StatusBadRequest
+	var code, message string
 	switch {
 	case errors.Is(err, analytics.ErrMissingName):
 		code, message = "invalid_analytics_credential", "Analytics credential name is required"
