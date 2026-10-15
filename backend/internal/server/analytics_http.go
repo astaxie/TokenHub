@@ -3,16 +3,16 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/csv"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"tokenhub/backend/internal/analytics"
 )
 
 const (
@@ -21,7 +21,7 @@ const (
 	maximumRawCostRange           = 31 * 24 * time.Hour
 	maximumGroupedCostRange       = 366 * 24 * time.Hour
 	maximumTokenCostQueryDuration = 10 * time.Second
-	tokenCostCursorVersion        = 3
+	tokenCostCursorVersion        = analytics.CursorVersion
 )
 
 func safeAnalyticsCSVCell(value string) string {
@@ -30,6 +30,17 @@ func safeAnalyticsCSVCell(value string) string {
 		return "'" + value
 	}
 	return value
+}
+
+type tokenCostCursorQuery struct {
+	ProjectID   string   `json:"project_id,omitempty"`
+	UserID      string   `json:"user_id,omitempty"`
+	APIKeyID    string   `json:"api_key_id,omitempty"`
+	ProviderID  string   `json:"provider_id,omitempty"`
+	Model       string   `json:"model,omitempty"`
+	Status      string   `json:"status,omitempty"`
+	Granularity string   `json:"granularity"`
+	GroupBy     []string `json:"group_by"`
 }
 
 type tokenCostCursor struct {
@@ -45,17 +56,6 @@ type tokenCostCursor struct {
 	Checkpoint      int64                `json:"checkpoint"`
 	AfterCheckpoint int64                `json:"after_checkpoint,omitempty"`
 	Incremental     bool                 `json:"incremental,omitempty"`
-}
-
-type tokenCostCursorQuery struct {
-	ProjectID   string   `json:"project_id,omitempty"`
-	UserID      string   `json:"user_id,omitempty"`
-	APIKeyID    string   `json:"api_key_id,omitempty"`
-	ProviderID  string   `json:"provider_id,omitempty"`
-	Model       string   `json:"model,omitempty"`
-	Status      string   `json:"status,omitempty"`
-	Granularity string   `json:"granularity"`
-	GroupBy     []string `json:"group_by"`
 }
 
 func (s *Server) registerAdminAnalyticsCredentialRoutes() {
@@ -78,7 +78,16 @@ func (s *Server) handleAdminAnalyticsCredentialsGet(w http.ResponseWriter, r *ht
 	if _, ok := s.requireAdmin(w, r, "analytics_credential", r.Method); !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListAnalyticsCredentials()})
+	credentials, err := s.analyticsService.ListCredentials(r.Context())
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	result := make([]AnalyticsCredential, len(credentials))
+	for i, credential := range credentials {
+		result[i] = serverCredentialFromAnalytics(credential)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": result})
 }
 
 func (s *Server) handleAdminAnalyticsCredentialsPost(w http.ResponseWriter, r *http.Request) {
@@ -96,17 +105,18 @@ func (s *Server) handleAdminAnalyticsCredentialsPost(w http.ResponseWriter, r *h
 		writeError(w, r, err)
 		return
 	}
-	credential, token, err := s.store.CreateAnalyticsCredential(AnalyticsCredential{
+	credential, token, err := s.analyticsService.CreateCredential(r.Context(), analytics.Credential{
 		Name: request.Name, ScopeType: request.ScopeType, ProjectID: request.ProjectID,
 		ExpiresAt: request.ExpiresAt, CreatedBy: user.ID,
 	}, "")
 	if err != nil {
-		writeError(w, r, err)
+		writeError(w, r, analyticsHTTPError(err))
 		return
 	}
-	s.recordAdminAudit(r, user, "create", "analytics_credential", credential.ID, nil, credential)
+	serverCredential := serverCredentialFromAnalytics(credential)
+	s.recordAdminAudit(r, user, "create", "analytics_credential", serverCredential.ID, nil, serverCredential)
 	w.Header().Set("cache-control", "no-store")
-	writeJSON(w, http.StatusCreated, map[string]any{"credential": credential, "token": token})
+	writeJSON(w, http.StatusCreated, map[string]any{"credential": serverCredential, "token": token})
 }
 
 func (s *Server) handleAdminAnalyticsCredentialDelete(w http.ResponseWriter, r *http.Request) {
@@ -119,13 +129,14 @@ func (s *Server) handleAdminAnalyticsCredentialDelete(w http.ResponseWriter, r *
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "analytics_credential_not_found", "Analytics credential not found"))
 		return
 	}
-	credential, err := s.store.RevokeAnalyticsCredential(id)
+	credential, err := s.analyticsService.RevokeCredential(r.Context(), id)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
-	s.recordAdminAudit(r, user, "revoke", "analytics_credential", credential.ID, nil, credential)
-	writeJSON(w, http.StatusOK, credential)
+	serverCredential := serverCredentialFromAnalytics(credential)
+	s.recordAdminAudit(r, user, "revoke", "analytics_credential", serverCredential.ID, nil, serverCredential)
+	writeJSON(w, http.StatusOK, serverCredential)
 }
 
 func (s *Server) handleAdminAnalyticsCredentialNested(w http.ResponseWriter, r *http.Request) {
@@ -140,12 +151,13 @@ func (s *Server) handleAdminAnalyticsCredentialNested(w http.ResponseWriter, r *
 }
 
 func (s *Server) handleTokenCostAnalytics(w http.ResponseWriter, r *http.Request) {
-	credential, err := s.store.ValidateAnalyticsCredential(bearerToken(r))
+	credentialProjection, err := s.analyticsService.ValidateCredential(r.Context(), bearerToken(r))
 	if err != nil {
 		s.recordTokenCostAudit(r, AnalyticsCredential{}, "failed", AsHTTPError(err).Code, nil)
 		writeError(w, r, err)
 		return
 	}
+	credential := serverCredentialFromAnalytics(credentialProjection)
 	query, metadata, err := s.parseTokenCostQuery(r, credential)
 	if err != nil {
 		s.recordTokenCostAudit(r, credential, "failed", AsHTTPError(err).Code, nil)
@@ -154,13 +166,17 @@ func (s *Server) handleTokenCostAnalytics(w http.ResponseWriter, r *http.Request
 	}
 	queryContext, cancelQuery := context.WithTimeout(r.Context(), maximumTokenCostQueryDuration)
 	defer cancelQuery()
-	page, err := s.store.QueryTokenCostPage(queryContext, query)
+	page, err := s.analyticsService.QueryTokenCostPage(queryContext, query)
 	if err != nil {
 		s.recordTokenCostAudit(r, credential, "failed", "analytics_query_failed", metadata)
-		writeError(w, r, tokenCostStoreError(err))
+		writeError(w, r, tokenCostStoreError(analyticsHTTPError(err)))
 		return
 	}
-	rows, hasMore := page.Rows, page.HasMore
+	rows := make([]TokenCostRow, len(page.Rows))
+	for i, row := range page.Rows {
+		rows[i] = serverRowFromAnalytics(row)
+	}
+	hasMore := page.HasMore
 	queryKey := tokenCostQueryKey(credential, query)
 	watermark := encodeTokenCostCursor(tokenCostCursor{
 		Version: tokenCostCursorVersion, Checkpoint: page.Checkpoint,
@@ -468,23 +484,17 @@ func decodeTokenCostCursor(value string) (tokenCostCursor, error) {
 	if err := json.Unmarshal(data, &cursor); err != nil {
 		return tokenCostCursor{}, err
 	}
-	if cursor.Version != tokenCostCursorVersion || cursor.From.IsZero() || cursor.Through.IsZero() ||
-		!cursor.From.Before(cursor.Through) || cursor.Query.Granularity == "" ||
-		cursor.Checkpoint < 0 || cursor.AfterCheckpoint < 0 || cursor.AfterCheckpoint > cursor.Checkpoint {
-		return tokenCostCursor{}, NewHTTPError(http.StatusBadRequest, "invalid_analytics_cursor", "cursor is invalid")
-	}
-	switch cursor.Kind {
-	case "request":
-		if cursor.AfterAt.IsZero() || cursor.AfterID == "" {
-			return tokenCostCursor{}, NewHTTPError(http.StatusBadRequest, "invalid_analytics_cursor", "cursor is invalid")
-		}
-	case "aggregate":
-		if cursor.Offset <= 0 {
-			return tokenCostCursor{}, NewHTTPError(http.StatusBadRequest, "invalid_analytics_cursor", "cursor is invalid")
-		}
-	case "watermark":
-	default:
-		return tokenCostCursor{}, NewHTTPError(http.StatusBadRequest, "invalid_analytics_cursor", "cursor is invalid")
+	if err := analytics.ValidateCursor(analytics.Cursor{
+		Version: cursor.Version, AfterAt: cursor.AfterAt, AfterID: cursor.AfterID,
+		From: cursor.From, Through: cursor.Through, Kind: cursor.Kind, Offset: cursor.Offset,
+		QueryKey: cursor.QueryKey, Query: analytics.CursorQuery{
+			ProjectID: cursor.Query.ProjectID, UserID: cursor.Query.UserID, APIKeyID: cursor.Query.APIKeyID,
+			ProviderID: cursor.Query.ProviderID, Model: cursor.Query.Model, Status: cursor.Query.Status,
+			Granularity: cursor.Query.Granularity, GroupBy: cursor.Query.GroupBy,
+		}, Checkpoint: cursor.Checkpoint, AfterCheckpoint: cursor.AfterCheckpoint,
+		Incremental: cursor.Incremental,
+	}); err != nil {
+		return tokenCostCursor{}, err
 	}
 	return cursor, nil
 }
@@ -503,29 +513,7 @@ func tokenCostCursorQueryFrom(query TokenCostQuery) tokenCostCursorQuery {
 }
 
 func tokenCostQueryKey(credential AnalyticsCredential, query TokenCostQuery) string {
-	data, _ := json.Marshal(struct {
-		CredentialID string
-		ProjectID    string
-		UserID       string
-		APIKeyID     string
-		ProviderID   string
-		Model        string
-		Status       string
-		Granularity  string
-		GroupBy      []string
-	}{
-		CredentialID: credential.ID,
-		ProjectID:    query.ProjectID,
-		UserID:       query.UserID,
-		APIKeyID:     query.APIKeyID,
-		ProviderID:   query.ProviderID,
-		Model:        query.Model,
-		Status:       query.Status,
-		Granularity:  query.Granularity,
-		GroupBy:      query.GroupBy,
-	})
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return analytics.QueryKey(credential.ID, query)
 }
 
 func writeTokenCostCSV(w http.ResponseWriter, rows []TokenCostRow) error {
