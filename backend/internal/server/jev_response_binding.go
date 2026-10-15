@@ -167,7 +167,7 @@ func (s *Server) applyJevResponsesRouting(ctx context.Context, routed *RoutedCal
 		if permitted {
 			for _, route := range routed.Routes {
 				if route.Route.ID == binding.RouteID && route.Provider.ID == binding.ProviderID && route.ProviderModel == binding.ProviderModel && routeResourceID(route) == binding.ResourceID {
-					if err := s.validateJevBoundModel(ctx, route, *req); err != nil {
+					if err := s.validateJevBoundModel(ctx, routed.Call.RequestID, route, *req); err != nil {
 						return err
 					}
 					routed.Routes = []RouteSelection{route}
@@ -177,6 +177,11 @@ func (s *Server) applyJevResponsesRouting(ctx context.Context, routed *RoutedCal
 				}
 			}
 		}
+		reason := "bound_route_unavailable"
+		if !permitted {
+			reason = "bound_candidate_removed"
+		}
+		s.recordJevAdmission(routed.Call.RequestID, []jevCandidateRejection{{RouteID: binding.RouteID, jevCompatibility: jevReject(reason, "")}})
 		return NewHTTPError(409, "jev_previous_route_unavailable", "Previous response route is no longer available or allowed")
 	}
 	routed.Call.JevResponseBound = protected
@@ -188,12 +193,12 @@ func (s *Server) applyJevResponsesRouting(ctx context.Context, routed *RoutedCal
 	if _, ok := compatibilitySessionIdentifier(headers, *req); ok {
 		eligible = false
 	}
-	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel) bool {
-		return jevResponsesModelFits(model, *req)
+	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel) jevCompatibility {
+		return jevResponsesCompatibility(model, *req)
 	})
 }
 
-func (s *Server) validateJevBoundModel(ctx context.Context, route RouteSelection, req ResponsesRequest) error {
+func (s *Server) validateJevBoundModel(ctx context.Context, requestID string, route RouteSelection, req ResponsesRequest) error {
 	reader, ok := s.store.(semanticModelReader)
 	if !ok {
 		return NewHTTPError(503, "jev_candidates_unavailable", "Jev candidate metadata is unavailable")
@@ -209,22 +214,21 @@ func (s *Server) validateJevBoundModel(ctx context.Context, route RouteSelection
 		return NewHTTPError(503, "jev_candidates_unavailable", "Jev candidate metadata is unavailable")
 	}
 	for _, model := range models {
-		if model.ProviderID == route.Provider.ID && model.UpstreamModel == route.ProviderModel && jevResponsesModelFits(model, req) {
-			return nil
+		if model.ProviderID == route.Provider.ID && model.UpstreamModel == route.ProviderModel {
+			result := jevResponsesCompatibility(model, req)
+			if result.Reason == "" {
+				return nil
+			}
+			s.recordJevAdmission(requestID, []jevCandidateRejection{{RouteID: route.Route.ID, jevCompatibility: result}})
+			return NewHTTPError(409, "jev_previous_route_unavailable", "Previous response model is no longer available or compatible")
 		}
 	}
+	s.recordJevAdmission(requestID, []jevCandidateRejection{{RouteID: route.Route.ID, jevCompatibility: jevReject("model_metadata_missing", "")}})
 	return NewHTTPError(409, "jev_previous_route_unavailable", "Previous response model is no longer available or compatible")
 }
 
 func jevResponsesModelFits(model ProviderModel, req ResponsesRequest) bool {
-	data, _ := json.Marshal(req)
-	parameters := map[string]bool{"max_output_tokens": req.MaxTokens != 0, "temperature": req.Temperature != nil, "reasoning": req.Reasoning != nil}
-	for _, key := range []string{"tools", "tool_choice", "parallel_tool_calls", "text", "top_p", "truncation"} {
-		raw, ok := req.raw[key]
-		parameters[key] = ok && string(raw) != "null"
-	}
-	parameters = jevRequestParameters(req.raw, parameters, []string{"model", "input", "instructions", "stream", "background", "store", "user", "metadata", "prompt_cache_key", "previous_response_id", "client_metadata"})
-	return jevModelFits(model, len(data), req.MaxTokens, parameters) && catalogReasoningEffortFits(model, responsesReasoningEffort(req)) && jevInputModalitiesFit(model, req.Input)
+	return jevResponsesCompatibility(model, req).Reason == ""
 }
 
 func jevResponsesText(req ResponsesRequest) (string, bool) {

@@ -261,6 +261,16 @@ Provider の接続情報とプロジェクト制限は、引き続きルート�
 
 プロジェクトスコープはモデル検出にも反映されます。通常のモデル有効状態と API Key の許可リストに加え、呼び出し元 API Key のプロジェクトに対して有効なルートが 1 つ以上ある場合にだけ、その外部モデルが `GET /v1/models` に含まれます。
 
+### Jev リクエスト互換性
+
+Jev は意味に基づく選択の前に、リクエストのエンドポイント、モデルの入出力能力、コンテキスト予算、パラメーター宣言、設定された推論条件を検査します。Responses の継続にも同じ検査を適用します。空の `supported_parameters` は全パラメーター対応を意味しません。任意のモデルパラメーターには明示的な宣言または能力契約が必要で、未知のフィールドは明示的な宣言がない限り拒否されます。
+
+インポート済み Provider モデルの metadata では、明示的な `endpoints` とともに `request_parameter_profile: openai-chat-responses-v1` を指定できます。このオプトイン設定は `include`、`truncation`、`service_tier`、`safety_identifier` などの共通制御と、ツール能力に基づく制御フィールドを提供します。Responses の `text.format` で構造化形式を要求する場合は構造化出力能力が必要です。サンプリングフィールドはモデル固有です。`reasoning_effort_options` と `reasoning_effort_default` は推論レベルを示し、`sampling_requires_reasoning_effort` はサンプリング条件を、`chat_tools_requires_reasoning_effort` は Chat ツール呼び出しに必要なレベルまたは `unsupported` を指定します。任意の `request_parameter_denied` はカンマ区切りの拒否リストで、許可規則より優先されます。この設定は上流アカウントの権限を付与せず、上流のスキーマ検証も置き換えません。
+
+GPT-6 Sol／Luna 系のカタログにはこの設定が含まれますが、既存のインポート済みインベントリは自動更新されません。プロファイル未設定の既存ルートでは従来のプロトコルブリッジを維持します。意味評価器が無効で Jev が決定的フォールバックを使う場合も准入検査は実行されます。既存 Jev ルートのアップグレード前に Provider モデルと代表的なリクエストを確認し、特に空のパラメーター宣言を点検してください。既存項目は他の metadata と設定価格を保持して更新します。再インポートは価格と状態を含む Provider モデルのレコードを置き換えるため、metadata だけの更新として使用しないでください。他のプロバイダーには検証済みの宣言を使い、OpenAI 形式の JSON を受け付けるだけでこの設定に対応すると推測しないでください。
+
+管理者監査の action `routing.jev_admission` は候補除外を記録します。候補または固定ルート、固定理由コード、認識済みパラメーター名だけを記録し、未知の名前は `unknown` に置換します。プロンプト、リクエスト値、認証情報、完全なペイロードは含めません。理由には `parameter_not_declared`、`sampling_reasoning_conflict`、`parameter_endpoint_mismatch` があります。公開エラーは `jev_no_eligible_candidates`（503）または `jev_previous_route_unavailable`（409）のままで、候補インベントリは公開しません。
+
 ### スコープルーティングポリシー
 
 「スコープポリシー」で、Global ゲートウェイ、Project、API Key に個別のルーティングポリシーをバインドできます。TokenHub は API Key、Project、Global の順に解決し、1 つの有効ポリシーだけを選びます。上位のバインドが見つかった時点で解決は終了し、そのポリシーが無効、競合、または適格候補なしでも下位スコープへフォールバックせず、フェイルクローズします。各スコープ対象にバインドできるポリシーは 1 つです。未バインドの定義はトラフィックに影響させず事前に準備できます。
