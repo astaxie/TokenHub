@@ -30,13 +30,20 @@
         "context": 256000,
         "output": 64000
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://cloud.tencent.com/document/product/1823/130060",
+        "pricing_note": "Subscription points are not USD per-token prices. Regional, model and time-window deductions differ; confirm configured upstream costs before publication.",
+        "billing_unit": "plan_points",
+        "access_region": "Account plan region",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130060"
       },
-      "type": "chat"
+      "last_updated": "2026-10-16"
     },
     {
       "id": "hy3-preview",
@@ -63,13 +70,96 @@
         "context": 256000,
         "output": 64000
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://cloud.tencent.com/document/product/1823/130060",
+        "pricing_note": "Subscription points are not USD per-token prices. Regional, model and time-window deductions differ; confirm configured upstream costs before publication.",
+        "billing_unit": "plan_points",
+        "access_region": "Account plan region",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "lifecycle_status": "redirected",
+        "replacement_model": "hy3",
+        "lifecycle_source": "https://cloud.tencent.com/document/product/1823/130060",
+        "lifecycle_note": "Hy3 preview calls are routed to Hy3; the notice does not publish an exact effective time."
       },
-      "type": "chat"
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "hy4-preview",
+      "name": "hy4-preview",
+      "display_name": "hy4-preview",
+      "family": "tencent",
+      "category": "tencent",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130060",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Account plan region",
+        "billing_unit": "plan_points",
+        "parameter_status": "Text Chat Completions identity verified; other modalities, model limits and optional controls not inferred from original vendors.",
+        "endpoints": "chat/completions",
+        "availability": "preview",
+        "pricing_source": "https://cloud.tencent.com/document/product/1823/130060",
+        "pricing_note": "Subscription points are not USD per-token prices. Regional, model and time-window deductions differ; confirm configured upstream costs before publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "hy3-202608",
+      "name": "hy3-202608",
+      "display_name": "hy3-202608",
+      "family": "tencent",
+      "category": "tencent",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130060",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Account plan region",
+        "billing_unit": "plan_points",
+        "parameter_status": "Text Chat Completions identity verified; other modalities, model limits and optional controls not inferred from original vendors.",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://cloud.tencent.com/document/product/1823/130060",
+        "pricing_note": "Subscription points are not USD per-token prices. Regional, model and time-window deductions differ; confirm configured upstream costs before publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
     }
   ]
 }

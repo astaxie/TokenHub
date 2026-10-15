@@ -851,6 +851,8 @@ func normalizeModelModality(value string) string {
 	}
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch {
+	case value == "ocr":
+		return "ocr"
 	case strings.Contains(value, "rerank"):
 		return "rerank"
 	case strings.Contains(value, "embed") || isKnownEmbeddingModelName(value):

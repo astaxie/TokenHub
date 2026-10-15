@@ -2020,6 +2020,85 @@
         "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
         "shutdown_at": "2026-02-19T00:00:00Z"
       }
+    },
+    {
+      "id": "claude-mythos-5-1",
+      "name": "Claude Mythos 5.1",
+      "display_name": "Claude Mythos 5.1",
+      "family": "claude",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.claude.com/docs/en/release-notes/overview",
+        "verified_at": "2026-10-16",
+        "availability": "restricted",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "reasoning_effort_parameter": "output_config.effort",
+        "sampling_note": "Omit temperature, top_p and top_k; non-default sampling can fail.",
+        "pricing_note": "Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.",
+        "compatibility_source": "https://platform.claude.com/docs/en/release-notes/overview",
+        "tool_choice_allowed": "auto,none",
+        "thinking_mode": "adaptive",
+        "thinking_can_disable": "false",
+        "retention_note": "Requires 30-day retention; ZDR only with explicit Anthropic authorization.",
+        "thinking_history_note": "Preserve signed thinking and account affinity; changing system/tools/history or switching model/account can reject or drop blocks.",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "high",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "anthropic",
+        "max_output_tokens": "128000",
+        "pricing_status": "unverified",
+        "access_requirement": "Project Glasswing participants only; listing does not establish account entitlement.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: restricted model access and its native thinking/history contract have not been validated.",
+        "catalog_price_reference": "true"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_write_5m": 12.5,
+        "cache_write_1h": 20
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "claude",
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "anthropic",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ],
+      "release_date": "2026-09-01"
     }
   ]
 }

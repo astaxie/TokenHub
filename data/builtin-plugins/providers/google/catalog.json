@@ -1952,6 +1952,80 @@
         "shutdown_time_note": "The vendor publishes a calendar date; the date boundary is used for new-route eligibility.",
         "shutdown_at": "2025-11-14T00:00:00Z"
       }
+    },
+    {
+      "id": "gemini-4-argon",
+      "name": "Gemini 4 Argon",
+      "display_name": "Gemini 4 Argon",
+      "family": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+        "verified_at": "2026-10-16",
+        "availability": "active",
+        "pricing_source": "https://ai.google.dev/gemini-api/docs/latest-model",
+        "pricing_note": "Introductory Standard USD/MTok through 2026-11-30; input/cache/output double on 2026-12-01. Thinking tokens count as output. No free tier; confirm account billing before publication.",
+        "sampling_note": "temperature, top_p and top_k are accepted but ignored by the upstream model; use thinking level instead.",
+        "protocols": "generateContent,interactions",
+        "reasoning_effort_options": "low,medium,high",
+        "reasoning_effort_parameter": "thinking_level",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "medium",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "gemini",
+        "max_output_tokens": "65536",
+        "pricing_status": "unverified",
+        "migration_source": "https://ai.google.dev/gemini-api/docs/latest-model",
+        "pricing_effective_until": "2026-11-30",
+        "reference_token_prices": "{\"input\":2,\"output\":10,\"cache_read\":0.1}",
+        "future_pricing": "{\"effective_from\":\"2026-12-01\",\"input\":4,\"output\":20,\"cache_read\":0.2}",
+        "context_note": "Unified input and output limit: 1048576 tokens.",
+        "cache_note": "Implicit caching only; explicit caching is unsupported.",
+        "output_limit_note": "TokenHub synchronous adapter limit is 65536. Native long decode up to 1048576 requires background/continuation handling that is not implemented.",
+        "adapter_verification": "Synthetic native GenerateContent contract only; account entitlement and live billing remain unverified.",
+        "native_endpoints": "generateContent,streamGenerateContent"
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "gemini",
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "gemini",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
+      "release_date": "2026-10-13"
     }
   ]
 }

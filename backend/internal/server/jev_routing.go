@@ -76,7 +76,7 @@ func jevTextContent(content any) (string, bool) {
 }
 
 func jevModelFits(model ProviderModel, size, budget int, parameters map[string]bool) bool {
-	if model.Status != StatusActive || budget < 0 {
+	if model.Status != StatusActive || budget < 0 || !catalogOutputBudgetFits(model, budget) {
 		return false
 	}
 	if len(model.InputModalities) > 0 && !slices.Contains(model.InputModalities, "text") {
