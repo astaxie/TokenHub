@@ -12,6 +12,7 @@ import (
 
 	"tokenhub/backend/internal/billing"
 	"tokenhub/backend/internal/reconciliation"
+	reconciliationpersistence "tokenhub/backend/internal/reconciliation/persistence"
 )
 
 func TestReconciliationBridgePreservesHTTPError(t *testing.T) {
@@ -97,7 +98,7 @@ func TestReconciliationBillingBridgeReturnsNarrowProjections(t *testing.T) {
 			RawPayload: "sensitive raw payload",
 		}},
 	}
-	bridge := &reconciliationBillingBridge{reader: reader}
+	bridge := reconciliationpersistence.NewBillingReader(reader)
 	connector, err := bridge.GetConnectorSnapshot("connector")
 	if err != nil {
 		t.Fatal(err)

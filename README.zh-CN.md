@@ -249,6 +249,12 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
   </tr>
   <tr>
     <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/ACwisdom">
+        <img src="https://avatars.githubusercontent.com/u/212327199?v=4" width="80px" alt="ACwisdom" />
+        <br /><sub><b>ACwisdom</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/hoorayman">
         <img src="https://avatars.githubusercontent.com/u/73151874?v=4" width="80px" alt="hoorayman" />
         <br /><sub><b>hoorayman</b></sub>
@@ -267,15 +273,15 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/ACwisdom">
-        <img src="https://avatars.githubusercontent.com/u/212327199?v=4" width="80px" alt="ACwisdom" />
-        <br /><sub><b>ACwisdom</b></sub>
-      </a>
-    </td>
-    <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/AnxForever">
         <img src="https://avatars.githubusercontent.com/u/130662349?v=4" width="80px" alt="AnxForever" />
         <br /><sub><b>AnxForever</b></sub>
+      </a>
+    </td>
+    <td align="center" valign="top" width="12.5%">
+      <a href="https://github.com/codex">
+        <img src="https://avatars.githubusercontent.com/u/267193182?v=4" width="80px" alt="codex" />
+        <br /><sub><b>codex</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
@@ -290,14 +296,14 @@ TokenHub 的演进离不开真实企业场景里的使用反馈、网关集成�
         <br /><sub><b>yujiewanwan</b></sub>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/longzhang83">
         <img src="https://avatars.githubusercontent.com/u/38556219?v=4" width="80px" alt="longzhang83" />
         <br /><sub><b>longzhang83</b></sub>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top" width="12.5%">
       <a href="https://github.com/lxm">
         <img src="https://avatars.githubusercontent.com/u/1918195?v=4" width="80px" alt="lxm" />

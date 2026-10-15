@@ -9,6 +9,15 @@ import (
 )
 
 func TestUserQuotaIsAtomicAcrossPostgresInstances(t *testing.T) {
+	for _, target := range []string{"individual", "default"} {
+		t.Run(target, func(t *testing.T) {
+			testUserQuotaIsAtomicAcrossPostgresInstances(t, target == "default")
+		})
+	}
+}
+
+func testUserQuotaIsAtomicAcrossPostgresInstances(t *testing.T, useDefault bool) {
+	t.Helper()
 	storeA, storeB, _ := openSharedPostgresStores(t)
 	suffix := NewID("user_quota")
 	userID := "usr_" + suffix
@@ -23,9 +32,13 @@ func TestUserQuotaIsAtomicAcrossPostgresInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	scopeID := userID
+	if useDefault {
+		scopeID = allUsersQuotaScopeID
+	}
 	policy := storeA.CreateResource("quota-policies", AdminResource{
 		ID: "quota_" + suffix, Name: "PostgreSQL aggregate user quota", Status: StatusActive,
-		Fields: map[string]any{"scope": "user", "scope_id": userID, "daily_tokens": 5},
+		Fields: map[string]any{"scope": "user", "scope_id": scopeID, "daily_tokens": 5},
 	})
 	t.Cleanup(func() {
 		_ = storeA.DeleteResource("quota-policies", policy.ID)

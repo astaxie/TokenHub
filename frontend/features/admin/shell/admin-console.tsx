@@ -14,13 +14,13 @@ import { apiKeyUsageIDFromPath, uniqueUIID, viewFromPath } from "../domain/forma
 import { pluginDetailPath, pluginDetailRouteFromPath, type PluginDetailSection } from "../domain/plugin-detail-route";
 import { type PluginManagerTabKey } from "../domain/plugin-management";
 import { reportDatasetLabel } from "../domain/labels";
-import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult } from "../domain/oauth-login";
+import { exchangeOAuthLoginCode, resolvePendingOAuthLoginResult, safeOAuthLoginErrorCode } from "../domain/oauth-login";
 import { pluginShellPresentation } from "../domain/plugin-theme";
 import { normalizePluginThemeOverrides, type PluginThemeOverrides, readPluginThemeOverrides, savePluginThemeOverrides } from "../domain/plugin-theme-overrides";
 import { resolveSIMSelection, type SIMSelectionResult } from "../domain/sim-selection";
 import { resourceCreateTarget } from "../domain/resource-create-target";
 import { simRegistryFromPlugins } from "../domain/sim-registry";
-import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
+import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, formatTranslationTemplate, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
 import { createKeyWithCapture } from "../resources/generic-config";
 import { downloadReport } from "../resources/governance-config";
 import { adminFetch, adminMutate, importUsersFromCSVContent, isAuthExpiredError, loadRequestLabel, notificationChannelDefaults, permissionPartialLoadMessage, readAdminError, readLoadError, restoreDefaultModelCatalog } from "../resources/payloads";
@@ -76,6 +76,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   const [pluginManagerTab, setPluginManagerTab] = useState<PluginManagerTabKey>("installed");
   const [data, setData] = useState<AppData>(emptyData());
   const [error, setError] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [routingPolicyError, setRoutingPolicyError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -206,21 +207,21 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       ) {
         clearOAuthAuthorizationResponse();
         clearPendingOAuthLogin();
-        setError(tx("OAuth 登录失败"));
+        setLoginError(tx("OAuth 登录失败"));
         setBootstrapped(true);
         return;
       }
       if (oauthCallback.status === "unexpected") {
         clearOAuthLoginResult();
         clearPendingOAuthLogin();
-        setError(tx("OAuth 登录失败"));
+        setLoginError(tx("OAuth 登录失败"));
         setBootstrapped(true);
         return;
       }
       if (oauthCallback.status === "ready" && oauthCallback.result.error) {
         clearOAuthLoginResult();
         clearPendingOAuthLogin();
-        setError(tx("OAuth 登录失败"));
+        setLoginError(formatTranslationTemplate(tx("OAuth 登录失败（{code}），请重试或联系管理员。"), { code: safeOAuthLoginErrorCode(oauthCallback.result.error) }));
         setBootstrapped(true);
         return;
       }
@@ -243,9 +244,10 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           setAdminToken(payload.token);
           setCurrentUser(payload.user);
           saveSession({ baseURL: sessionBaseURL, token: payload.token, user: payload.user, expiresAt: payload.expires_at });
+          setLoginError("");
           setError("");
         } catch (err) {
-          if (!cancelled) setError(err instanceof Error ? err.message : tx("OAuth 登录失败"));
+          if (!cancelled) setLoginError(err instanceof Error ? err.message : tx("OAuth 登录失败"));
         } finally {
           clearOAuthLoginResult();
           clearPendingOAuthLogin();
@@ -587,6 +589,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   }
 
   async function login(identity: string, password: string) {
+    setLoginError("");
     setLoading(true);
     setError("");
     try {
@@ -629,6 +632,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   }
 
   async function logout() {
+    setLoginError("");
     setPendingAction(null);
     setIssuedKey("");
     if (adminToken) {
@@ -907,7 +911,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     return (
       <LoginView
         loading={loading}
-        error={error}
+        error={loginError || error}
         baseURL={baseURL}
         identityProviders={loginIdentityProviders}
         oauthReturnURL={oauthReturnURL}

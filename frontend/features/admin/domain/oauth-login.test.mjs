@@ -13,9 +13,19 @@ const {
   readPendingOAuthLoginState,
   resolvePendingOAuthLoginResult,
   savePendingOAuthLoginState,
+  safeOAuthLoginErrorCode,
 } = await importTypeScript(new URL("./oauth-login.ts", import.meta.url));
 
 const codeVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+
+test("displays only known OAuth failure stages without reflecting arbitrary callback content", () => {
+  for (const code of ["provider_error", "missing_code", "identity_provider_not_found", "token_exchange_failed", "userinfo_failed", "user_sync_failed", "session_failed"]) {
+    assert.equal(safeOAuthLoginErrorCode(code), code);
+  }
+  for (const error of ["", "unexpected-secret", "<script>alert(1)</script>", "provider_error&token=secret"]) {
+    assert.equal(safeOAuthLoginErrorCode(error), "unknown_error");
+  }
+});
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
