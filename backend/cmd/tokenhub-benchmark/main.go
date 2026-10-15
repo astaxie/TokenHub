@@ -135,7 +135,7 @@ func runGateway(args []string, stderr io.Writer) error {
 		}
 		store.AddRoute(server.ModelRoute{ModelName: *model, ProviderID: provider.ID, ProviderResourceID: resource.ID, ProviderModel: *model, Priority: index + 1, Weight: 100, Status: server.StatusActive, Strategy: server.RouteStrategyPriorityOnly})
 	}
-	app := server.NewWithConfig(store, config)
+	app := server.NewWithConfigAndDependencies(store, config, server.ApplicationDependenciesForStore(store))
 	defer func() { _ = app.Shutdown(context.Background()) }()
 	_, _ = fmt.Fprintf(stderr, "self-contained TokenHub benchmark gateway listening on http://%s\n", *listen)
 	httpServer := &http.Server{Addr: *listen, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second}

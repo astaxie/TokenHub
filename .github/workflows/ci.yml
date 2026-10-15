@@ -158,6 +158,11 @@ jobs:
           go test -tags=integration ./internal/server -run '^(TestMultiInstancePostgresE2E|TestPostgresBaselineSQLIsCurrent|TestPostgresFreshStoreAdoptsFromBaselineSQL|TestPostgresMeteringSchemaVerification|TestPostgresStartupSchemaLockWaitHonorsContext|TestQuotaBucketMigrationPostgresAddsAttributionColumnBeforeBackfill|TestUserQuotaIsAtomicAcrossPostgresInstances|TestSemanticRoutingPostgresPolicy|TestSemanticRoutingPostgresConcurrentModelEdit|TestJevPostgresResponseBinding)$' -count=1 -v
           go test -tags=integration ./internal/dbschema -run '^TestPostgres' -count=1 -v
 
+      - name: Test PostgreSQL reconciliation persistence contract
+        env:
+          TEST_POSTGRES_URL: postgresql://tokenhub:tokenhub-e2e-password@localhost:5432/tokenhub_e2e?sslmode=disable
+        run: go test -tags=integration ./internal/reconciliation/persistence -run '^TestPostgres' -count=1 -v
+
       - name: Check out previous release tag
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:

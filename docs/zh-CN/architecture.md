@@ -23,6 +23,10 @@ flowchart TB
         modelApi["模型 API\n/v1/*"]
         governance["鉴权与治理\nKey、RBAC、配额、并发、IP 白名单"]
         routing["路由编排\n候选路由、策略、权重、回退、会话亲和"]
+        adminAdapters["Billing 与 reconciliation\n管理适配器"]
+        billing["Billing 应用"]
+        reconciliation["对账应用"]
+        reconciliationPersistence["对账持久化\nSQLite/PostgreSQL"]
         adapters["适配器注册表"]
         builtin["内置 Provider 插件"]
         plugins["插件注册表与运行时"]
@@ -31,7 +35,12 @@ flowchart TB
         store["GORM Store"]
 
         adminApi --> governance
-        adminApi --> store
+        adminApi -->|"其余领域"| store
+        adminApi --> adminAdapters
+        adminAdapters --> billing
+        adminAdapters --> reconciliation
+        billing --> store
+        reconciliation --> reconciliationPersistence
         modelApi --> governance --> routing --> adapters
         modelApi --> operations --> store
         adminApi --> operations
@@ -72,6 +81,8 @@ flowchart TB
     builtin --> codex
     store --> sqlite
     store --> postgres
+    reconciliationPersistence --> sqlite
+    reconciliationPersistence --> postgres
     catalog --> store
 ```
 
@@ -129,11 +140,14 @@ flowchart LR
 | 组件 | 位置 | 责任 |
 | --- | --- | --- |
 | 管理后台 | `frontend/` | 分角色控制台；服务端运行时通过 `TOKENHUB_API_BASE_URL` 读取后端地址，`NEXT_PUBLIC_API_BASE_URL` 仅作兼容回退 |
-| HTTP 服务 | `backend/internal/server/http.go` | 注册 API、执行鉴权、路由调用、写入响应和健康检查 |
+| HTTP 服务与依赖组装 | `backend/internal/server/http.go`、`backend/internal/server/billing_composition.go` | 注册路由、认证授权、提供传输回调，显式注入 billing/reconciliation 依赖；其他领域的实现仍有部分留在 `server` |
+| 管理 HTTP 适配器 | `backend/internal/admin/` | 通过应用接口完成 billing 和 reconciliation 的请求/响应映射及 CSV 传输，不直接访问数据库 |
+| 对账应用 | `backend/internal/reconciliation/` | 规则、匹配、执行、调度、锁定、重算与导出策略；拥有 `Store` 和 `BillingReader` 端口 |
+| 对账持久化 | `backend/internal/reconciliation/persistence/` | SQLite/PostgreSQL 的 GORM 行模型和事务、用量成本证据，以及面向对账端口的账单投影适配 |
 | 路由编排 | `backend/internal/server/http.go` | 为统一模型名选择候选路由，按优先级、资源优先级、策略、权重和亲和性确定尝试顺序 |
 | 适配器注册与探测 | `adapter_registry.go`、`integration_service.go` | 声明各 Provider 的能力，执行 Provider 与资源探测 |
 | Provider 适配层 | `builtin_provider_plugins.go`、`provider_plugin_adapter.go`、`provider_account_codex.go` | 将统一请求转换为上游协议；管理 Codex 订阅资源的 OAuth、刷新与会话亲和 |
-| 持久化层 | `store.go` | GORM 数据访问、配额计数、凭证加密、SQLite 备份、PostgreSQL 租约和集群锁 |
+| server 中剩余的 Store | `backend/internal/server/store.go` | 数据库初始化及其他领域的数据访问、配额计数、凭证加密、SQLite 备份、PostgreSQL 租约和集群锁；对账操作由模块自己的适配器负责 |
 | 模型目录 | `data/model-catalog.yaml` | 为镜像构建提供标准模型元数据，启动时同步到数据库 |
 
 Provider 类型与主要能力如下：
