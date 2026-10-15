@@ -1,6 +1,7 @@
 import { type AdminResource, type FieldConfig, notificationChannelTemplates, type ResourceConfig, type SQLiteBackup, type ViewKey } from "../core/types";
 import { notificationChannelLabel, notificationChannelTargetSummary, notificationChannelType, notificationChannelUsesEmail, notificationChannelUsesIncomingWebhook, notificationChannelUsesTelegram, notificationChannelUsesWhatsApp, notificationCredentialSummary } from "../domain/catalog";
-import { apiKeyOwnerSelectOptions, costCenterLabel, costCenterSelectOptions, oauthDefaultProjectRoleOptions, ownerUserLabel, projectMemberProjectSelectOptions, stringifyValue, teamMemberCount, teamSelectOptions, userSelectOptions } from "../domain/entities";
+import { apiKeyOwnerSelectOptions, costCenterLabel, costCenterSelectOptions, fieldSummary, oauthDefaultProjectRoleOptions, ownerUserLabel, projectMemberProjectSelectOptions, stringifyValue, teamMemberCount, teamSelectOptions, userSelectOptions } from "../domain/entities";
+import { appRole } from "../core/navigation";
 import { formatBytes, formatNumber, formatTime } from "../domain/formatting";
 import { boolLabel, dataScopeLabel, identityProviderDefaultGrantLabel, identityProviderLoginEntryLabel, identityProviderTypeLabel, monitorTargetLabel, numberFromUnknown, numberOr } from "../domain/labels";
 import { formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
@@ -74,13 +75,16 @@ function quotaPolicyConfig(): ResourceConfig<AdminResource> {
           case "team":
             return teamSelectOptions(data);
           case "user":
-            return apiKeyOwnerSelectOptions(data, currentUser);
+            return [
+              ...(currentUser && appRole(currentUser.role) === "admin" ? [{ value: "all_users", label: tx("所有用户（每人独立额度）") }] : []),
+              ...apiKeyOwnerSelectOptions(data, currentUser),
+            ];
           default:
             return [];
         }
       },
       required: true,
-      help: "用户作用域会合并该用户所有归属 Key 的用量，Key 轮换不会重置额度。",
+      help: "用户作用域合并每人的所有归属 Key，轮换不会重置额度。管理员可选择所有用户，自动覆盖现有和新用户；与个人策略逐项取更严格的限制。",
     },
     { key: "rate_limit_rpm", label: "每分钟请求数（RPM）", type: "number" },
     { key: "token_limit_tpm", label: "每分钟 Token 数（TPM）", type: "number" },
@@ -99,13 +103,22 @@ function quotaPolicyConfig(): ResourceConfig<AdminResource> {
       {
         key: "current_usage",
         label: "用量统计",
-        render: (item) => item.current_usage
+        render: (item) => isDefaultUserQuota(item) ? tx("按用户分别统计") : item.current_usage
           ? `${formatQuotaUsage(tx("日：{requests} 次请求 · {tokens} Token · {cost}"), item.current_usage.daily)} / ${formatQuotaUsage(tx("月：{requests} 次请求 · {tokens} Token · {cost}"), item.current_usage.monthly)}`
           : "-",
       },
-      ...base.columns.slice(3),
+      ...base.columns.slice(3).map((column) => column.key === "fields" ? {
+        ...column,
+        render: (item: AdminResource) => fieldSummary(isDefaultUserQuota(item)
+          ? { ...item.fields, scope_id: tx("所有用户（每人独立额度）") } : item.fields),
+      } : column),
     ],
   };
+}
+
+function isDefaultUserQuota(item: AdminResource) {
+  return (stringifyValue(item.fields?.scope).trim() || stringifyValue(item.fields?.scope_type).trim()).toLowerCase() === "user"
+    && stringifyValue(item.fields?.scope_id).trim() === "all_users";
 }
 
 function formatQuotaUsage(template: string, usage: { requests: number; total_tokens: number; cost_usd: number }) {

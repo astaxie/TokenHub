@@ -51,6 +51,10 @@ func (s *Server) handleAdminProjectQuotaIncrease(w http.ResponseWriter, r *http.
 	}
 	resourceID := ""
 	if quota, ok := s.projectQuotaPolicy(project); ok {
+		if isDefaultUserQuotaPolicy(quota.Fields) {
+			writeError(w, r, defaultUserQuotaProjectConflict())
+			return
+		}
 		resourceID = quota.ID
 	}
 	payload := map[string]any{
