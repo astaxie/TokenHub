@@ -5,6 +5,21 @@ export type OAuthLoginResult = {
 
 export type OAuthCallbackLocation = Pick<Location, "hash" | "search">;
 
+export function safeOAuthLoginErrorCode(error: string): string {
+  switch (error) {
+    case "provider_error":
+    case "missing_code":
+    case "identity_provider_not_found":
+    case "token_exchange_failed":
+    case "userinfo_failed":
+    case "user_sync_failed":
+    case "session_failed":
+      return error;
+    default:
+      return "unknown_error";
+  }
+}
+
 export type PendingOAuthLogin = {
   baseURL: string;
   codeVerifier: string;

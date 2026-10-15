@@ -1,5 +1,6 @@
 export const loginHomeTranslations: Record<"en" | "ja", Record<string, string>> = {
   en: {
+    "OAuth 登录失败（{code}），请重试或联系管理员。": "OAuth sign-in failed ({code}). Try again or contact your administrator.",
     "欢迎回来": "Welcome back",
     "登录 TokenHub 控制台": "Sign in to the TokenHub console",
     "统一管理企业 {ai} Token": "Enterprise {ai} Token Control Platform",
@@ -29,6 +30,7 @@ export const loginHomeTranslations: Record<"en" | "ja", Record<string, string>> 
     "SSO 企业单点登录": "Enterprise SSO",
   },
   ja: {
+    "OAuth 登录失败（{code}），请重试或联系管理员。": "OAuth ログインに失敗しました（{code}）。再試行するか、管理者にお問い合わせください。",
     "欢迎回来": "おかえりなさい",
     "登录 TokenHub 控制台": "TokenHub コンソールにログイン",
     "统一管理企业 {ai} Token": "企業の {ai} Token 管理",
