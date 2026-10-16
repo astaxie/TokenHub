@@ -160,12 +160,15 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 	if err := decodeGatewayHookRequestPatch(data, &fields); err != nil {
 		return err
 	}
-	patched := mediaRequest{Fields: fields, Multipart: m.Multipart, Path: m.Path}
+	patched := mediaRequest{Fields: fields, Files: m.Files, Multipart: m.Multipart, Path: m.Path}
 	if err := patched.validateStream(); err != nil {
 		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid media stream mode")
 	}
 	if err := validateGatewayHookRequestInvariant(m.model(), m.stream(), patched.model(), patched.stream()); err != nil {
 		return err
+	}
+	if err := patched.validateAudioFiles(); err != nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned invalid transcription file fields")
 	}
 	m.Fields = fields
 	return nil

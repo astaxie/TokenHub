@@ -3,7 +3,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { type ApiContext } from "../core/types";
-import { formatStatementAmount, statementCSV, statementMonth, type StatementQuery, type StatementResult, type StatementSide } from "../domain/billing-statements";
+import { formatStatementAmount, formatStatementQuantity, statementCSV, statementMonth, type StatementQuery, type StatementResult, type StatementSide } from "../domain/billing-statements";
 import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { DataSection, SimpleTable } from "../shared/ui";
@@ -63,6 +63,7 @@ export function BillingStatements({ api, side = "tenant", model = "", providerID
   }
   const money = (amount: string | null, currency: string) => amount === null ? tx("未知") : formatStatementAmount(amount, currency, languageLocale());
   const number = (value: number) => new Intl.NumberFormat(languageLocale()).format(value);
+  const quantity = (value: string) => formatStatementQuantity(value, languageLocale());
   const date = (value: string, timezone: string) => {
     try { return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "short", timeStyle: "short", timeZone: timezone }).format(new Date(value)); }
     catch { return value; }
@@ -110,15 +111,18 @@ export function BillingStatements({ api, side = "tenant", model = "", providerID
       <SimpleTable columns={[tx("金额来源"), tx("项目 / 模型"), tx("时间 / 时区"), tx("用量"), tx("金额"), tx("依据")]} paginationKey="billing-statements" rows={result.rows.map(row => [
         statementSource(row.source), <span key="subject">{row.project_id || row.provider_id}<small>{row.model}</small><small>{row.api_key_id || row.resource_id}</small></span>,
         <span key="time">{date(row.at, row.timezone || "UTC")}<small>{row.timezone}</small>{row.end_at ? <small>{date(row.end_at, row.timezone || "UTC")}</small> : null}</span>,
-        row.source === "provider_billed" ? `${number(row.usage_quantity ?? 0)} ${row.usage_unit ?? ""}` : Object.entries(row.units).filter(([, value]) => value > 0).map(([kind, value]) => `${statementUnit(kind)}: ${number(value)}`).join(" · "),
-        money(row.amount, row.currency), <details key="evidence"><summary>{statementStatus(row.status)}</summary><p>{statementReason(row.reason)}</p>{row.external_id ? <p>{row.external_id}</p> : null}{row.price ? <p>{row.price.version || row.price.source}</p> : null}{row.lines?.map(line => <p key={line.kind}>{statementUnit(line.kind)}: {number(line.units)} × {money(line.rate, row.currency)} / 1M = {money(line.amount, row.currency)}</p>)}</details>,
+        row.source === "provider_billed" ? `${number(row.usage_quantity ?? 0)} ${row.usage_unit ?? ""}` : [
+          ...Object.entries(row.units).filter(([, value]) => value > 0).map(([kind, value]) => `${statementUnit(kind)}: ${number(value)}`),
+          ...(row.lines ?? []).filter(line => line.kind === "audio_second" && line.quantity !== undefined).map(line => `${statementUnit(line.kind)}: ${quantity(line.quantity!)}`),
+        ].join(" · "),
+        money(row.amount, row.currency), <details key="evidence"><summary>{statementStatus(row.status)}</summary><p>{statementReason(row.reason)}</p>{row.external_id ? <p>{row.external_id}</p> : null}{row.price ? <p>{row.price.version || row.price.source}</p> : null}{row.lines?.map(line => <p key={line.kind}>{statementUnit(line.kind)}: {line.kind === "audio_second" ? quantity(line.quantity ?? String(line.units)) : number(line.units)} × {money(line.rate, row.currency)}{line.kind === "audio_second" ? "" : " / 1M"} = {money(line.amount, row.currency)}</p>)}</details>,
       ])} />
     </> : null}
   </DataSection>;
 }
 
 function statementSource(value: string) { return ({ tenant: tx("租户费用"), provider_estimate: tx("本地估算成本"), provider_billed: tx("供应商账单金额") })[value] ?? value; }
-function statementUnit(value: string) { return ({ input: tx("输入"), output: tx("输出"), cache_read: tx("缓存读"), cache_write: tx("缓存写"), cache_write_5m: tx("5 分钟缓存写"), cache_write_1h: tx("1 小时缓存写") })[value] ?? value; }
+function statementUnit(value: string) { return ({ input: tx("输入"), output: tx("输出"), cache_read: tx("缓存读"), cache_write: tx("缓存写"), cache_write_5m: tx("5 分钟缓存写"), cache_write_1h: tx("1 小时缓存写"), audio_second: tx("音频秒数") })[value] ?? value; }
 function statementStatus(value: string) { return ({ estimated: tx("估算"), provider_billed: tx("供应商账单金额"), pending: tx("待核实"), legacy_incomplete: tx("历史依据不足"), period_overlap: tx("跨期间金额") })[value] ?? value; }
 function statementReason(value?: string) {
   if (value === "recorded_tenant_charge") return tx("采用已记录费用和历史单价");

@@ -31,6 +31,27 @@ describe("BillingStatements", () => {
     render(<BillingStatements api={api} />);
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("offline"));
   });
+  it.each([
+    { language: "zh-CN" as const, preview: "预览对账单", label: "音频秒数", currency: "US$" },
+    { language: "en" as const, preview: "Preview statement", label: "Audio seconds", currency: "$" },
+    { language: "ja" as const, preview: "明細書をプレビュー", label: "音声の秒数", currency: "$" },
+  ])("renders native audio quantities and keeps token pricing in $language", async ({ language, preview, label, currency }) => {
+    setActiveLanguage(language);
+    const base = { source: "provider_estimate", at: "2020-01-01T00:00:00Z", timezone: "UTC", currency: "USD", status: "estimated", reason: "recorded_tenant_charge" };
+    const rows = [
+      { ...base, id: "paid", model: "audio-paid", amount: "0.25", units: {}, lines: [{ kind: "audio_second", units: 0, quantity: "1.25e1", rate: "0.02", amount: "0.25" }] },
+      { ...base, id: "zero", model: "audio-zero", amount: "0", units: {}, lines: [{ kind: "audio_second", units: 0, quantity: "0", rate: "0.02", amount: "0" }] },
+      { ...base, id: "token", model: "token-model", amount: "0.0001", units: { input: 100 }, lines: [{ kind: "input", units: 100, rate: "1", amount: "0.0001" }] },
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }))).mockImplementationOnce((_url, options) => Promise.resolve(new Response(JSON.stringify({ query: JSON.parse(options.body), generated_at: "2020-02-02T00:00:00Z", from: "2020-01-01T00:00:00Z", to: "2020-02-01T00:00:00Z", time_basis: "upstream_attempt_start", rows, totals: {}, unknown_count: 0, incomplete_count: 0, estimated_margin_usd: null })))));
+    render(<BillingStatements api={api} side="provider" />);
+    fireEvent.submit(screen.getByRole("button", { name: preview }).closest("form")!);
+    expect(await screen.findByText(`${label}: 12.5`, { exact: true })).toBeInTheDocument();
+    expect(screen.getByText(`${label}: 0`, { exact: true })).toBeInTheDocument();
+    expect(screen.getByText(`${label}: 12.5 × ${currency}0.02 = ${currency}0.25`, { exact: true })).toBeInTheDocument();
+    expect(screen.getByText(`${label}: 0 × ${currency}0.02 = ${currency}0.00`, { exact: true })).toBeInTheDocument();
+    expect(screen.getAllByText(/\/ 1M =/)).toHaveLength(1);
+  });
 });
 
 it("portal preview does not submit the parent provider form", async () => {

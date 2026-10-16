@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { importTypeScript } from "./typescript-test-loader.mjs";
-const { formatStatementAmount, statementCSV, statementMonth } = await importTypeScript(new URL("./billing-statements.ts", import.meta.url));
+const { formatStatementAmount, formatStatementQuantity, statementCSV, statementMonth } = await importTypeScript(new URL("./billing-statements.ts", import.meta.url));
 const sample = () => ({ query: { side: "tenant", customer: "=bad()", project_ids: ["project"], from: "2020-01-01", to: "2020-02-01", timezone: "UTC", model: "", provider_id: "", resource_id: "" }, generated_at: "2020-02-03T00:00:00Z", from: "2020-01-01T00:00:00Z", to: "2020-02-01T00:00:00Z", time_basis: "request_admission", unknown_count: 0, incomplete_count: 0, totals: { "tenant:USD": "1.123456789012" }, estimated_margin_usd: null, rows: [{ id: "record", source: "tenant", amount: "1.123456789012", currency: "USD", units: {}, provider_id: "hidden_supplier", resource_id: "hidden_account", request_id: "hidden_attempt", model: "model,with comma" }] });
 test("statement CSV preserves exact preview amounts and neutralizes formulas", () => {
   const csv = statementCSV(sample());
@@ -25,4 +25,13 @@ test("statement month uses the next month as exclusive end", () => {
 test("statement money formatting preserves decimal precision", () => {
  assert.equal(formatStatementAmount("123456789012345678.123456789012", "USD", "en-US"), "$123,456,789,012,345,678.123456789012");
  assert.equal(formatStatementAmount("-0.25", "USD", "en-US"), "-$0.25");
+});
+
+test("statement native quantities retain exact decimals and locale separators", () => {
+  assert.equal(formatStatementQuantity("123456789012345678.1234567890123456789", "en-US"), "123,456,789,012,345,678.1234567890123456789");
+  assert.equal(formatStatementQuantity("12.50", "zh-CN"), "12.5");
+  assert.equal(formatStatementQuantity("0", "ja-JP"), "0");
+  assert.equal(formatStatementQuantity("1.25e1", "de-DE"), "12,5");
+  assert.equal(formatStatementQuantity("1.25e-3", "en-US"), "0.00125");
+  assert.equal(formatStatementQuantity("12.5e3", "en-US"), "12,500");
 });
