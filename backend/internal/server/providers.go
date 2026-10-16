@@ -360,10 +360,6 @@ func (a OpenAICompatibleAdapter) Embeddings(ctx context.Context, provider Provid
 	return a.core().embeddings(ctx, provider, providerModel, req)
 }
 
-func (a OpenAICompatibleAdapter) doJSON(ctx context.Context, provider Provider, method, endpoint string, payload any, target any) error {
-	return a.core().doJSON(ctx, provider, method, "", endpoint, payload, target)
-}
-
 func (a OpenAICompatibleAdapter) doRaw(ctx context.Context, provider Provider, method, endpoint string, payload any, stream bool) (*http.Response, error) {
 	return a.core().doRaw(ctx, provider, method, "", endpoint, payload, stream)
 }

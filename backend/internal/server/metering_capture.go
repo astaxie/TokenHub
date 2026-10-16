@@ -44,14 +44,16 @@ type meteringAttemptSnapshot struct {
 }
 
 type meteringShadowCharge struct {
-	Evidence    *RetrievalUsageEvidence `json:"usage_evidence,omitempty"`
-	Status      string                  `json:"status"`
-	Reason      string                  `json:"reason,omitempty"`
-	UsageSource string                  `json:"usage_source"`
-	Price       *meteringPriceSnapshot  `json:"price,omitempty"`
-	Units       metering.Units          `json:"units"`
-	Charge      *metering.Charge        `json:"charge,omitempty"`
-	LegacyUSD   string                  `json:"legacy_usd"`
+	DocumentCount int                     `json:"document_count,omitempty"`
+	AudioEvidence *AudioUsageEvidence     `json:"audio_usage_evidence,omitempty"`
+	Evidence      *RetrievalUsageEvidence `json:"usage_evidence,omitempty"`
+	Status        string                  `json:"status"`
+	Reason        string                  `json:"reason,omitempty"`
+	UsageSource   string                  `json:"usage_source"`
+	Price         *meteringPriceSnapshot  `json:"price,omitempty"`
+	Units         metering.Units          `json:"units"`
+	Charge        *metering.Charge        `json:"charge,omitempty"`
+	LegacyUSD     string                  `json:"legacy_usd"`
 }
 
 func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPriceSnapshot {
@@ -68,7 +70,7 @@ func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPrice
 			rates.Input = dec(resolved.InputPriceUSDPer1M)
 		}
 	}
-	snapshot := meteringPriceSnapshot{SearchUnitPrice: model.Metadata[retrievalSearchUnitPriceKey], Currency: "USD", Source: "legacy_float_configuration", At: at, Rates: rates}
+	snapshot := meteringPriceSnapshot{Modality: model.Modality, AudioPricePerSecond: model.Metadata[audioSecondPriceKey], SearchUnitPrice: model.Metadata[retrievalSearchUnitPriceKey], Currency: "USD", Source: "legacy_float_configuration", At: at, Rates: rates}
 	for _, period := range model.PricingPeriods {
 		if pricingPeriodMatches(period, at) {
 			snapshot.Period = period.Name
@@ -92,6 +94,8 @@ func (s *GormStore) captureMeteringRequest(tx *gorm.DB, call CallContext, period
 	}
 	if card != nil {
 		price = card.at(call.StartedAt)
+		price.AudioPricePerSecond = call.Model.Metadata[audioSecondPriceKey]
+		price.Modality = call.Model.Modality
 	}
 	legacyPrice := legacyMeteringPrice(call.Model, call.StartedAt, false)
 	snapshot := meteringRequestSnapshot{QuotaPeriods: &periods, ModelName: call.Model.Name, LegacyPrice: &legacyPrice, RequestID: call.RequestID, ProjectID: call.Project.ID, ProjectName: call.Project.Name, APIKeyID: call.Key.ID, APIKeyName: call.Key.Name, UserID: call.AttributedUserID, TeamID: call.Project.TeamID, CostCenter: call.Project.CostCenter, BudgetDay: call.StartedAt.UTC().Format("2006-01-02"), BudgetMonth: call.StartedAt.UTC().Format("2006-01"), Price: price}
@@ -123,6 +127,8 @@ func (s *GormStore) PrepareMeteringAttempt(requestID string, number int, route R
 		}
 		if card != nil {
 			price := card.at(at)
+			price.AudioPricePerSecond = model.Metadata[audioSecondPriceKey]
+			price.Modality = model.Modality
 			snapshot.Price = &price
 		}
 		if snapshot.Price != nil && snapshot.Price.Currency != "USD" {
@@ -149,6 +155,11 @@ func (s *GormStore) PrepareMeteringAttempt(requestID string, number int, route R
 
 func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) meteringShadowCharge {
 	result := meteringShadowCharge{Status: "pending", UsageSource: "legacy_adapter_unverified", Price: price, LegacyUSD: strconv.FormatFloat(legacy, 'f', -1, 64)}
+	result.DocumentCount = usage.DocumentCount
+	result.AudioEvidence = audioDurationEvidence(usage)
+	if audioDurationBillable(usage) && (price == nil || price.Modality == "audio") {
+		return shadowAudioPrice(result, usage)
+	}
 	result.Evidence = usage.RetrievalEvidence
 	if evidence := usage.RetrievalEvidence; evidence != nil {
 		result.UsageSource = evidence.Source

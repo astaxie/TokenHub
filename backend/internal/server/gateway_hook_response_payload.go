@@ -3,6 +3,9 @@ package server
 import "encoding/json"
 
 func decodeGatewayHookResponsePayload(data json.RawMessage, target *any, protocol string) error {
+	if protocol == providerRouteProtocolRerank && len(data) > maxRerankResponseBytes {
+		return NewHTTPError(502, "invalid_rerank_response", "Rerank response exceeds the 8 MiB limit")
+	}
 	if protocol == providerRouteProtocolSystemOne {
 		// Preserve duplicate members and exact numeric text until native validation.
 		// Decoding through a generic map first would erase both distinctions.

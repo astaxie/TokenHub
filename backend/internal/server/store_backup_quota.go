@@ -536,6 +536,9 @@ func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 		usage.TotalTokens = saturatingAddNonNegative(usage.PromptTokens, usage.CompletionTokens)
 	}
 	usage = clampBillableInputTokens(usage)
+	if priced, handled := priceAudioUsage(model, usage); handled {
+		return priced
+	}
 	if model.Modality == "embedding" || model.Modality == "rerank" {
 		// Retrieval plugins supply usage evidence, never authoritative tenant fees.
 		// Reprice both paid and free requests using the host's tenant configuration.

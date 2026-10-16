@@ -8,7 +8,7 @@
 
 The response contains `model` and `results` with original `index`, `relevance_score` and optional `document.text`. Duplicate texts remain distinct by index. Scores are not rescaled or comparable across models. The gateway does not split a listwise request into batches. Empty queries/documents, invalid `top_n`, unsupported fields, invalid upstream indices and missing results are errors. Only text is supported; images, video and asynchronous jobs are outside this release.
 
-`documents` must contain 1–2048 nonempty text strings. When provided, `top_n` must be between 1 and the document count; omitting it returns all documents.
+`documents` must contain 1–2048 nonempty text strings or objects of the form `{"id":"doc-1","text":"Document text"}`; both forms may be mixed. When provided, `top_n` must be between 1 and the document count; omitting it returns all documents.
 
 ## Configure a provider
 
@@ -72,3 +72,13 @@ The advanced settings show the effective protocol and protocol-specific default 
 Request details show the saved error message directly above the payload. A route-selection rejection explicitly states that no upstream request was sent; requests without usage records display a dash rather than fabricated zero amounts. Provider inventory distinguishes an unconfirmed zero embedding input cost from confirmed free usage. Saving costs confirms the entered values, including zero. Native search-unit procurement costs remain unknown when their native price is missing; auxiliary token counts never substitute for that price.
 
 When editing a compatible provider, the console keeps the saved runtime catalog (and therefore automatic protocol defaults) separate from the catalog template used to discover or import models. The admin provider PATCH request can opt into this behavior with `preserve_catalog: true`; it preserves `catalog_id`, `catalog_source`, and `doc_url` only when the provider type is unchanged. Create requests, explicit type changes, and callers that omit the flag retain their previous behavior. Invalid endpoint paths and malformed embedding-space JSON are rejected by the console before saving, including when the advanced tab is closed.
+
+## Document identity, limits and privacy
+
+An object document requires a nonblank string `id` (at most 256 UTF-8 bytes) and a nonempty string `text` (at most 64 KiB of UTF-8). String documents have the same text limit. IDs are opaque: duplicate IDs and duplicate texts remain distinguishable by their original `index`. Each result includes the original top-level `id` when supplied, even when `return_documents` is false. Only `document.text` is controlled by `return_documents`. Upstreams receive text, never caller IDs. Plugins cannot change IDs; cache keys include them, and final responses validate IDs against the original index without restoring redacted document text.
+
+The normal JSON request limit applies (8 MiB by default), with at most 2048 documents. Upstream JSON and final plugin/cache responses are limited to 8 MiB. Provider timeouts and cancellation use the gateway transport policy. Decoding errors, including missing or wrongly typed `id`/`text` fields and blank IDs, return `400 invalid_request`; other invalid inputs such as empty text, excessive lengths or invalid `top_n` return `400 invalid_rerank_request`; malformed, oversized, duplicate-index or invalid-score responses return `502 invalid_rerank_response`. Oversized total requests use the shared request-limit error. Provider authentication, rate-limit and timeout classifications remain available, while provider error messages are replaced with a generic message so echoed queries/documents cannot enter errors or attempt logs.
+
+The gateway records `document_count` in durable metering evidence, independently of audit payload storage and reported token/search-unit usage. Missing supplier usage remains unknown; document counts do not invent token costs. Rerank request/response audits retain model, document/result counts and sanitized policy decisions, with the configured audit retention; queries, IDs, document text and arbitrary provider metadata are omitted, including when trace payload capture is enabled.
+
+Run `TOKENHUB_RERANK_MODEL=public-reranker npm run test:rerank` from `sdk/` with a permitted `TOKENHUB_API_KEY` and `TOKENHUB_BASE_URL`. The shipped Node client checks string/object/mixed inputs, IDs, ordering, Top-N, optional document return and validation. Backend fake-HTTP tests run the same client without real provider credentials.

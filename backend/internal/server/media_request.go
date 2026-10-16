@@ -162,6 +162,9 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 	if err := request.validateStream(); err != nil {
 		return request, NewHTTPError(400, "invalid_media_request", err.Error())
 	}
+	if err := request.validateAudioFiles(); err != nil {
+		return request, err
+	}
 	return request, nil
 }
 

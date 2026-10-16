@@ -154,6 +154,10 @@ func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallC
 		return Usage{}, gatewayHookHTTPError(pluginmeta.StageUsageAttribution, err)
 	}
 	output := usage
+	if usage.AudioDurationSeconds != nil {
+		seconds := *usage.AudioDurationSeconds
+		output.AudioDurationSeconds = &seconds
+	}
 	for _, result := range report.Results {
 		patch, ok := result.Writes[pluginmeta.DataUsage]
 		if !ok {
@@ -162,6 +166,20 @@ func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallC
 		if err := decodeGatewayHookPayload(patch.Value, &output, "gateway_hook_usage_invalid", "Gateway plugin returned invalid usage"); err != nil {
 			return Usage{}, err
 		}
+	}
+	output.DocumentCount = usage.DocumentCount
+	if call.Model.Modality != "audio" {
+		output.AudioDurationSeconds, output.AudioDurationSource = usage.AudioDurationSeconds, usage.AudioDurationSource
+		output.AudioDurationRaw, output.AudioDurationUnit = usage.AudioDurationRaw, usage.AudioDurationUnit
+	}
+	if usage.AudioDurationSource != "" {
+		output.AudioDurationRaw, output.AudioDurationUnit = usage.AudioDurationRaw, usage.AudioDurationUnit
+	}
+	if usage.AudioDurationSeconds != nil && output.AudioDurationSeconds == nil {
+		return usage, NewHTTPError(502, "invalid_provider_usage", "Gateway plugin cannot erase reported audio duration")
+	}
+	if err := validateAudioDuration(output); err != nil {
+		return usage, err
 	}
 	return output, nil
 }

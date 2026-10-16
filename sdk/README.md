@@ -36,6 +36,34 @@ To verify the Admin API path for security policies:
 npm run test:security-policy
 ```
 
+To verify audio transcription and document reranking, publish suitable models and
+allow both names on the project API key, then run:
+
+```bash
+TOKENHUB_TRANSCRIPTION_MODEL=gpt-4o-transcribe npm run test:transcriptions
+TOKENHUB_RERANK_MODEL=public-reranker npm run test:rerank
+```
+
+These clients use Node's standard HTTP/FormData APIs (Node 20 or later) and the
+documented gateway contracts. Transcription uploads a synthetic one-second silent
+WAV and checks the JSON response, authentication and invalid uploads. Reranking
+checks string, ID-bearing and mixed documents, Top-N, ordering, returned documents,
+and invalid requests. They do not print submitted content or provider error bodies.
+Successful calls against a real provider may incur its normal charges.
+
+The backend also runs these exact clients against an isolated in-process TokenHub
+server and fake OpenAI/compatible/local upstreams, without real credentials:
+
+```bash
+cd ../backend
+go test ./internal/server -run '^TestAudioAndRerankSDKSmoke$' -count=1
+```
+
+This test requires `node` on PATH; it skips explicitly when Node is unavailable
+locally and fails in CI instead of silently skipping the clients.
+The model environment variables above configure clients only; they are not server
+or deployment settings.
+
 ## TokenHub Prerequisites
 
 Before running the test, make sure TokenHub has:

@@ -24,6 +24,9 @@ func doMediaMultipartReviewRequest(t *testing.T, server *Server, key, path strin
 			t.Fatal(err)
 		}
 	}
+	if path == "/v1/audio/transcriptions" || path == "/v1/audio/translations" {
+		writeTranscriptionFixtureFile(t, writer, "file", "fixture.wav", "application/octet-stream", transcriptionWAVFixture("fixture audio"))
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}

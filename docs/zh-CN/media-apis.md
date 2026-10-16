@@ -90,6 +90,16 @@ SSE 响应在缓冲交付前逐事件执行 `stream_transform`、`response_post`
 
 配置了媒体输出的模型通过 OpenAI 兼容 Chat 接口返回流时，单事件同样支持最多 128 MiB，可接收供应商一次性返回的完整生成音频。文本模型的 Chat 流仍限制单事件 8 MiB，客户端仅添加音频字段不会提高上限。
 
-Token 计费使用上游返回的用量。直通 Images/Audio 和流式媒体 Responses 的计量会保留非零 `output_tokens`，即使 `completion_tokens` 为零占位值，例如 Seedream 的响应。这两个别名不会相加；插件显式用量（包括零）仍优先。语音转录的 JSON 和 SSE 用量保留 `input_token_details.audio_tokens` 中报告的音频 Token 明细。二进制音频、字幕文本或未返回 Token 的供应商不会被虚构 Token 成本；请求数/并发限制和请求日志仍生效。按秒、按图、按字符的费用不转换成 Token 单价。为返回 Token 的模型配置价格，其他费用与供应商账单核对。
+Token 计费使用上游返回的用量。直通 Images/Audio 和流式媒体 Responses 的计量会保留非零 `output_tokens`，即使 `completion_tokens` 为零占位值，例如 Seedream 的响应。这两个别名不会相加；插件显式用量（包括零）仍优先。语音转录的 JSON 和 SSE 用量保留 `input_token_details.audio_tokens` 中报告的音频 Token 明细。二进制音频、字幕文本或未返回 Token 的供应商不会被虚构 Token 成本；请求数/并发限制和请求日志仍生效。按秒、按图、按字符的费用不转换成 Token 单价。为返回 Token 的模型配置 Token 单价，为按时长计量的转录配置下文的音频秒单价；尚未支持的按图/按字符费用与供应商账单核对。
 
 回归测试使用本地 HTTP 模拟供应商及合成请求，覆盖文件上传、二进制/文本响应、绘图扩展参数、视频异步请求结构、声音素材、大整数、权限拒绝、钩子和缓存跳过。测试不消耗付费生成额度；具体供应商和模型的可用性需使用实际账户验证。
+
+## 转录上传与计量契约
+
+`/v1/audio/transcriptions` 和 `/v1/audio/translations` 要求适配器显式声明 `transcription` 能力，或存在匹配的 provider-call 钩子。OpenAI 及配置的 OpenAI 兼容/本地适配器声明此能力；仅有通用 `media` 能力不够。既有 JSON 厂商扩展保持支持。multipart 必须包含且仅包含一个非空 `file`，最多 25 MiB，扩展名、媒体类型和容器签名须匹配受支持的 FLAC、MP3、MP4、MPEG、MPGA、M4A、OGG、WAV 或 WebM。容器检查不解码音频，能否正常解码由上游验证。总请求大小（默认 32 MiB）、128 个 part 和每个文本字段 1 MiB 的限制同时生效。上传只在受限内存中处理，网关不创建临时文件。
+
+缺失或空文件返回 `400 missing_audio_file`；重复或非法 file 字段返回 `400 invalid_audio_file`；不支持或签名不匹配返回 `415 unsupported_audio_format`；文件超过 25 MiB 返回 `413 audio_file_too_large`；总请求超限返回 `413 request_too_large`。供应商鉴权、限流、模型错误保留分类但使用通用消息，防止上游回显音频或私有 URL 进入错误正文和尝试日志。整体截止时间和空闲超时仍可区分；取消和断流终止上游工作，不重复提交结果未知的转录。
+
+供应商报告的音频秒数保存到持久化计量证据中，不依赖载荷保留开关。原生 `usage:{"type":"duration","seconds":30.5}` 使用公共模型与渠道模型库存上各自的 `metadata.audio_price_usd_per_second` 计价。值为非负十进制字符串，明确免费使用 `"0"`。缺失单价保持待定/未知证据，不回退到 Token 单价。保留小数秒，租户收费与上游成本独立，已计费费用更新正常预算计数器。调用前检查预算，实际时长仅在响应后可知。详细转录顶层 `duration` 也会记录，报告 Token 的响应仍按 Token 计费。非法或负时长返回 `502 invalid_provider_usage`。直通媒体审计不保存上传音频、转录文本或任意上游元数据。
+
+使用有权限的项目密钥和已发布模型，在 `sdk/` 运行 `TOKENHUB_TRANSCRIPTION_MODEL=gpt-4o-transcribe npm run test:transcriptions`。Node 客户端上传合成静音 WAV 并检查 JSON 交付、鉴权和文件校验；后端假 HTTP 测试通过 OpenAI、兼容与本地渠道运行同一客户端，无需真实凭证或付费推理。

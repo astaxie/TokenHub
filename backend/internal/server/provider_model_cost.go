@@ -35,6 +35,9 @@ func providerModelCostDecodeError(err error) error {
 }
 
 func validateProviderModelCosts(model ProviderModel) error {
+	if err := validateAudioPriceMetadata(model.Metadata); err != nil {
+		return err
+	}
 	if err := validateRetrievalPriceMetadata(model.Metadata); err != nil {
 		return err
 	}
@@ -88,6 +91,10 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 		requestStartedAt = route.MeteringSnapshot.At
 	} else if err := s.db.Where("provider_id = ? AND upstream_model = ?", providerID, upstreamModel).First(&providerModel).Error; err != nil {
 		return 0
+	}
+	if providerModel.Modality == "audio" && audioDurationBillable(usage) {
+		cost, _ := nativeAudioCost(providerModelCostModel(providerModel), usage)
+		return cost
 	}
 	if cost, known := nativeRetrievalCost(providerModelCostModel(providerModel), usage); known {
 		return cost

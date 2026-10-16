@@ -26,7 +26,7 @@ func mediaResponseIsSSE(contentType string) bool {
 
 // Inspect the original event bytes before plugins can transform or drop them.
 // Usage remains billable even when a later error or policy blocks delivery.
-func inspectMediaStream(body []byte, provider Provider) (Usage, error) {
+func inspectMediaStream(body []byte, provider Provider, endpoints ...string) (Usage, error) {
 	decoder := newMediaSSEDecoder(body)
 	var usage Usage
 	for {
@@ -40,15 +40,18 @@ func inspectMediaStream(body []byte, provider Provider) (Usage, error) {
 		var probe providerStreamEventProbe
 		data := strings.TrimSpace(event.Data)
 		invalid := data != "" && data != "[DONE]" && (decodeResponsesJSON([]byte(data), &probe) != nil || probe == nil)
-		if parsed, ok := mediaUsageFromProbe(probe); ok {
+		if parsed, ok := mediaUsageFromProbe(probe, audioTranscriptionEndpoint(endpoints)); ok {
 			usage = parsed
 		} else {
 			var response providerStreamEventProbe
 			if json.Unmarshal(probe["response"], &response) == nil {
-				if parsed, ok := mediaUsageFromProbe(response); ok {
+				if parsed, ok := mediaUsageFromProbe(response, audioTranscriptionEndpoint(endpoints)); ok {
 					usage = parsed
 				}
 			}
+		}
+		if err := validateAudioDuration(usage); err != nil {
+			return usage, err
 		}
 		if invalid {
 			usage.MeteringInvalid = true

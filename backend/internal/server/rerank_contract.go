@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"math"
 	"reflect"
@@ -14,31 +13,30 @@ type RerankRequest struct {
 	Model           string   `json:"model"`
 	Query           string   `json:"query"`
 	Documents       []string `json:"documents"`
+	DocumentIDs     []string `json:"-"`
 	TopN            *int     `json:"top_n,omitempty"`
 	ReturnDocuments bool     `json:"return_documents,omitempty"`
 	Instruction     string   `json:"instruction,omitempty"`
 	Truncation      *bool    `json:"truncation,omitempty"`
 }
 
-func (r *RerankRequest) UnmarshalJSON(data []byte) error {
-	type wire RerankRequest
-	var value wire
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&value); err != nil {
-		return err
-	}
-	*r = RerankRequest(value)
-	return nil
-}
 func validateRerankRequest(r RerankRequest) error {
 	if strings.TrimSpace(r.Model) == "" || strings.TrimSpace(r.Query) == "" {
 		return NewHTTPError(400, "invalid_rerank_request", "model and query are required")
 	}
-	if len(r.Documents) == 0 || len(r.Documents) > 2048 {
-		return NewHTTPError(400, "invalid_rerank_request", "documents must contain between 1 and 2048 text strings")
+	if len(r.Documents) == 0 || len(r.Documents) > maxRerankDocuments {
+		return NewHTTPError(400, "invalid_rerank_request", "documents must contain between 1 and 2048 text strings or id/text objects")
 	}
-	for _, doc := range r.Documents {
+	if len(r.DocumentIDs) != 0 && len(r.DocumentIDs) != len(r.Documents) {
+		return NewHTTPError(400, "invalid_rerank_request", "Document IDs must match the document count")
+	}
+	for index, doc := range r.Documents {
+		if len(doc) > maxRerankDocumentBytes {
+			return NewHTTPError(400, "invalid_rerank_request", "Document text must not exceed 65536 UTF-8 bytes")
+		}
+		if id := r.documentID(index); len(id) > maxRerankDocumentIDBytes || (id != "" && strings.TrimSpace(id) == "") {
+			return NewHTTPError(400, "invalid_rerank_request", "Document IDs must be nonblank strings of at most 256 UTF-8 bytes")
+		}
 		if strings.TrimSpace(doc) == "" {
 			return NewHTTPError(400, "invalid_rerank_request", "documents must not contain empty text")
 		}
@@ -64,8 +62,8 @@ func applyRerankPatch(r *RerankRequest, data json.RawMessage) error {
 	if err := decodeGatewayHookRequestPatch(data, &next); err != nil {
 		return err
 	}
-	if next.Model != r.Model || len(next.Documents) != len(r.Documents) || next.ReturnDocuments != r.ReturnDocuments || !reflect.DeepEqual(next.TopN, r.TopN) {
-		return NewHTTPError(502, "gateway_hook_patch_invalid", "Rerank plugins cannot change model, document cardinality, top_n or return_documents")
+	if next.Model != r.Model || len(next.Documents) != len(r.Documents) || !reflect.DeepEqual(next.DocumentIDs, r.DocumentIDs) || next.ReturnDocuments != r.ReturnDocuments || !reflect.DeepEqual(next.TopN, r.TopN) {
+		return NewHTTPError(502, "gateway_hook_patch_invalid", "Rerank plugins cannot change model, document cardinality or IDs, top_n or return_documents")
 	}
 	if err := validateRerankRequest(next); err != nil {
 		return err
@@ -105,6 +103,7 @@ func normalizeRerankResponse(raw any, profile string, r RerankRequest) (map[stri
 	}
 	type result struct {
 		Index    int               `json:"index"`
+		ID       string            `json:"id,omitempty"`
 		Score    float64           `json:"relevance_score"`
 		Document map[string]string `json:"document,omitempty"`
 	}
@@ -128,7 +127,7 @@ func normalizeRerankResponse(raw any, profile string, r RerankRequest) (map[stri
 			return fail()
 		}
 		seen[int(index)] = true
-		result := result{Index: int(index), Score: score}
+		result := result{Index: int(index), ID: r.documentID(int(index)), Score: score}
 		if r.ReturnDocuments {
 			result.Document = map[string]string{"text": r.Documents[int(index)]}
 		}
@@ -150,6 +149,9 @@ func validateRerankResult(response any, request RerankRequest) (any, error) {
 	encoded, err := json.Marshal(response)
 	if err != nil {
 		return nil, err
+	}
+	if len(encoded) > maxRerankResponseBytes {
+		return nil, NewHTTPError(502, "invalid_rerank_response", "Rerank response exceeds the 8 MiB limit")
 	}
 	var raw any
 	if err = json.Unmarshal(encoded, &raw); err != nil {
@@ -173,6 +175,10 @@ func validateRerankResult(response any, request RerankRequest) (any, error) {
 	previousScore := math.Inf(1)
 	for _, value := range items {
 		item := value.(map[string]any)
+		index := int(item["index"].(float64))
+		if id, exists := item["id"]; (exists && id != request.documentID(index)) || (!exists && request.documentID(index) != "") {
+			return nil, NewHTTPError(502, "invalid_rerank_response", "Final rerank document IDs must match their original indices")
+		}
 		score := item["relevance_score"].(float64)
 		if score > previousScore {
 			return nil, NewHTTPError(502, "invalid_rerank_response", "Final rerank results must be ordered by descending relevance_score")

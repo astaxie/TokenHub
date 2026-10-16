@@ -37,13 +37,15 @@ func (s *Server) runGatewayRerankContextOptimizeHooks(ctx context.Context, call 
 	return s.runGatewayContextOptimizeHooks(ctx, call, *r, rerankPatch(r))
 }
 func (s *Server) executeRoutedRerank(r *http.Request, routed RoutedCall, req RerankRequest) (any, RouteSelection, Usage, []RouteAttempt, error) {
-	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (any, Usage, error) {
-		route, err := s.prepareRouteForUpstream(ctx, route)
+	return executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (response any, usage Usage, err error) {
+		defer func() { usage.DocumentCount = len(req.Documents) }()
+		route, err = s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return nil, Usage{}, err
 		}
 		upstream := req
 		upstream.Documents = append([]string(nil), req.Documents...)
+		upstream.DocumentIDs = append([]string(nil), req.DocumentIDs...)
 		if err = s.runGatewayRequestTransformHooks(ctx, routed.Call, route, upstream, providerRouteProtocolRerank, rerankRoutePatch(&upstream)); err != nil {
 			return nil, Usage{}, err
 		}
@@ -51,7 +53,7 @@ func (s *Server) executeRoutedRerank(r *http.Request, routed RoutedCall, req Rer
 			if err == nil {
 				usage, err = pluginRetrievalUsage(resp, usage, providerRerankProtocol(route.Provider) == "cohere")
 			}
-			return resp, usage, err
+			return resp, usage, sanitizeRerankProviderError(err)
 		}
 		adapter, err := s.adapterForRoute(route)
 		if err != nil {
@@ -65,6 +67,6 @@ func (s *Server) executeRoutedRerank(r *http.Request, routed RoutedCall, req Rer
 		if err == nil {
 			usage, err = pluginRetrievalUsage(resp, usage, providerRerankProtocol(route.Provider) == "cohere")
 		}
-		return resp, usage, err
+		return resp, usage, sanitizeRerankProviderError(err)
 	})
 }

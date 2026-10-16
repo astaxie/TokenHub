@@ -47,6 +47,9 @@ func (s *Server) runGatewayCacheLookupHooks(ctx context.Context, call CallContex
 	if !ok {
 		return nil, Usage{}, false, NewHTTPError(http.StatusBadGateway, "gateway_hook_cache_hit_invalid", "Gateway cache plugin did not return a response")
 	}
+	if call.RerankCacheKey != "" && len(responsePatch.Value) > maxRerankResponseBytes {
+		return nil, Usage{}, false, NewHTTPError(http.StatusBadGateway, "invalid_rerank_response", "Rerank cache response exceeds the 8 MiB limit")
+	}
 	var response any
 	if err := decodeGatewayHookPayload(responsePatch.Value, &response, "gateway_hook_cache_hit_invalid", "Gateway cache plugin returned an invalid response"); err != nil {
 		return nil, Usage{}, false, err

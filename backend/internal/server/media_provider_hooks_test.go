@@ -214,7 +214,7 @@ func TestMediaProviderMultipartStreamUsesStreamHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := file.Write([]byte{0, 255}); err != nil {
+	if _, err := file.Write(transcriptionWAVFixture("fixture audio")); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {
