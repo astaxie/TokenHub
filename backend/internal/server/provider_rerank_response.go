@@ -36,7 +36,7 @@ func sanitizeRerankProviderError(err error) error {
 		return nil
 	}
 	if errors.Is(err, context.Canceled) {
-		return context.Canceled
+		return &ProviderInvocationError{Err: context.Canceled, Disposition: ProviderErrorClient}
 	}
 	safe := NewHTTPError(502, "provider_error", "Rerank provider request failed")
 	var original *HTTPError
