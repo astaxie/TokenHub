@@ -26,3 +26,28 @@ test("statement money formatting preserves decimal precision", () => {
  assert.equal(formatStatementAmount("123456789012345678.123456789012", "USD", "en-US"), "$123,456,789,012,345,678.123456789012");
  assert.equal(formatStatementAmount("-0.25", "USD", "en-US"), "-$0.25");
 });
+
+test("statement CSV preserves conversion snapshot metadata and unknown amounts", () => {
+  const data = sample();
+  data.query.side = "margin";
+  data.conversion = { currency: "CNY", usd_exchange_rate: "7.250000000000" };
+  data.display_totals = { tenant: "8.145061720337" };
+  data.display_estimated_margin = null;
+  data.rows[0].display_amount = "8.145061720337";
+  data.rows.push({ id: "unknown", source: "tenant", amount: null, currency: "USD", display_amount: null });
+  const csv = statementCSV(data);
+  assert.ok(csv.includes('"display_currency","CNY"'));
+  assert.ok(csv.includes('"display_exchange_rate_usd_to_currency","7.250000000000"'));
+  assert.ok(csv.includes('"display_total","tenant","8.145061720337"'));
+  assert.ok(csv.includes('"display_estimated_margin","unknown"'));
+  assert.ok(csv.includes('"display_amount"'));
+  assert.ok(csv.includes('"1.123456789012"'));
+  assert.ok(csv.split("\r\n").find(line => line.startsWith('"unknown"')).endsWith(',""'));
+});
+
+test("statement money formatting retains fractional token costs in supported currencies", () => {
+  for (const [currency, locale] of [["CNY", "zh-CN"], ["JPY", "ja-JP"], ["RUB", "ru-RU"]]) {
+    assert.match(formatStatementAmount("0.123456789012", currency, locale), /123456789012/);
+    assert.match(formatStatementAmount("0", currency, locale), /0/);
+  }
+});
