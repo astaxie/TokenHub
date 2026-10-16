@@ -83,3 +83,32 @@ test("billing currency remembers each manual rate and supports mobile controls",
   await form.getByLabel("对账单币种").selectOption("USD");
   await expect(form.getByLabel("手动汇率：1 USD 兑目标币种")).toHaveCount(0);
 });
+
+test("billing currency long exact amounts remain readable on mobile", async ({ page, api }, testInfo) => {
+  const rate = "999999999999999999.999999999999";
+  const converted = "999999999999999999999999999998000000.000000000000";
+  api.define("POST", "/api/admin/billing/statements", input => {
+    const query = readStatementQuery(input.body);
+    expect(query).toMatchObject({ side: "provider", display_currency: "CNY", display_exchange_rate: rate });
+    const response = statementResponse(query, "complete");
+    response.conversion = { currency: "CNY", usd_exchange_rate: rate };
+    response.rows[0].amount = response.rows[0].usd = rate;
+    response.rows[0].display_amount = converted;
+    response.totals = { "provider_estimate:USD": rate };
+    response.display_totals = { provider_estimate: converted };
+    return { json: response };
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openBilling(page);
+  const form = section(page, "费用对账单");
+  await form.getByLabel("对账单类型").selectOption("provider");
+  await form.getByLabel("对账单币种").selectOption("CNY");
+  await form.getByLabel("手动汇率：1 USD 兑目标币种").fill(rate);
+  await form.getByRole("button", { name: "预览对账单", exact: true }).click();
+  const conversion = form.locator(".statement-conversion");
+  await expect(conversion).toContainText("999,999,999,999,999,999,999,999,999,998,000,000.00");
+  await expect.poll(() => conversion.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect.poll(() => form.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await conversion.scrollIntoViewIfNeeded();
+  await capture(page, testInfo, conversion, "currency-mobile-long-amounts", "手机：长金额与高精度汇率换行");
+});
