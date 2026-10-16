@@ -87,6 +87,9 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	err = s.runMediaPreflight(r, &call, &request)
 	if err == nil {
 		audit.Guardrail, err = s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, mediaGuardrailTargets(request.Fields))
+		if err == nil && len(audit.Guardrail.Replacements) > 0 {
+			err = request.validateAudioGuardrailBounds()
+		}
 		audit.Guardrail.Replacements = nil
 	}
 	if err != nil {
@@ -176,6 +179,7 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 	}
 	m.Fields = fields
 	m.patched = true
+	m.guardrailMasked = false
 	return nil
 }
 

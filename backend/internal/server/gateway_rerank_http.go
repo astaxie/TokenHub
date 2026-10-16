@@ -69,6 +69,9 @@ func (s *Server) handleRerank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	decision, err := s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, rerankGuardrailTargets(&req))
+	if err == nil && len(decision.Replacements) > 0 {
+		err = validateRerankGuardrailBounds(req, s.config.MaxJSONRequestBytes)
+	}
 	auditPayload := rerankRequestAuditPayload(req)
 	decision.Replacements = nil
 	auditPayload.Guardrail = &decision

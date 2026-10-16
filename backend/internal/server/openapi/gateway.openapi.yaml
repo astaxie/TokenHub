@@ -448,7 +448,9 @@ paths:
         or an object with nonempty string id and text. Text is limited to 65536 UTF-8
         bytes and IDs to 256 UTF-8 bytes. Original indices and supplied IDs are preserved.
         The normal JSON request limit applies (8 MiB by default); upstream responses
-        are bounded to 8 MiB. Provider protocol and tenant prices must be configured.
+        are bounded to 8 MiB. Native content-security masking is revalidated before cache
+        lookup and provider invocation; document or total-size overflow returns 413
+        request_too_large. Provider protocol and tenant prices must be configured.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       requestBody:
@@ -699,6 +701,8 @@ paths:
         Multipart routes require a native adapter with the transcription capability;
         matching provider hooks can handle JSON extensions only. Request hook patches
         retain the multipart field, part-count, and configured total request size limits.
+        Native content-security masking is also revalidated; oversized masked uploads
+        return 413 request_too_large before provider or provider-hook invocation.
         Reported tokens and audio seconds are recorded; duration billing uses configured
         audio_price_usd_per_second metadata independently for tenant and provider prices.
       x-tokenhub-public-gateway: true
@@ -780,6 +784,8 @@ paths:
         Multipart routes require a native adapter with the transcription capability;
         matching provider hooks can handle JSON extensions only. Request hook patches
         retain the multipart field, part-count, and configured total request size limits.
+        Native content-security masking is also revalidated; oversized masked uploads
+        return 413 request_too_large before provider or provider-hook invocation.
         Reported tokens and audio seconds are recorded; duration billing uses configured
         audio_price_usd_per_second metadata independently for tenant and provider prices.
       x-tokenhub-public-gateway: true

@@ -96,7 +96,7 @@ Token 计费使用上游返回的用量。直通 Images/Audio 和流式媒体 Re
 
 ## 转录上传与计量契约
 
-`/v1/audio/transcriptions` 和 `/v1/audio/translations` 要求适配器显式声明 `transcription` 能力，匹配的 provider-call 钩子处理 JSON 转录扩展时除外。multipart 音频文件对钩子保持不透明，必须使用原生适配器。策略钩子仍可观察文本字段或拒绝 multipart 请求，但返回 multipart 转录响应的钩子会收到 `501 multipart_transcription_hook_unsupported`。OpenAI 及配置的 OpenAI 兼容/本地适配器声明此能力；仅有通用 `media` 能力不够。既有 JSON 厂商扩展保持支持。multipart 必须包含且仅包含一个非空 `file`，最多 25 MiB，扩展名、媒体类型和容器签名须匹配受支持的 FLAC、MP3、MP4、MPEG、MPGA、M4A、OGG、WAV 或 WebM。容器检查不解码音频，能否正常解码由上游验证。总请求大小（默认 32 MiB）、128 个 part 和每个文本字段 1 MiB 的限制同时生效。上传只在受限内存中处理，网关不创建临时文件。请求钩子的修改也必须保持文件、单字段长度、part 数量和配置的总大小限制；文件字段冲突或修改后超限会在调用上游前返回 `502 gateway_hook_patch_invalid`。
+`/v1/audio/transcriptions` 和 `/v1/audio/translations` 要求适配器显式声明 `transcription` 能力，匹配的 provider-call 钩子处理 JSON 转录扩展时除外。multipart 音频文件对钩子保持不透明，必须使用原生适配器。策略钩子仍可观察文本字段或拒绝 multipart 请求，但返回 multipart 转录响应的钩子会收到 `501 multipart_transcription_hook_unsupported`。OpenAI 及配置的 OpenAI 兼容/本地适配器声明此能力；仅有通用 `media` 能力不够。既有 JSON 厂商扩展保持支持。multipart 必须包含且仅包含一个非空 `file`，最多 25 MiB，扩展名、媒体类型和容器签名须匹配受支持的 FLAC、MP3、MP4、MPEG、MPGA、M4A、OGG、WAV 或 WebM。容器检查不解码音频，能否正常解码由上游验证。总请求大小（默认 32 MiB）、128 个 part 和每个文本字段 1 MiB 的限制同时生效。上传只在受限内存中处理，网关不创建临时文件。请求钩子的修改也必须保持文件、单字段长度、part 数量和配置的总大小限制；文件字段冲突或修改后超限会在调用上游前返回 `502 gateway_hook_patch_invalid`。原生内容安全脱敏后也会重新检查相同的 multipart 限制；超限请求在调用供应商或供应商钩子前返回 `413 request_too_large`。
 
 缺失或空文件返回 `400 missing_audio_file`；重复或非法 file 字段返回 `400 invalid_audio_file`；不支持或签名不匹配返回 `415 unsupported_audio_format`；文件超过 25 MiB 返回 `413 audio_file_too_large`；总请求超限返回 `413 request_too_large`。内容安全拒绝保留 `guardrail_blocked`，策略加载或执行失败也保留各自的错误代码。供应商鉴权、限流、模型错误保留分类但使用通用消息，防止上游回显音频或私有 URL 进入错误正文和尝试日志。整体截止时间和空闲超时仍可区分；取消和断流终止上游工作，不重复提交结果未知的转录。
 

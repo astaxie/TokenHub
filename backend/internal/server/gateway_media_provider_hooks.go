@@ -36,6 +36,9 @@ func (s *Server) invokeMediaRoute(ctx context.Context, call CallContext, route R
 }
 
 func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest, responseLimit int) (mediaResponse, Usage, error) {
+	if err := request.validateTransformedAudioBounds(route.ProviderModel); err != nil {
+		return mediaResponse{}, Usage{}, err
+	}
 	var payload any
 	var usage Usage
 	var handled, usageReported bool

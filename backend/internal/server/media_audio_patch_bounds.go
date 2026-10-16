@@ -57,3 +57,33 @@ func (w *audioMultipartSizeCounter) Write(data []byte) (int, error) {
 func invalidAudioPatchBounds() error {
 	return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin exceeded transcription multipart field, part count, or request size limits")
 }
+
+func (m mediaRequest) validateTransformedAudioBounds(model string) error {
+	if !m.patched {
+		return nil
+	}
+	if err := m.validateAudioPatchBounds(model); err != nil {
+		if m.guardrailMasked {
+			return invalidAudioGuardrailBounds()
+		}
+		return err
+	}
+	return nil
+}
+
+func (m *mediaRequest) validateAudioGuardrailBounds() error {
+	if !m.requiresNativeTranscription() {
+		return nil
+	}
+	if err := m.validateAudioPatchBounds(m.model()); err != nil {
+		return invalidAudioGuardrailBounds()
+	}
+	// The actual upstream model is substituted during encoding. Recheck its
+	// encoded size without applying new limits to unchanged uploads.
+	m.patched, m.guardrailMasked = true, true
+	return nil
+}
+
+func invalidAudioGuardrailBounds() error {
+	return NewHTTPError(http.StatusRequestEntityTooLarge, "request_too_large", "Content security transformation exceeded transcription multipart limits")
+}

@@ -16,12 +16,13 @@ import (
 // Media fields remain opaque so vendor extensions and large integer IDs survive.
 // Files are bounded separately and are never placed in request audit payloads.
 type mediaRequest struct {
-	Fields    map[string]json.RawMessage
-	Files     []mediaFile
-	Multipart bool
-	Path      string
-	maxBytes  int64
-	patched   bool
+	Fields          map[string]json.RawMessage
+	Files           []mediaFile
+	Multipart       bool
+	Path            string
+	maxBytes        int64
+	patched         bool
+	guardrailMasked bool
 }
 type mediaFile struct {
 	Header textproto.MIMEHeader
@@ -171,10 +172,8 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 }
 
 func (m mediaRequest) encode(model string) ([]byte, string, error) {
-	if m.patched {
-		if err := m.validateAudioPatchBounds(model); err != nil {
-			return nil, "", err
-		}
+	if err := m.validateTransformedAudioBounds(model); err != nil {
+		return nil, "", err
 	}
 	fields := cloneRawJSON(m.Fields, 1)
 	setRawJSONField(fields, "model", model, true)

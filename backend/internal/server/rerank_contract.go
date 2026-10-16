@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"math"
+	"net/http"
 	"reflect"
 	"sort"
 	"strconv"
@@ -81,6 +82,19 @@ func applyRerankPatchLimit(r *RerankRequest, data json.RawMessage, limit int64) 
 	*r = next
 	return nil
 }
+
+// Native masking can expand text after request hooks have already validated it.
+func validateRerankGuardrailBounds(r RerankRequest, limit int64) error {
+	if limit <= 0 {
+		limit = defaultMaxJSONRequestBytes
+	}
+	data, err := json.Marshal(r)
+	if err != nil || int64(len(data)) > limit || validateRerankRequest(r) != nil {
+		return NewHTTPError(http.StatusRequestEntityTooLarge, "request_too_large", "Content security transformation exceeded rerank document or request size limits")
+	}
+	return nil
+}
+
 func normalizeRerankResponse(raw any, profile string, r RerankRequest) (map[string]any, error) {
 	fail := func() (map[string]any, error) {
 		return nil, NewHTTPError(502, "invalid_rerank_response", "Upstream returned invalid ranking indices or scores")
