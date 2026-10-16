@@ -35,7 +35,9 @@ func (s *Server) providerRetrievalSupport(provider Provider, modality string) bo
 		return true
 	case "rerank":
 		return adapterSupports(descriptor, AdapterCapabilityRerank) && (!usesCompatibleRetrievalProtocol(provider.Type) || validRerankProtocol(providerRerankProtocol(provider)))
-	case "video", "audio", "ocr":
+	case "audio":
+		return s.providerAudioSupport(provider, "")
+	case "video", "ocr":
 		return false
 	default:
 		return true

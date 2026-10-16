@@ -185,8 +185,8 @@ func TestTranscriptionMultipartRecognizesSupportedContainerHeaders(t *testing.T)
 		{"sample.mp3", "audio/mpeg", []byte("ID3")},
 		{"sample.mpga", "application/octet-stream", []byte{0xff, 0xfb}},
 		{"sample.mpeg", "video/mpeg", []byte{0, 0, 1, 0xba}},
-		{"sample.mp4", "video/mp4", []byte("\x00\x00\x00\x14ftypisom")},
-		{"sample.m4a", "audio/mp4", []byte("\x00\x00\x00\x14ftypM4A ")},
+		{"sample.mp4", "video/mp4", []byte("\x00\x00\x00\x14ftypisom\x00\x00\x00\x00isom")},
+		{"sample.m4a", "audio/mp4", []byte("\x00\x00\x00\x14ftypM4A \x00\x00\x00\x00M4A ")},
 		{"sample.webm", "video/webm", []byte{0x1a, 0x45, 0xdf, 0xa3}},
 	} {
 		t.Run(tc.filename, func(t *testing.T) {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/binary"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -87,10 +88,39 @@ func transcriptionAudioSignatureMatches(filename string, data []byte) bool {
 	case ".mpeg":
 		return bytes.HasPrefix(data, []byte{0, 0, 1, 0xba}) || bytes.HasPrefix(data, []byte{0, 0, 1, 0xb3}) || len(data) >= 2 && data[0] == 0xff && data[1]&0xe0 == 0xe0
 	case ".mp4", ".m4a":
-		return len(data) >= 12 && bytes.Equal(data[4:8], []byte("ftyp"))
+		return transcriptionMP4SignatureMatches(data)
 	case ".webm":
 		return bytes.HasPrefix(data, []byte{0x1a, 0x45, 0xdf, 0xa3})
 	default:
 		return false
 	}
+}
+
+// ISO base media files may place padding before ftyp. Inspect only box headers,
+// skipping bounded free/skip payloads without decoding or copying their contents.
+func transcriptionMP4SignatureMatches(data []byte) bool {
+	for boxes := 0; boxes < 128; boxes++ {
+		if len(data) < 8 {
+			return false
+		}
+		size, headerSize := uint64(binary.BigEndian.Uint32(data[:4])), uint64(8)
+		if size == 1 {
+			if len(data) < 16 {
+				return false
+			}
+			size, headerSize = binary.BigEndian.Uint64(data[8:16]), 16
+		}
+		if size < headerSize || size > uint64(len(data)) {
+			return false
+		}
+		switch string(data[4:8]) {
+		case "ftyp":
+			return size >= headerSize+8
+		case "free", "skip":
+			data = data[int(size):]
+		default:
+			return false
+		}
+	}
+	return false
 }

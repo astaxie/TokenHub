@@ -55,7 +55,8 @@ func captureAudioDuration(usage Usage, body map[string]any, allowVerbose ...bool
 }
 
 func audioDurationEvidence(usage Usage) *AudioUsageEvidence {
-	if usage.AudioDurationSeconds == nil && usage.AudioDurationSource == "" {
+	if usage.AudioDurationSeconds == nil && usage.AudioDurationSource == "" &&
+		(usage.AudioDurationUnit == "" || usage.AudioDurationUnit == "token") {
 		return nil
 	}
 	evidence := &AudioUsageEvidence{Seconds: usage.AudioDurationSeconds, Source: usage.AudioDurationSource, ReportedSeconds: usage.AudioDurationRaw, BillingUnit: usage.AudioDurationUnit}
@@ -72,6 +73,9 @@ func audioDurationEvidence(usage Usage) *AudioUsageEvidence {
 	}
 	if evidence.Source == "" {
 		evidence.Source = "plugin"
+		if evidence.Seconds == nil {
+			evidence.Source = "unreported"
+		}
 	}
 	// Failed plugin calls still persist usage evidence. Keep their enum fields
 	// categorical so invalid values cannot retain private response content.
