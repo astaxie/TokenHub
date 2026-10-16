@@ -41,7 +41,7 @@ func sanitizeRerankProviderError(err error) error {
 	safe := NewHTTPError(502, "provider_error", "Rerank provider request failed")
 	var original *HTTPError
 	if errors.As(err, &original) {
-		safe.Status, safe.Code, safe.UpstreamStatus = original.Status, original.Code, original.UpstreamStatus
+		copySanitizedHTTPErrorMetadata(safe, original)
 	}
 	var invocation *ProviderInvocationError
 	hasInvocation := errors.As(err, &invocation)

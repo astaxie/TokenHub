@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -60,6 +61,12 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 				Err:         NewHTTPError(http.StatusBadGateway, "gateway_hook_route_skipped", "Gateway plugin skipped this route"),
 				Disposition: ProviderErrorRouteSkipped,
 			}
+		}
+		// Sensitive endpoint sanitization already removed payload text while
+		// retaining the provider's cancellation, retry and outcome classification.
+		var invocation *ProviderInvocationError
+		if sensitiveGatewayHookCall(call) && (errors.Is(err, context.Canceled) || errors.As(err, &invocation)) {
+			return nil, Usage{}, false, err
 		}
 		return nil, Usage{}, false, &ProviderInvocationError{
 			Err:         gatewayHookHTTPError(pluginmeta.StageProviderCall, err),

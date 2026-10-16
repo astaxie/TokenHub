@@ -17,14 +17,14 @@ func (s *Server) runAuditedGatewayHookStage(ctx context.Context, call CallContex
 	input = gatewayHookInputScope(call, input)
 	report, err := s.gatewayHooks.RunStage(ctx, stage, input)
 	s.recordGatewayHookAuditEvents(call, report)
-	return report, err
+	return report, sanitizeSensitiveGatewayHookError(call, err)
 }
 
 func (s *Server) runAuditedGatewayHookStageHooks(ctx context.Context, call CallContext, stage pluginmeta.GatewayHookStage, input pluginmeta.GatewayHookInput, hooks []pluginmeta.GatewayHookDescriptor) (pluginmeta.GatewayHookRunReport, error) {
 	input = gatewayHookInputScope(call, input)
 	report, err := s.gatewayHooks.RunStageHooks(ctx, stage, input, hooks)
 	s.recordGatewayHookAuditEvents(call, report)
-	return report, err
+	return report, sanitizeSensitiveGatewayHookError(call, err)
 }
 
 func (s *Server) recordGatewayHookAuditEvents(call CallContext, report pluginmeta.GatewayHookRunReport) {
@@ -102,7 +102,7 @@ func gatewayHookAuditSnapshot(call CallContext, stage pluginmeta.GatewayHookStag
 		"decision":       result.Decision,
 		"status":         result.Status,
 		"event_index":    eventIndex,
-		"plugin_event":   decodeGatewayPluginAuditEvent(raw),
+		"plugin_event":   gatewayHookAuditEventForCall(call, raw),
 		"duration_ms":    result.DurationMS,
 		"failure_policy": result.FailurePolicy,
 	}

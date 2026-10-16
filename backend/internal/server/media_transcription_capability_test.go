@@ -98,10 +98,12 @@ func TestTranscriptionHookCapabilityMustMatchProtocolAndStreamMode(t *testing.T)
 		name, protocol string
 		output         pluginmeta.GatewayDataClass
 		status         int
+		multipart      bool
 	}{
-		{"matching response hook", "audio/transcriptions", pluginmeta.DataProviderResponse, http.StatusOK},
-		{"speech hook", "audio/speech", pluginmeta.DataProviderResponse, http.StatusNotImplemented},
-		{"streaming hook", "audio/transcriptions", pluginmeta.DataStreamEvents, http.StatusNotImplemented},
+		{"matching JSON response hook", "audio/transcriptions", pluginmeta.DataProviderResponse, http.StatusOK, false},
+		{"speech hook", "audio/speech", pluginmeta.DataProviderResponse, http.StatusNotImplemented, false},
+		{"streaming hook", "audio/transcriptions", pluginmeta.DataStreamEvents, http.StatusNotImplemented, false},
+		{"multipart requires native adapter", "audio/transcriptions", pluginmeta.DataProviderResponse, http.StatusNotImplemented, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server, store, key := newMediaGatewayFixture(t, func(http.ResponseWriter, *http.Request) { t.Error("hook-only route reached upstream") }, "audio")
@@ -109,11 +111,20 @@ func TestTranscriptionHookCapabilityMustMatchProtocolAndStreamMode(t *testing.T)
 				t.Fatal(err)
 			}
 			calls := 0
-			registerMediaProviderTestHook(t, server, pluginmeta.GatewayHookDescriptor{HookID: "transcription", Scope: pluginmeta.GatewayHookScope{RouteProtocols: []string{tc.protocol}}, Writes: []pluginmeta.GatewayDataClass{tc.output}}, func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+			registerMediaProviderTestHook(t, server, pluginmeta.GatewayHookDescriptor{HookID: "transcription", Scope: pluginmeta.GatewayHookScope{RouteProtocols: []string{tc.protocol}}, Reads: []pluginmeta.GatewayDataClass{pluginmeta.DataProviderRequest}, Writes: []pluginmeta.GatewayDataClass{tc.output}}, func(_ context.Context, input pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
 				calls++
+				var fields map[string]any
+				if err := json.Unmarshal(input.Data[pluginmeta.DataProviderRequest], &fields); err != nil || fields["audio_url"] != "https://example.invalid/fixture.wav" {
+					t.Fatalf("JSON transcription input was not forwarded: %v", err)
+				}
 				return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionShortCircuit, Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{pluginmeta.DataProviderResponse: {Value: json.RawMessage(`{"text":"hook transcript"}`)}}}, nil
 			})
-			response := doMediaMultipartReviewRequest(t, server, key, "/v1/audio/transcriptions", [][2]string{{"model", "public-media"}})
+			var response *httptest.ResponseRecorder
+			if tc.multipart {
+				response = doMediaMultipartReviewRequest(t, server, key, "/v1/audio/transcriptions", [][2]string{{"model", "public-media"}})
+			} else {
+				response = doReasoningJSON(t, server.Handler(), "/v1/audio/transcriptions", map[string]any{"model": "public-media", "audio_url": "https://example.invalid/fixture.wav"}, key)
+			}
 			if response.Code != tc.status || calls != map[bool]int{true: 1, false: 0}[tc.status == http.StatusOK] {
 				t.Fatalf("hook capability scope bypassed: status=%d calls=%d body=%s", response.Code, calls, response.Body)
 			}

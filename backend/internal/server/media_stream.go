@@ -29,6 +29,19 @@ func mediaResponseIsSSE(contentType string) bool {
 func inspectMediaStream(body []byte, provider Provider, endpoints ...string) (Usage, error) {
 	decoder := newMediaSSEDecoder(body)
 	var usage Usage
+	var transcriptionUsage transcriptionStreamUsage
+	capture := func(probe providerStreamEventProbe) bool {
+		if audioTranscriptionEndpoint(endpoints) {
+			present := transcriptionUsage.capture(probe)
+			usage = transcriptionUsage.usage
+			return present
+		}
+		parsed, present := mediaUsageFromProbe(probe)
+		if present {
+			usage = parsed
+		}
+		return present
+	}
 	for {
 		event, err := decoder.Next()
 		if err == io.EOF {
@@ -40,14 +53,10 @@ func inspectMediaStream(body []byte, provider Provider, endpoints ...string) (Us
 		var probe providerStreamEventProbe
 		data := strings.TrimSpace(event.Data)
 		invalid := data != "" && data != "[DONE]" && (decodeResponsesJSON([]byte(data), &probe) != nil || probe == nil)
-		if parsed, ok := mediaUsageFromProbe(probe, audioTranscriptionEndpoint(endpoints)); ok {
-			usage = parsed
-		} else {
+		if !capture(probe) {
 			var response providerStreamEventProbe
 			if json.Unmarshal(probe["response"], &response) == nil {
-				if parsed, ok := mediaUsageFromProbe(response, audioTranscriptionEndpoint(endpoints)); ok {
-					usage = parsed
-				}
+				capture(response)
 			}
 		}
 		if err := validateAudioDuration(usage); err != nil {

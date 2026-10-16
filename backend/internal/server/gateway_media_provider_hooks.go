@@ -9,10 +9,17 @@ import (
 	"strings"
 )
 
-func (s *Server) routeSupportsMedia(call CallContext, route RouteSelection) bool {
+func (s *Server) routeSupportsMedia(call CallContext, route RouteSelection, request mediaRequest) bool {
 	descriptor, found := s.adapterRegistry.Describe(route.Provider.Type)
 	_, implemented := resolveTypedAdapter[providerMedia](s.adapterRegistry, route.Provider.Type)
-	return found && implemented && adapterSupports(descriptor, mediaCapabilityForProtocol(call.RouteProtocol)) || s.hasGatewayProviderCallHookForRoute(call, route, call.RouteProtocol)
+	if found && implemented && adapterSupports(descriptor, mediaCapabilityForProtocol(call.RouteProtocol)) {
+		return true
+	}
+	return !request.requiresNativeTranscription() && s.hasGatewayProviderCallHookForRoute(call, route, call.RouteProtocol)
+}
+
+func (m mediaRequest) requiresNativeTranscription() bool {
+	return m.Multipart && mediaCapabilityForProtocol(strings.TrimPrefix(m.Path, "/v1/")) == AdapterCapabilityTranscription
 }
 
 func mediaCapabilityForProtocol(protocol string) AdapterCapability {
@@ -55,6 +62,14 @@ func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call Cal
 		return mediaResponse{}, usage, err
 	}
 	if handled {
+		// Provider hooks receive text fields only. Do not accept a transcription
+		// response from a hook that could not inspect the uploaded audio.
+		if request.requiresNativeTranscription() {
+			return mediaResponse{}, Usage{}, &ProviderInvocationError{
+				Err:         NewHTTPError(http.StatusNotImplemented, "multipart_transcription_hook_unsupported", "Multipart transcription requires a native adapter; provider-call hooks can handle JSON requests only"),
+				Disposition: ProviderErrorPolicy,
+			}
+		}
 		response := mediaResponse{Body: stream.Bytes(), ContentType: "text/event-stream", Status: http.StatusOK}
 		if !call.Stream {
 			response, err = mediaProviderHookResponse(payload, responseLimit)

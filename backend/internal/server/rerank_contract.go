@@ -58,6 +58,16 @@ func rerankGuardrailTargets(r *RerankRequest) []guardrailTextTarget {
 	return targets
 }
 func applyRerankPatch(r *RerankRequest, data json.RawMessage) error {
+	return applyRerankPatchLimit(r, data, defaultMaxJSONRequestBytes)
+}
+
+func applyRerankPatchLimit(r *RerankRequest, data json.RawMessage, limit int64) error {
+	if limit <= 0 {
+		limit = defaultMaxJSONRequestBytes
+	}
+	if int64(len(data)) > limit {
+		return NewHTTPError(502, "gateway_hook_patch_invalid", "Rerank request patch exceeds the JSON request size limit")
+	}
 	var next RerankRequest
 	if err := decodeGatewayHookRequestPatch(data, &next); err != nil {
 		return err

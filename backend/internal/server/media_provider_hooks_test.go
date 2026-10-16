@@ -190,7 +190,7 @@ func TestMediaProviderHookRejectsInvalidBinaryEnvelope(t *testing.T) {
 	}
 }
 
-func TestMediaProviderMultipartStreamUsesStreamHook(t *testing.T) {
+func TestMediaProviderMultipartStreamRejectsHookHandling(t *testing.T) {
 	server, _, key := newMediaGatewayFixture(t, func(http.ResponseWriter, *http.Request) { t.Error("unexpected upstream call") }, "audio")
 	for _, output := range []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataStreamEvents} {
 		registerMediaProviderTestHook(t, server, pluginmeta.GatewayHookDescriptor{HookID: string(output), Writes: []pluginmeta.GatewayDataClass{output}}, func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
@@ -225,8 +225,8 @@ func TestMediaProviderMultipartStreamUsesStreamHook(t *testing.T) {
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	recorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "text/event-stream" || !strings.Contains(recorder.Body.String(), "event: transcript.text.done") {
-		t.Fatalf("multipart stream failed: %d %v %s", recorder.Code, recorder.Header(), recorder.Body)
+	if recorder.Code != http.StatusNotImplemented || !strings.Contains(recorder.Body.String(), "multipart_transcription_hook_unsupported") || strings.Contains(recorder.Body.String(), "event: transcript.text.done") {
+		t.Fatalf("multipart stream accepted fileless hook handling: %d %v %s", recorder.Code, recorder.Header(), recorder.Body)
 	}
 }
 

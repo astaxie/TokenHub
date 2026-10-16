@@ -55,7 +55,7 @@ func TestMediaReadFailureRetainsCompleteUsage(t *testing.T) {
 			}, "audio")
 			store.AddRoute(ModelRoute{ID: "fallback-media-read", ModelName: "public-media", ProviderID: "media-provider", ProviderModel: "other-media", Status: StatusActive, Priority: 2, Weight: 100})
 			response := doJSON(t, server.Handler(), http.MethodPost, "/v1/audio/transcriptions", map[string]any{"model": "public-media"}, key)
-			if response.Code != http.StatusBadGateway || !strings.Contains(response.Body, "Unable to read the complete media response") || calls != 1 {
+			if response.Code != http.StatusBadGateway || !strings.Contains(response.Body, "invalid_media_response") || !strings.Contains(response.Body, "Audio transcription provider request failed") || calls != 1 {
 				t.Fatalf("read failure changed or retried: status=%d calls=%d body=%s", response.Code, calls, response.Body)
 			}
 			var tokens int64

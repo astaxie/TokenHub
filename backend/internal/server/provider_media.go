@@ -103,8 +103,7 @@ func sanitizeTranscriptionProviderError(err error) error {
 	safe := NewHTTPError(http.StatusBadGateway, "provider_error", "Audio transcription provider request failed")
 	var original *HTTPError
 	if errors.As(err, &original) {
-		safe.Status, safe.Code, safe.UpstreamStatus = original.Status, original.Code, original.UpstreamStatus
-		safe.Headers = cloneStringMap(original.Headers)
+		copySanitizedHTTPErrorMetadata(safe, original)
 	} else if mediaResponseReadTimedOut(err) {
 		safe = NewHTTPError(http.StatusGatewayTimeout, "provider_upstream_timeout", "Audio transcription provider request timed out")
 	}

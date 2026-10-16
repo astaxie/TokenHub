@@ -128,3 +128,44 @@ func audioDurationBillable(usage Usage) bool {
 	evidence := audioDurationEvidence(usage)
 	return evidence != nil && evidence.BillingUnit == "audio_second"
 }
+
+// Streaming providers can report tokens and duration in separate events. Keep
+// their latest independent observations; a duration-only event is not zero tokens.
+type transcriptionStreamUsage struct {
+	usage                  Usage
+	tokensReported         bool
+	nativeDurationReported bool
+	nativeDurationMeasured bool
+}
+
+func (s *transcriptionStreamUsage) capture(probe providerStreamEventProbe) bool {
+	next, ok := mediaUsageFromProbe(probe, true)
+	if !ok {
+		return false
+	}
+	var reported map[string]any
+	_ = decodeResponsesJSON(probe["usage"], &reported)
+	native := reported["type"] == "duration"
+	previous := s.usage
+	if audioResponseHasTokenUsage(reported) {
+		s.usage = next
+		s.usage.AudioDurationSeconds, s.usage.AudioDurationSource = previous.AudioDurationSeconds, previous.AudioDurationSource
+		s.usage.AudioDurationRaw, s.usage.AudioDurationUnit = previous.AudioDurationRaw, previous.AudioDurationUnit
+		s.tokensReported = true
+	}
+	if next.AudioDurationSource != "" && (!s.nativeDurationMeasured || native) &&
+		(next.AudioDurationSeconds != nil || previous.AudioDurationSeconds == nil || next.AudioDurationSource == "invalid") {
+		s.usage.AudioDurationSeconds, s.usage.AudioDurationSource = next.AudioDurationSeconds, next.AudioDurationSource
+		s.usage.AudioDurationRaw = next.AudioDurationRaw
+	}
+	s.nativeDurationReported = s.nativeDurationReported || native
+	s.nativeDurationMeasured = s.nativeDurationMeasured || native && next.AudioDurationSeconds != nil
+	if s.usage.AudioDurationSource != "" {
+		s.usage.AudioDurationUnit = "audio_second"
+		if s.tokensReported && !s.nativeDurationReported {
+			s.usage.AudioDurationUnit = "token"
+		}
+	}
+	s.usage.MeteringInvalid = previous.MeteringInvalid || next.MeteringInvalid
+	return true
+}
