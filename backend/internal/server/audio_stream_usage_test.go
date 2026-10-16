@@ -7,7 +7,48 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestTranscriptionStreamCombinesEnvelopeUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name, event, unit string
+		tokens            int64
+		cost              float64
+	}{
+		{"outer duration and nested tokens", `{"duration":12.5,"response":{"usage":{"type":"tokens","input_tokens":3,"total_tokens":3}}}`, "token", 3, .000003},
+		{"outer tokens and nested duration", `{"usage":{"type":"tokens","input_tokens":3,"total_tokens":3},"response":{"duration":12.5}}`, "token", 3, .000003},
+		{"nested zero tokens", `{"duration":12.5,"response":{"usage":{"type":"tokens","input_tokens":0,"total_tokens":0}}}`, "token", 0, 0},
+		{"outer native duration and nested tokens", `{"usage":{"type":"duration","seconds":12.5},"response":{"usage":{"type":"tokens","input_tokens":3,"total_tokens":3}}}`, "audio_second", 3, .25},
+		{"outer tokens and nested native duration", `{"usage":{"type":"tokens","input_tokens":3,"total_tokens":3},"response":{"usage":{"type":"duration","seconds":12.5}}}`, "audio_second", 3, .25},
+		{"outer cumulative tokens take precedence", `{"duration":12.5,"usage":{"type":"tokens","input_tokens":3,"total_tokens":3},"response":{"usage":{"type":"tokens","input_tokens":9,"total_tokens":9}}}`, "token", 3, .000003},
+		{"outer duration takes precedence", `{"duration":12.5,"response":{"duration":99}}`, "audio_second", 0, .25},
+		{"nested native duration takes precedence", `{"duration":99,"response":{"usage":{"type":"duration","seconds":12.5}}}`, "audio_second", 0, .25},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			usage, err := inspectMediaStream([]byte("data: "+tc.event+"\n\n"), Provider{}, "/audio/transcriptions")
+			if err != nil || usage.TotalTokens != tc.tokens || usage.AudioDurationSeconds == nil || *usage.AudioDurationSeconds != 12.5 || usage.AudioDurationUnit != tc.unit {
+				t.Fatalf("envelope evidence changed: usage=%+v error=%v", usage, err)
+			}
+			for _, multiplier := range []float64{1, 2} {
+				price := "0.02"
+				if multiplier == 2 {
+					price = "0.04"
+				}
+				model := Model{Modality: "audio", InputPriceUSDPer1M: multiplier, Metadata: map[string]string{audioSecondPriceKey: price}}
+				priced := priceUsage(model, usage)
+				if math.Abs(priced.CostUSD-multiplier*tc.cost) > 1e-12 {
+					t.Fatalf("envelope evidence changed billing: %+v", priced)
+				}
+				resolved := legacyMeteringPrice(model, time.Now().UTC(), false)
+				charge := shadowPrice(&resolved, priced, priced.CostUSD)
+				if charge.AudioEvidence == nil || charge.AudioEvidence.Seconds == nil || *charge.AudioEvidence.Seconds != 12.5 || charge.AudioEvidence.BillingUnit != tc.unit {
+					t.Fatalf("envelope evidence lost from settlement: %+v", charge)
+				}
+			}
+		})
+	}
+}
 
 func TestTranscriptionStreamPreservesIndependentUsageAndBilling(t *testing.T) {
 	const tokens = `{"usage":{"type":"tokens","input_tokens":3,"total_tokens":3}}`

@@ -30,8 +30,9 @@ func inspectMediaStream(body []byte, provider Provider, endpoints ...string) (Us
 	decoder := newMediaSSEDecoder(body)
 	var usage Usage
 	var transcriptionUsage transcriptionStreamUsage
+	transcription := audioTranscriptionEndpoint(endpoints)
 	capture := func(probe providerStreamEventProbe) bool {
-		if audioTranscriptionEndpoint(endpoints) {
+		if transcription {
 			present := transcriptionUsage.capture(probe)
 			usage = transcriptionUsage.usage
 			return present
@@ -53,11 +54,15 @@ func inspectMediaStream(body []byte, provider Provider, endpoints ...string) (Us
 		var probe providerStreamEventProbe
 		data := strings.TrimSpace(event.Data)
 		invalid := data != "" && data != "[DONE]" && (decodeResponsesJSON([]byte(data), &probe) != nil || probe == nil)
-		if !capture(probe) {
-			var response providerStreamEventProbe
-			if json.Unmarshal(probe["response"], &response) == nil {
-				capture(response)
-			}
+		var response providerStreamEventProbe
+		_ = json.Unmarshal(probe["response"], &response)
+		if transcription {
+			// Keep independent evidence from both envelope levels. Outer usage
+			// retains precedence when both report the same cumulative quantity.
+			capture(response)
+			capture(probe)
+		} else if !capture(probe) {
+			capture(response)
 		}
 		if err := validateAudioDuration(usage); err != nil {
 			return usage, err
