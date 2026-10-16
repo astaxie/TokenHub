@@ -48,6 +48,7 @@ func sensitiveEndpointErrorCodeAllowed(code string) bool {
 		"invalid_media_response", "invalid_media_field", "invalid_provider_usage", "invalid_rerank_response", "invalid_rerank_request",
 		"rerank_parameter_unsupported", "rerank_protocol_required", "invalid_rerank_path", "provider_adapter_missing",
 		"media_stream_incomplete", "multipart_transcription_hook_unsupported", "content_filter", "request_too_large", "coordination_lease_lost",
+		"guardrail_blocked", "guardrail_policy_load_failed", "guardrail_evaluation_failed", "guardrail_evaluation_budget_exceeded",
 		"model_not_allowed", "quota_exceeded", "budget_exceeded", "rate_limit_exceeded", "token_rate_limit_exceeded":
 		return true
 	default:

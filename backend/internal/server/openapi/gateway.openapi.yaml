@@ -696,7 +696,9 @@ paths:
         128 MiB before delivery. Multipart uploads require one nonempty supported audio file,
         up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. Uploaded
         bytes remain in memory and are excluded from audit and provider error messages.
-        Routes require the explicit transcription capability or a matching provider hook.
+        Multipart routes require a native adapter with the transcription capability;
+        matching provider hooks can handle JSON extensions only. Request hook patches
+        retain the multipart field, part-count, and configured total request size limits.
         Reported tokens and audio seconds are recorded; duration billing uses configured
         audio_price_usd_per_second metadata independently for tenant and provider prices.
       x-tokenhub-public-gateway: true
@@ -775,7 +777,9 @@ paths:
         128 MiB before delivery. Multipart uploads require one nonempty supported audio file,
         up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. Uploaded
         bytes remain in memory and are excluded from audit and provider error messages.
-        Routes require the explicit transcription capability or a matching provider hook.
+        Multipart routes require a native adapter with the transcription capability;
+        matching provider hooks can handle JSON extensions only. Request hook patches
+        retain the multipart field, part-count, and configured total request size limits.
         Reported tokens and audio seconds are recorded; duration billing uses configured
         audio_price_usd_per_second metadata independently for tenant and provider prices.
       x-tokenhub-public-gateway: true
