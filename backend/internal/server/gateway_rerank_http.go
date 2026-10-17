@@ -127,14 +127,7 @@ func (s *Server) handleRerank(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, err)
 			return
 		}
-		usage, err = s.runGatewayUsageAttributionHooks(r.Context(), call, cacheRoute, resp, usage, providerRouteProtocolRerank)
-		usage.DocumentCount = len(req.Documents)
-		if err != nil {
-			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
-			writeError(w, r, err)
-			return
-		}
-		usage, err = pluginRetrievalUsage(resp, usage, providerRerankProtocol(cacheRoute.Provider) == "cohere")
+		usage, err = s.attributeRerankUsage(r.Context(), call, cacheRoute, resp, usage)
 		if err != nil {
 			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
 			writeError(w, r, err)
@@ -173,26 +166,19 @@ func (s *Server) handleRerank(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	usage, err = s.runGatewayUsageAttributionHooks(r.Context(), routed.Call, route, resp, usage, providerRouteProtocolRerank)
-	usage.DocumentCount = len(req.Documents)
-	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
-		writeError(w, r, err)
-		return
-	}
-	usage, err = pluginRetrievalUsage(resp, usage, providerRerankProtocol(route.Provider) == "cohere")
-	if err != nil {
-		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
-		writeError(w, r, err)
-		return
-	}
-	resp, err = validateRerankResult(resp, req)
+	usage, err = s.attributeRerankUsage(r.Context(), routed.Call, route, resp, usage)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return
 	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
+	resp, err = validateRerankResult(resp, req)
+	if err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
 	routed.Call.RerankCacheKey = rerankCacheKey(routed.Call, route, req)
 	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, route, req, resp, usage, providerRouteProtocolRerank)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, rerankResponseAuditPayload(req))

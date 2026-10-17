@@ -75,7 +75,10 @@ func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call Cal
 		// Provider hooks receive text fields only. Do not accept a transcription
 		// response from a hook that could not inspect the uploaded audio.
 		if request.requiresNativeTranscription() {
-			return mediaResponse{}, Usage{}, &ProviderInvocationError{
+			// A hook cannot inspect multipart audio, but any independently
+			// reported usage is still evidence for the failed invocation. Keep it
+			// through settlement instead of replacing it with an empty Usage.
+			return mediaResponse{}, usage, &ProviderInvocationError{
 				Err:         NewHTTPError(http.StatusNotImplemented, "multipart_transcription_hook_unsupported", "Multipart transcription requires a native adapter; provider-call hooks can handle JSON requests only"),
 				Disposition: ProviderErrorPolicy,
 			}

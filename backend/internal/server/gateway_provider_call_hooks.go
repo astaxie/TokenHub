@@ -76,13 +76,20 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 	var response any
 	var events []gatewayStreamEventView
 	var usage Usage
+	var responseDecodeErr error
+	var usageDecodeErr error
+	usagePresent := false
 	handled := false
 	for _, result := range report.Results {
 		if patch, ok := result.Writes[pluginmeta.DataProviderResponse]; ok {
 			if err := decodeGatewayHookResponsePayload(patch.Value, &response, protocol); err != nil {
-				return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
-			}
-			if stream == nil {
+				// Rerank response validation can fail after a complete leading
+				// object has supplied independent usage. Keep decoding DataUsage
+				// below so the failed attempt remains billable and rate-limited.
+				if responseDecodeErr == nil {
+					responseDecodeErr = err
+				}
+			} else if stream == nil {
 				handled = true
 			}
 		}
@@ -100,12 +107,39 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 		}
 		if patch, ok := result.Writes[pluginmeta.DataUsage]; ok {
 			if err := decodeGatewayHookPayload(patch.Value, &usage, "gateway_hook_usage_invalid", "Gateway plugin returned invalid usage"); err != nil {
-				return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+				if usageDecodeErr == nil {
+					usageDecodeErr = err
+				}
+				continue
 			}
-			if usageReported != nil {
-				*usageReported = true
-			}
+			usagePresent = true
 		}
+	}
+	if responseDecodeErr != nil {
+		if protocol != providerRouteProtocolRerank {
+			return nil, Usage{}, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}
+		}
+		if usageDecodeErr != nil {
+			return nil, Usage{}, false, &ProviderInvocationError{Err: usageDecodeErr, Disposition: ProviderErrorPolicy}
+		}
+		// Provider-call usage is only trusted after the same retrieval
+		// consistency checks used by a successful rerank response. A
+		// missing usage object therefore remains unpriced evidence.
+		validated, err := pluginRetrievalUsage(nil, usage, providerRerankProtocol(route.Provider) == "cohere")
+		if err != nil {
+			return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+		}
+		usage = validated
+		if usageReported != nil {
+			*usageReported = usagePresent
+		}
+		return nil, usage, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}
+	}
+	if usageDecodeErr != nil {
+		return nil, Usage{}, false, &ProviderInvocationError{Err: usageDecodeErr, Disposition: ProviderErrorPolicy}
+	}
+	if usageReported != nil {
+		*usageReported = usagePresent
 	}
 	if report.TerminalDecision == pluginmeta.HookDecisionShortCircuit && !handled {
 		return nil, Usage{}, false, &ProviderInvocationError{

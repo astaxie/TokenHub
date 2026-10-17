@@ -154,6 +154,14 @@ func (s *Server) runGatewayUsageAttributionHooks(ctx context.Context, call CallC
 		return Usage{}, gatewayHookHTTPError(pluginmeta.StageUsageAttribution, err)
 	}
 	output := usage
+	if usage.RetrievalEvidence != nil {
+		evidence := *usage.RetrievalEvidence
+		if evidence.Quantity != nil {
+			quantity := *evidence.Quantity
+			evidence.Quantity = &quantity
+		}
+		output.RetrievalEvidence = &evidence
+	}
 	if usage.AudioDurationSeconds != nil {
 		seconds := *usage.AudioDurationSeconds
 		output.AudioDurationSeconds = &seconds
