@@ -66,4 +66,16 @@ describe("Statement currency preferences", () => {
     expect(screen.getByLabelText("手动汇率：1 USD 兑目标币种")).toHaveValue("7.25");
     expect(JSON.parse(window.localStorage.getItem(statementCurrencyStorageKey)!)).toEqual({ currency: "CNY", rates: { CNY: "7.25", JPY: "150" } });
   });
+
+  it("submits and persists the locale decimal separator without losing precision", async () => {
+    setActiveLanguage("ru");
+    const fetch = mockStatements();
+    render(<BillingStatements api={api} side="provider" />);
+    fireEvent.change(screen.getByLabelText("Валюта выписки"), { target: { value: "CNY" } });
+    fireEvent.change(screen.getByLabelText("Ручной курс: единиц целевой валюты за 1 USD"), { target: { value: "7,250000000001" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Предпросмотр акта сверки" }).closest("form")!);
+    await screen.findByRole("button", { name: "Экспорт текущего предпросмотра в CSV" });
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({ display_currency: "CNY", display_exchange_rate: "7.250000000001" });
+    expect(JSON.parse(window.localStorage.getItem(statementCurrencyStorageKey)!)).toEqual({ currency: "CNY", rates: { CNY: "7.250000000001" } });
+  });
 });

@@ -3,6 +3,11 @@ export type StatementCurrency = typeof statementCurrencies[number];
 export type StatementCurrencyPreferences = { currency: StatementCurrency; rates: Partial<Record<StatementCurrency, string>> };
 export const statementCurrencyStorageKey = "tokenhub.billing-statement-currency.v1";
 
+export function normalizeStatementExchangeRateInput(value: string, locale: string): string {
+  const separator = new Intl.NumberFormat(locale).formatToParts(1.1).find(part => part.type === "decimal")?.value;
+  return separator && separator !== "." ? value.replaceAll(separator, ".") : value;
+}
+
 export function validStatementExchangeRate(value: string): boolean {
   return /^(0|[1-9][0-9]{0,17})(\.[0-9]{1,12})?$/.test(value) && /[1-9]/.test(value);
 }

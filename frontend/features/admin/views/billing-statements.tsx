@@ -3,7 +3,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { type ApiContext } from "../core/types";
-import { readStatementCurrencyPreferences, statementCurrencies, statementCurrencyStorageKey, validStatementExchangeRate, type StatementCurrency, type StatementCurrencyPreferences } from "../domain/billing-currency";
+import { normalizeStatementExchangeRateInput, readStatementCurrencyPreferences, statementCurrencies, statementCurrencyStorageKey, validStatementExchangeRate, type StatementCurrency, type StatementCurrencyPreferences } from "../domain/billing-currency";
 import { formatStatementAmount, statementCSV, statementMonth, type StatementQuery, type StatementResult, type StatementSide } from "../domain/billing-statements";
 import { formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
@@ -95,7 +95,7 @@ export function BillingStatements({ api, side = "tenant", model = "", providerID
         <label>{tx("结束日期（不含）")}<input required type="date" value={query.to} onChange={event => change({ to: event.target.value })} /></label>
         <label>{tx("账期时区")}<input required value={query.timezone} onChange={event => change({ timezone: event.target.value })} /></label>
         <label>{tx("对账单币种")}<select value={currencyPreferences.currency} onChange={event => changeCurrency({ ...currencyPreferences, currency: event.target.value as StatementCurrency })}>{statementCurrencies.map(currency => <option key={currency} value={currency}>{currency}</option>)}</select></label>
-        {currencyPreferences.currency !== "USD" ? <label>{tx("手动汇率：1 USD 兑目标币种")}<input inputMode="decimal" maxLength={31} value={currencyPreferences.rates[currencyPreferences.currency] ?? ""} onChange={event => changeCurrency({ ...currencyPreferences, rates: { ...currencyPreferences.rates, [currencyPreferences.currency]: event.target.value } })} /></label> : null}
+        {currencyPreferences.currency !== "USD" ? <label>{tx("手动汇率：1 USD 兑目标币种")}<input inputMode="decimal" maxLength={31} value={currencyPreferences.rates[currencyPreferences.currency] ?? ""} onChange={event => changeCurrency({ ...currencyPreferences, rates: { ...currencyPreferences.rates, [currencyPreferences.currency]: normalizeStatementExchangeRateInput(event.target.value, languageLocale()) } })} /></label> : null}
         {query.side !== "provider" ? <>
           <label>{tx("客户名称")}<input required={query.side === "tenant"} maxLength={200} value={query.customer} onChange={event => change({ customer: event.target.value })} /></label>
           <label>{tx("客户项目（可多选）")}<select multiple required={query.side === "tenant"} value={query.project_ids} onChange={event => change({ project_ids: Array.from(event.target.selectedOptions, option => option.value) })}>
