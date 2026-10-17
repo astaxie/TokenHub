@@ -20,14 +20,14 @@ type CompatibilityManifest struct {
 
 // CurrentCompatibilityManifest is this release's declaration. This release
 // requires the metering evidence, audit correlation, Jev response binding,
-// and image-job worker instance expansions. Startup upgrades older databases
+// image-job worker instance, and media task binding expansions. Startup upgrades older databases
 // before requests are admitted; the runtime does not silently skip any
 // schema change.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: 7,
-		MinCompatible: 7,
-		MaxCompatible: 7,
+		TargetVersion: 8,
+		MinCompatible: 8,
+		MaxCompatible: 8,
 	}
 }
 

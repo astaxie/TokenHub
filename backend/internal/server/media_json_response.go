@@ -37,7 +37,7 @@ func inspectMediaJSON(body []byte) (Usage, error) {
 	}
 	// A successful HTTP status cannot make an OpenAI error envelope successful.
 	// Keep the message generic because upstream errors may echo provider secrets.
-	if payload["error"] != nil {
+	if payload["error"] != nil || (int64FromAny(payload["code"]) >= 400 && int64FromAny(payload["code"]) <= 599) {
 		return usage, NewHTTPError(http.StatusBadGateway, "provider_error", "Media provider returned an error response")
 	}
 	return usage, nil

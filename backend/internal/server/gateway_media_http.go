@@ -14,9 +14,10 @@ import (
 )
 
 func (s *Server) registerMediaRoutes() {
-	for _, path := range []string{"/v1/audio/speech", "/v1/audio/transcriptions", "/v1/audio/translations", "/v1/images/variations"} {
+	for _, path := range []string{"/v1/audio/speech", "/v1/audio/transcriptions", "/v1/audio/translations", "/v1/images/variations", "/v1/videos/generations"} {
 		s.registerPublicSingleMethodRoute(http.MethodPost, path, s.gatewayInFlight(s.handleMedia), jsonMethodNotAllowed(http.MethodPost))
 	}
+	s.registerPublicSingleMethodRoute(http.MethodGet, "/v1/tasks/{task_id}", s.gatewayInFlight(s.handleMediaTask), jsonMethodNotAllowed(http.MethodGet))
 }
 
 // Preserve managed image jobs and native client aliases, while allowing ordinary
@@ -77,14 +78,20 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	model := request.model()
 	audit := guardrailAuditSummary{Model: model}
 	admittedAt := time.Now().UTC()
-	call, err := s.admitRoutedCall(w, r, project, key, model, request.stream(), requestTokenReservation(request.Fields))
+	call, err := s.admitRoutedCall(w, r, project, key, model, request.stream(), request.tokenReservation())
 	if err != nil {
 		w.Header().Set("x-request-id", s.finishRejectedCall(r, admittedAt, project, key, model, request.stream(), err, audit))
 		writeError(w, r, err)
 		return
 	}
 	call.RouteProtocol = strings.TrimPrefix(r.URL.Path, "/v1/")
+	if request.Task != nil {
+		call.RouteProtocol = "tasks"
+	}
 	err = s.runMediaPreflight(r, &call, &request)
+	if err == nil && request.Task != nil && request.Task.AttributedUserID != call.AttributedUserID {
+		err = mediaTaskNotFound()
+	}
 	if err == nil {
 		audit.Guardrail, err = s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, mediaGuardrailTargets(request.Fields))
 		audit.Guardrail.Replacements = nil
@@ -100,13 +107,16 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	}
 	routes := routed.Routes[:0]
 	for _, route := range routed.Routes {
-		if s.routeSupportsMedia(routed.Call, route) {
+		if s.routeSupportsMedia(routed.Call, route) && (request.Task == nil || mediaTaskMatchesRoute(*request.Task, route)) {
 			routes = append(routes, route)
 		}
 	}
 	routed.Routes = routes
 	if len(routes) == 0 {
-		err := NewHTTPError(501, "provider_capability_not_supported", "Publish a media model with a compatible provider or matching provider_call hook")
+		var err error = NewHTTPError(501, "provider_capability_not_supported", "Publish a media model with a compatible provider or matching provider_call hook")
+		if request.Task != nil {
+			err = mediaTaskRouteUnavailable()
+		}
 		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, audit)
 		writeError(w, r, err)
 		return
@@ -116,12 +126,24 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 		if err != nil {
 			return mediaResponse{}, Usage{}, err
 		}
+		if request.Task != nil && s.mediaTaskIdentity(prepared) != request.Task.IdentityHash {
+			return mediaResponse{}, Usage{}, mediaTaskRouteUnavailable()
+		}
 		upstream := request
 		upstream.Fields = cloneRawJSON(request.Fields, 0)
 		if err := s.runGatewayRequestTransformHooks(ctx, routed.Call, prepared, upstream.Fields, call.RouteProtocol, upstream.applyPatch); err != nil {
 			return mediaResponse{}, Usage{}, err
 		}
-		return s.invokeMediaRoute(ctx, routed.Call, prepared, strings.TrimPrefix(r.URL.Path, "/v1"), upstream)
+		endpoint := strings.TrimPrefix(r.URL.Path, "/v1")
+		if request.Task != nil {
+			endpoint = "/tasks"
+		}
+		result, usage, err := s.invokeMediaRoute(ctx, routed.Call, prepared, endpoint, upstream)
+		result.BindingRoute = &prepared
+		if request.Task != nil {
+			usage = Usage{}
+		}
+		return result, usage, err
 	})
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, audit)
@@ -130,7 +152,30 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
-	result, usage, err = s.finishMediaHooks(r.Context(), routed.Call, route, result, usage)
+	bindingRoute := route
+	if result.BindingRoute != nil {
+		bindingRoute = *result.BindingRoute
+	}
+	if request.Task != nil {
+		err = rewriteMediaTaskResult(&result, *request.Task, request.UpstreamTaskID)
+	} else {
+		err = s.bindMediaSubmission(r, routed.Call, bindingRoute, &result)
+	}
+	protectTaskIdentity := request.Task != nil || mediaTaskSubmissionPath(r.URL.Path)
+	identity := mediaTaskResponseIdentity(result, request.Task != nil)
+	if err == nil {
+		if request.Task != nil {
+			result.Body = redactProviderErrorSecrets(result.Body, bindingRoute.Provider)
+		}
+		result, usage, err = s.finishMediaHooks(r.Context(), routed.Call, route, result, usage)
+	}
+	if err == nil && protectTaskIdentity && identity != mediaTaskResponseIdentity(result, request.Task != nil) {
+		err = NewHTTPError(502, "gateway_hook_response_invalid", "Gateway plugin cannot change media task identifiers")
+	}
+	if request.Task != nil {
+		result.Body = redactProviderErrorSecrets(result.Body, bindingRoute.Provider)
+		usage = Usage{}
+	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	if err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, audit)
@@ -151,6 +196,9 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 		return err
 	}
 	patched := mediaRequest{Fields: fields, Multipart: m.Multipart, Path: m.Path}
+	if m.Task != nil && (string(fields["task_id"]) != string(m.Fields["task_id"]) || string(fields["language"]) != string(m.Fields["language"])) {
+		return NewHTTPError(502, "gateway_hook_patch_invalid", "Gateway plugin cannot change the media task identity or language")
+	}
 	if err := patched.validateStream(); err != nil {
 		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid media stream mode")
 	}
@@ -163,7 +211,7 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 
 func mediaGuardrailTargets(fields map[string]json.RawMessage) []guardrailTextTarget {
 	var targets []guardrailTextTarget
-	for _, name := range []string{"input", "instructions", "prompt", "negative_prompt", "text"} {
+	for _, name := range []string{"input", "instructions", "prompt", "negative_prompt", "text", "multi_prompt"} {
 		var value any
 		if decodeResponsesJSON(fields[name], &value) == nil {
 			appendMediaResponseTextTargets(&targets, value, name, func(value any) {
@@ -182,7 +230,7 @@ func (s *Server) runMediaPreflight(r *http.Request, call *CallContext, request *
 	if err := s.runGatewayDecodeNormalizeHooks(ctx, *call, r.Header, request.Fields, request.applyPatch); err != nil {
 		return err
 	}
-	if err := s.runGatewayAdmissionHooks(ctx, *call, r.Header, request.Fields, requestTokenReservation(request.Fields)); err != nil {
+	if err := s.runGatewayAdmissionHooks(ctx, *call, r.Header, request.Fields, request.tokenReservation()); err != nil {
 		return err
 	}
 	if err := s.runGatewayPrivacyPreHooks(ctx, *call, r.Header, request.Fields, request.applyPatch); err != nil {

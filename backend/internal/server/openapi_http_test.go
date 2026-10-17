@@ -587,6 +587,8 @@ func providerRoutedOperation(operation gatewayOperation) bool {
 		"/v1/images/generations",
 		"/v1/images/edits",
 		"/v1/images/variations",
+		"/v1/videos/generations",
+		"/v1/tasks/{task_id}",
 		"/v1/audio/speech",
 		"/v1/audio/transcriptions",
 		"/v1/audio/translations",
@@ -601,6 +603,8 @@ func providerRoutedOperation(operation gatewayOperation) bool {
 func providerCapabilityOperation(operation gatewayOperation) bool {
 	switch operation.Path {
 	case "/v1/systemone",
+		"/v1/videos/generations",
+		"/v1/tasks/{task_id}",
 		"/v1/responses",
 		"/v1/responses/compact",
 		"/v1/messages",
@@ -625,6 +629,7 @@ func modelAccessControlledOperation(operation gatewayOperation) bool {
 		"/v1/images/generations",
 		"/v1/images/edits",
 		"/v1/images/variations",
+		"/v1/videos/generations",
 		"/v1/audio/speech",
 		"/v1/audio/transcriptions",
 		"/v1/audio/translations",

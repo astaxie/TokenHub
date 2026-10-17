@@ -16,14 +16,24 @@ import (
 // Media fields remain opaque so vendor extensions and large integer IDs survive.
 // Files are bounded separately and are never placed in request audit payloads.
 type mediaRequest struct {
-	Fields    map[string]json.RawMessage
-	Files     []mediaFile
-	Multipart bool
-	Path      string
+	Fields         map[string]json.RawMessage
+	Files          []mediaFile
+	Multipart      bool
+	Path           string
+	Task           *mediaTaskBinding
+	UpstreamTaskID string
+	TaskLanguage   string
 }
 type mediaFile struct {
 	Header textproto.MIMEHeader
 	Data   []byte
+}
+
+func (m mediaRequest) tokenReservation() int64 {
+	if m.Task != nil {
+		return 0
+	}
+	return requestTokenReservation(m.Fields)
 }
 
 func (m mediaRequest) model() string {
