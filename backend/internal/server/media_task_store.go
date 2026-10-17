@@ -50,7 +50,7 @@ func (s *GormStore) SaveMediaTaskBindings(ctx context.Context, bindings []mediaT
 		bindings[i].UpstreamCiphertext = ciphertext
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("DELETE FROM media_task_bindings WHERE id IN (SELECT id FROM media_task_bindings WHERE expires_at <= ? LIMIT 100)", time.Now().Unix()).Error; err != nil {
+		if err := tx.Exec("DELETE FROM media_task_bindings WHERE id IN (SELECT id FROM media_task_bindings WHERE expires_at <= ? LIMIT ?)", time.Now().Unix(), maxMediaTaskBindingsPerSubmission).Error; err != nil {
 			return err
 		}
 		return tx.Create(&bindings).Error

@@ -59,3 +59,41 @@ func TestMediaTaskSQLitePersistence(t *testing.T) {
 	defer func() { _ = second.Close() }()
 	testMediaTaskBindingPersistence(t, first, second)
 }
+
+func TestMediaTaskCleanupKeepsPaceWithMaximumSubmissionBatch(t *testing.T) {
+	url := "sqlite://" + filepath.Join(t.TempDir(), "media-task-cleanup.db")
+	store, err := NewSQLiteStoreWithConfig(url, Config{SecretKey: "media-task-cleanup-secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := context.Background()
+	expired := make([]mediaTaskBinding, maxMediaTaskBindingsPerSubmission)
+	current := make([]mediaTaskBinding, maxMediaTaskBindingsPerSubmission)
+	upstreamIDs := make([]string, maxMediaTaskBindingsPerSubmission)
+	for i := range expired {
+		expired[i] = mediaTaskBinding{ID: NewID("task"), ExpiresAt: time.Now().Add(-time.Hour).Unix()}
+		current[i] = mediaTaskBinding{ID: NewID("task"), ExpiresAt: time.Now().Add(time.Hour).Unix()}
+		upstreamIDs[i] = NewID("upstream")
+	}
+	if err := store.SaveMediaTaskBindings(ctx, expired, upstreamIDs); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveMediaTaskBindings(ctx, current, upstreamIDs); err != nil {
+		t.Fatal(err)
+	}
+	var remaining, retained int64
+	if err := store.db.Model(&mediaTaskBinding{}).Where("expires_at <= ?", time.Now().Unix()).Count(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("maximum submission left %d expired task bindings behind", remaining)
+	}
+	if err := store.db.Model(&mediaTaskBinding{}).Count(&retained).Error; err != nil {
+		t.Fatal(err)
+	}
+	if retained != maxMediaTaskBindingsPerSubmission {
+		t.Fatalf("retained task bindings = %d, want %d", retained, maxMediaTaskBindingsPerSubmission)
+	}
+}
