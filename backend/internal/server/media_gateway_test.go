@@ -111,7 +111,7 @@ func TestMediaMultipartRetainsFilesRepeatedFieldsAndTextResponses(t *testing.T) 
 				}
 				defer file.Close()
 				data, _ := io.ReadAll(file)
-				if header.Filename != "sample.wav" || !bytes.Equal(data, []byte{0, 1, 2, 255}) {
+				if header.Filename != "sample.wav" || !bytes.Equal(data, transcriptionWAVFixture("fixture audio")) {
 					t.Errorf("file changed: %s %v", header.Filename, data)
 				}
 				w.Header().Set("Content-Type", "text/vtt")
@@ -128,7 +128,7 @@ func TestMediaMultipartRetainsFilesRepeatedFieldsAndTextResponses(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := file.Write([]byte{0, 1, 2, 255}); err != nil {
+			if _, err := file.Write(transcriptionWAVFixture("fixture audio")); err != nil {
 				t.Fatal(err)
 			}
 			if err := writer.Close(); err != nil {

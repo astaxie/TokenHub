@@ -5,7 +5,7 @@ export type StatementRow = {
   id: string; request_id?: string; source: string; at: string; end_at?: string; timezone: string;
   project_id?: string; team_id?: string; api_key_id?: string; model: string; provider_id?: string; resource_id?: string;
   currency: string; amount: string | null; usd: string | null; display_amount?: string | null; status: string; reason?: string;
-  units: Record<string, number>; lines?: { kind: string; units: number; rate: string; amount: string }[];
+  units: Record<string, number>; lines?: { kind: string; units: number; quantity?: string; rate: string; amount: string }[];
   price?: { version?: string; source: string; currency: string; at: string; exchange_rate_version?: string; exchange_rate?: string; rates: Record<string, string> };
 };
 export type StatementResult = { query: StatementQuery; generated_at: string; from: string; to: string; time_basis: string; rows: StatementRow[]; totals: Record<string, string>; unknown_count: number; incomplete_count: number; estimated_margin_usd: string | null; conversion?: { currency: string; usd_exchange_rate: string }; display_totals?: Record<string, string>; display_estimated_margin?: string | null };
@@ -60,4 +60,20 @@ export function formatStatementAmount(amount: string, currency: string, locale: 
       return part.value;
     }).join("");
   } catch { return amount + " " + currency; }
+}
+
+// Native quantities can use decimal or exponent notation. Preserve every digit
+// instead of converting provider evidence to a rounded JavaScript number.
+export function formatStatementQuantity(value: string, locale: string): string {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(value);
+  const exponent = Number(match?.[4] ?? 0);
+  if (!match || value.length > 512 || !Number.isInteger(exponent) || Math.abs(exponent) > 400) return value;
+  const digits = match[2] + (match[3] ?? "");
+  const point = match[2].length + exponent;
+  const integer = point <= 0 ? "0" : digits.slice(0, point).padEnd(point, "0");
+  const fraction = (point <= 0 ? "0".repeat(-point) + digits : digits.slice(point)).replace(/0+$/, "");
+  const number = new Intl.NumberFormat(locale);
+  const whole = number.format(BigInt(integer));
+  const decimal = number.formatToParts(1.1).find(part => part.type === "decimal")?.value ?? ".";
+  return match[1] + whole + (fraction ? decimal + fraction : "");
 }

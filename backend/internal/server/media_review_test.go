@@ -67,6 +67,7 @@ func TestMediaMultipartStreamModeSurvivesHookValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	writeTranscriptionFixtureFile(t, writer, "file", "fixture.wav", "application/octet-stream", transcriptionWAVFixture("fixture audio"))
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}

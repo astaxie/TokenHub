@@ -25,13 +25,13 @@ func TestRerankRoutePatchPreservesCacheBoundInput(t *testing.T) {
 				patch[field] = 1
 			}
 			data, _ := json.Marshal(patch)
-			if err := rerankRoutePatch(&req)(data); err == nil {
+			if err := rerankRoutePatch(&req, defaultMaxJSONRequestBytes)(data); err == nil {
 				t.Fatal("accepted cache-bound input mutation")
 			}
 		})
 	}
 	data, _ := json.Marshal(original)
-	if err := rerankRoutePatch(&original)(data); err != nil {
+	if err := rerankRoutePatch(&original, defaultMaxJSONRequestBytes)(data); err != nil {
 		t.Fatal(err)
 	}
 	// Privacy hooks may still redact content before the cache contract is established.

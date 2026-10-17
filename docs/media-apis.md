@@ -173,6 +173,10 @@ curl --fail-with-body "$TOKENHUB_URL/v1/audio/transcriptions" \
 
 `file` is the local upload and `model` the public speech-recognition model. Optional `language`, `prompt`, `response_format`, and repeated `timestamp_granularities[]` follow the upstream contract. JSON commonly returns `{"text":"..."}`; text, SRT, VTT, and verbose JSON are provider-dependent. Use `/v1/audio/translations` with a compatible model for translation; target-language behavior belongs to the model.
 
+Multipart transcription and translation require exactly one nonempty `file`, at most 25 MiB, in FLAC, MP3, MP4, MPEG, MPGA, M4A, OGG, WAV, or WebM format. Its extension, media type, and container signature must agree; the upstream checks codec support. The total request limit still applies. Missing files return `400 missing_audio_file`, unsupported formats `415 unsupported_audio_format`, and oversized files `413 audio_file_too_large`.
+
+Publish a route whose adapter explicitly supports `transcription` and whose model endpoints include the requested operation. OpenAI and configured OpenAI-compatible/local adapters support it; current imported endpoint metadata is checked again on each request. JSON vendor extensions can use matching provider-call hooks, while multipart uploads require a native adapter. See the [transcription upload and metering contract](media-api-operations.md#transcription-upload-and-metering-contract) for publication, hooks, upload validation, and SDK smoke tests.
+
 Voice cloning and music remain available through existing provider-specific Chat/Responses workflows in [media operations](media-api-operations.md). APIMart's `/v1/music/*`, voice/asset management, uploads, and webhook management are not implemented as a general TokenHub API family.
 
 ## Videos, including Seedance
@@ -283,7 +287,7 @@ A submission can bind at most 128 returned task IDs. Invalid task IDs or oversiz
 
 Authentication, allowlists, quotas, rate limits, text policies, scoped hooks, guarded outbound transport, and logging apply. File bytes stay opaque to text policies. Client credentials and cookies are not forwarded; configured provider credentials are used. Ambiguous generation failures do not automatically resubmit on another route. Avoid blind client retries after timeouts: the upstream may already have accepted a billable generation.
 
-Token accounting uses reported usage; binary audio, subtitles, and providers without usage do not acquire invented token charges. Polling is not counted again as generation-token usage. Per-image, per-second, character, or vendor-credit charges are not automatically converted into token prices; reconcile with the upstream bill. Detailed hook and stream validation is in [media protocol operations](media-api-operations.md).
+Token accounting uses reported usage; binary audio, subtitles, and providers without usage do not acquire invented token charges. Polling is not counted again as generation-token usage. Duration-metered transcription uses a separate `metadata.audio_price_usd_per_second` rate on both the public model and provider inventory model; fractional seconds are retained, and missing rates remain unknown rather than falling back to token prices. Per-image, character, and vendor-credit charges are not automatically converted into token prices; reconcile unsupported units with the upstream bill. See [media protocol operations](media-api-operations.md) for duration billing, token-detail quotas, hooks, and stream validation.
 
 ## Integration recipes
 

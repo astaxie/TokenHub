@@ -25,12 +25,12 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityImageGenerate, AdapterCapabilityMedia,
 		AdapterCapabilityProbe, AdapterCapabilityResponses,
-		AdapterCapabilityResponseStream,
+		AdapterCapabilityResponseStream, AdapterCapabilityTranscription,
 	},
 	ProviderOpenAICompatible: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityMedia, AdapterCapabilityProbe, AdapterCapabilityRerank,
-		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
+		AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityTranscription,
 	},
 	ProviderOpenAICodex: {
 		AdapterCapabilityImageGenerate, AdapterCapabilityModels,
@@ -73,7 +73,7 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	"local": {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityRerank,
-		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
+		AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityTranscription,
 	},
 }
 

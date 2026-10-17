@@ -26,7 +26,16 @@ for (const scenario of statements) {
       provider_id: "", resource_id: "", model: "",
       display_currency: "USD", display_exchange_rate: "1",
     });
-    if (scenario.state === "pending") {
+    if (scenario.state === "audio") {
+      await expect(form.getByRole("cell", { name: "音频秒数: 12.5", exact: true })).toBeVisible();
+      await expect(form.getByRole("cell", { name: "音频秒数: 0", exact: true })).toBeVisible();
+      for (const summary of await form.locator("details summary").all()) await summary.click();
+      await expect(form.getByText("音频秒数: 12.5 × US$0.02 = US$0.25", { exact: true })).toBeVisible();
+      await expect(form.getByText("音频秒数: 0 × US$0.02 = US$0.00", { exact: true })).toBeVisible();
+      await expect(form.getByText(/\/ 1M =/)).toHaveCount(0);
+      await expect(form.locator(".statement-amount").first()).toContainText("换算金额：US$0.25");
+      await expect(form.locator(".statement-conversion .statement-summary")).toContainText("US$0.25");
+    } else if (scenario.state === "pending") {
       await expect(form.getByRole("status")).toContainText("未知金额: 1");
       await expect(form.getByText("US$0.00", { exact: true })).toBeVisible();
       await expect(form.getByText("未知", { exact: true })).toBeVisible();

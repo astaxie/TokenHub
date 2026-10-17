@@ -23,9 +23,13 @@ func routeProviderProtocolsFromCapabilities(descriptor AdapterDescriptor) map[st
 		protocols[providerRouteProtocolGemini] = true
 	}
 	if adapterSupports(descriptor, AdapterCapabilityMedia) {
-		for _, protocol := range []string{"audio/speech", "audio/transcriptions", "audio/translations", providerRouteProtocolImageGeneration, "images/edits", "images/variations", "videos/generations", "tasks"} {
+		for _, protocol := range []string{"audio/speech", providerRouteProtocolImageGeneration, "images/edits", "images/variations", "videos/generations", "tasks"} {
 			protocols[protocol] = true
 		}
+	}
+	if adapterSupports(descriptor, AdapterCapabilityTranscription) {
+		protocols["audio/transcriptions"] = true
+		protocols["audio/translations"] = true
 	}
 	if adapterSupports(descriptor, AdapterCapabilityRerank) {
 		protocols[providerRouteProtocolRerank] = true

@@ -9,10 +9,33 @@ import (
 	"strings"
 )
 
-func (s *Server) routeSupportsMedia(call CallContext, route RouteSelection) bool {
+func (s *Server) routeSupportsMedia(call CallContext, route RouteSelection, request mediaRequest) bool {
+	audio := isAudioMediaProtocol(call.RouteProtocol)
+	if audio {
+		endpoints, compatible := s.audioRouteModelEndpoints(route.Provider.ID, route.ProviderModel)
+		if !compatible || !audioEndpointDeclared(call.RouteProtocol, call.Model.Metadata["endpoints"], endpoints) {
+			return false
+		}
+	}
 	descriptor, found := s.adapterRegistry.Describe(route.Provider.Type)
 	_, implemented := resolveTypedAdapter[providerMedia](s.adapterRegistry, route.Provider.Type)
-	return found && implemented && adapterSupports(descriptor, AdapterCapabilityMedia) || s.hasGatewayProviderCallHookForRoute(call, route, call.RouteProtocol)
+	if found && implemented && adapterSupports(descriptor, mediaCapabilityForProtocol(call.RouteProtocol)) && (!audio || adapterDescriptorRouteProtocolSet(descriptor)[call.RouteProtocol]) {
+		return true
+	}
+	return !request.requiresNativeTranscription() && s.hasGatewayProviderCallHookForRoute(call, route, call.RouteProtocol)
+}
+
+func (m mediaRequest) requiresNativeTranscription() bool {
+	return m.Multipart && mediaCapabilityForProtocol(strings.TrimPrefix(m.Path, "/v1/")) == AdapterCapabilityTranscription
+}
+
+func mediaCapabilityForProtocol(protocol string) AdapterCapability {
+	switch strings.TrimPrefix(protocol, "/") {
+	case "audio/transcriptions", "audio/translations":
+		return AdapterCapabilityTranscription
+	default:
+		return AdapterCapabilityMedia
+	}
 }
 
 func (s *Server) invokeMediaRoute(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest) (mediaResponse, Usage, error) {
@@ -20,6 +43,9 @@ func (s *Server) invokeMediaRoute(ctx context.Context, call CallContext, route R
 }
 
 func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest, responseLimit int) (mediaResponse, Usage, error) {
+	if err := request.validateTransformedAudioBounds(route.ProviderModel); err != nil {
+		return mediaResponse{}, Usage{}, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+	}
 	request = request.withUpstreamTaskIdentifiers()
 	var payload any
 	var usage Usage
@@ -37,13 +63,27 @@ func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call Cal
 			// A buffer limit can fail after complete billable events were written.
 			// Preserve their usage without replacing the original plugin failure.
 			if !usageReported {
-				usage, _ = inspectMediaStream(stream.Bytes(), route.Provider)
+				usage, _ = inspectMediaStream(stream.Bytes(), route.Provider, endpoint)
 			}
 			usage.MeteringInvalid = true
+		}
+		if mediaCapabilityForProtocol(endpoint) == AdapterCapabilityTranscription {
+			err = sanitizeTranscriptionProviderError(err)
 		}
 		return mediaResponse{}, usage, err
 	}
 	if handled {
+		// Provider hooks receive text fields only. Do not accept a transcription
+		// response from a hook that could not inspect the uploaded audio.
+		if request.requiresNativeTranscription() {
+			// A hook cannot inspect multipart audio, but any independently
+			// reported usage is still evidence for the failed invocation. Keep it
+			// through settlement instead of replacing it with an empty Usage.
+			return mediaResponse{}, usage, &ProviderInvocationError{
+				Err:         NewHTTPError(http.StatusNotImplemented, "multipart_transcription_hook_unsupported", "Multipart transcription requires a native adapter; provider-call hooks can handle JSON requests only"),
+				Disposition: ProviderErrorPolicy,
+			}
+		}
 		response := mediaResponse{Body: stream.Bytes(), ContentType: "text/event-stream", Status: http.StatusOK}
 		if !call.Stream {
 			response, err = mediaProviderHookResponse(payload, responseLimit)
@@ -52,22 +92,25 @@ func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call Cal
 				// media exceeds the bound without parsing the large body again.
 				if !usageReported {
 					fields, _ := payload.(map[string]any)
-					usage = mediaUsageFromMap(fields)
+					usage = captureAudioDuration(mediaUsageFromMap(fields), fields, audioTranscriptionEndpoint([]string{endpoint}))
 				}
 				usage.MeteringInvalid = true
 				return mediaResponse{}, usage, err
 			}
 		}
 		if mediaResponseIsSSE(response.ContentType) {
-			parsed, streamErr := inspectMediaStream(response.Body, route.Provider)
+			parsed, streamErr := inspectMediaStream(response.Body, route.Provider, endpoint)
 			if !usageReported {
 				usage = parsed
 			}
 			if streamErr != nil {
+				if mediaCapabilityForProtocol(endpoint) == AdapterCapabilityTranscription {
+					streamErr = sanitizeTranscriptionProviderError(streamErr)
+				}
 				return mediaResponse{}, usage, uncertainMediaSubmission(streamErr)
 			}
 		} else if mediaResponseIsJSON(response.ContentType) {
-			parsed, jsonErr := inspectMediaJSON(response.Body)
+			parsed, jsonErr := inspectMediaJSON(response.Body, endpoint)
 			if !usageReported {
 				usage = parsed
 			}
@@ -75,10 +118,14 @@ func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call Cal
 				return mediaResponse{}, usage, invalidMediaProviderHookResponse()
 			}
 		}
+		if err := validateAudioDuration(usage); err != nil {
+			usage.MeteringInvalid = true
+			return mediaResponse{}, usage, invalidMediaProviderHookResponse()
+		}
 		return response, usage, nil
 	}
 	adapter, ok := resolveTypedAdapter[providerMedia](s.adapterRegistry, route.Provider.Type)
-	if !ok || !s.routeSupportsAdapterCapability(route, AdapterCapabilityMedia) {
+	if !ok || !s.routeSupportsAdapterCapability(route, mediaCapabilityForProtocol(endpoint)) {
 		return mediaResponse{}, usage, invalidMediaProviderHookResponse()
 	}
 	return adapter.Media(ctx, route.Provider, route.ProviderModel, endpoint, request)

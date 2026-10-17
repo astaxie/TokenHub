@@ -87,6 +87,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		),
 		capabilities: []AdapterCapability{
 			AdapterCapabilityMedia,
+			AdapterCapabilityTranscription,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityResponses,
@@ -107,6 +108,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		managedHeaders:             []string{"api-key", "x-api-key", "openai-organization", "openai-project"},
 		capabilities: []AdapterCapability{
 			AdapterCapabilityMedia,
+			AdapterCapabilityTranscription,
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
 			AdapterCapabilityResponses,
@@ -336,6 +338,9 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		}
 		if adapterType == "qwen" || adapterType == "local" {
 			adapter.capabilities = append(adapter.capabilities, AdapterCapabilityRerank)
+		}
+		if adapterType == "local" {
+			adapter.capabilities = append(adapter.capabilities, AdapterCapabilityTranscription)
 		}
 		if adapterType == "deepseek" {
 			adapter.preserveReasoningContent = boolPointer(true)

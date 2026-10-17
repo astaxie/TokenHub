@@ -173,6 +173,10 @@ curl --fail-with-body "$TOKENHUB_URL/v1/audio/transcriptions" \
 
 `file` 为本地上传文件，`model` 为公开语音识别模型。可选的 `language`、`prompt`、`response_format` 和重复的 `timestamp_granularities[]` 遵循上游契约。JSON 通常返回 `{"text":"..."}`；文本、SRT、VTT、verbose JSON 是否可用由供应商决定。音频翻译使用 `/v1/audio/translations` 及兼容模型，目标语言规则取决于模型。
 
+multipart 转录和翻译必须包含且仅包含一个非空 `file`，最多 25 MiB，格式为 FLAC、MP3、MP4、MPEG、MPGA、M4A、OGG、WAV 或 WebM。扩展名、媒体类型和容器签名须一致，音频解码支持由上游检查，总请求大小限制同时生效。缺失文件返回 `400 missing_audio_file`，不支持的格式返回 `415 unsupported_audio_format`，文件超限返回 `413 audio_file_too_large`。
+
+发布的路由必须由显式支持 `transcription` 的适配器处理，模型端点须包含所请求的操作。OpenAI 及配置的 OpenAI 兼容/本地适配器支持此能力，每次请求还会检查最新导入的端点元数据。JSON 厂商扩展可由匹配的供应商调用钩子处理，multipart 上传必须使用原生适配器。发布、钩子、上传校验和 SDK 冒烟测试详见[转录上传与计量契约](media-api-operations.md#转录上传与计量契约)。
+
 声音克隆与音乐可继续通过已有供应商特定的 Chat/Responses 工作流使用，见[媒体运维说明](media-api-operations.md)。APIMart 的 `/v1/music/*`、声音/素材管理、上传及 webhook 管理未作为通用 TokenHub API 接口族实现。
 
 ## 视频与 Seedance
@@ -283,7 +287,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
 
 统一执行鉴权、模型白名单、配额、限流、文本策略、作用域钩子、受保护的出站传输和日志。文件字节不参与文本策略解析。不会转发客户端凭证或 Cookie，而是使用配置好的供应商凭证。结果不明确的生成失败不会自动换路由重新提交。客户端超时后也应避免盲目重试，上游可能已经接受计费任务。
 
-Token 计量以返回的用量为准；二进制音频、字幕或没有用量信息的供应商不会产生虚构的 Token 费用。轮询不会重复计入生成 Token 用量。按图、秒、字符或供应商积分计费的费用不会自动折算为 Token 单价，应与上游账单核对。钩子与流校验细节见[媒体协议运维](media-api-operations.md)。
+Token 计量以返回的用量为准；二进制音频、字幕或没有用量信息的供应商不会产生虚构的 Token 费用。轮询不会重复计入生成 Token 用量。按时长计量的转录在公共模型和渠道模型库存上分别使用 `metadata.audio_price_usd_per_second` 秒单价，保留小数秒；缺失单价保持未知，不回退到 Token 单价。按图、字符或供应商积分计费的费用不会自动折算为 Token 单价，尚未支持的计量单位应与上游账单核对。时长计费、Token 明细配额、钩子与流校验细节见[媒体协议运维](media-api-operations.md)。
 
 ## 组合调用示例
 
