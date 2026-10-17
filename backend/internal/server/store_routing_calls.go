@@ -643,8 +643,8 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 		if err != nil {
 			return err
 		}
-		addUsage(&dayCounter.QuotaCounter, usage)
-		addUsage(&monthCounter.QuotaCounter, usage)
+		addUsage(&dayCounter.QuotaCounter, apiKeyPeriodUsage(call, usage))
+		addUsage(&monthCounter.QuotaCounter, apiKeyPeriodUsage(call, usage))
 		if err := tx.Save(&dayCounter).Error; err != nil {
 			return err
 		}

@@ -112,7 +112,7 @@ func audioResponseHasTokenUsage(reported map[string]any) bool {
 
 func audioResponseHasPrimaryTokenUsage(reported map[string]any) bool {
 	for _, name := range []string{"prompt_tokens", "input_tokens", "completion_tokens", "output_tokens", "total_tokens"} {
-		if _, present := reported[name]; present {
+		if reported[name] != nil {
 			return true
 		}
 	}

@@ -17,6 +17,15 @@ func quotaActualTokens(call CallContext, usage Usage) int64 {
 	return actualTokens
 }
 
+// Transcription period quotas count available provider token evidence without
+// changing recorded totals or counting rate-limit estimates and reservations.
+func apiKeyPeriodUsage(call CallContext, usage Usage) Usage {
+	if audioTranscriptionEndpoint([]string{call.RouteProtocol}) {
+		usage.TotalTokens = meteredTokens(usage)
+	}
+	return usage
+}
+
 func imageJobAdmissionCall(job ImageJob) CallContext {
 	startedAt := time.Time{}
 	if job.AdmittedAt != nil {
