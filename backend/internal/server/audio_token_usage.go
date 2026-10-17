@@ -5,6 +5,25 @@ type audioTokenObservation struct {
 	value  any
 }
 
+// Primary counters are cumulative but may arrive in separate events. Keep the
+// media parser's alias rules while replacing only explicitly reported fields.
+func (s *transcriptionStreamUsage) capturePrimaryTokens(reported map[string]any, next Usage) {
+	if firstNonNil(reported["prompt_tokens"], reported["input_tokens"]) != nil {
+		s.usage.PromptTokens = next.PromptTokens
+	}
+	if firstNonNil(reported["completion_tokens"], reported["output_tokens"]) != nil {
+		s.usage.CompletionTokens = next.CompletionTokens
+	}
+	if total := reported["total_tokens"]; total != nil {
+		s.usage.TotalTokens = int64FromAny(total)
+		s.totalTokensReported = true
+	} else if !s.totalTokensReported {
+		// An explicit total, including zero, stays authoritative until updated.
+		// Auxiliary details never contribute to a derived primary total.
+		s.usage.TotalTokens = saturatingAddNonNegative(s.usage.PromptTokens, s.usage.CompletionTokens)
+	}
+}
+
 // Match usageFromMap's auxiliary aliases while retaining field presence. A
 // later event may report only one detail; absent details do not mean zero.
 func audioAuxiliaryTokenObservations(usage *Usage, reported map[string]any) []audioTokenObservation {

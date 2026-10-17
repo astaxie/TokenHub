@@ -140,6 +140,7 @@ func audioDurationBillable(usage Usage) bool {
 type transcriptionStreamUsage struct {
 	usage                  Usage
 	tokensReported         bool
+	totalTokensReported    bool
 	nativeDurationReported bool
 	nativeDurationMeasured bool
 }
@@ -153,9 +154,7 @@ func (s *transcriptionStreamUsage) capture(probe providerStreamEventProbe) bool 
 	_ = decodeResponsesJSON(probe["usage"], &reported)
 	native := reported["type"] == "duration"
 	previous := s.usage
-	if audioResponseHasPrimaryTokenUsage(reported) {
-		s.usage.PromptTokens, s.usage.CompletionTokens, s.usage.TotalTokens = next.PromptTokens, next.CompletionTokens, next.TotalTokens
-	}
+	s.capturePrimaryTokens(reported, next)
 	for _, observation := range audioAuxiliaryTokenObservations(&s.usage, reported) {
 		if observation.value != nil {
 			*observation.target = int64FromAny(observation.value)

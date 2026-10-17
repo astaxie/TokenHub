@@ -103,8 +103,8 @@ func TestTranscriptionAuxiliaryTokensKeepDurationBillingAndQuotaConsistent(t *te
 					t.Fatalf("evidence lost or charges invented: %+v", usage)
 				}
 				rows := store.ListUsageRecords()
-				if tc.wantCost > 0 && len(rows) != 1 {
-					t.Fatalf("missing duration billing record: %+v", rows)
+				if len(rows) != 1 {
+					t.Fatalf("missing provider usage record: %+v", rows)
 				}
 				for _, row := range rows {
 					if row.CostUSD != tc.wantCost || row.ProviderCostUSD != tc.wantCost/2 || row.InputAudioTokens != tc.wantTokens {

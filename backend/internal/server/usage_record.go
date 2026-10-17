@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// Transcription details remain useful audit evidence even when no total,
+// duration, or billable primary tokens were reported.
+func hasTranscriptionTokenUsage(call CallContext, usage Usage) bool {
+	return audioTranscriptionEndpoint([]string{call.RouteProtocol}) && meteredTokens(usage) > 0
+}
+
 func newUsageRecord(call CallContext, route RouteSelection, usage Usage, createdAt time.Time) *UsageRecord {
 	attributedUserID := strings.TrimSpace(call.AttributedUserID)
 	if attributedUserID == "" {
