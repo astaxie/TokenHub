@@ -138,6 +138,11 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 				fields[part.FormName()] = append(fields[part.FormName()], string(data))
 			}
 		}
+		if err == nil && request.requiresNativeTranscription() {
+			// Multipart EOF marks the final boundary, not the end of the body.
+			// Count any epilogue through the same limit, including buffered excess.
+			_, err = io.Copy(io.Discard, r.Body)
+		}
 		if err == nil {
 			for name, values := range fields {
 				if len(values) == 1 {

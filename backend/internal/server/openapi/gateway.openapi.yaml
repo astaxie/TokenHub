@@ -696,7 +696,8 @@ paths:
         multipart files, repeated form fields, and response formats are preserved.
         Requests use the configured multimodal size limit. Responses are buffered up to
         128 MiB before delivery. Multipart uploads require one nonempty supported audio file,
-        up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. Uploaded
+        up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. The total
+        limit includes all HTTP body bytes after the final multipart boundary. Uploaded
         bytes remain in memory and are excluded from audit and provider error messages.
         Multipart routes require a native adapter with the transcription capability;
         matching provider hooks can handle JSON extensions only. Request hook patches
@@ -779,7 +780,8 @@ paths:
         multipart files, repeated form fields, and response formats are preserved.
         Requests use the configured multimodal size limit. Responses are buffered up to
         128 MiB before delivery. Multipart uploads require one nonempty supported audio file,
-        up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. Uploaded
+        up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. The total
+        limit includes all HTTP body bytes after the final multipart boundary. Uploaded
         bytes remain in memory and are excluded from audit and provider error messages.
         Multipart routes require a native adapter with the transcription capability;
         matching provider hooks can handle JSON extensions only. Request hook patches

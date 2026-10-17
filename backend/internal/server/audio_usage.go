@@ -98,9 +98,19 @@ func audioEvidenceQuantity(e *AudioUsageEvidence) string {
 }
 
 func audioResponseHasTokenUsage(reported map[string]any) bool {
-	if reported["type"] == "tokens" {
+	if reported["type"] == "tokens" || audioResponseHasPrimaryTokenUsage(reported) {
 		return true
 	}
+	var usage Usage
+	for _, observation := range audioAuxiliaryTokenObservations(&usage, reported) {
+		if observation.value != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func audioResponseHasPrimaryTokenUsage(reported map[string]any) bool {
 	for _, name := range []string{"prompt_tokens", "input_tokens", "completion_tokens", "output_tokens", "total_tokens"} {
 		if _, present := reported[name]; present {
 			return true
@@ -143,12 +153,15 @@ func (s *transcriptionStreamUsage) capture(probe providerStreamEventProbe) bool 
 	_ = decodeResponsesJSON(probe["usage"], &reported)
 	native := reported["type"] == "duration"
 	previous := s.usage
-	if audioResponseHasTokenUsage(reported) {
-		s.usage = next
-		s.usage.AudioDurationSeconds, s.usage.AudioDurationSource = previous.AudioDurationSeconds, previous.AudioDurationSource
-		s.usage.AudioDurationRaw, s.usage.AudioDurationUnit = previous.AudioDurationRaw, previous.AudioDurationUnit
-		s.tokensReported = true
+	if audioResponseHasPrimaryTokenUsage(reported) {
+		s.usage.PromptTokens, s.usage.CompletionTokens, s.usage.TotalTokens = next.PromptTokens, next.CompletionTokens, next.TotalTokens
 	}
+	for _, observation := range audioAuxiliaryTokenObservations(&s.usage, reported) {
+		if observation.value != nil {
+			*observation.target = int64FromAny(observation.value)
+		}
+	}
+	s.tokensReported = s.tokensReported || audioResponseHasTokenUsage(reported)
 	if next.AudioDurationSource != "" && (!s.nativeDurationMeasured || native) &&
 		(next.AudioDurationSeconds != nil || previous.AudioDurationSeconds == nil || next.AudioDurationSource == "invalid") {
 		s.usage.AudioDurationSeconds, s.usage.AudioDurationSource = next.AudioDurationSeconds, next.AudioDurationSource
