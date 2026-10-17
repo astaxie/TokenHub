@@ -33,6 +33,10 @@ func TestAudioPluginEvidencePrivacyWithoutPayloadPersistence(t *testing.T) {
 				store.AddModel(Model{Name: "public-media", Modality: "audio", Status: StatusActive, Metadata: map[string]string{audioSecondPriceKey: "0.02"}})
 				store.AddProviderModel(ProviderModel{ProviderID: "media-provider", UpstreamModel: "vendor-media", Modality: "audio", Metadata: map[string]string{audioSecondPriceKey: "0.01"}})
 				server.store = audioNoPayloadStore{GormStore: store}
+				traces := &recordingTraceEmitter{}
+				server.traceEmitter = traces
+				var exported Usage
+				registerAudioUsageTraceCapture(t, server, &exported)
 				output := pluginmeta.DataProviderResponse
 				responseBody := json.RawMessage(`{"text":"fixture"}`)
 				if stream {
@@ -62,6 +66,14 @@ func TestAudioPluginEvidencePrivacyWithoutPayloadPersistence(t *testing.T) {
 				}
 				if response.Code != wantStatus || strings.Contains(response.Body, privateText) || tc.invalid && !strings.Contains(response.Body, "gateway_hook_response_invalid") {
 					t.Fatalf("unexpected response: %d %s", response.Code, response.Body)
+				}
+				completed := traces.take()
+				if len(completed) != 1 {
+					t.Fatalf("trace completions = %d, want 1", len(completed))
+				}
+				traceData, err := json.Marshal([]any{completed, exported})
+				if err != nil || strings.Contains(string(traceData), privateText) {
+					t.Fatalf("private audio evidence escaped into tracing: %s, %v", traceData, err)
 				}
 				rows := store.ListUsageRecords()
 				if len(rows) != 1 || rows[0].CostUSD != wantTenant || rows[0].ProviderCostUSD != wantProvider || rows[0].TotalTokens != 0 {

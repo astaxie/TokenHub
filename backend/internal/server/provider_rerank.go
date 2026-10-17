@@ -101,13 +101,16 @@ func (a OpenAICompatibleAdapter) Rerank(ctx context.Context, p Provider, model s
 		return nil, Usage{DocumentCount: len(r.Documents)}, err
 	}
 	raw, err := a.rerankJSON(ctx, p, http.MethodPost, path, payload)
-	if err != nil {
+	if err != nil && raw == nil {
 		return nil, Usage{DocumentCount: len(r.Documents)}, err
 	}
 	body, _ := raw.(map[string]any)
 	profile := providerRerankProtocol(p)
 	usage := retrievalUsage(body, profile == "cohere")
 	usage.DocumentCount = len(r.Documents)
+	if err != nil {
+		return nil, usage, err
+	}
 	if err := validateRetrievalUsageResult(usage); err != nil {
 		return nil, usage, err
 	}

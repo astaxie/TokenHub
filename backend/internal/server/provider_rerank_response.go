@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,16 +17,24 @@ func (a OpenAICompatibleAdapter) rerankJSON(ctx context.Context, provider Provid
 		return nil, sanitizeRerankProviderError(err)
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxRerankResponseBytes+1))
-	if err != nil {
-		return nil, sanitizeRerankProviderError(err)
+	data, readErr := io.ReadAll(io.LimitReader(response.Body, maxRerankResponseBytes+1))
+	// A complete leading response can prove usage even when its transport or
+	// trailing bytes fail validation. Incomplete JSON cannot prove any usage.
+	var result any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decodeErr := decoder.Decode(&result)
+	if decodeErr != nil {
+		result = nil
+	}
+	if readErr != nil {
+		return result, sanitizeRerankProviderError(readErr)
 	}
 	if len(data) > maxRerankResponseBytes {
-		return nil, NewHTTPError(502, "invalid_rerank_response", "Rerank response exceeds the 8 MiB limit")
+		return result, NewHTTPError(502, "invalid_rerank_response", "Rerank response exceeds the 8 MiB limit")
 	}
-	var result any
-	if json.Unmarshal(data, &result) != nil {
-		return nil, NewHTTPError(502, "invalid_rerank_response", "Rerank provider returned invalid JSON")
+	var extra any
+	if decodeErr != nil || decoder.Decode(&extra) != io.EOF {
+		return result, NewHTTPError(502, "invalid_rerank_response", "Rerank provider returned invalid JSON")
 	}
 	return result, nil
 }

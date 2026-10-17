@@ -59,12 +59,8 @@ func audioDurationEvidence(usage Usage) *AudioUsageEvidence {
 		(usage.AudioDurationUnit == "" || usage.AudioDurationUnit == "token") {
 		return nil
 	}
+	usage = sanitizeAudioUsage(usage)
 	evidence := &AudioUsageEvidence{Seconds: usage.AudioDurationSeconds, Source: usage.AudioDurationSource, ReportedSeconds: usage.AudioDurationRaw, BillingUnit: usage.AudioDurationUnit}
-	if evidence.ReportedSeconds != "" {
-		if _, err := metering.Duration(evidence.ReportedSeconds); err != nil {
-			evidence.ReportedSeconds = ""
-		}
-	}
 	if evidence.BillingUnit == "" {
 		evidence.BillingUnit = "audio_second"
 		if usage.PromptTokens != 0 || usage.CompletionTokens != 0 || usage.TotalTokens != 0 {
@@ -76,21 +72,6 @@ func audioDurationEvidence(usage Usage) *AudioUsageEvidence {
 		if evidence.Seconds == nil {
 			evidence.Source = "unreported"
 		}
-	}
-	// Failed plugin calls still persist usage evidence. Keep their enum fields
-	// categorical so invalid values cannot retain private response content.
-	switch evidence.Source {
-	case "upstream", "plugin", "unreported", "invalid":
-	default:
-		evidence.Source = "invalid"
-	}
-	if evidence.BillingUnit != "audio_second" && evidence.BillingUnit != "token" {
-		evidence.BillingUnit = "invalid"
-		evidence.Source = "invalid"
-	}
-	if evidence.Seconds != nil && (*evidence.Seconds < 0 || math.IsNaN(*evidence.Seconds) || math.IsInf(*evidence.Seconds, 0)) {
-		evidence.Seconds = nil
-		evidence.Source = "invalid"
 	}
 	return evidence
 }

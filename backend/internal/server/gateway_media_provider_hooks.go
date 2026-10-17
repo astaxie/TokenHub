@@ -10,9 +10,16 @@ import (
 )
 
 func (s *Server) routeSupportsMedia(call CallContext, route RouteSelection, request mediaRequest) bool {
+	audio := isAudioMediaProtocol(call.RouteProtocol)
+	if audio {
+		endpoints, compatible := s.audioRouteModelEndpoints(route.Provider.ID, route.ProviderModel)
+		if !compatible || !audioEndpointDeclared(call.RouteProtocol, call.Model.Metadata["endpoints"], endpoints) {
+			return false
+		}
+	}
 	descriptor, found := s.adapterRegistry.Describe(route.Provider.Type)
 	_, implemented := resolveTypedAdapter[providerMedia](s.adapterRegistry, route.Provider.Type)
-	if found && implemented && adapterSupports(descriptor, mediaCapabilityForProtocol(call.RouteProtocol)) {
+	if found && implemented && adapterSupports(descriptor, mediaCapabilityForProtocol(call.RouteProtocol)) && (!audio || adapterDescriptorRouteProtocolSet(descriptor)[call.RouteProtocol]) {
 		return true
 	}
 	return !request.requiresNativeTranscription() && s.hasGatewayProviderCallHookForRoute(call, route, call.RouteProtocol)
