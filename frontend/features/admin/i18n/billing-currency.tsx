@@ -1,0 +1,32 @@
+export const billingCurrencyTranslations = {
+  en: {
+    "对账单币种": "Statement currency",
+    "手动汇率：1 USD 兑目标币种": "Manual rate: target currency units per 1 USD",
+    "请输入大于 0 的手动汇率，最多 18 位整数和 12 位小数。": "Enter a positive manual exchange rate with up to 18 integer digits and 12 decimal places.",
+    "换算仅用于对账单显示与导出；收费、价格和预算仍以 USD 记账。币种与手动汇率仅保存在此浏览器，不自动获取汇率。": "Conversion applies to statement display and export. Charges, prices, and budgets remain in USD. Currency and manual rates are saved only in this browser; rates are not fetched automatically.",
+    "手动换算：1 USD = {rate}": "Manual conversion: 1 USD = {rate}",
+    "按已记录 USD 金额换算；缺少 USD 时保留目标币种原金额，其余未知金额不计入合计。": "Convert recorded USD amounts. When USD is unavailable, retain original amounts in the target currency; other unknown amounts are excluded from totals.",
+    "换算预计毛利": "Converted estimated gross margin",
+    "换算金额：{amount}": "Converted amount: {amount}",
+  },
+  ja: {
+    "对账单币种": "明細書の通貨",
+    "手动汇率：1 USD 兑目标币种": "手動為替レート：1 USD あたりの換算先通貨",
+    "请输入大于 0 的手动汇率，最多 18 位整数和 12 位小数。": "0 より大きい手動為替レートを、整数部 18 桁・小数部 12 桁以内で入力してください。",
+    "换算仅用于对账单显示与导出；收费、价格和预算仍以 USD 记账。币种与手动汇率仅保存在此浏览器，不自动获取汇率。": "換算は明細書の表示と出力に適用されます。料金・価格・予算は引き続き USD で記帳されます。通貨と手動為替レートはこのブラウザーにのみ保存され、自動取得されません。",
+    "手动换算：1 USD = {rate}": "手動換算：1 USD = {rate}",
+    "按已记录 USD 金额换算；缺少 USD 时保留目标币种原金额，其余未知金额不计入合计。": "記録済み USD から換算します。USD がない場合は換算先通貨の元金額を保持し、それ以外の不明金額は合計から除外します。",
+    "换算预计毛利": "換算後の推定粗利益",
+    "换算金额：{amount}": "換算金額：{amount}",
+  },
+  ru: {
+    "对账单币种": "Валюта выписки",
+    "手动汇率：1 USD 兑目标币种": "Ручной курс: единиц целевой валюты за 1 USD",
+    "请输入大于 0 的手动汇率，最多 18 位整数和 12 位小数。": "Введите положительный курс: до 18 цифр в целой части и 12 после запятой.",
+    "换算仅用于对账单显示与导出；收费、价格和预算仍以 USD 记账。币种与手动汇率仅保存在此浏览器，不自动获取汇率。": "Пересчёт применяется к отображению и экспорту выписки. Начисления, цены и бюджеты остаются в USD. Валюта и ручные курсы сохраняются только в этом браузере; курсы не загружаются автоматически.",
+    "手动换算：1 USD = {rate}": "Ручной пересчёт: 1 USD = {rate}",
+    "按已记录 USD 金额换算；缺少 USD 时保留目标币种原金额，其余未知金额不计入合计。": "Пересчёт из записанных сумм в USD. Если USD недоступен, сохраняются исходные суммы в целевой валюте; остальные неизвестные суммы исключены из итогов.",
+    "换算预计毛利": "Ожидаемая валовая прибыль после пересчёта",
+    "换算金额：{amount}": "Сумма после пересчёта: {amount}",
+  },
+} satisfies Record<"en" | "ja" | "ru", Record<string, string>>;

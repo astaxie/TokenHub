@@ -3,8 +3,9 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { type ApiContext } from "../core/types";
+import { normalizeStatementExchangeRateInput, readStatementCurrencyPreferences, statementCurrencies, statementCurrencyStorageKey, validStatementExchangeRate, type StatementCurrency, type StatementCurrencyPreferences } from "../domain/billing-currency";
 import { formatStatementAmount, statementCSV, statementMonth, type StatementQuery, type StatementResult, type StatementSide } from "../domain/billing-statements";
-import { languageLocale, tx } from "../i18n/runtime";
+import { formatTranslationTemplate, languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { DataSection, SimpleTable } from "../shared/ui";
 
@@ -33,6 +34,11 @@ export function BillingStatements({ api, side = "tenant", model = "", providerID
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [projectError, setProjectError] = useState("");
+  const [currencyPreferences, setCurrencyPreferences] = useState<StatementCurrencyPreferences>({ currency: "USD", rates: {} });
+  useEffect(() => {
+    try { setCurrencyPreferences(readStatementCurrencyPreferences(window.localStorage.getItem(statementCurrencyStorageKey))); }
+    catch { /* Storage may be unavailable in private browser contexts. */ }
+  }, []);
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -46,10 +52,36 @@ export function BillingStatements({ api, side = "tenant", model = "", providerID
     return () => { active = false; };
   }, [api]);
   function change(patch: Partial<StatementQuery>) { setQuery(current => ({ ...current, ...patch })); setResult(null); setError(""); }
-  async function preview(event: FormEvent) {
-    event.preventDefault(); event.stopPropagation(); setBusy(true); setError(""); setResult(null);
+  function changeCurrency(preferences: StatementCurrencyPreferences, editedCurrency?: StatementCurrency) {
+    setCurrencyPreferences(preferences); setResult(null); setError("");
     try {
-      const response = await adminFetch(api, "/api/admin/billing/statements", { method: "POST", body: JSON.stringify(query) });
+      const saved = readStatementCurrencyPreferences(window.localStorage.getItem(statementCurrencyStorageKey));
+      const rates = { ...saved.rates };
+      if (editedCurrency) rates[editedCurrency] = preferences.rates[editedCurrency];
+      window.localStorage.setItem(statementCurrencyStorageKey, JSON.stringify(readStatementCurrencyPreferences(JSON.stringify({ currency: preferences.currency, rates }))));
+    }
+    catch { /* Currency conversion remains available without browser storage. */ }
+  }
+  function changeRate(input: HTMLInputElement) {
+    const rate = normalizeStatementExchangeRateInput(input.value, languageLocale());
+    if (rate !== input.value) {
+      const { selectionStart, selectionEnd, selectionDirection } = input;
+      // Supported decimal separators have equal length. Keep the caret where
+      // the user is editing before React reconciles the normalized value.
+      input.value = rate;
+      if (selectionStart !== null && selectionEnd !== null) input.setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? "none");
+    }
+    changeCurrency({ ...currencyPreferences, rates: { ...currencyPreferences.rates, [currencyPreferences.currency]: rate } }, currencyPreferences.currency);
+  }
+  async function preview(event: FormEvent) {
+    event.preventDefault(); event.stopPropagation(); setError(""); setResult(null);
+    const currency = currencyPreferences.currency;
+    const rate = currencyPreferences.rates[currency] ?? "";
+    if (currency !== "USD" && !validStatementExchangeRate(rate)) { setError(tx("请输入大于 0 的手动汇率，最多 18 位整数和 12 位小数。")); return; }
+    setBusy(true);
+    try {
+      const request = { ...query, display_currency: currency, display_exchange_rate: currency === "USD" ? "1" : rate };
+      const response = await adminFetch(api, "/api/admin/billing/statements", { method: "POST", body: JSON.stringify(request) });
       if (!response.ok) throw new Error(await readAdminError(response, tx("对账单生成失败")));
       setResult(await response.json() as StatementResult);
     } catch (caught) { setError(caught instanceof Error ? caught.message : tx("对账单生成失败")); }
@@ -69,6 +101,7 @@ export function BillingStatements({ api, side = "tenant", model = "", providerID
   };
   return <DataSection title="费用对账单">
     <p>{tx("仅供费用核对，不代表确认或收付款。导出与当前预览使用同一份数据。")}</p>
+    <p>{tx("换算仅用于对账单显示与导出；收费、价格和预算仍以 USD 记账。币种与手动汇率仅保存在此浏览器，不自动获取汇率。")}</p>
     <form onSubmit={event => void preview(event)}>
       <fieldset disabled={busy} className="statement-fields">
         <label>{tx("对账单类型")}<select value={query.side} onChange={event => change({ side: event.target.value as StatementSide, customer: "", provider_id: "", resource_id: "", model: "", project_ids: [] })}>
@@ -77,6 +110,8 @@ export function BillingStatements({ api, side = "tenant", model = "", providerID
         <label>{tx("开始日期")}<input required type="date" value={query.from} onChange={event => change({ from: event.target.value })} /></label>
         <label>{tx("结束日期（不含）")}<input required type="date" value={query.to} onChange={event => change({ to: event.target.value })} /></label>
         <label>{tx("账期时区")}<input required value={query.timezone} onChange={event => change({ timezone: event.target.value })} /></label>
+        <label>{tx("对账单币种")}<select value={currencyPreferences.currency} onChange={event => changeCurrency({ ...currencyPreferences, currency: event.target.value as StatementCurrency })}>{statementCurrencies.map(currency => <option key={currency} value={currency}>{currency}</option>)}</select></label>
+        {currencyPreferences.currency !== "USD" ? <label>{tx("手动汇率：1 USD 兑目标币种")}<input inputMode="decimal" maxLength={31} value={currencyPreferences.rates[currencyPreferences.currency] ?? ""} onChange={event => changeRate(event.currentTarget)} /></label> : null}
         {query.side !== "provider" ? <>
           <label>{tx("客户名称")}<input required={query.side === "tenant"} maxLength={200} value={query.customer} onChange={event => change({ customer: event.target.value })} /></label>
           <label>{tx("客户项目（可多选）")}<select multiple required={query.side === "tenant"} value={query.project_ids} onChange={event => change({ project_ids: Array.from(event.target.selectedOptions, option => option.value) })}>
@@ -107,11 +142,17 @@ export function BillingStatements({ api, side = "tenant", model = "", providerID
         return <span key={key}>{statementSource(source)} · {currency === "USD_equivalent" ? tx("折算 USD") : currency}: {money(value, currency === "USD_equivalent" ? "USD" : currency)}</span>;
       })}</div>
       {query.side === "margin" ? <p><strong>{tx("预计毛利")}: {money(result.estimated_margin_usd, "USD")}</strong>{" "}{tx("仅按请求对应的本地成本估算，不代表净利润或现金结余。")}</p> : null}
+      {result.conversion ? <div className="statement-conversion">
+        <p>{formatTranslationTemplate(tx("手动换算：1 USD = {rate}"), { rate: money(result.conversion.usd_exchange_rate, result.conversion.currency) })}</p>
+        <p>{tx("按已记录 USD 金额换算；缺少 USD 时保留目标币种原金额，其余未知金额不计入合计。")}</p>
+        <div className="statement-summary">{Object.entries(result.display_totals ?? {}).map(([source, value]) => <span key={source}>{statementSource(source)} · {result.conversion!.currency}: {money(value, result.conversion!.currency)}</span>)}</div>
+        {result.query.side === "margin" ? <p><strong>{tx("换算预计毛利")}: {money(result.display_estimated_margin ?? null, result.conversion.currency)}</strong></p> : null}
+      </div> : null}
       <SimpleTable columns={[tx("金额来源"), tx("项目 / 模型"), tx("时间 / 时区"), tx("用量"), tx("金额"), tx("依据")]} paginationKey="billing-statements" rows={result.rows.map(row => [
         statementSource(row.source), <span key="subject">{row.project_id || row.provider_id}<small>{row.model}</small><small>{row.api_key_id || row.resource_id}</small></span>,
         <span key="time">{date(row.at, row.timezone || "UTC")}<small>{row.timezone}</small>{row.end_at ? <small>{date(row.end_at, row.timezone || "UTC")}</small> : null}</span>,
         row.source === "provider_billed" ? `${number(row.usage_quantity ?? 0)} ${row.usage_unit ?? ""}` : Object.entries(row.units).filter(([, value]) => value > 0).map(([kind, value]) => `${statementUnit(kind)}: ${number(value)}`).join(" · "),
-        money(row.amount, row.currency), <details key="evidence"><summary>{statementStatus(row.status)}</summary><p>{statementReason(row.reason)}</p>{row.external_id ? <p>{row.external_id}</p> : null}{row.price ? <p>{row.price.version || row.price.source}</p> : null}{row.lines?.map(line => <p key={line.kind}>{statementUnit(line.kind)}: {number(line.units)} × {money(line.rate, row.currency)} / 1M = {money(line.amount, row.currency)}</p>)}</details>,
+        result.conversion ? <span key="amount" className="statement-amount"><span>{money(row.amount, row.currency)}</span><small>{formatTranslationTemplate(tx("换算金额：{amount}"), { amount: money(row.display_amount ?? null, result.conversion.currency) })}</small></span> : money(row.amount, row.currency), <details key="evidence"><summary>{statementStatus(row.status)}</summary><p>{statementReason(row.reason)}</p>{row.external_id ? <p>{row.external_id}</p> : null}{row.price ? <p>{row.price.version || row.price.source}</p> : null}{row.lines?.map(line => <p key={line.kind}>{statementUnit(line.kind)}: {number(line.units)} × {money(line.rate, row.currency)} / 1M = {money(line.amount, row.currency)}</p>)}</details>,
       ])} />
     </> : null}
   </DataSection>;

@@ -1,14 +1,14 @@
 export type StatementSide = "tenant" | "provider" | "margin";
-export type StatementQuery = { side: StatementSide; from: string; to: string; timezone: string; customer: string; project_ids: string[]; provider_id: string; resource_id: string; model: string };
+export type StatementQuery = { side: StatementSide; from: string; to: string; timezone: string; customer: string; project_ids: string[]; provider_id: string; resource_id: string; model: string; display_currency?: string; display_exchange_rate?: string };
 export type StatementRow = {
   external_id?: string; external_request_id?: string; usage_quantity?: number; usage_unit?: string;
   id: string; request_id?: string; source: string; at: string; end_at?: string; timezone: string;
   project_id?: string; team_id?: string; api_key_id?: string; model: string; provider_id?: string; resource_id?: string;
-  currency: string; amount: string | null; usd: string | null; status: string; reason?: string;
+  currency: string; amount: string | null; usd: string | null; display_amount?: string | null; status: string; reason?: string;
   units: Record<string, number>; lines?: { kind: string; units: number; rate: string; amount: string }[];
   price?: { version?: string; source: string; currency: string; at: string; exchange_rate_version?: string; exchange_rate?: string; rates: Record<string, string> };
 };
-export type StatementResult = { query: StatementQuery; generated_at: string; from: string; to: string; time_basis: string; rows: StatementRow[]; totals: Record<string, string>; unknown_count: number; incomplete_count: number; estimated_margin_usd: string | null };
+export type StatementResult = { query: StatementQuery; generated_at: string; from: string; to: string; time_basis: string; rows: StatementRow[]; totals: Record<string, string>; unknown_count: number; incomplete_count: number; estimated_margin_usd: string | null; conversion?: { currency: string; usd_exchange_rate: string }; display_totals?: Record<string, string>; display_estimated_margin?: string | null };
 
 // Export exactly the preview payload, not a second query that can include new
 // calls or changed supplier records. Quote every field and neutralize formulas.
@@ -16,6 +16,7 @@ export function statementCSV(result: StatementResult): string {
   const tenant = result.query.side === "tenant";
   const common = ["id", "source", "at", "end_at", "timezone", "project_id", "team_id", "api_key_id", "model", "currency", "amount", "usd", "status", "reason", "units", "lines", "price"] as const;
   const columns: (keyof StatementRow)[] = tenant ? [...common] : [...common, "provider_id", "resource_id", "request_id", "external_id", "external_request_id", "usage_quantity", "usage_unit"];
+  if (result.conversion) columns.push("display_amount");
   const q = result.query;
   const rows: unknown[][] = [
     ["statement", q.side], ["customer", q.customer], ["project_ids", q.project_ids.join(" | ")],
@@ -23,8 +24,10 @@ export function statementCSV(result: StatementResult): string {
     ["from_inclusive", result.from], ["to_exclusive", result.to], ["timezone", q.timezone],
     ["generated_at", result.generated_at], ["time_basis", result.time_basis],
     ["unknown_count", result.unknown_count], ["incomplete_count", result.incomplete_count],
+    ...(result.conversion ? [["display_currency", result.conversion.currency], ["display_exchange_rate_usd_to_currency", result.conversion.usd_exchange_rate], ...Object.entries(result.display_totals ?? {}).map(([source, value]) => ["display_total", source, value])] : []),
     ...Object.entries(result.totals).map(([key, value]) => ["total", key, value]),
     ...(q.side === "margin" ? [["estimated_margin_usd", result.estimated_margin_usd ?? "unknown"]] : []),
+    ...(q.side === "margin" && result.conversion ? [["display_estimated_margin", result.display_estimated_margin ?? "unknown"]] : []),
     [], [...columns], ...result.rows.map(row => columns.map(key => row[key] ?? "")),
   ];
   return "\uFEFF" + rows.map(row => row.map(value => {

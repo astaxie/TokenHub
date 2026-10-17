@@ -24,6 +24,7 @@ for (const scenario of statements) {
       customer: scenario.side === "provider" ? "" : "UI Review Customer",
       project_ids: scenario.side === "provider" ? [] : [project.id],
       provider_id: "", resource_id: "", model: "",
+      display_currency: "USD", display_exchange_rate: "1",
     });
     if (scenario.state === "pending") {
       await expect(form.getByRole("status")).toContainText("未知金额: 1");
@@ -31,11 +32,14 @@ for (const scenario of statements) {
       await expect(form.getByText("未知", { exact: true })).toBeVisible();
     } else if (scenario.state === "complete") {
       await expect(form.getByText(model.name, { exact: true }).first()).toBeVisible();
-      if (scenario.side === "margin") await expect(form.getByText(/预计毛利.*0\.48/)).toBeVisible();
+      if (scenario.side === "margin") await expect(form.getByText(/预计毛利.*0\.48/).first()).toBeVisible();
     } else {
       await expect(form.locator("tbody tr")).toHaveCount(0);
     }
-    await capture(page, testInfo, form, scenario.id, scenario.title);
+    await form.evaluate(element => element.scrollIntoView({ block: "start" }));
+    await capture(page, testInfo, form, `${scenario.id}-form`, `${scenario.title}：表单`, "viewport");
+    await form.locator(".statement-summary").first().evaluate(element => element.scrollIntoView({ block: "start" }));
+    await capture(page, testInfo, form, `${scenario.id}-results`, `${scenario.title}：结果`, "viewport");
     if (scenario.side === "tenant" && scenario.state === "complete") {
       const downloadEvent = page.waitForEvent("download");
       await form.getByRole("button", { name: "导出当前预览 CSV", exact: true }).click();

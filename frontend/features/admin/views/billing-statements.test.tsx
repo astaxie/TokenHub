@@ -5,7 +5,7 @@ import { BillingStatements, StatementLauncher } from "./billing-statements";
 
 const api = { baseURL: "", adminToken: "test" };
 const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
-beforeEach(() => setActiveLanguage("zh-CN"));
+beforeEach(() => { setActiveLanguage("zh-CN"); window.localStorage.clear(); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal); else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal"); });
 describe("BillingStatements", () => {
   it("invalidates a preview when filters change", async () => {
