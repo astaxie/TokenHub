@@ -39,6 +39,33 @@ func clampBillableInputTokens(usage Usage) Usage {
 	return usage
 }
 
+// Providers may report cache details without primary prompt/total counters.
+// Keep those observations for quota and usage evidence while pricing a bounded
+// copy that cannot charge cache tokens beyond a reported prompt total.
+func independentCacheEvidence(usage Usage) (Usage, bool) {
+	if usage.PromptTokens != 0 || usage.CompletionTokens != 0 || usage.TotalTokens != 0 {
+		return Usage{}, false
+	}
+	evidence := Usage{
+		CachedInputTokens:       maxInt64(usage.CachedInputTokens, 0),
+		CacheWriteInputTokens:   maxInt64(usage.CacheWriteInputTokens, 0),
+		CacheWrite5mInputTokens: maxInt64(usage.CacheWrite5mInputTokens, 0),
+		CacheWrite1hInputTokens: maxInt64(usage.CacheWrite1hInputTokens, 0),
+	}
+	return evidence, evidence.CachedInputTokens > 0 || evidence.CacheWriteInputTokens > 0 || evidence.CacheWrite5mInputTokens > 0 || evidence.CacheWrite1hInputTokens > 0
+}
+
+func restoreIndependentCacheEvidence(usage, evidence Usage, present bool) Usage {
+	if !present {
+		return usage
+	}
+	usage.CachedInputTokens = evidence.CachedInputTokens
+	usage.CacheWriteInputTokens = evidence.CacheWriteInputTokens
+	usage.CacheWrite5mInputTokens = evidence.CacheWrite5mInputTokens
+	usage.CacheWrite1hInputTokens = evidence.CacheWrite1hInputTokens
+	return usage
+}
+
 func modelPriceAt(model Model, requestStartedAt time.Time) Model {
 	if requestStartedAt.IsZero() {
 		requestStartedAt = time.Now().UTC()

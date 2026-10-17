@@ -81,3 +81,47 @@ func TestTranscriptionProviderHookResponseFailureRetainsIndependentUsage(t *test
 		t.Fatalf("attempt usage was lost: %+v", attempts)
 	}
 }
+
+func TestMalformedTranscriptionHookResponseRetainsTokensWithInvalidAudioEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		usage string
+	}{
+		{name: "negative seconds", usage: `{"prompt_tokens":200,"total_tokens":200,"audio_duration_seconds":-1,"audio_duration_source":"plugin","audio_duration_unit":"audio_second"}`},
+		{name: "invalid source", usage: `{"prompt_tokens":200,"total_tokens":200,"audio_duration_seconds":12.5,"audio_duration_source":"provider-private","audio_duration_unit":"audio_second"}`},
+		{name: "invalid unit", usage: `{"prompt_tokens":200,"total_tokens":200,"audio_duration_seconds":12.5,"audio_duration_source":"plugin","audio_duration_unit":"milliseconds"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, store, key := newMediaGatewayFixture(t, func(http.ResponseWriter, *http.Request) {
+				t.Fatal("malformed provider hook response reached the native adapter")
+			}, "audio")
+			registerMediaProviderTestHook(t, server, pluginmeta.GatewayHookDescriptor{
+				HookID: "malformed-transcription-invalid-usage", Scope: pluginmeta.GatewayHookScope{RouteProtocols: []string{"audio/transcriptions"}},
+				Writes: []pluginmeta.GatewayDataClass{pluginmeta.DataProviderResponse, pluginmeta.DataUsage},
+			}, func(context.Context, pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+				return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionShortCircuit, Writes: map[pluginmeta.GatewayDataClass]pluginmeta.RawPatch{
+					pluginmeta.DataProviderResponse: {Value: json.RawMessage(`{"text":`)},
+					pluginmeta.DataUsage:            {Value: json.RawMessage(tc.usage)},
+				}}, nil
+			})
+
+			response := doJSON(t, server.Handler(), http.MethodPost, "/v1/audio/transcriptions", map[string]any{"model": "public-media"}, key)
+			if response.Code != http.StatusBadGateway || !strings.Contains(response.Body, "invalid_provider_usage") {
+				t.Fatalf("malformed hook response contract changed: status=%d body=%s", response.Code, response.Body)
+			}
+			rows := store.ListUsageRecords()
+			if len(rows) != 1 || rows[0].InputTokens != 200 || rows[0].TotalTokens != 200 {
+				t.Fatalf("valid token evidence was lost: %+v", rows)
+			}
+			var counters []QuotaBucket
+			if err := store.db.Where("scope IN ?", []string{"day", "month", "minute"}).Find(&counters).Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, counter := range counters {
+				if counter.TotalTokens != 200 {
+					t.Fatalf("%s quota tokens=%d want=200", counter.Scope, counter.TotalTokens)
+				}
+			}
+		})
+	}
+}

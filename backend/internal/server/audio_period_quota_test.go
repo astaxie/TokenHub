@@ -67,6 +67,67 @@ func TestTranscriptionTokenEvidenceEnforcesAPIKeyPeriodQuotas(t *testing.T) {
 	}
 }
 
+func TestTranscriptionCacheOnlyEvidenceEnforcesAPIKeyPeriodQuotas(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		usage        string
+		cached       int64
+		cacheWrite5m int64
+		cacheWrite1h int64
+	}{
+		{name: "cache read", usage: `{"input_token_details":{"cached_tokens":200}}`, cached: 200},
+		{name: "cache lifetime details", usage: `{"input_token_details":{"cache_write_5m_tokens":120,"cache_write_1h_tokens":80}}`, cacheWrite5m: 120, cacheWrite1h: 80},
+	} {
+		for _, path := range []string{"/v1/audio/transcriptions", "/v1/audio/translations"} {
+			for _, period := range []string{"daily", "monthly"} {
+				for _, stream := range []bool{false, true} {
+					t.Run(tc.name+path+"/"+period+map[bool]string{false: "/JSON", true: "/SSE"}[stream], func(t *testing.T) {
+						body, contentType := `{"text":"fixture","usage":`+tc.usage+`}`, "application/json"
+						if stream {
+							body, contentType = "data: "+body+"\n\n", "text/event-stream"
+						}
+						var calls atomic.Int32
+						app, store, key := newMediaGatewayFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+							calls.Add(1)
+							w.Header().Set("Content-Type", contentType)
+							_, _ = io.WriteString(w, body)
+						}, "audio")
+						if err := store.db.Model(&APIKey{}).Where("name = ?", "Media key").Updates(map[string]any{
+							"token_limit_tpm": int64(1_000_000), "limit_" + period + "_tokens": int64(200),
+						}).Error; err != nil {
+							t.Fatal(err)
+						}
+						response := doJSON(t, app.Handler(), http.MethodPost, path, map[string]any{"model": "public-media", "stream": stream}, key)
+						if response.Code != http.StatusOK || response.Body != body {
+							t.Fatalf("transcription delivery changed: %d %s", response.Code, response.Body)
+						}
+						var counters []QuotaBucket
+						if err := store.db.Where("scope IN ?", []string{"day", "month", "minute"}).Find(&counters).Error; err != nil {
+							t.Fatal(err)
+						}
+						if len(counters) != 3 {
+							t.Fatalf("quota bucket count=%d want=3", len(counters))
+						}
+						for _, counter := range counters {
+							if counter.TotalTokens != 200 {
+								t.Fatalf("%s quota tokens=%d want=200", counter.Scope, counter.TotalTokens)
+							}
+						}
+						rows := store.ListUsageRecords()
+						if len(rows) != 1 || rows[0].CachedInputTokens != tc.cached || rows[0].CacheWrite5mTokens != tc.cacheWrite5m || rows[0].CacheWrite1hTokens != tc.cacheWrite1h || rows[0].TotalTokens != 0 || rows[0].CostUSD != 0 {
+							t.Fatalf("cache-only evidence or billing changed: %+v", rows)
+						}
+						response = doJSON(t, app.Handler(), http.MethodPost, path, map[string]any{"model": "public-media", "stream": stream}, key)
+						if response.Code != http.StatusTooManyRequests || !strings.Contains(response.Body, `"code":"quota_exceeded"`) || calls.Load() != 1 {
+							t.Fatalf("exhausted %s token quota was bypassed: status=%d upstream calls=%d body=%s", period, response.Code, calls.Load(), response.Body)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 func TestAPIKeyPeriodUsageKeepsProviderEvidenceSeparateFromReservations(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

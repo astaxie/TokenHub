@@ -126,11 +126,13 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 				// fails, just as rerank preserves validated retrieval evidence.
 				usage = sanitizeAudioUsage(usage)
 				if err := validateAudioDuration(usage); err != nil {
-					return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+					usage.MeteringInvalid = true
+					return nil, usage, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
 				}
 				if usageReported != nil {
 					*usageReported = usagePresent
 				}
+				usage.MeteringInvalid = true
 				return nil, usage, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}
 			}
 			return nil, Usage{}, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}

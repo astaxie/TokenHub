@@ -517,6 +517,7 @@ func priceUsage(model Model, usage Usage) Usage {
 }
 
 func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
+	cacheEvidence, hasCacheEvidence := independentCacheEvidence(usage)
 	if usage.MeteringRaw == nil && !usage.MeteringInvalid {
 		units, err := meteringUnits(usage)
 		usage.MeteringInvalid = err != nil
@@ -537,7 +538,7 @@ func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 	}
 	usage = clampBillableInputTokens(usage)
 	if priced, handled := priceAudioUsage(model, usage); handled {
-		return priced
+		return restoreIndependentCacheEvidence(priced, cacheEvidence, hasCacheEvidence)
 	}
 	if model.Modality == "embedding" || model.Modality == "rerank" {
 		// Retrieval plugins supply usage evidence, never authoritative tenant fees.
@@ -551,19 +552,19 @@ func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 		usage.OutputCostUSD = 0
 		usage.CacheReadCostUSD = 0
 		usage.CacheWriteCostUSD = 0
-		return usage
+		return restoreIndependentCacheEvidence(usage, cacheEvidence, hasCacheEvidence)
 	}
 	if model.Modality == "embedding" && model.EmbeddingPriceUSDPer1M == 0 && model.Metadata["retrieval_pricing_confirmed"] == "true" {
 		// Explicitly free tenant embeddings never inherit a legacy chat rate or
 		// an adapter-supplied tenant charge. Procurement evidence stays intact.
 		usage.CostUSD, usage.InputCostUSD, usage.OutputCostUSD = 0, 0, 0
 		usage.CacheReadCostUSD, usage.CacheWriteCostUSD = 0, 0
-		return usage
+		return restoreIndependentCacheEvidence(usage, cacheEvidence, hasCacheEvidence)
 	}
 	if cost, known := nativeRetrievalCost(model, usage); known {
 		usage.InputCostUSD = cost
 		usage.CostUSD = cost
-		return usage
+		return restoreIndependentCacheEvidence(usage, cacheEvidence, hasCacheEvidence)
 	}
 	if usage.CostUSD == 0 {
 		model = modelPriceAt(model, requestStartedAt)
@@ -584,7 +585,7 @@ func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 			usage.CostUSD = usage.InputCostUSD + usage.CacheReadCostUSD + usage.CacheWriteCostUSD + usage.OutputCostUSD
 		}
 	}
-	return usage
+	return restoreIndependentCacheEvidence(usage, cacheEvidence, hasCacheEvidence)
 }
 
 const (
