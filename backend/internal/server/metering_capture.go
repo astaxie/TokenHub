@@ -157,6 +157,11 @@ func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) mete
 	result := meteringShadowCharge{Status: "pending", UsageSource: "legacy_adapter_unverified", Price: price, LegacyUSD: strconv.FormatFloat(legacy, 'f', -1, 64)}
 	result.DocumentCount = usage.DocumentCount
 	result.AudioEvidence = audioDurationEvidence(usage)
+	if result.AudioEvidence != nil && price != nil && price.Modality == "audio" && invalidAudioDurationUsage(usage) {
+		result.UsageSource = result.AudioEvidence.Source
+		result.Reason = "inconsistent_usage"
+		return result
+	}
 	if audioDurationBillable(usage) && (price == nil || price.Modality == "audio") {
 		return shadowAudioPrice(result, usage)
 	}

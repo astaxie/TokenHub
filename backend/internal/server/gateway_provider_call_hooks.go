@@ -76,7 +76,7 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 	var response any
 	var events []gatewayStreamEventView
 	var usage Usage
-	var responseDecodeErr error
+	var outputDecodeErr error
 	var usageDecodeErr error
 	usagePresent := false
 	handled := false
@@ -86,8 +86,8 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 				// Rerank response validation can fail after a complete leading
 				// object has supplied independent usage. Keep decoding DataUsage
 				// below so the failed attempt remains billable and rate-limited.
-				if responseDecodeErr == nil {
-					responseDecodeErr = err
+				if outputDecodeErr == nil {
+					outputDecodeErr = err
 				}
 			} else if stream == nil {
 				handled = true
@@ -96,13 +96,17 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 
 		if patch, ok := result.Writes[pluginmeta.DataStreamEvents]; ok {
 			if stream == nil || decodeGatewayHookPayload(patch.Value, &events, "gateway_hook_stream_event_invalid", "Gateway provider plugin returned invalid stream events") != nil || events == nil {
-				return nil, Usage{}, false, &ProviderInvocationError{Err: NewHTTPError(502, "gateway_hook_stream_event_invalid", "Gateway provider plugin must return an array of stream events for a streaming request"), Disposition: ProviderErrorPolicy}
-			}
-			for _, event := range events {
-				if strings.ContainsAny(event.Event, "\r\n") {
-					return nil, Usage{}, false, &ProviderInvocationError{Err: NewHTTPError(502, "gateway_hook_stream_event_invalid", "Gateway provider plugin returned an invalid event name"), Disposition: ProviderErrorPolicy}
+				outputDecodeErr = NewHTTPError(502, "gateway_hook_stream_event_invalid", "Gateway provider plugin must return an array of stream events for a streaming request")
+			} else {
+				for _, event := range events {
+					if strings.ContainsAny(event.Event, "\r\n") {
+						outputDecodeErr = NewHTTPError(502, "gateway_hook_stream_event_invalid", "Gateway provider plugin returned an invalid event name")
+						break
+					}
 				}
 			}
+			// Usage is independent of output validation. Decode it below before
+			// returning an invalid stream, just as for an invalid JSON response.
 			handled = true
 		}
 		if patch, ok := result.Writes[pluginmeta.DataUsage]; ok {
@@ -115,7 +119,7 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 			usagePresent = true
 		}
 	}
-	if responseDecodeErr != nil {
+	if outputDecodeErr != nil {
 		if protocol != providerRouteProtocolRerank {
 			if isAudioMediaProtocol(protocol) {
 				if usageDecodeErr != nil {
@@ -133,9 +137,9 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 					*usageReported = usagePresent
 				}
 				usage.MeteringInvalid = true
-				return nil, usage, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}
+				return nil, usage, false, &ProviderInvocationError{Err: outputDecodeErr, Disposition: ProviderErrorPolicy}
 			}
-			return nil, Usage{}, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}
+			return nil, Usage{}, false, &ProviderInvocationError{Err: outputDecodeErr, Disposition: ProviderErrorPolicy}
 		}
 		if usageDecodeErr != nil {
 			return nil, Usage{}, false, &ProviderInvocationError{Err: usageDecodeErr, Disposition: ProviderErrorPolicy}
@@ -151,7 +155,7 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 		if usageReported != nil {
 			*usageReported = usagePresent
 		}
-		return nil, usage, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}
+		return nil, usage, false, &ProviderInvocationError{Err: outputDecodeErr, Disposition: ProviderErrorPolicy}
 	}
 	if usageDecodeErr != nil {
 		return nil, Usage{}, false, &ProviderInvocationError{Err: usageDecodeErr, Disposition: ProviderErrorPolicy}

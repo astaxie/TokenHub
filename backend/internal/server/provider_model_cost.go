@@ -92,6 +92,9 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 	} else if err := s.db.Where("provider_id = ? AND upstream_model = ?", providerID, upstreamModel).First(&providerModel).Error; err != nil {
 		return 0
 	}
+	if providerModel.Modality == "audio" && invalidAudioDurationUsage(usage) {
+		return 0
+	}
 	if providerModel.Modality == "audio" && audioDurationBillable(usage) {
 		cost, _ := nativeAudioCost(providerModelCostModel(providerModel), usage)
 		return cost

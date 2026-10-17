@@ -66,6 +66,9 @@ func TestAudioPluginUnitWithoutDuration(t *testing.T) {
 				if tc.unit == "audio_second" && (rows[0].CostUSD != 0 || rows[0].ProviderCostUSD != 0) {
 					t.Fatalf("unmeasured native duration fell back to token billing: %+v", rows)
 				}
+				if tc.invalid && (rows[0].CostUSD != 0 || rows[0].ProviderCostUSD != 0) {
+					t.Fatalf("invalid audio evidence fell back to token billing: %+v", rows)
+				}
 				var entry meteringEntry
 				if err := store.db.First(&entry, "id = ?", rows[0].RequestID+":shadow").Error; err != nil {
 					t.Fatal(err)

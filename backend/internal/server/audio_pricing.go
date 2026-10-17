@@ -10,6 +10,13 @@ import (
 
 const audioSecondPriceKey = "audio_price_usd_per_second"
 
+// invalidAudioDurationUsage marks an audio duration claim that cannot be
+// reconciled with the provider response. Keep its token counters for quota and
+// audit purposes, but never let the claim fall through to token pricing.
+func invalidAudioDurationUsage(usage Usage) bool {
+	return audioDurationEvidence(usage) != nil && validateAudioDuration(usage) != nil
+}
+
 func validateAudioPriceMetadata(metadata map[string]string) error {
 	if value, present := metadata[audioSecondPriceKey]; present {
 		if _, err := metering.Decimal(value); err != nil {
@@ -69,7 +76,16 @@ func shadowAudioPrice(result meteringShadowCharge, usage Usage) meteringShadowCh
 }
 
 func priceAudioUsage(model Model, usage Usage) (Usage, bool) {
-	if model.Modality != "audio" || !audioDurationBillable(usage) {
+	if model.Modality != "audio" || audioDurationEvidence(usage) == nil {
+		return usage, false
+	}
+	if invalidAudioDurationUsage(usage) {
+		usage.MeteringInvalid = true
+		usage.CostUSD, usage.InputCostUSD, usage.OutputCostUSD = 0, 0, 0
+		usage.CacheReadCostUSD, usage.CacheWriteCostUSD = 0, 0
+		return usage, true
+	}
+	if !audioDurationBillable(usage) {
 		return usage, false
 	}
 	usage.CostUSD, usage.InputCostUSD, usage.OutputCostUSD = 0, 0, 0
