@@ -1,109 +1,302 @@
-# 绘图、音频、视频和音乐 API
+# 文本、图片、音频与视频 API 调用指南
 
 语言：[English](../media-apis.md) | 简体中文 | [日本語](../ja/media-apis.md)
 
-TokenHub 支持 [DMXAPI 文档](https://doc.dmxapi.cn/jichu.html)使用的媒体协议。调用前需配置上游供应商，并分别发布生成、上传、查询和下载模型。这里的支持指协议兼容；模型可用性和参数取值由上游决定，不内置供应商凭证或价格。
+使用同一个 TokenHub 网关和项目 API Key，调用获准使用的文本与多模态模型。本文参考 [APIMart API 手册](https://docs.apimart.ai/cn/index)按任务组织的方式，说明 TokenHub 自身的鉴权、路由、任务隔离和限制。
 
-## 接口范围
+**支持接口不等于模型已经可用。** 管理员需要配置上游凭证、发布公开模型 ID、映射上游模型并授权项目密钥。格式、时长、分辨率、音色、模型版本和素材有效期取决于上游。TokenHub 不内置供应商账户，也不承诺支持 APIMart 的全部模型与功能。
 
-| 接口 | 用途与示例 |
-| --- | --- |
-| `POST /v1/images/generations` | GPT Image、Seedream/即梦、Qwen Image；保留供应商参数、参考图、多张结果、URL 和 base64 |
-| `POST /v1/images/edits` | JSON 或 multipart 图片编辑，保留蒙版和上传文件 |
-| `POST /v1/images/variations` | 兼容供应商的图片变体 |
-| `POST /v1/audio/speech` | 包括 MiniMax speech-2.6 的语音合成，返回上游音频字节 |
-| `POST /v1/audio/transcriptions` | 包括 gpt-4o-transcribe 的 multipart 语音识别，支持 JSON、文本、SRT、VTT 结果 |
-| `POST /v1/audio/translations` | 兼容供应商的音频翻译 |
-| `POST /v1/responses` | Seedance、海螺、可灵、Vidu、PixVerse/拍我、万相、HappyHorse 视频；Seedream、万相、Qwen、Agnes、SciDraw 绘图；MiniMax 声音上传/克隆、高级语音、音乐/歌词以及 Mureka |
-| `POST /v1/chat/completions` | MiMo 语音合成/音色设计/克隆、Qwen Omni 音频描述与多模态音频、Recraft 绘图 |
-| `POST /v1beta/models/{model}:generateContent` 和 `:streamGenerateContent` | Gemini 原生绘图、图片编辑和多模态输出 |
+## 选择接口
 
-以具体模型的上游文档为准。DMXAPI 视频示例通过 `/v1/responses` 提交和查询，不需要新增 `/v1/videos`。现有 Chat、Responses 和 Gemini 接口保留流式能力与供应商扩展字段。OpenAPI 契约包含 Chat 的 `input_audio` 内容，以及 Wan 消息、MiniMax 语音上传等供应商自定义 Responses 输入/输出对象；媒体字段由供应商按自身规则校验。
+| 任务 | 方法与路径 | 返回结果 |
+| --- | --- | --- |
+| 查询可用模型 | `GET /v1/models` | 当前密钥可访问的模型 |
+| 文本、视觉理解、工具调用 | `POST /v1/chat/completions` | Chat JSON 或 SSE |
+| Responses 兼容请求 | `POST /v1/responses` | Response JSON 或 SSE；可选本地后台任务 |
+| Anthropic Messages | `POST /v1/messages` | Anthropic JSON 或 SSE |
+| Gemini 原生请求 | `POST /v1beta/models/{model}:generateContent` | Gemini 原生 JSON |
+| Gemini 原生流式请求 | `POST /v1beta/models/{model}:streamGenerateContent?alt=sse` | Gemini 原生 SSE |
+| 生成图片 | `POST /v1/images/generations` | 图片或上游任务回执 |
+| 编辑图片、生成变体 | `POST /v1/images/edits`、`POST /v1/images/variations` | 供应商图片响应 |
+| 文字转语音 | `POST /v1/audio/speech` | 音频字节或供应商支持的流 |
+| 语音识别、翻译 | `POST /v1/audio/transcriptions`、`POST /v1/audio/translations` | JSON、文本或字幕 |
+| 生成视频 | `POST /v1/videos/generations` | 上游任务回执 |
+| 查询图片、视频任务 | `GET /v1/tasks/{task_id}` | 供应商任务状态和结果 |
 
-## 配置供应商和模型
+向量和文档排序分别见[文本向量](embeddings.md)与[文本重排](rerank.md)。部署后的交互式接口文档位于 `/docs`，机器可读契约位于 `/openapi.json`。
 
-1. 添加 **OpenAI-compatible** 供应商，基础地址为 `https://www.dmxapi.cn/v1`，填入供应商凭证。原生 Gemini 示例使用 **Gemini** 类型，基础地址为 `https://www.dmxapi.cn/v1beta`，使用同一上游账户。
-2. 发布公开模型，将路由映射到准确的上游模型 ID。模态选择 `image`、`video` 或 `audio`（音乐使用 `audio`），多模态对话模型也可配置这些输出模态。这些 Chat/Responses 请求跳过响应缓存，避免复用生成结果或读到过期任务状态。
-3. 同时发布辅助模型，例如 `seedance-2-0-get`、`MiniMax-Hailuo-query`、`MiniMax-Hailuo-get` 和声音/素材上传模型。项目密钥必须获准访问整个流程所需的模型。
-4. 将生成和辅助模型的路由固定到同一个供应商账户/资源。供应商任务 ID、文件 ID 和大整数原样传递。TokenHub 不将它们转换成本地后台任务，也不自动绑定供应商任务归属；需要隔离任务命名空间的租户应使用独立上游账户。
+## 鉴权与快速开始
 
-调用 Gemini 原生媒体接口时，为公开模型配置媒体模态或输出模态，然后调用 `/v1beta/models/{model}:generateContent` 或 `:streamGenerateContent?alt=sse`。这些请求跳过缓存，保留原生 `generationConfig`（包括 `responseModalities` 和 `imageConfig`）、内嵌媒体及思考签名；上游模型由路由选择。原生 JSON/SSE 响应保留生成的媒体，并按 `usageMetadata` 统计 Token。两种响应均在 128 MiB 媒体上限内缓冲交付，执行鉴权、文本策略、作用域钩子和受保护的出站传输。
-
-Gemini 原生媒体流会拒绝终止错误事件名、`type:"error"` 或 `*.failed` 数据，以及非 null 的嵌套 `response.error`，供应商钩子输出同样适用。即使候选结果已报告结束原因，这些错误仍会记为失败；保留已知 Token 用量和插件显式用量覆盖，且不返回错误中的供应商凭证。嵌套 `response.error:null` 仍允许作为成功事件返回。
-
-托管的 `gpt-image-2`、Codex 订阅及插件图片配置继续使用原有校验、单图任务、素材存储和 `Prefer: respond-async`。如果上游模型与托管公开模型同名，又需要完整供应商 Images 参数，请发布另一个公开别名（如 `vendor-gpt-image`），映射到该上游 ID。普通图片路由直接返回供应商结果；本地任务查询和 TokenHub 签名图片链接仅适用于托管任务。直通图片请求接受供应商自定义的 `response_format` 字符串，例如 Qwen Image 的 `base64`；内置托管图片仍仅接受 `url` 或 `b64_json`，托管插件模型按其配置校验格式。
-
-对 `/v1/responses` 设置 `background:true` 时，响应正文的 `id` 标识 TokenHub 本地请求任务。媒体任务完成后的查询响应通过 `x-tokenhub-upstream-response-id` 返回供应商原始根 ID，可将其用于供应商的辅助查询模型。本地任务完成表示上游 API 调用结束，供应商的生成任务可能仍需继续轮询。字符串和数字 ID 保持精确；非标量 ID、含控制字符或首尾空白、超过 2048 字节的值不会写入该响应头。
-
-## 调用示例
-
-在环境变量 `TOKENHUB_API_KEY` 中设置项目密钥。以下模型名称需要已发布且获准访问。
+使用网关地址，不要使用控制台端口。示例环境变量是没有 `/v1` 的根地址；OpenAI SDK 的 `base_url` 则应设置为 `$TOKENHUB_URL/v1`。在**密钥管理**中获取项目 API Key；控制台登录令牌不能调用模型接口。
 
 ```bash
-curl https://tokenhub.example/v1/audio/speech \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"speech-2.6-hd","input":"Hello from TokenHub","voice":"male-qn-qingse","response_format":"mp3"}' \
-  --output speech.mp3
+export TOKENHUB_URL='http://localhost:8080'
+export TOKENHUB_API_KEY='YOUR_TOKENHUB_PROJECT_KEY'
 
-curl https://tokenhub.example/v1/audio/transcriptions \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -F model=gpt-4o-transcribe -F file=@sample.wav
-
-curl https://tokenhub.example/v1/responses \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"doubao-seedance-2-0-260128","input":[{"type":"text","text":"A calm ocean at sunrise"}],"duration":4,"resolution":"720p","generate_audio":true}'
-
-# 保存返回的 id，持续查询直到上游任务完成。
-curl https://tokenhub.example/v1/responses \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"seedance-2-0-get","input":"TASK_ID_FROM_SUBMISSION"}'
+curl --fail-with-body "$TOKENHUB_URL/v1/models" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY"
 ```
 
-## 限制、计量和验证
+从返回结果的 `data[].id` 选择 `model`。下文 `text-model`、`image-model`、`speech-model`、`transcription-model`、`seedance-video` 均为需发布或替换的**公开别名**，不必与上游模型 ID 相同。
 
-新增直通媒体接口使用 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES`（默认 32 MiB）。multipart 最多 128 个部分，每个文本字段最多 1 MiB。响应最多缓存 128 MiB 后交付，保留供应商内容类型；这条路径不提供低延迟逐块交付。托管图片原有限制保持不变，TokenHub 不主动下载响应中的 URL。
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"text-model","messages":[{"role":"user","content":"Explain an API gateway in one sentence."}],"stream":false}'
+```
 
-multipart 的 `model` 和 `stream` 必须是单个文本字段。`/v1/audio/speech` 的 `stream_format:"sse"` 同样会选择流式准入和供应商钩子；`stream_format` 必须是单个非空文本值，请求钩子不能改变实际流式模式。JSON 的 `stream` 必须是布尔值，multipart 的 `stream` 必须是布尔值文本。有歧义的控制字段会在路由前被拒绝，请求钩子的修改也接受同样的校验。文本策略检查 `input`、`instructions`、`prompt`、`negative_prompt` 和 `text` 的每个值，包括重复的 multipart 字段，同时保留 `timestamp_granularities[]` 等重复选项。
+从 `choices[].message.content` 读取文本，保留请求 ID 以便在**请求日志**中排查。出现在 `/v1/models` 中只表示模型可见且有符合条件的路由，不代表上游所有功能均已实时验证。TokenHub 未实现 APIMart 的 `expand` 元数据结构及账户余额接口。
 
-接口执行鉴权、模型白名单、配额、作用域路由、供应商资源容量限制、文本前置策略、响应钩子和用量归属。请求钩子接收 JSON/文本字段，multipart 文件字节保持不透明。请求头钩子数据会脱敏客户端鉴权值，包括 Gemini 的 `X-Goog-Api-Key`；上游调用使用配置的供应商凭证。媒体 Responses 的文本策略也检查供应商提示词、Kling `multi_prompt[].prompt` 分镜描述、歌词和 Wan 嵌套消息或 `input.input.prompt` 封装及 `parameters.negative_prompt`，同时保留不透明的素材/任务 ID。直通媒体审计记录模型、脱敏后的策略决定、内容类型和字节数，不保存上传或生成的媒体。客户端 Cookie 和鉴权头不转发，使用已配置供应商凭证及受保护的出站传输。结果不确定的媒体提交失败不会自动换路由再次生成，包括通过 Chat/Responses 调用的媒体模型；明确的鉴权或限流拒绝仍可触发故障切换。
+## 配置供应商与选择模型
 
-匹配的 `provider_call` 钩子会在直通媒体适配器之前执行，可以拒绝、跳过或接管路由。直通图片钩子按实际接口协议（`images/generations`、`images/edits` 或 `images/variations`）匹配作用域；托管图片任务仍使用 `images/generations`。非流式钩子返回供应商 JSON 响应，或包含字符串 `data_base64` 和 `content_type` 的二进制封装。流式钩子返回 `stream_events`，交付仍采用缓冲方式。处理二进制或文本响应的响应/护栏钩子必须保留有效的 `data_base64`；格式错误的修改会报错，不会返回空的成功响应。供应商钩子和响应钩子均允许 Base64 中的 CR/LF 换行，但填充符之后不能追加编码数据。128 MiB 响应上限适用于两类钩子的输出，按序列化 JSON 或解码后的二进制字节计算，不计入 Base64 换行；超限的替换结果会报错，但保留已报告的用量。
+接入 APIMart 兼容账户时，添加 **OpenAI-compatible** 供应商，基础地址填写 `https://api.apimart.ai/v1`，配置供应商凭证。可发布 `text-model` 映射到账户可用文本模型、`image-model` 映射到 `gpt-image-2`、`seedance-video` 映射到 `seedance-2.0`。按用途选择 `image`、`audio` 或 `video` 模态，多模态对话模型同时配置输入/输出模态。媒体 Chat/Responses 请求会跳过响应缓存。
 
-非流式供应商钩子的 JSON 超过响应大小上限时，请求和路由尝试记录仍会保留已报告的 Token 用量，包括 Gemini 原生 `usageMetadata`。插件显式用量（包括零）优先。响应仍记为失败，不重试，也不扣减供应商健康状态。
+Anthropic、Gemini 原生请求需要路由支持相应原生协议和响应结构；仅设置 OpenAI-compatible 基础地址并不意味着原生协议也兼容。适配器和 SDK 配置见[用户指南](user-guide.md)。供应商文档可能展示带包装层的文本响应，需验证所选路由是否返回客户端要求的协议结构。
 
-Responses 的 OpenAPI 定义要求提供 `model`；`input` 是否必填取决于所选供应商模型。例如 DMX 的歌词/音乐生成可以省略 `input`，在没有用户提示词的情况下生成。省略的输入会原样转发，不自动补空值。`input` 数组还接受图片 URL 或 data URI 字符串，用于 Vidu Q3 首尾帧视频生成等场景。Responses 的 `output` 支持标准条目数组或供应商自定义对象，例如 Qwen Image 3.0 的图片结果位于 `output.choices[].message.content[].image`；已完成的后台任务响应也支持这些结构。输出数组还接受 Seedream 的 `{"type":"image_url","image_url":{"url":"..."}}` 图片结果条目。
+公开名称 `gpt-image-2`、Codex 订阅图片模型及配置为托管模式的图片插件采用 TokenHub 托管生图流程。需要完整上游 Images 参数或 APIMart 异步生图时，应另外发布 `image-model` 等别名并映射到 `gpt-image-2`。见[托管生图指南](codex-image-generation-api.md)。
 
-JSON 响应处理识别 `application/json` 和带 `+json` 后缀的 MIME 类型，并支持参数及大小写差异。这些响应使用相同的校验、Token 用量提取和 JSON 钩子数据格式，同时保留原始内容类型。已识别的 JSON 基础类型即使参数格式错误或重复，也仍会接受校验。参数中出现 `application/json` 字样不会把文本或二进制响应误判为 JSON。
+升级时通过正常启动迁移流程应用数据库 v8 迁移 `add-media-task-bindings`。任务绑定在重启后保留；保持服务器密钥不变，以便解密保存的上游任务 ID。无需新增环境变量。
 
-直通媒体 JSON 的顶层 `error` 非 null 时，即使上游返回 HTTP 200，也会记为失败。供应商钩子输出和响应/护栏钩子修改后的最终结果同样适用。失败返回不含上游凭证的通用消息，保留已报告的 Token 用量，且不重新提交生成；`error:null` 仍允许作为成功响应返回。
+## 文本与多模态理解
 
-SSE 响应按 `text/event-stream` MIME 基础类型识别，即使参数格式错误或重复也会执行事件校验、Token 计量和事件钩子，避免这些处理被绕过。参数中出现 `text/event-stream` 字样不会把文本或二进制响应误判为 SSE。
+### Chat Completions
 
-直通媒体 SSE 中，除 `[DONE]` 外的非空事件数据必须是一个完整 JSON 对象。上游或供应商钩子产生的畸形事件会在缓冲交付前报错，并保留已知用量，包括尾随无效数据之前完整对象中的用量。响应和流式钩子不能把合法事件改成畸形数据或被记为成功的错误流；最终校验保留原始上游用量。
+| 字段 | 要求 | 说明 |
+| --- | --- | --- |
+| `model` | 必填 | 已发布的公开模型 ID |
+| `messages` | 必填 | 对话消息；支持的模型可接收分块内容 |
+| `stream` | 可选布尔值 | 显式使用 `true` 返回 SSE，`false` 返回完整 JSON |
+| `max_tokens`、`max_completion_tokens` | 可选 | 输出上限，实际行为取决于路由和模型 |
+| `temperature`、`reasoning_effort` | 可选 | 模型支持的生成控制参数 |
+| `tools`、`tool_choice`、`response_format` | 可选 | 模型支持的工具调用与结构化输出 |
 
-SSE 响应在缓冲交付前逐事件执行 `stream_transform`、`response_post` 和 `guardrail_post`。即使后续流式错误或策略阻止结果交付，上游已报告的 Token 用量仍被保留。终止流的错误会记为失败且不会触发再次生成，错误消息中的供应商凭证会被脱敏。客户端取消请求和已识别的出站代理故障不会计入供应商健康故障；代理故障也不会触发故障切换。供应商钩子流超出响应缓冲上限时，仍保留此前完整事件报告的用量，除非插件显式提供了覆盖用量；超限仍记为失败且不重试。插件生成的 SSE 同样接受错误和用量检查；插件显式提供的用量（包括零值）优先于事件用量。插件生成的 JSON 未显式提供用量时，同样使用响应体中的 Token 用量；显式零值仍优先。JSON 响应必须包含一个完整对象，不能尾随其他值或垃圾数据。响应/护栏钩子处理后的最终 JSON 也必须保持对象结构，拒绝 null、数组或标量替换。无效响应会报错且不重新提交，并保留首个完整对象报告的用量，即使随后读取响应失败或超出大小限制。不完整的 JSON 对象不会被虚构用量。用量归因钩子失败时保留原始上游用量。归因成功后若最终响应校验失败，请求和路由尝试仍保留一致的归因用量。直通媒体接口收到 HTTP 408 时不会自动再次提交。审计记录保留脱敏后的策略决定，不保存替换文本或媒体内容。
+流式调用使用 `curl -N` 和 `"stream":true`，持续读取 `choices[].delta` 事件直到完成。不要将其他供应商文档中的默认流式行为视为所有模型的默认值。
 
-媒体模型的流式 Responses API 识别标准 Responses 完成事件、Wan 的 `[DONE]` 标记和 MiniMax 的 `data.status=2` 完成帧。顶层和嵌套的 Token 用量均被保留；未收到完成标记就结束的流记为失败。MiniMax 音乐事件的顶层 `status:"failed"` 表示供应商终止失败：错误消息在交付前脱敏，已知用量继续保留，后续完成标记不能将失败改为成功。除 `[DONE]` 外，非空事件数据必须是一个完整 JSON 对象。格式损坏的事件在转发前被拒绝，已知用量仍会保留，且不会被误判为成功完成；心跳和合法供应商事件保持原样。单个媒体事件上限为 128 MiB。文本模型 Responses 保留原有完成判定规则。
+视觉理解需选择支持图片输入的模型，并将用户消息替换为以下内容：
 
-配置了媒体输出的模型通过 OpenAI 兼容 Chat 接口返回流时，单事件同样支持最多 128 MiB，可接收供应商一次性返回的完整生成音频。文本模型的 Chat 流仍限制单事件 8 MiB，客户端仅添加音频字段不会提高上限。
+```json
+{"role":"user","content":[{"type":"text","text":"Describe this image."},{"type":"image_url","image_url":{"url":"https://your-assets.example/reference.png"}}]}
+```
 
-Token 计费使用上游返回的用量。直通 Images/Audio 和流式媒体 Responses 的计量会保留非零 `output_tokens`，即使 `completion_tokens` 为零占位值，例如 Seedream 的响应。这两个别名不会相加；插件显式用量（包括零）仍优先。语音转录的 JSON 和 SSE 用量保留 `input_token_details.audio_tokens` 中报告的音频 Token 明细。SSE 即使只报告明细而没有主 Token 总量，也会保留明细用于配额计量；后续事件只更新实际报告的明细，包括显式零值，不会清除独立计数。不会据此虚构 Token 总量，显式报告的原生时长仍按秒计费。转录和翻译接口的 API Key 日/月 Token 配额与 TPM 使用相同的取值顺序：上游总量、输入与输出之和、最后才是明细回退；不会改写上游报告的总量，也不会重复累计明细。流式输入和输出计数也独立更新：省略或 null 字段保留先前值，显式正总量优先于主计数之和。即使没有时长或费用，仅报告的非零音频、推理和预测 Token 明细也会保存到用量记录，并显示在请求日志中。二进制音频、字幕文本或未返回 Token 的供应商不会被虚构 Token 成本；请求数/并发限制和请求日志仍生效。按秒、按图、按字符的费用不转换成 Token 单价。为返回 Token 的模型配置 Token 单价，为按时长计量的转录配置下文的音频秒单价；尚未支持的按图/按字符费用与供应商账单核对。
+将素材 URL 替换为可访问的文件。OpenAI-compatible 路由保留所支持的图像/音频字段；转译到原生协议的路由能力更有限。Chat 转 Gemini 接受 base64 图片 data URI，不支持的音频内容会报错而非静默丢弃。详见[用户指南中的协议差异](user-guide.md)。
 
-回归测试使用本地 HTTP 模拟供应商及合成请求，覆盖文件上传、二进制/文本响应、绘图扩展参数、视频异步请求结构、声音素材、大整数、权限拒绝、钩子和缓存跳过。测试不消耗付费生成额度；具体供应商和模型的可用性需使用实际账户验证。
+### Responses、Anthropic 与 Gemini
 
-## 转录上传与计量契约
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/responses" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"text-model","input":"Summarize the benefits of a shared gateway.","stream":false}'
 
-发布时检查公共模型、已导入上游模型与适配器端点的交集。每次音频请求也会依据最新上游库存检查所请求的端点，避免库存更新后继续选择不兼容路由。没有库存或端点元数据的手动配置路由保持兼容，也保留从旧模型分类回填库存的兼容性。
+curl --fail-with-body "$TOKENHUB_URL/v1/messages" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'anthropic-version: 2023-06-01' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"claude-model","max_tokens":256,"messages":[{"role":"user","content":"Hello"}]}'
 
-音频模型发布和供应商库存可调用状态依据适配器实际的媒体/转录能力及模型声明的端点判断。可以在创建转录模型时附带路由，也可以之后单独添加；只有通用媒体能力的适配器不能发布仅声明转录端点的模型。
+curl --fail-with-body "$TOKENHUB_URL/v1beta/models/gemini-model:generateContent" \
+  -H "x-goog-api-key: $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
+```
 
-`/v1/audio/transcriptions` 和 `/v1/audio/translations` 要求适配器显式声明 `transcription` 能力，匹配的 provider-call 钩子处理 JSON 转录扩展时除外。multipart 音频文件对钩子保持不透明，必须使用原生适配器。策略钩子仍可观察文本字段或拒绝 multipart 请求，但返回 multipart 转录响应的钩子会收到 `501 multipart_transcription_hook_unsupported`；独立报告的用量仍会保留用于失败请求计量。OpenAI 及配置的 OpenAI 兼容/本地适配器声明此能力；仅有通用 `media` 能力不够。既有 JSON 厂商扩展保持支持。multipart 必须包含且仅包含一个非空 `file`，最多 25 MiB，扩展名、媒体类型和容器签名须匹配受支持的 FLAC、MP3、MP4、MPEG、MPGA、M4A、OGG、WAV 或 WebM。容器检查不解码音频，能否正常解码由上游验证。MP4/M4A 检查允许 `ftyp` 前存在合法的 `free` 和 `skip` 块，并限制块头遍历量。总请求大小（默认 32 MiB）、128 个 part 和每个文本字段 1 MiB 的限制同时生效。总大小覆盖完整 HTTP 正文，包括最后一个 multipart 边界之后的所有字节，已知长度和分块上传都遵守该限制。上传只在受限内存中处理，网关不创建临时文件。请求钩子的修改也必须保持文件、单字段长度、part 数量和配置的总大小限制；文件字段冲突或修改后超限会在调用上游前返回 `502 gateway_hook_patch_invalid`。原生内容安全脱敏后也会重新检查相同的 multipart 限制；超限请求在调用供应商或供应商钩子前返回 `413 request_too_large`。调用前的大小校验失败不触发故障切换，也不计入供应商资源健康故障。
+分别从 Responses 的 `output`、Anthropic 的 `content[]`、Gemini 的 `candidates[].content.parts[]` 读取结果。后续对话需要保留工具调用与推理字段。Responses 也支持相应供应商的媒体对象。Gemini 原生媒体请求保留 `generationConfig`、`responseModalities`、`imageConfig`、内嵌媒体与思考签名；媒体 JSON/SSE 在媒体大小上限内缓冲交付。
 
-缺失或空文件返回 `400 missing_audio_file`；重复或非法 file 字段返回 `400 invalid_audio_file`；不支持或签名不匹配返回 `415 unsupported_audio_format`；文件超过 25 MiB 返回 `413 audio_file_too_large`；总请求超限返回 `413 request_too_large`。内容安全拒绝保留 `guardrail_blocked`，策略加载或执行失败也保留各自的错误代码。供应商鉴权、限流、模型错误保留分类但使用通用消息，防止上游回显音频或私有 URL 进入错误正文和尝试日志。整体截止时间和空闲超时仍可区分；取消和断流终止上游工作，不重复提交结果未知的转录。
+## 图片
 
-供应商报告的音频秒数保存到持久化计量证据中，不依赖载荷保留开关。原生 `usage:{"type":"duration","seconds":30.5}` 使用公共模型与渠道模型库存上各自的 `metadata.audio_price_usd_per_second` 计价。值为非负十进制字符串，明确免费使用 `"0"`。缺失单价保持待定/未知证据，不回退到 Token 单价。插件声明 `audio_duration_unit:"audio_second"` 但未报告秒数时，同样保留未报告状态，不使用辅助 Token 数量计费。保留小数秒，租户收费与上游成本独立，已计费费用更新正常预算计数器。账单按秒展示原生音频用量和每秒单价，保留小数秒。调用前检查预算，实际时长仅在响应后可知。详细转录顶层 `duration` 也会记录，报告 Token 的响应仍按 Token 计费。仅有 null Token 字段不会把时长计费切换为 Token 计费；显式数值零或 `usage.type:tokens` 仍选择 Token 计费。SSE 的 Token 计数与时长跨事件独立保留，同一事件外层和嵌套 `response` 中的证据也会合并；仅含时长的事件不会清除已报告的 Token，显式声明按时长计量的用量仍按秒计费。供应商钩子的响应超过交付大小限制时，仍保留已知时长证据。非法或负时长返回 `502 invalid_provider_usage`。插件提供的非法时长来源或单位会被拒绝，计量证据只保存固定的非法标记，不保存其中的任意文本。完成追踪和 trace-export 钩子也只接收脱敏后的时长字段；非数值的原始时长文本会被省略，关闭载荷捕获时同样如此。直通媒体审计不保存上传音频、转录文本或任意上游元数据。
+### 生成图片
 
-使用有权限的项目密钥和已发布模型，在 `sdk/` 运行 `TOKENHUB_TRANSCRIPTION_MODEL=gpt-4o-transcribe npm run test:transcriptions`。Node 客户端上传合成静音 WAV 并检查 JSON 交付、鉴权和文件校验；后端假 HTTP 测试通过 OpenAI、兼容与本地渠道运行同一客户端，无需真实凭证或付费推理。
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"image-model","prompt":"A watercolor lighthouse at sunrise","n":1,"size":"16:9","resolution":"2k"}'
+```
+
+示例通过公开别名使用 APIMart `gpt-image-2` 的参数风格。其他供应商可能要求 `1024x1024` 等像素尺寸，不应混用不同模型的参数约定。
+
+| 字段 | 说明 |
+| --- | --- |
+| `model`、`prompt` | 公开模型与画面描述 |
+| `n` | 图片数量，最大值由上游限制 |
+| `size`、`resolution`、`quality` | 上游定义的宽高比、像素尺寸、分辨率档位和质量 |
+| `image_urls` 等参考字段 | 模型支持时使用的参考图片 |
+| `response_format` | 上游支持的格式，如 `url`、`b64_json` 或 `base64` |
+
+同步响应通常包含 `data[].url` 或 `data[].b64_json`；异步响应包含 `data[].task_id`，需按下文任务接口逐个查询。供应商结果字段会保留。TokenHub 不自动下载响应 URL，也不延长素材有效期。
+
+### 编辑图片与使用蒙版
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/images/edits" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -F 'model=image-model' \
+  -F 'prompt=Replace the background with a sunrise sky' \
+  -F 'image=@input.png' \
+  -F 'mask=@mask.png'
+```
+
+使用本地文件和支持 multipart 编辑的路由，由 cURL 自动生成 multipart boundary。兼容供应商还可使用 JSON 编辑和 `/v1/images/variations`；蒙版、重复图片字段及其他参数遵循该供应商契约。托管图片任务继续使用独立的单图校验、素材存储与 `Prefer: respond-async` 行为。
+
+## 音频
+
+### 文字转语音
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/audio/speech" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"speech-model","input":"Hello from TokenHub.","voice":"alloy","response_format":"opus","speed":1}' \
+  --output speech.opus
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `model` | 已发布的语音模型 |
+| `input` | 待合成文本，长度由上游限制 |
+| `voice` | 上游音色 ID；`alloy` 只是示例，并非通用音色 |
+| `response_format` | 模型支持的音频格式，文件扩展名应匹配 |
+| `speed` | 模型支持时使用的语速 |
+
+成功响应为音频字节，保留上游 Content-Type，不包装成 JSON 或 base64。使用保存的文件前先检查 HTTP 状态。供应商支持时可使用 SSE 语音，但直通媒体采用缓冲交付，不提供低延迟分块播放。
+
+### 语音识别与翻译
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/audio/transcriptions" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -F 'model=transcription-model' \
+  -F 'file=@sample.wav' \
+  -F 'response_format=json'
+```
+
+`file` 为本地上传文件，`model` 为公开语音识别模型。可选的 `language`、`prompt`、`response_format` 和重复的 `timestamp_granularities[]` 遵循上游契约。JSON 通常返回 `{"text":"..."}`；文本、SRT、VTT、verbose JSON 是否可用由供应商决定。音频翻译使用 `/v1/audio/translations` 及兼容模型，目标语言规则取决于模型。
+
+multipart 转录和翻译必须包含且仅包含一个非空 `file`，最多 25 MiB，格式为 FLAC、MP3、MP4、MPEG、MPGA、M4A、OGG、WAV 或 WebM。扩展名、媒体类型和容器签名须一致，音频解码支持由上游检查，总请求大小限制同时生效。缺失文件返回 `400 missing_audio_file`，不支持的格式返回 `415 unsupported_audio_format`，文件超限返回 `413 audio_file_too_large`。
+
+发布的路由必须由显式支持 `transcription` 的适配器处理，模型端点须包含所请求的操作。OpenAI 及配置的 OpenAI 兼容/本地适配器支持此能力，每次请求还会检查最新导入的端点元数据。JSON 厂商扩展可由匹配的供应商调用钩子处理，multipart 上传必须使用原生适配器。发布、钩子、上传校验和 SDK 冒烟测试详见[转录上传与计量契约](media-api-operations.md#转录上传与计量契约)。
+
+声音克隆与音乐可继续通过已有供应商特定的 Chat/Responses 工作流使用，见[媒体运维说明](media-api-operations.md)。APIMart 的 `/v1/music/*`、声音/素材管理、上传及 webhook 管理未作为通用 TokenHub API 接口族实现。
+
+## 视频与 Seedance
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"seedance-video","prompt":"A calm ocean at sunrise, slow camera movement","duration":5,"size":"16:9","resolution":"720p","generate_audio":true}'
+```
+
+将 `seedance-video` 映射到 APIMart `seedance-2.0` 等上游模型。其他兼容视频模型使用同一接口，参数按各自契约填写。
+
+| 字段 | 说明 |
+| --- | --- |
+| `model`、`prompt` | 公开模型与场景描述 |
+| `duration` | 期望秒数，可选范围由模型决定 |
+| `size`、`resolution` | 模型定义的宽高比与分辨率 |
+| `generate_audio` | 模型支持时生成配套声音 |
+| `image_urls`、`video_urls`、`audio_urls` | 模型支持的参考素材，需使用上游可访问的 URL |
+| 其他字段 | 保留供应商扩展，由上游校验 |
+
+首尾帧、多参考素材、时长范围和素材组合限制并非所有模型通用。TokenHub 未实现火山引擎原生 `/content_generation/tasks` 协议。
+
+DMXAPI 的 Seedance 仍可通过 `/v1/responses` 使用，分别调用生成模型与 `seedance-2-0-get` 等辅助模型。其任务 ID 与查询规则不同于 `/v1/tasks`，见 [DMXAPI 配置与示例](media-api-operations.md)。
+
+## 提交与查询异步任务
+
+APIMart 兼容图片/视频提交后，回执结构如下：
+
+```json
+{"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
+```
+
+回执表示上游已接受任务，不表示生成完成。TokenHub 将供应商任务 ID 替换为不透明 ID，持久化保存提交项目、密钥及供应商/资源绑定。使用**提交时的同一项目 API Key**和原样返回的 ID 查询：
+
+```bash
+export TOKENHUB_TASK_ID='TASK_ID_FROM_SUBMISSION'
+curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY"
+```
+
+可选查询参数 `language` 支持 `en`、`zh`、`ja`、`ko`、`ru`、`fr`、`de`、`id`、`pt`、`es`，用于上游任务错误文本的语言。重复传入 `language` 或使用其他查询参数会返回 `400 invalid_task_query`。
+
+| 响应字段 | 说明 |
+| --- | --- |
+| `data.id` | 此查询流程使用的 TokenHub 任务 ID |
+| `data.status` | 上游任务状态 |
+| `data.progress` | 可选的上游进度，不是网关估算值 |
+| `data.result` | 模型特定结果；APIMart 可返回 `images[]` 或 `videos[]`，其中 `url` 可能是数组 |
+| `data.error` | 存在时表示上游任务失败信息 |
+| `data.cost`、`data.credits_cost` | 上游元数据，不是 TokenHub 账单 |
+
+对 `pending`/`processing` 设置总超时和查询间隔，例如每 3–5 秒查询并逐步退避。`completed` 表示成功，`failed`、`cancelled` 为终止失败状态；其他非终止状态按上游契约处理。及时保存结果 URL，并遵守 `expires_at`。HTTP 200 也可能包含失败任务，必须同时检查 HTTP 状态和 `data.status`。
+
+查询始终使用原路由/账户，不切换到账户之外的其他路由。密钥必须有效且继续拥有模型权限。即使属于同一项目，另一把密钥也不能查询任务；不能直接传入任意供应商任务 ID。路由或供应商配置变化可能使旧任务不可查询。后台生成由上游执行；TokenHub 不新增任务执行器、取消或完成回调服务。在 TokenHub 外配置的供应商回调使用供应商自己的 ID 和规则。
+
+任务绑定在**提交后 30 天**过期，与上游素材 URL 的有效期分别计算。过期、不存在或无权访问的任务返回 `404 media_task_not_found`；轮换项目密钥不会将旧任务转移给新密钥。更换原供应商凭证、URL、请求头或其他账户配置后，查询返回 `503 media_task_route_unavailable`，即使替换后的账户仍支持同一模型也不例外。绑定保存失败时，提交返回 `503 media_task_binding_unavailable`；上游可能已经接受生成，应先检查日志再决定是否重试。
+
+### 继续生成或重新生成视频
+
+对于支持引用先前任务的视频模型，在相应顶层字段中传入**来源提交返回的 TokenHub 任务 ID**：
+
+| 字段 | 上游操作示例 |
+| --- | --- |
+| `draft_task_id` | Seedance 2.5 草稿转正式视频 |
+| `draft_from_task_id` | FLUX.3 草稿转正式视频 |
+| `extend_from_task_id` | Gemini Omni 或 PixVerse 视频延长 |
+| `source_task_id` | 使用不同目标模型的 MiniMax H3 重新生成 |
+
+这些字段仅在 `POST /v1/videos/generations` 中识别。例如，`{"model":"followup-video","source_task_id":"task_example"}` 使用管理员发布的兼容重新生成模型别名。任务完成状态、有效时长、分辨率和参数限制仍由上游模型验证，并非每个模型都支持所有字段。提示词、素材 URL 和嵌套扩展标识符不会被当成任务引用。
+
+必须使用同一把项目 API 密钥，保留来源和目标模型的权限，并在任务绑定的 30 天有效期内引用。格式错误、不存在、过期、属于其他密钥或直接传入的供应商任务 ID，会在发起生成前返回 `404 media_task_not_found`。TokenHub 将授权通过的任务 ID 转换为供应商 ID，并使用原供应商账户/资源；该账户支持后续操作时，目标别名、路由和上游模型可以不同。TokenHub 不会切换到其他账户。凭证或配置等变化导致账户指纹改变时，返回 `503 media_task_route_unavailable`；原账户不可用时，仍适用普通的路由、策略和容量限制错误。
+
+多个引用指向不同账户时，返回 `400 invalid_media_task_reference`。其余有效引用的组合是否受支持由上游判断。每次接受的后续生成都会创建新任务，并可能产生新的上游费用。请求钩子仍使用公开任务 ID，供应商调用钩子收到转换后的供应商 ID。
+
+以下三种异步机制不能混用：
+
+| 机制 | ID 与查询方式 |
+| --- | --- |
+| APIMart 兼容图片/视频任务 | 返回的 `task_id`；`GET /v1/tasks/{task_id}` |
+| TokenHub 托管图片任务 | 使用[生图指南](codex-image-generation-api.md)的托管任务契约 |
+| Responses 的 `background:true` | 本地 Responses 任务；完成只表示上游 API 调用结束，不表示供应商渲染完成 |
+
+后台媒体 Responses 完成后的查询响应通过 `x-tokenhub-upstream-response-id` 暴露有效的供应商根 ID；应将其交给供应商辅助查询模型，不能用于 `/v1/tasks`。
+
+## 错误、限制与计费
+
+网关错误通常使用以下结构；原生 Anthropic/Gemini 使用对应协议的错误格式：
+
+```json
+{"error":{"message":"Model is not allowed for this API key","type":"model_not_allowed","code":"model_not_allowed"},"request_id":"REQUEST_ID"}
+```
+
+| HTTP 状态 | 常见原因 | 处理方式 |
+| --- | --- | --- |
+| `400` | JSON、multipart 控制字段或参数错误 | 按所选模型修正请求 |
+| `401` / `403` | 密钥无效、禁用、过期或模型未授权 | 检查项目密钥和模型权限 |
+| `404` | 任务/模型不存在或不可访问 | 核对 ID 和提交密钥 |
+| `413` | 请求超过大小限制 | 减少上传大小或由管理员调整上限 |
+| `429` | 速率、并发、配额或预算限制 | 检查错误码与重试响应头 |
+| `501` | 路由不支持该协议 | 配置支持的供应商/路由 |
+| `502` / `503` | 上游输出无效、无可用路由或供应商失败 | 根据请求 ID 查看请求日志 |
+
+直通媒体请求受 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 限制，默认 32 MiB；multipart 最多 128 个部分，每个文本字段最多 1 MiB。直通响应最多缓冲 128 MiB。托管图片另有独立限制，上游文件和格式上限可能更低。multipart 中 `model`、`stream` 只能出现一次；JSON 的 `stream` 必须为布尔值。
+
+一次提交最多绑定 128 个返回任务 ID。无效任务 ID 或超出此数量的任务批次返回 `502 invalid_media_task`，这不代表上游已取消生成。
+
+统一执行鉴权、模型白名单、配额、限流、文本策略、作用域钩子、受保护的出站传输和日志。文件字节不参与文本策略解析。不会转发客户端凭证或 Cookie，而是使用配置好的供应商凭证。结果不明确的生成失败不会自动换路由重新提交。客户端超时后也应避免盲目重试，上游可能已经接受计费任务。
+
+Token 计量以返回的用量为准；二进制音频、字幕或没有用量信息的供应商不会产生虚构的 Token 费用。轮询不会重复计入生成 Token 用量。按时长计量的转录在公共模型和渠道模型库存上分别使用 `metadata.audio_price_usd_per_second` 秒单价，保留小数秒；缺失单价保持未知，不回退到 Token 单价。按图、字符或供应商积分计费的费用不会自动折算为 Token 单价，尚未支持的计量单位应与上游账单核对。时长计费、Token 明细配额、钩子与流校验细节见[媒体协议运维](media-api-operations.md)。
+
+## 组合调用示例
+
+| 目标 | 调用顺序 |
+| --- | --- |
+| 对话助手 | 查询模型 → 发送对话 → 保留工具调用和推理上下文 |
+| 图片生成 | 提交 Images → 使用同步结果或逐个查询任务 ID |
+| 配音视频 | 生成语音 → 将音频放到供应商可访问的位置 → 提交支持音频参考的视频模型 → 轮询 → 保存素材 |
+| 会议纪要 | 上传录音转写 → 将文本交给 Chat/Responses |
+| DMXAPI Seedance | 同一账户发布生成/查询模型 → 提交 Responses → 用供应商 ID 查询 |
+
+回归测试使用本地模拟供应商，验证协议、访问隔离、上传、钩子和计量；没有验证付费生成或真实账户下全部模型的可用性。参考来源：[APIMart 文本](https://docs.apimart.ai/en/api-reference/texts/general/chat-completions.md)、[图片](https://docs.apimart.ai/en/api-reference/images/gpt-image-2/generation.md)、[语音](https://docs.apimart.ai/en/api-reference/audios/tts.md)、[Seedance](https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation.md)、[任务查询](https://docs.apimart.ai/en/api-reference/tasks/status.md)。

@@ -1,109 +1,302 @@
-# 画像・音声・動画・音楽 API
+# テキスト・画像・音声・動画 API ガイド
 
 言語：[English](../media-apis.md) | [简体中文](../zh-CN/media-apis.md) | 日本語
 
-TokenHub は [DMXAPI ドキュメント](https://doc.dmxapi.cn/jichu.html)で使用されるメディアプロトコルに対応します。プロバイダーを設定し、生成、アップロード、照会、ダウンロードの各モデルを公開してから呼び出してください。対応範囲はプロトコル互換性です。モデルの提供状況とパラメーターの仕様は上流プロバイダーに依存し、認証情報や料金は同梱しません。
+TokenHub の共通ゲートウェイとプロジェクト API キーで、許可されたテキスト・メディアモデルを呼び出します。このガイドは [APIMart API マニュアル](https://docs.apimart.ai/cn/index)の用途別構成を参考にしながら、TokenHub 独自の認証、ルーティング、タスク分離、制限を説明します。
 
-## エンドポイント
+**エンドポイントへの対応は、モデルが利用可能であることを意味しません。** 管理者による上流認証情報の設定、公開モデル ID の登録、上流モデルへのマッピング、キーへのアクセス許可が必要です。形式、長さ、解像度、音声、モデルのバージョン、素材の有効期限は上流に依存します。TokenHub はベンダーアカウントを同梱せず、APIMart の全モデル・機能を保証しません。
 
-| エンドポイント | 用途と例 |
-| --- | --- |
-| `POST /v1/images/generations` | GPT Image、Seedream/即夢、Qwen Image。独自パラメーター、参照画像、複数結果、URL、base64 を保持 |
-| `POST /v1/images/edits` | JSON または multipart による画像編集。マスクとファイルを保持 |
-| `POST /v1/images/variations` | 互換プロバイダーによる画像バリエーション |
-| `POST /v1/audio/speech` | MiniMax speech-2.6 などの音声合成。上流の音声バイト列を返す |
-| `POST /v1/audio/transcriptions` | gpt-4o-transcribe などの multipart 音声認識。JSON、テキスト、SRT、VTT |
-| `POST /v1/audio/translations` | 互換プロバイダーによる音声翻訳 |
-| `POST /v1/responses` | Seedance、Hailuo、Kling、Vidu、PixVerse/Paiwo、Wan、HappyHorse 動画。Seedream、Wan、Qwen、Agnes、SciDraw 画像。MiniMax 音声アップロード/クローン、高度な音声合成、音楽/歌詞、Mureka |
-| `POST /v1/chat/completions` | MiMo 音声合成/声の設計/クローン、Qwen Omni 音声説明とマルチモーダル音声、Recraft 画像 |
-| `POST /v1beta/models/{model}:generateContent` と `:streamGenerateContent` | Gemini ネイティブ画像生成/編集とマルチモーダル出力 |
+## API を選ぶ
 
-各モデルの上流ドキュメントで指定されたエンドポイントを使用します。DMXAPI の動画例は `/v1/responses` で作成と照会を行うため、新たな `/v1/videos` は不要です。既存の Chat、Responses、Gemini API のストリーミングと拡張フィールドは維持されます。OpenAPI 仕様は Chat の `input_audio` と、Wan メッセージや MiniMax 音声アップロードなどのプロバイダー固有 Responses 入出力オブジェクトを含みます。メディアフィールドは各プロバイダーの規則で検証されます。
+| 用途 | メソッドとパス | 結果 |
+| --- | --- | --- |
+| 利用可能モデルの確認 | `GET /v1/models` | キーがアクセス可能なモデル |
+| テキスト・画像理解・ツール呼び出し | `POST /v1/chat/completions` | Chat JSON または SSE |
+| Responses 互換リクエスト | `POST /v1/responses` | Response JSON または SSE。任意でローカルバックグラウンドジョブ |
+| Anthropic Messages | `POST /v1/messages` | Anthropic JSON または SSE |
+| Gemini ネイティブリクエスト | `POST /v1beta/models/{model}:generateContent` | Gemini ネイティブ JSON |
+| Gemini ネイティブストリーミング | `POST /v1beta/models/{model}:streamGenerateContent?alt=sse` | Gemini ネイティブ SSE |
+| 画像生成 | `POST /v1/images/generations` | 画像または上流タスクの受付結果 |
+| 画像編集・バリエーション | `POST /v1/images/edits`、`POST /v1/images/variations` | プロバイダーの画像応答 |
+| 音声合成 | `POST /v1/audio/speech` | 音声バイト列またはプロバイダー対応ストリーム |
+| 音声認識・翻訳 | `POST /v1/audio/transcriptions`、`POST /v1/audio/translations` | JSON、テキスト、字幕 |
+| 動画生成 | `POST /v1/videos/generations` | 上流タスクの受付結果 |
+| 画像・動画タスクの照会 | `GET /v1/tasks/{task_id}` | プロバイダーの状態と結果 |
 
-## プロバイダーとモデルの設定
+ベクトルと文書の順位付けは[埋め込み](embeddings.md)と[再ランキング](rerank.md)を参照してください。デプロイ先の対話式 API 仕様は `/docs`、機械可読スキーマは `/openapi.json` にあります。
 
-1. **OpenAI-compatible** プロバイダーに `https://www.dmxapi.cn/v1` と上流の認証情報を設定します。Gemini ネイティブの例では **Gemini** プロバイダーを使い、ベース URL を `https://www.dmxapi.cn/v1beta` に設定し、同じ上流アカウントを使用します。
-2. 公開モデルのルートを正確な上流モデル ID にマッピングします。モダリティは `image`、`video`、`audio`（音楽は `audio`）を選びます。マルチモーダルチャットではこれらの出力モダリティを設定することもできます。該当する Chat/Responses 要求は応答キャッシュを使用せず、生成結果の再利用や古いタスク状態を防ぎます。
-3. `seedance-2-0-get`、`MiniMax-Hailuo-query`、`MiniMax-Hailuo-get`、音声/素材アップロードなどの補助モデルも公開します。プロジェクトキーには処理全体で必要なモデルの権限を付与します。
-4. 生成と補助モデルのルートを同じプロバイダーアカウント/リソースに固定します。タスク ID、ファイル ID、大きな JSON 整数はそのまま渡されます。TokenHub のローカルバックグラウンドジョブへの変換や、上流タスクの所有権の自動バインドは行いません。タスクの名前空間を分離する必要があるテナントには、別々の上流アカウントを使用してください。
+## 認証とクイックスタート
 
-Gemini ネイティブメディアでは、公開モデルにメディアモダリティまたは出力モダリティを設定し、`/v1beta/models/{model}:generateContent` または `:streamGenerateContent?alt=sse` を呼び出します。これらの要求はキャッシュを使用せず、ネイティブの `generationConfig`（`responseModalities` と `imageConfig` を含む）、インラインメディア、思考署名を保持します。上流モデルはルートで選択されます。ネイティブ JSON/SSE 応答は生成メディアを保持し、`usageMetadata` で Token を計量します。両形式とも 128 MiB のメディア上限内でバッファリングして配信し、認証、テキストポリシー、スコープ付きフック、保護された送信経路を適用します。
-
-Gemini ネイティブメディアストリームは、終端エラーのイベント名、`type:"error"` または `*.failed` のペイロード、null 以外のネストされた `response.error` を拒否します。プロバイダーフックの出力にも適用し、候補が終了理由を返した後でも失敗として扱います。既知の Token 使用量と明示的なプラグイン使用量の上書きを保持し、エラー内の認証情報は返しません。ネストされた `response.error:null` は成功イベントとして引き続き許可します。
-
-管理対象の `gpt-image-2`、Codex サブスクリプション、プラグイン画像プロファイルは、従来の検証、単一画像ジョブ、保存アセット、`Prefer: respond-async` を維持します。同名の上流モデルで完全な Images 仕様を使用する場合は、別の公開エイリアス（例：`vendor-gpt-image`）をその上流 ID にマッピングします。通常の画像ルートはプロバイダーの結果を直接返します。ローカルジョブの照会と TokenHub の署名付き画像 URL は管理対象ジョブ専用です。直接画像要求は Qwen Image の `base64` など、プロバイダー固有の `response_format` 文字列を受け付けます。組み込みの管理対象画像は引き続き `url` または `b64_json` のみを受け付け、管理対象プラグインモデルは設定された形式を検証します。
-
-`/v1/responses` で `background:true` を指定すると、応答本文の `id` は TokenHub のローカル要求ジョブを識別します。完了したメディアジョブの照会応答では、`x-tokenhub-upstream-response-id` にプロバイダーの元のルート ID を返します。この ID を補助照会モデルに渡してください。ローカルジョブの完了は上流 API 呼び出しの終了を意味し、生成タスクは引き続きポーリングが必要な場合があります。文字列と数値の ID は正確に保持します。非スカラー ID、制御文字や前後の空白を含む値、2048 バイトを超える値ではヘッダーを省略します。
-
-## 呼び出し例
-
-環境変数 `TOKENHUB_API_KEY` にプロジェクトキーを設定します。以下のモデルは公開済みで、キーからのアクセスが許可されている必要があります。
+コンソールのポートではなくゲートウェイのアドレスを使います。以下の例は `/v1` を含まないルート URL です。OpenAI SDK の `base_url` には `$TOKENHUB_URL/v1` を指定します。プロジェクト API キーは**キー管理**から取得します。コンソールのログイントークンではモデル API を呼び出せません。
 
 ```bash
-curl https://tokenhub.example/v1/audio/speech \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"speech-2.6-hd","input":"Hello from TokenHub","voice":"male-qn-qingse","response_format":"mp3"}' \
-  --output speech.mp3
+export TOKENHUB_URL='http://localhost:8080'
+export TOKENHUB_API_KEY='YOUR_TOKENHUB_PROJECT_KEY'
 
-curl https://tokenhub.example/v1/audio/transcriptions \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -F model=gpt-4o-transcribe -F file=@sample.wav
-
-curl https://tokenhub.example/v1/responses \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"doubao-seedance-2-0-260128","input":[{"type":"text","text":"A calm ocean at sunrise"}],"duration":4,"resolution":"720p","generate_audio":true}'
-
-# 返された id を保存し、上流が完了を報告するまで照会します。
-curl https://tokenhub.example/v1/responses \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"seedance-2-0-get","input":"TASK_ID_FROM_SUBMISSION"}'
+curl --fail-with-body "$TOKENHUB_URL/v1/models" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY"
 ```
 
-## 制限・計量・検証
+返された `data[].id` を `model` に指定します。以下の `text-model`、`image-model`、`speech-model`、`transcription-model`、`seedance-video` は、公開するか実際の名前に置き換える**公開エイリアス**です。上流モデル ID と同名である必要はありません。
 
-新しい直接メディアルートには `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES`（既定 32 MiB）が適用されます。multipart は最大 128 パート、テキストフィールドは各 1 MiB です。応答は最大 128 MiB までバッファリングしてから返し、上流の Content-Type を保持します。この経路は低遅延のチャンク配信を提供しません。管理対象画像の従来の制限は変更されず、応答内の URL を TokenHub がダウンロードすることもありません。
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"text-model","messages":[{"role":"user","content":"Explain an API gateway in one sentence."}],"stream":false}'
+```
 
-multipart の `model` と `stream` は単一のテキストフィールドである必要があります。`/v1/audio/speech` の `stream_format:"sse"` もストリーミングの受付とプロバイダーフックを選択します。`stream_format` は単一の空でないテキスト値とし、要求フックは実効ストリームモードを変更できません。JSON の `stream` は真偽値、multipart の `stream` は真偽値の文字列を指定します。曖昧な制御フィールドはルーティング前に拒否し、要求フックの変更にも同じ検証を適用します。テキストポリシーは、繰り返された multipart フィールドを含め、`input`、`instructions`、`prompt`、`negative_prompt`、`text` のすべての値を検査し、`timestamp_granularities[]` などの繰り返しオプションは保持します。
+テキストは `choices[].message.content` から読み取ります。調査用にリクエスト ID を保存し、**リクエストログ**で確認します。`/v1/models` への表示は可視性と利用条件を満たすルートの存在を示しますが、上流の全機能の稼働を保証しません。APIMart の `expand` メタデータ形式とアカウント残高 API は実装していません。
 
-認証、モデル許可リスト、クォータ、スコープ付きルーティング、プロバイダーリソースの容量、テキスト事前ポリシー、応答フック、使用量の帰属が適用されます。要求フックには JSON/テキストフィールドが渡され、multipart ファイルのバイト列は不透明です。要求ヘッダーのフックデータでは、Gemini の `X-Goog-Api-Key` を含むクライアント認証値をマスクし、上流呼び出しには設定済みのプロバイダー認証情報を使用します。メディア Responses のテキストポリシーは、プロバイダー固有のプロンプト、Kling の `multi_prompt[].prompt` ショット説明、歌詞、Wan のネストしたメッセージや `input.input.prompt` ラッパー、`parameters.negative_prompt`も検査し、不透明なアセット/タスク ID は保持します。直接メディアの監査にはモデル、機密内容を除いたポリシー判断、Content-Type、バイト数を記録し、アップロード/生成メディアは保存しません。クライアントの Cookie や認証ヘッダーを転送せず、設定済みのプロバイダー認証情報と保護された上流トランスポートを使用します。生成結果が不明なメディア要求の失敗時は、Chat/Responses のメディアモデルも含め、別ルートで自動的に再生成しません。明確な認証拒否やレート制限の場合は引き続きフェイルオーバーできます。
+## プロバイダー設定とモデル選択
 
-一致する `provider_call` フックは直接メディアアダプターより先に実行され、ルートの拒否、スキップ、処理を行えます。直接画像フックは実際のエンドポイントプロトコル（`images/generations`、`images/edits`、`images/variations`）でスコープを照合し、管理対象画像ジョブは引き続き `images/generations` を使用します。非ストリーミングフックはプロバイダーの JSON 応答、または文字列の `data_base64` と `content_type` を含むバイナリエンベロープを返します。ストリーミングフックは `stream_events` を返し、配信は引き続きバッファリングされます。バイナリやテキスト応答を処理する応答/ガードレールフックは、有効な `data_base64` を保持する必要があります。不正な変更はエラーとなり、空の成功応答にはなりません。プロバイダーフックと応答フックは、いずれも Base64 内の CR/LF 改行を許可しますが、パディング後に追加されたエンコードデータは拒否します。128 MiB の応答上限は両方のフック出力に適用し、シリアライズした JSON またはデコード後のバイナリのバイト数で判定します。Base64 の改行はサイズに含めません。上限を超える置換結果はエラーになりますが、報告済みの使用量は保持します。
+APIMart 互換アカウントには **OpenAI-compatible** プロバイダーを追加し、ベース URL を `https://api.apimart.ai/v1` に設定して認証情報を登録します。例えば `text-model` を利用可能なテキストモデルへ、`image-model` を `gpt-image-2` へ、`seedance-video` を `seedance-2.0` へマッピングします。用途に応じて `image`、`audio`、`video` を設定し、マルチモーダルチャットには入出力モダリティも設定します。メディアの Chat/Responses は応答キャッシュを使用しません。
 
-非ストリーミングのプロバイダーフックが返す JSON が応答サイズ上限を超えた場合も、要求とルート試行の両方の記録に報告済みの Token 使用量を保持します。Gemini ネイティブの `usageMetadata` にも適用し、ゼロを含む明示的なプラグイン使用量を優先します。応答は失敗のままで、再試行やプロバイダーの健全性へのペナルティは発生しません。
+Anthropic と Gemini のネイティブ要求には、そのプロトコルと応答形式に対応するルートが必要です。OpenAI-compatible のベース URL 設定だけではネイティブ互換性は確認できません。アダプターと SDK 設定は[利用者ガイド](user-guide.md)を参照してください。ベンダーの例ではテキスト応答にラッパーが付くこともあるため、クライアントが期待する形式を返すルートか確認してください。
 
-Responses の OpenAPI 定義では `model` が必須で、`input` の要否は選択したプロバイダーモデルに依存します。例えば DMX の歌詞・音楽生成は `input` を省略し、プロンプトなしで生成できます。省略した入力には空の値を追加せず、そのまま転送します。`input` 配列は、Vidu Q3 の開始・終了フレームからの動画生成で使う画像 URL や data URI の文字列にも対応します。Responses の `output` は標準項目の配列またはプロバイダー固有のオブジェクトを受け付けます。例えば Qwen Image 3.0 の画像結果は `output.choices[].message.content[].image` にあります。完了したバックグラウンドジョブの応答も同じ構造に対応します。出力配列は Seedream の `{"type":"image_url","image_url":{"url":"..."}}` 形式の画像結果にも対応します。
+公開名 `gpt-image-2`、Codex サブスクリプション画像モデル、管理対象画像プラグインは TokenHub の管理対象画像フローを使います。APIMart 非同期生成など上流 Images の全仕様を使う場合は、`image-model` など別のエイリアスを公開し、`gpt-image-2` にマッピングします。[管理対象画像ガイド](user-guide.md#codex-サブスクリプション画像生成)を参照してください。
 
-JSON 応答処理は `application/json` と `+json` 接尾辞を持つ MIME タイプを認識し、パラメーターや大文字・小文字の違いにも対応します。同じ検証、Token 使用量の抽出、JSON フック形式を適用し、元の Content-Type を保持します。JSON の基本タイプを認識できる場合は、パラメーターが不正または重複していても検証を適用します。パラメーター内の `application/json` という文字列だけで、テキストやバイナリ応答を JSON と判断しません。
+アップグレード時は通常の起動時マイグレーションで v8 `add-media-task-bindings` を適用します。タスク関連付けは再起動後も保持されます。保存した上流 ID を復号できるようサーバーの秘密鍵を維持してください。新しい環境変数は不要です。
 
-直接メディア JSON のトップレベル `error` が null 以外の場合、上流の HTTP ステータスが 200 でも失敗として扱います。プロバイダーフックの出力と応答・ガードレールフック後の最終結果にも適用します。上流の認証情報を含まない汎用メッセージを返し、報告済みの Token 使用量を保持して生成を再送しません。`error:null` は成功応答として引き続き許可します。
+## テキストとマルチモーダル理解
 
-SSE 応答は `text/event-stream` の MIME 基本タイプで識別します。パラメーターが不正または重複していてもイベント検証、Token 計量、イベントフックを適用し、処理の迂回を防ぎます。パラメーター値に `text/event-stream` が含まれていても、テキストやバイナリ応答を SSE と誤認しません。
+### Chat Completions
 
-直接メディア SSE では、`[DONE]` 以外の空でないイベントデータは完全な JSON オブジェクト 1 個である必要があります。上流またはプロバイダーフックの不正なイベントはバッファ配信前に失敗とし、不正な後続データより前の完全なオブジェクトを含め、既知の使用量を保持します。応答・ストリームフックが有効なイベントを不正なデータや成功扱いのエラーストリームに変更した場合も拒否し、最終検証では元の上流使用量を保持します。
+| フィールド | 要件 | 意味 |
+| --- | --- | --- |
+| `model` | 必須 | 公開モデル ID |
+| `messages` | 必須 | 会話。対応モデルではコンテンツパーツを使用可能 |
+| `stream` | 任意の boolean | SSE は明示的に `true`、単一 JSON は `false` |
+| `max_tokens`、`max_completion_tokens` | 任意 | 出力上限。実際の挙動はルートとモデルに依存 |
+| `temperature`、`reasoning_effort` | 任意 | モデルに応じた生成制御 |
+| `tools`、`tool_choice`、`response_format` | 任意 | 対応モデルのツール・構造化出力 |
 
-SSE 応答では、バッファリングされた結果を配信する前に、各イベントへ `stream_transform`、`response_post`、`guardrail_post` を適用します。後続のストリームエラーやポリシーで配信が停止しても、上流が報告した Token 使用量は保持します。終端エラーは失敗として記録し、再生成を行わず、エラーメッセージ内のプロバイダー認証情報をマスクします。クライアントによるキャンセルと分類済みの送信プロキシ障害はプロバイダーの正常性エラーに数えず、プロキシ障害時もフェイルオーバーしません。プロバイダーフックのストリームが応答バッファ上限を超えても、明示的なプラグイン使用量がなければ、それ以前の完全なイベントが報告した使用量を保持します。上限超過は失敗として扱い、再試行しません。プラグインが生成した SSE にも同じエラーと使用量の検査を適用し、ゼロを含む明示的なプラグイン使用量はイベント内の使用量より優先します。プラグインが生成した JSON も、明示的な使用量がなければ応答本文の Token 使用量を使用し、明示的なゼロは引き続き優先します。JSON 応答は完全なオブジェクトを 1 個だけ含み、後続の値や不正なデータを許可しません。応答/ガードレールフック処理後の最終 JSON もオブジェクトである必要があり、null、配列、スカラーへの置換は拒否します。不正な応答は再送せず失敗とし、その後の読み取り失敗やサイズ上限超過があっても、先頭の完全なオブジェクトが報告した使用量を保持します。不完全な JSON オブジェクトから架空の使用量は作りません。使用量帰属フックが失敗しても元の上流使用量を保持します。帰属後に最終応答の検証が失敗しても、要求とルート試行には同じ帰属済み使用量を記録します。直接メディア要求の HTTP 408 応答では自動再送しません。監査記録には機密内容を除いたポリシー判断を保持し、置換テキストやメディア内容は保存しません。
+ストリーミングは `curl -N` と `"stream":true` を使い、完了まで `choices[].delta` イベントを処理します。他社の文書にある既定のストリーミング動作を全モデル共通と考えないでください。
 
-メディアモデルのストリーミング Responses API は、標準 Responses 完了イベント、Wan の `[DONE]` マーカー、MiniMax の `data.status=2` 完了フレームを認識します。トップレベルおよびネストされた Token 使用量を保持し、完了マーカーなしで終了したストリームは失敗として記録します。MiniMax 音楽イベントのトップレベル `status:"failed"` はプロバイダーの終端エラーとして扱い、配信前にエラーメッセージの機密情報を除去して既知の使用量を保持します。後続の完了マーカーで成功に変わることはありません。`[DONE]` 以外の空でないイベントデータは完全な JSON オブジェクト 1 個である必要があります。不正なイベントは転送前に拒否し、既知の使用量を保持して成功完了と誤判定しません。ハートビートと有効なプロバイダーイベントはそのまま保持します。メディアイベントの上限は 1 件あたり 128 MiB です。テキストモデルの Responses は従来の完了判定を維持します。
+画像理解では、画像入力に対応するモデルを選び、ユーザーメッセージを次のパーツに置き換えます。
 
-メディア出力を設定したモデルの OpenAI 互換 Chat ストリームも、1 イベントあたり最大 128 MiB を許可し、生成した音声全体を 1 イベントで返すプロバイダーに対応します。テキストモデルの Chat ストリームは 8 MiB の上限を維持し、クライアントの音声フィールドだけでは上限を拡張しません。
+```json
+{"role":"user","content":[{"type":"text","text":"Describe this image."},{"type":"image_url","image_url":{"url":"https://your-assets.example/reference.png"}}]}
+```
 
-Token 課金は上流が報告する使用量に基づきます。直接 Images/Audio およびストリーミングメディア Responses の計量では、Seedream 応答のように `completion_tokens` がゼロのプレースホルダーでも、正の `output_tokens` を保持します。これらの別名は合算せず、ゼロを含む明示的なプラグイン使用量を引き続き優先します。音声文字起こしの JSON および SSE 使用量では、`input_token_details.audio_tokens` に報告された音声 Token の内訳を保持します。SSE が主要な Token 合計を含まず内訳だけを報告した場合も、クォータ計量用に保持します。後続イベントは明示的なゼロを含む報告済みの内訳だけを更新し、独立したカウンターを消去しません。内訳から架空の Token 合計を作らず、明示的なネイティブ時間使用量は秒単位の課金を維持します。文字起こし・翻訳 API の API Key の日次/月次 Token クォータは、TPM と同じ順序で上流の合計、入力と出力の和、最後に内訳へフォールバックします。上流が報告した合計を書き換えたり、内訳を二重計上したりしません。ストリーミングの入力・出力カウンターも独立して更新し、省略または null のフィールドは以前の値を保持します。明示的な正の合計値は主要カウンターの合計より優先されます。時間や料金の報告がなくても、正の音声・推論・予測 Token の内訳は使用量レコードに保存され、要求ログで参照できます。バイナリ音声、字幕テキスト、Token を返さないプロバイダーに対して架空の Token コストを付与しません。要求数/同時実行制限と要求ログは有効です。秒数、画像数、文字数ベースの料金を Token 単価へ変換しません。Token 報告モデルには Token 単価、時間計量の文字起こしには下記の音声秒単価を設定し、未対応の画像数/文字数料金は上流請求と照合してください。
+素材 URL はアクセス可能なファイルに置き換えます。OpenAI-compatible ルートは対応する画像・音声フィールドを保持しますが、ネイティブ変換ルートの能力はより限定されます。Chat から Gemini への変換では base64 画像 data URI を使用し、非対応の音声パーツは削除せずエラーにします。[利用者ガイド](user-guide.md)のプロトコル差異を参照してください。
 
-回帰テストはローカル HTTP プロバイダーと合成データを使用し、アップロード、バイナリ/テキスト応答、画像拡張フィールド、非同期動画の要求形状、音声素材、大きな整数、権限拒否、フック、キャッシュ回避を検証します。有料の実生成は行わないため、個別プロバイダー/モデルの提供状況は実際のアカウントで確認してください。
+### Responses・Anthropic・Gemini
 
-## 文字起こしアップロードと計量の契約
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/responses" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"text-model","input":"Summarize the benefits of a shared gateway.","stream":false}'
 
-公開時には公開モデル、インポート済み上流モデル、アダプターのエンドポイントの共通部分を検証します。各音声要求でも最新の上流在庫で要求先エンドポイントを再確認し、在庫変更後に非対応ルートが呼び出されるのを防ぎます。在庫やエンドポイントのメタデータがない手動設定ルートは、旧モデル分類から在庫を補完した場合も互換性を維持します。
+curl --fail-with-body "$TOKENHUB_URL/v1/messages" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'anthropic-version: 2023-06-01' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"claude-model","max_tokens":256,"messages":[{"role":"user","content":"Hello"}]}'
 
-音声モデルの公開と Provider 在庫の呼び出し可否は、アダプターの実際のメディア/文字起こし能力とモデルが宣言するエンドポイントに基づきます。文字起こしモデルは初期ルートと同時に公開することも、後からルートを追加することもできます。汎用メディア能力だけのアダプターでは、文字起こし専用エンドポイントを宣言するモデルを公開できません。
+curl --fail-with-body "$TOKENHUB_URL/v1beta/models/gemini-model:generateContent" \
+  -H "x-goog-api-key: $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
+```
 
-`/v1/audio/transcriptions` と `/v1/audio/translations` は明示的な `transcription` アダプター能力を要求します。ただし、一致する provider-call フックで処理する JSON 文字起こし拡張は例外です。multipart 音声ファイルはフックから参照できず、ネイティブアダプターが必要です。ポリシーフックはテキストフィールドの観察や multipart 要求の拒否を継続できますが、multipart 文字起こし応答を返すフックは `501 multipart_transcription_hook_unsupported` で失敗します。独立して報告された使用量は失敗した要求の計量用に保持されます。OpenAI と設定済み OpenAI 互換/ローカルアダプターが対応し、汎用 `media` 能力だけでは不足します。既存の JSON ベンダー拡張は維持します。multipart は空でない `file` を 1 個だけ含み、最大 25 MiB、拡張子・メディア型・コンテナー署名が対応形式と一致する必要があります。形式は FLAC、MP3、MP4、MPEG、MPGA、M4A、OGG、WAV、WebM です。コンテナー検査はコーデックを復号せず、実際の復号可否は上流で検証します。MP4/M4A では `ftyp` より前の有効な `free` と `skip` ボックスを許可し、ボックスヘッダーの走査量を制限します。全体の設定済み制限（既定 32 MiB）、128 パート、テキストフィールドごと 1 MiB も適用します。総サイズは最後の multipart 境界後のバイトを含む HTTP 本文全体に適用し、既知長とチャンク転送の両方を検証します。アップロードは制限付きメモリー内で処理し、一時ファイルを作成しません。要求フックの変更にもファイル、各フィールド長、パート数、設定済み合計サイズの制限を適用します。ファイルフィールドの競合や変更後の超過は、上流呼び出し前に `502 gateway_hook_patch_invalid` を返します。ネイティブのコンテンツ安全性マスキング後も同じ multipart 制限を再検証し、超過時はプロバイダーまたはプロバイダーフックの呼び出し前に `413 request_too_large` を返します。呼び出し前のサイズ検証エラーはフェイルオーバーを起こさず、プロバイダーリソースの正常性エラーにも数えません。
+Responses は `output`、Anthropic は `content[]`、Gemini は `candidates[].content.parts[]` から結果を取得します。次のターンにはツールと推論フィールドを引き継ぎます。Responses は対応するベンダー固有のメディアオブジェクトも扱います。Gemini ネイティブメディアは `generationConfig`、`responseModalities`、`imageConfig`、インラインメディア、思考署名を保持します。メディア JSON/SSE はサイズ上限内でバッファリングして配信します。
 
-ファイル欠落/空は `400 missing_audio_file`、重複/不正 file フィールドは `400 invalid_audio_file`、未対応/不一致形式は `415 unsupported_audio_format`、25 MiB 超過は `413 audio_file_too_large`、全体超過は `413 request_too_large` です。コンテンツ安全性による拒否は `guardrail_blocked` を保持し、ポリシーの読み込みや評価の失敗もそれぞれのエラーコードを保持します。上流の認証・レート制限・モデルエラーは分類を保持し、汎用メッセージで音声や非公開 URL のエラー/試行ログへの流出を防ぎます。期限超過とアイドルタイムアウトを区別し、キャンセル/切断で上流処理を終了します。結果不明の文字起こしを再送信しません。
+## 画像
 
-上流の音声秒数はペイロード保持設定と独立して永続計量証拠に保存します。ネイティブ `usage:{"type":"duration","seconds":30.5}` は公開モデルと Provider 在庫それぞれの `metadata.audio_price_usd_per_second` で計価します。非負の十進文字列を使用し、無料は明示的に `"0"` とします。料金未設定は保留/不明として保持し、Token 単価にフォールバックしません。プラグインが `audio_duration_unit:"audio_second"` を宣言して秒数を報告しない場合も未報告として保持し、補助 Token 数による課金へフォールバックしません。小数秒を保持し、テナント料金と上流コストを独立計算して通常の予算カウンターへ反映します。請求明細では小数秒を含むネイティブ音声使用量を秒単位で表示し、秒単価を示します。呼び出し前に予算を確認しますが、実際の秒数は応答後に判明します。詳細文字起こしのトップレベル `duration` も記録し、Token 報告の応答は Token 課金を維持します。null の Token フィールドだけでは時間課金から Token 課金へ切り替えません。明示的な数値ゼロまたは `usage.type:tokens` は引き続き Token 課金を選択します。SSE では Token カウンターと秒数をイベント間で独立して保持し、同じイベントの外側とネストした `response` の証拠も統合します。秒数のみのイベントは報告済み Token を消去せず、明示的な時間単位の使用量は秒単位で課金します。プロバイダーフックの応答が配信サイズ制限を超えた場合も、既知の秒数の証拠を保持します。不正/負の秒数は `502 invalid_provider_usage` です。プラグインが返す不正な秒数のソースや単位は拒否し、計量証拠には任意のテキストを残さず固定の不正マーカーだけを保存します。完了トレースと trace-export フックにも同じ機密情報除去済みの秒数フィールドを渡します。数値でない生の秒数テキストは、ペイロード捕捉が無効な場合も除外します。直接メディア監査はアップロード音声、文字起こし本文、任意の上流メタデータを保存しません。
+### 画像生成
 
-許可済みプロジェクトキーと公開モデルを設定し、`sdk/` で `TOKENHUB_TRANSCRIPTION_MODEL=gpt-4o-transcribe npm run test:transcriptions` を実行します。Node クライアントは合成無音 WAV を送り、JSON 応答・認証・入力検証を確認します。バックエンドの偽 HTTP テストは OpenAI、互換、ローカル Provider で同じクライアントを実行し、実認証情報や有料推論は不要です。
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"image-model","prompt":"A watercolor lighthouse at sunrise","n":1,"size":"16:9","resolution":"2k"}'
+```
+
+公開エイリアスを介して APIMart `gpt-image-2` のパラメーター形式を使用する例です。他のプロバイダーでは `1024x1024` などのピクセル指定が必要な場合があります。異なるモデルの規則を混在させないでください。
+
+| フィールド | 意味 |
+| --- | --- |
+| `model`、`prompt` | 公開モデルと画像の説明 |
+| `n` | 画像数。上限は上流が検証 |
+| `size`、`resolution`、`quality` | 上流独自の比率、ピクセル寸法、解像度、品質 |
+| `image_urls` など | 対応モデルの参照画像 |
+| `response_format` | `url`、`b64_json`、`base64` など上流が対応する形式 |
+
+同期応答は通常 `data[].url` または `data[].b64_json`、非同期応答は `data[].task_id` を含みます。非同期の場合は以下のタスク API で各 ID を照会します。プロバイダーの結果フィールドを保持し、TokenHub は URL のダウンロードや有効期限の延長を行いません。
+
+### 画像編集とマスク
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/images/edits" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -F 'model=image-model' \
+  -F 'prompt=Replace the background with a sunrise sky' \
+  -F 'image=@input.png' \
+  -F 'mask=@mask.png'
+```
+
+ローカルファイルと multipart 編集に対応するルートを使い、boundary は cURL に生成させます。JSON 編集と `/v1/images/variations` も互換プロバイダーで使用できます。マスク、複数画像フィールド、その他のオプションは上流仕様に従います。管理対象画像ジョブの単一画像検証、保存アセット、`Prefer: respond-async` は別の仕様を維持します。
+
+## 音声
+
+### 音声合成
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/audio/speech" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"speech-model","input":"Hello from TokenHub.","voice":"alloy","response_format":"opus","speed":1}' \
+  --output speech.opus
+```
+
+| フィールド | 意味 |
+| --- | --- |
+| `model` | 公開した音声モデル |
+| `input` | 合成するテキスト。長さの上限は上流に依存 |
+| `voice` | 上流の音声 ID。`alloy` は例であり共通ではない |
+| `response_format` | 対応する音声形式。拡張子も一致させる |
+| `speed` | 対応モデルの読み上げ速度 |
+
+成功応答は上流 Content-Type の音声バイト列であり、JSON や base64 ラッパーではありません。保存ファイルを使う前に HTTP ステータスを確認します。上流が対応すれば SSE 音声も受け付けますが、直接メディア配信はバッファリングされ、低遅延音声ストリーミングにはなりません。
+
+### 音声認識と翻訳
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/audio/transcriptions" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -F 'model=transcription-model' \
+  -F 'file=@sample.wav' \
+  -F 'response_format=json'
+```
+
+`file` はローカルアップロード、`model` は公開音声認識モデルです。任意の `language`、`prompt`、`response_format`、繰り返しの `timestamp_granularities[]` は上流仕様に従います。JSON は通常 `{"text":"..."}` を返し、テキスト、SRT、VTT、verbose JSON の対応はプロバイダー次第です。翻訳は `/v1/audio/translations` と対応モデルを使います。翻訳先言語の規則もモデルに依存します。
+
+multipart の文字起こしと翻訳では、空でない `file` を 1 個だけ指定し、最大 25 MiB とします。対応形式は FLAC、MP3、MP4、MPEG、MPGA、M4A、OGG、WAV、WebM です。拡張子、メディア型、コンテナー署名が一致する必要があり、コーデック対応は上流が確認します。要求全体のサイズ上限も適用されます。ファイル欠落は `400 missing_audio_file`、未対応形式は `415 unsupported_audio_format`、ファイル上限超過は `413 audio_file_too_large` です。
+
+公開するルートのアダプターは明示的に `transcription` をサポートし、モデルのエンドポイントに対象操作を含める必要があります。OpenAI と設定済み OpenAI 互換/ローカルアダプターが対応し、各要求で最新のインポート済みエンドポイント情報も再確認します。JSON ベンダー拡張は一致するプロバイダー呼び出しフックで処理できますが、multipart アップロードにはネイティブアダプターが必要です。公開、フック、アップロード検証、SDK スモークテストは[文字起こしアップロードと計量の契約](media-api-operations.md#文字起こしアップロードと計量の契約)を参照してください。
+
+音声クローンと音楽は、既存のプロバイダー固有 Chat/Responses フローを引き続き使用できます。[メディア運用](media-api-operations.md)を参照してください。APIMart の `/v1/music/*`、音声・素材管理、アップロード、webhook 管理を汎用 TokenHub API としては実装していません。
+
+## 動画と Seedance
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"seedance-video","prompt":"A calm ocean at sunrise, slow camera movement","duration":5,"size":"16:9","resolution":"720p","generate_audio":true}'
+```
+
+`seedance-video` を APIMart `seedance-2.0` などの上流モデルに設定します。他の互換動画モデルも同じエンドポイントでそれぞれのオプションを使います。
+
+| フィールド | 意味 |
+| --- | --- |
+| `model`、`prompt` | 公開モデルとシーンの説明 |
+| `duration` | 希望する秒数。範囲はモデルに依存 |
+| `size`、`resolution` | モデル固有の比率と解像度 |
+| `generate_audio` | 対応モデルで音声も生成 |
+| `image_urls`、`video_urls`、`audio_urls` | 対応する参照素材。上流からアクセス可能な URL を使用 |
+| その他 | 上流拡張を保持し、検証は上流で実施 |
+
+先頭・末尾フレーム、複数参照、長さの範囲、参照の組み合わせは共通仕様ではありません。Volcengine ネイティブの `/content_generation/tasks` は実装していません。
+
+DMXAPI Seedance は引き続き `/v1/responses` と生成モデル、`seedance-2-0-get` などの補助モデルを使います。タスク ID と照会規則は `/v1/tasks` と異なります。[DMXAPI の設定と例](media-api-operations.md)を参照してください。
+
+## 非同期タスクの作成と照会
+
+APIMart 互換の画像・動画要求は、次の形式で受付結果を返します。
+
+```json
+{"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
+```
+
+これは上流が要求を受け付けたことを示し、生成完了を意味しません。TokenHub はベンダーのタスク ID を不透明な ID に置き換え、送信プロジェクト・キー・プロバイダー・リソースの関連を永続化します。**送信時と同じプロジェクト API キー**と返された ID を使ってください。
+
+```bash
+export TOKENHUB_TASK_ID='TASK_ID_FROM_SUBMISSION'
+curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY"
+```
+
+任意の `language` クエリは `en`、`zh`、`ja`、`ko`、`ru`、`fr`、`de`、`id`、`pt`、`es` に対応し、上流のタスクエラーテキストの言語を選びます。`language` の重複や他のクエリは `400 invalid_task_query` になります。
+
+| 応答フィールド | 意味 |
+| --- | --- |
+| `data.id` | この照会フローの TokenHub タスク ID |
+| `data.status` | 上流タスクの状態 |
+| `data.progress` | 任意の上流進捗。ゲートウェイの推定値ではない |
+| `data.result` | モデル固有の結果。APIMart は `images[]` や `videos[]` 内の `url` 配列などを返す |
+| `data.error` | 存在する場合は上流タスクの失敗情報 |
+| `data.cost`、`data.credits_cost` | 上流メタデータ。TokenHub の請求額ではない |
+
+`pending`/`processing` は総タイムアウトと間隔を設け、例えば 3–5 秒からバックオフして照会します。`completed` は成功、`failed` と `cancelled` は終了した失敗です。他の進行中状態は上流仕様に従います。URL は速やかに保存し、`expires_at` を確認します。HTTP 200 でも失敗タスクを返すため、HTTP ステータスと `data.status` の両方を確認してください。
+
+照会は元のルート・アカウントを使用し、別アカウントへフェイルオーバーしません。キーは有効で、モデル権限を維持している必要があります。同じプロジェクト内でも別キーからの照会はできず、任意の上流 ID も受け付けません。ルートやプロバイダーの変更によって既存タスクを照会できなくなる場合があります。生成は上流が実行し、TokenHub はワーカー、キャンセル、完了 webhook サービスを追加しません。TokenHub の外で設定したプロバイダーのコールバックは、そのプロバイダーの ID と仕様を使います。
+
+関連付けは**送信から 30 日後**に期限切れとなり、上流素材 URL の有効期限とは独立しています。期限切れ・不明・権限のないタスクは `404 media_task_not_found` になります。プロジェクトキーのローテーションで旧タスクが新キーへ移ることはありません。元の上流認証情報、URL、ヘッダー、その他のアカウント設定を変更すると、同じモデルを使えるアカウントでも `503 media_task_route_unavailable` になります。関連付けの保存に失敗した送信は `503 media_task_binding_unavailable` を返しますが、上流は既に生成を受け付けている可能性があるため、再送前にログを確認してください。
+
+### 動画の継続・再生成
+
+既存タスクを参照できる動画モデルでは、該当するトップレベルのフィールドに**元の送信で返された TokenHub タスク ID**を指定します。
+
+| フィールド | 上流操作の例 |
+| --- | --- |
+| `draft_task_id` | Seedance 2.5 のドラフトから最終動画を生成 |
+| `draft_from_task_id` | FLUX.3 のドラフトから最終動画を生成 |
+| `extend_from_task_id` | Gemini Omni または PixVerse の動画延長 |
+| `source_task_id` | 別の対象モデルを使った MiniMax H3 の再生成 |
+
+これらのフィールドは `POST /v1/videos/generations` でのみ認識します。例えば `{"model":"followup-video","source_task_id":"task_example"}` は、管理者が公開した互換再生成モデルの別名を使用します。完了状態、有効期間、解像度、パラメーターの制限は引き続き上流が検証し、すべてのモデルがすべてのフィールドに対応するわけではありません。プロンプト、素材 URL、入れ子の拡張識別子はタスク参照として扱いません。
+
+同じプロジェクト API キーを使用し、元のモデルと対象モデルの両方への権限を維持して、関連付けの 30 日間の有効期限内に参照します。不正・不明・期限切れ・別キー所有のタスクや直接指定した上流タスク ID は、生成前に `404 media_task_not_found` を返します。TokenHub は許可された ID を上流 ID に解決し、元のプロバイダーアカウント・リソースを使用します。そのアカウントが後続操作に対応していれば、対象の別名、ルート、上流モデルは異なっていても構いません。TokenHub は別のアカウントに切り替えません。認証情報や設定などの変更でアカウントのフィンガープリントが変わると `503 media_task_route_unavailable` を返します。元のアカウントが利用できない場合には、通常のルーティング、ポリシー、容量制限のエラーも適用されます。
+
+複数の参照が異なるアカウントを指す場合は `400 invalid_media_task_reference` になります。それ以外の有効な参照の組み合わせをサポートするかどうかは上流が判断します。受け付けられた後続生成は新しいタスクを作成し、新たな上流料金が発生する場合があります。リクエストフックでは公開 ID を保持し、プロバイダー呼び出しフックには解決済みの上流 ID を渡します。
+
+次の非同期処理を混同しないでください。
+
+| 仕組み | ID と照会 |
+| --- | --- |
+| APIMart 互換画像・動画タスク | 返された `task_id`。`GET /v1/tasks/{task_id}` |
+| TokenHub 管理対象画像ジョブ | [画像ガイド](user-guide.md#codex-サブスクリプション画像生成)の管理対象ジョブ仕様 |
+| Responses の `background:true` | ローカル Responses ジョブ。完了は上流 API 呼び出しの終了であり、上流レンダリング完了ではない |
+
+完了したバックグラウンドメディア Responses は、妥当な上流ルート ID を `x-tokenhub-upstream-response-id` に返します。プロバイダーの補助照会モデルへ渡す ID であり、`/v1/tasks` の ID ではありません。
+
+## エラー・制限・課金
+
+通常のゲートウェイエラーは以下の形式です。ネイティブ Anthropic/Gemini は各プロトコルのエラー形式を使います。
+
+```json
+{"error":{"message":"Model is not allowed for this API key","type":"model_not_allowed","code":"model_not_allowed"},"request_id":"REQUEST_ID"}
+```
+
+| HTTP ステータス | 主な原因 | 対応 |
+| --- | --- | --- |
+| `400` | JSON、multipart 制御フィールド、パラメーターが不正 | 選択モデルに合わせて修正 |
+| `401` / `403` | キーが無効・停止・期限切れ、またはモデル権限なし | プロジェクトキーと権限を確認 |
+| `404` | タスク・モデルが存在しないかアクセス不可 | ID と送信キーを確認 |
+| `413` | 要求がサイズ上限を超過 | アップロードを縮小、または管理者が上限を調整 |
+| `429` | レート・同時実行・クォータ・予算の制限 | エラーコードと再試行ヘッダーを確認 |
+| `501` | ルートがプロトコル非対応 | 対応プロバイダー・ルートを設定 |
+| `502` / `503` | 上流出力不正、ルートなし、プロバイダー失敗 | リクエスト ID でログを確認 |
+
+直接メディア要求は `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` に従い、既定は 32 MiB です。multipart は最大 128 パート、テキストフィールドは各 1 MiB です。直接応答は最大 128 MiB までバッファリングします。管理対象画像は別の制限を持ち、上流の上限はさらに低い場合があります。multipart の `model` と `stream` は一度だけ指定し、JSON の `stream` は boolean にしてください。
+
+1 回の送信で関連付けできるタスク ID は最大 128 件です。不正な ID や件数超過は `502 invalid_media_task` になりますが、上流処理が取り消されたことを意味しません。
+
+認証、モデル許可、クォータ、レート制限、テキストポリシー、スコープ付きフック、保護された送信、ログ記録が適用されます。ファイルのバイト列はテキストポリシーでは解析しません。クライアント認証情報と Cookie は転送せず、設定済みの上流認証情報を使用します。結果不明の生成失敗は別ルートへ自動再送しません。タイムアウト後の無条件再試行は避けてください。課金対象の生成が上流で受け付けられている場合があります。
+
+Token 計量は報告された使用量に基づき、バイナリ音声、字幕、使用量を返さない上流に架空の Token 料金を付けません。ポーリングは生成 Token を重複計上しません。時間で計量する文字起こしでは、公開モデルとプロバイダー在庫モデルのそれぞれに `metadata.audio_price_usd_per_second` の秒単価を設定します。小数秒を保持し、単価が未設定の場合は不明のままとし、Token 単価にはフォールバックしません。画像単位、文字単位、ベンダークレジットを Token 単価に自動変換しないため、未対応の単位は上流請求と照合してください。時間課金、Token 内訳のクォータ、フック、ストリーム検証の詳細は[メディアプロトコル運用](media-api-operations.md)にあります。
+
+## 組み合わせ例
+
+| 目的 | 手順 |
+| --- | --- |
+| 対話アシスタント | モデル一覧 → 会話送信 → ツール・推論の継続情報を保持 |
+| 画像生成 | Images へ送信 → 同期結果を利用、または各タスク ID を照会 |
+| ナレーション付き動画 | 音声生成 → 上流から音声を取得できるよう保存 → 音声参照対応モデルに動画要求 → 照会 → 素材保存 |
+| 議事録 | 録音をアップロードして文字起こし → テキストを Chat/Responses に送信 |
+| DMXAPI Seedance | 同一アカウントで生成・照会モデルを公開 → Responses へ送信 → 上流 ID で照会 |
+
+回帰テストは合成データとローカルプロバイダーでプロトコル、アクセス分離、アップロード、フック、計量を検証します。有料生成や実アカウントでの全モデルの可用性は検証していません。参考：[APIMart テキスト](https://docs.apimart.ai/en/api-reference/texts/general/chat-completions.md)、[画像](https://docs.apimart.ai/en/api-reference/images/gpt-image-2/generation.md)、[音声](https://docs.apimart.ai/en/api-reference/audios/tts.md)、[Seedance](https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation.md)、[タスク照会](https://docs.apimart.ai/en/api-reference/tasks/status.md)。

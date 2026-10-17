@@ -20,6 +20,10 @@ type mediaRequest struct {
 	Files           []mediaFile
 	Multipart       bool
 	Path            string
+	Task            *mediaTaskBinding
+	UpstreamTaskID  string
+	TaskLanguage    string
+	TaskReferences  map[string]mediaTaskReference
 	maxBytes        int64
 	patched         bool
 	guardrailMasked bool
@@ -27,6 +31,13 @@ type mediaRequest struct {
 type mediaFile struct {
 	Header textproto.MIMEHeader
 	Data   []byte
+}
+
+func (m mediaRequest) tokenReservation() int64 {
+	if m.Task != nil {
+		return 0
+	}
+	return requestTokenReservation(m.Fields)
 }
 
 func (m mediaRequest) model() string {
@@ -81,7 +92,7 @@ func (m mediaRequest) validateStream() error {
 }
 
 func (m mediaRequest) isControlField(name string) bool {
-	return name == "model" || name == "stream" || name == "stream_format" && m.Path == "/v1/audio/speech"
+	return name == "model" || name == "stream" || name == "stream_format" && m.Path == "/v1/audio/speech" || m.Path == "/v1/videos/generations" && isMediaTaskReferenceField(name)
 }
 
 func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (mediaRequest, error) {
