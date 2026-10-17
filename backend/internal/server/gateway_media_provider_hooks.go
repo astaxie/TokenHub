@@ -20,10 +20,7 @@ func (s *Server) invokeMediaRoute(ctx context.Context, call CallContext, route R
 }
 
 func (s *Server) invokeMediaRouteWithResponseLimit(ctx context.Context, call CallContext, route RouteSelection, endpoint string, request mediaRequest, responseLimit int) (mediaResponse, Usage, error) {
-	if request.Task != nil {
-		request.Fields = cloneRawJSON(request.Fields, 0)
-		setRawJSONField(request.Fields, "task_id", request.UpstreamTaskID, true)
-	}
+	request = request.withUpstreamTaskIdentifiers()
 	var payload any
 	var usage Usage
 	var handled, usageReported bool

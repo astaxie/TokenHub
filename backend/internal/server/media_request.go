@@ -23,6 +23,7 @@ type mediaRequest struct {
 	Task           *mediaTaskBinding
 	UpstreamTaskID string
 	TaskLanguage   string
+	TaskReferences map[string]mediaTaskReference
 }
 type mediaFile struct {
 	Header textproto.MIMEHeader
@@ -88,7 +89,7 @@ func (m mediaRequest) validateStream() error {
 }
 
 func (m mediaRequest) isControlField(name string) bool {
-	return name == "model" || name == "stream" || name == "stream_format" && m.Path == "/v1/audio/speech"
+	return name == "model" || name == "stream" || name == "stream_format" && m.Path == "/v1/audio/speech" || m.Path == "/v1/videos/generations" && isMediaTaskReferenceField(name)
 }
 
 func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (mediaRequest, error) {

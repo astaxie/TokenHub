@@ -67,6 +67,9 @@ func (s *Server) handleMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request, err := decodeMediaRequest(w, r, s.config.MaxMultimodalRequestBytes)
+	if err == nil {
+		err = s.resolveMediaTaskReferences(r.Context(), project, key, &request)
+	}
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -89,8 +92,8 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 		call.RouteProtocol = "tasks"
 	}
 	err = s.runMediaPreflight(r, &call, &request)
-	if err == nil && request.Task != nil && request.Task.AttributedUserID != call.AttributedUserID {
-		err = mediaTaskNotFound()
+	if err == nil {
+		err = s.validateMediaTaskOwnership(call, request)
 	}
 	if err == nil {
 		audit.Guardrail, err = s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, mediaGuardrailTargets(request.Fields))
@@ -107,14 +110,14 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	}
 	routes := routed.Routes[:0]
 	for _, route := range routed.Routes {
-		if s.routeSupportsMedia(routed.Call, route) && (request.Task == nil || mediaTaskMatchesRoute(*request.Task, route)) {
+		if s.routeSupportsMedia(routed.Call, route) && request.matchesTaskRoute(route) {
 			routes = append(routes, route)
 		}
 	}
 	routed.Routes = routes
 	if len(routes) == 0 {
 		var err error = NewHTTPError(501, "provider_capability_not_supported", "Publish a media model with a compatible provider or matching provider_call hook")
-		if request.Task != nil {
+		if request.hasTaskBinding() {
 			err = mediaTaskRouteUnavailable()
 		}
 		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, audit)
@@ -126,7 +129,7 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 		if err != nil {
 			return mediaResponse{}, Usage{}, err
 		}
-		if request.Task != nil && s.mediaTaskIdentity(prepared) != request.Task.IdentityHash {
+		if !s.mediaTaskAccountMatches(request, prepared) {
 			return mediaResponse{}, Usage{}, mediaTaskRouteUnavailable()
 		}
 		upstream := request
@@ -197,7 +200,10 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 	}
 	patched := mediaRequest{Fields: fields, Multipart: m.Multipart, Path: m.Path}
 	if m.Task != nil && (string(fields["task_id"]) != string(m.Fields["task_id"]) || string(fields["language"]) != string(m.Fields["language"])) {
-		return NewHTTPError(502, "gateway_hook_patch_invalid", "Gateway plugin cannot change the media task identity or language")
+		return mediaTaskPatchInvalid("Gateway plugin cannot change the media task identity or language")
+	}
+	if err := m.validateTaskReferencePatch(fields); err != nil {
+		return err
 	}
 	if err := patched.validateStream(); err != nil {
 		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid media stream mode")

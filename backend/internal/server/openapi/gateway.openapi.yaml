@@ -1108,6 +1108,17 @@ paths:
         Submission completion does not mean that video generation has finished.
         At most 128 task IDs can be bound in one submission; oversized or invalid
         task receipts fail atomically. Ambiguous generation failures are not automatically resubmitted.
+        Top-level draft_task_id, draft_from_task_id, extend_from_task_id, and source_task_id
+        reference TokenHub handles returned by previous submissions. The same API key must
+        retain access to the source and target models, and the source binding must be unexpired.
+        References resolve to provider IDs on the original provider account/resource, without
+        switching accounts. A different target alias, route, or upstream model is allowed on
+        that account. The provider validates model-specific follow-up requirements.
+        Conflicting source accounts return 400 invalid_media_task_reference;
+        malformed, unknown, expired, inaccessible, or raw provider IDs return 404 media_task_not_found.
+        Changed source-account fingerprints return 503 media_task_route_unavailable.
+        Ordinary routing, policy, and capacity errors still apply when the original account is unavailable;
+        no other account is used.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       requestBody:
@@ -1178,6 +1189,15 @@ paths:
           $ref: "#/components/responses/ProviderError"
         "413":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          description: A referenced source task is unknown, expired, or inaccessible to this API key.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           $ref: "#/components/responses/MediaTaskUnavailable"
   /v1/tasks/{task_id}:
@@ -3258,6 +3278,26 @@ components:
           type: array
           items:
             type: string
+        draft_task_id:
+          $ref: "#/components/schemas/MediaTaskReference"
+          description: TokenHub source task handle for a compatible draft-to-final operation, such as Seedance 2.5.
+        draft_from_task_id:
+          $ref: "#/components/schemas/MediaTaskReference"
+          description: TokenHub source task handle for a compatible draft-to-final operation, such as FLUX.3.
+        extend_from_task_id:
+          $ref: "#/components/schemas/MediaTaskReference"
+          description: TokenHub source task handle for compatible video extension models.
+        source_task_id:
+          $ref: "#/components/schemas/MediaTaskReference"
+          description: TokenHub source task handle for compatible regeneration models, including operations using a different target model.
+    MediaTaskReference:
+      type: string
+      description: |
+        An opaque TokenHub task ID owned by the same project API key, with an unexpired
+        30-day binding and continued source-model access. Raw provider IDs are not accepted.
+        Resolved only for recognized top-level video reference fields; prompts, asset URLs,
+        and nested vendor identifiers remain unchanged. Follow-up submissions use the original
+        provider account/resource and can create a separately billable task.
     MediaTaskSubmission:
       type: object
       additionalProperties: true

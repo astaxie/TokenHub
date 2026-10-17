@@ -232,6 +232,23 @@ Queries use the original route/account without failover. The key must remain act
 
 Bindings expire **30 days after submission**, independently of the upstream asset URL's lifetime. Expired, unknown, or inaccessible tasks return `404 media_task_not_found`; rotating a project key does not transfer its tasks to the replacement key. Replacing the original provider credential, URL, headers, or other account settings prevents polling with `503 media_task_route_unavailable`, even if the replacement account can serve the same model. If saving a binding fails, submission returns `503 media_task_binding_unavailable`; the upstream may already have accepted the generation, so inspect logs before retrying.
 
+### Continue or regenerate a video
+
+For video models that support a previous-task reference, pass the **TokenHub task ID returned by the source submission** in the relevant top-level field:
+
+| Field | Upstream operation example |
+| --- | --- |
+| `draft_task_id` | Seedance 2.5 draft to final video |
+| `draft_from_task_id` | FLUX.3 draft to final video |
+| `extend_from_task_id` | Gemini Omni or PixVerse video extension |
+| `source_task_id` | MiniMax H3 regeneration using a different target model |
+
+These fields are recognized only on `POST /v1/videos/generations`. For example, `{"model":"followup-video","source_task_id":"task_example"}` uses an administrator-published alias for a compatible regeneration model. Model-specific completion, age, resolution, and parameter restrictions still apply upstream; not every model supports every field. Prompt text, asset URLs, and nested extension identifiers are not interpreted as task references.
+
+Use the same project API key, retain permission to both the source and target models, and reference an unexpired binding within its 30-day lifetime. Malformed, unknown, expired, foreign-key, or raw vendor task IDs return `404 media_task_not_found` before generation. TokenHub resolves authorized handles to provider IDs and uses the original provider account/resource. The target alias, route, and upstream model may differ when that account supports the follow-up operation. TokenHub never switches to another account. A changed account fingerprint, including changed credentials or settings, returns `503 media_task_route_unavailable`; ordinary routing, policy, and capacity errors still apply when the original account is unavailable.
+
+References to conflicting accounts return `400 invalid_media_task_reference`. The upstream decides whether a combination of otherwise valid references is supported. Each accepted follow-up creates a new task and may incur a new upstream charge. Request hooks retain the public handles; provider-call hooks receive the resolved provider IDs.
+
 Do not interchange these asynchronous mechanisms:
 
 | Mechanism | ID and query |

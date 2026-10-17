@@ -232,6 +232,23 @@ curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
 
 任务绑定在**提交后 30 天**过期，与上游素材 URL 的有效期分别计算。过期、不存在或无权访问的任务返回 `404 media_task_not_found`；轮换项目密钥不会将旧任务转移给新密钥。更换原供应商凭证、URL、请求头或其他账户配置后，查询返回 `503 media_task_route_unavailable`，即使替换后的账户仍支持同一模型也不例外。绑定保存失败时，提交返回 `503 media_task_binding_unavailable`；上游可能已经接受生成，应先检查日志再决定是否重试。
 
+### 继续生成或重新生成视频
+
+对于支持引用先前任务的视频模型，在相应顶层字段中传入**来源提交返回的 TokenHub 任务 ID**：
+
+| 字段 | 上游操作示例 |
+| --- | --- |
+| `draft_task_id` | Seedance 2.5 草稿转正式视频 |
+| `draft_from_task_id` | FLUX.3 草稿转正式视频 |
+| `extend_from_task_id` | Gemini Omni 或 PixVerse 视频延长 |
+| `source_task_id` | 使用不同目标模型的 MiniMax H3 重新生成 |
+
+这些字段仅在 `POST /v1/videos/generations` 中识别。例如，`{"model":"followup-video","source_task_id":"task_example"}` 使用管理员发布的兼容重新生成模型别名。任务完成状态、有效时长、分辨率和参数限制仍由上游模型验证，并非每个模型都支持所有字段。提示词、素材 URL 和嵌套扩展标识符不会被当成任务引用。
+
+必须使用同一把项目 API 密钥，保留来源和目标模型的权限，并在任务绑定的 30 天有效期内引用。格式错误、不存在、过期、属于其他密钥或直接传入的供应商任务 ID，会在发起生成前返回 `404 media_task_not_found`。TokenHub 将授权通过的任务 ID 转换为供应商 ID，并使用原供应商账户/资源；该账户支持后续操作时，目标别名、路由和上游模型可以不同。TokenHub 不会切换到其他账户。凭证或配置等变化导致账户指纹改变时，返回 `503 media_task_route_unavailable`；原账户不可用时，仍适用普通的路由、策略和容量限制错误。
+
+多个引用指向不同账户时，返回 `400 invalid_media_task_reference`。其余有效引用的组合是否受支持由上游判断。每次接受的后续生成都会创建新任务，并可能产生新的上游费用。请求钩子仍使用公开任务 ID，供应商调用钩子收到转换后的供应商 ID。
+
 以下三种异步机制不能混用：
 
 | 机制 | ID 与查询方式 |

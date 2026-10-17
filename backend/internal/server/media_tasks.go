@@ -26,18 +26,9 @@ func (s *Server) handleMediaTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	store, ok := s.store.(mediaTaskStore)
-	if !ok {
-		writeError(w, r, mediaTaskStorageError())
-		return
-	}
-	binding, upstreamID, found, err := store.LoadMediaTaskBinding(r.Context(), id)
+	binding, upstreamID, err := s.loadOwnedMediaTask(r.Context(), id, project, key)
 	if err != nil {
-		writeError(w, r, mediaTaskStorageError())
-		return
-	}
-	if !found || binding.ProjectID != project.ID || binding.APIKeyID != key.ID || binding.AttributedUserID != usageAttributionUserID(key, project) || !keyCanAccessModel(s.store, key, binding.Model) {
-		writeError(w, r, mediaTaskNotFound())
+		writeError(w, r, err)
 		return
 	}
 	fields := map[string]json.RawMessage{}
@@ -87,7 +78,7 @@ func mediaTaskStorageError() error {
 	return NewHTTPError(503, "media_task_binding_unavailable", "Media task routing could not be retained or loaded")
 }
 func mediaTaskRouteUnavailable() error {
-	return NewHTTPError(503, "media_task_route_unavailable", "The original media task provider account is unavailable or has changed")
+	return &ProviderInvocationError{Err: NewHTTPError(503, "media_task_route_unavailable", "The original media task provider account is unavailable or has changed"), Disposition: ProviderErrorPolicy}
 }
 
 func (s *Server) mediaTaskIdentity(route RouteSelection) string {
