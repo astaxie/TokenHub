@@ -7,6 +7,9 @@
 .statement-drawer { width: min(1200px, 94vw); max-height: 90vh; overflow: auto; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); }
 .statement-drawer::backdrop { background: #0007; }
 .statement-drawer small { display: block; }
+.statement-amount small { display: block; margin-top: 4px; }
+.statement-conversion { min-width: 0; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.statement-conversion p { margin: 4px 0; }
 
 .rate-card-form .form-grid {
   display: grid;

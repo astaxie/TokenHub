@@ -5,7 +5,7 @@ import { BillingStatements, StatementLauncher } from "./billing-statements";
 
 const api = { baseURL: "", adminToken: "test" };
 const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
-beforeEach(() => setActiveLanguage("zh-CN"));
+beforeEach(() => { setActiveLanguage("zh-CN"); window.localStorage.clear(); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal); else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal"); });
 describe("BillingStatements", () => {
   it("invalidates a preview when filters change", async () => {
@@ -51,6 +51,26 @@ describe("BillingStatements", () => {
     expect(screen.getByText(`${label}: 12.5 × ${currency}0.02 = ${currency}0.25`, { exact: true })).toBeInTheDocument();
     expect(screen.getByText(`${label}: 0 × ${currency}0.02 = ${currency}0.00`, { exact: true })).toBeInTheDocument();
     expect(screen.getAllByText(/\/ 1M =/)).toHaveLength(1);
+  });
+  it("keeps native audio formulas beside converted paid and zero amounts", async () => {
+    const base = { source: "provider_estimate", at: "2020-01-01T00:00:00Z", timezone: "UTC", currency: "USD", status: "estimated", units: {} };
+    const rows = [
+      { ...base, id: "paid", model: "audio-paid", amount: "0.25", usd: "0.25", display_amount: "1.8125", lines: [{ kind: "audio_second", units: 0, quantity: "12.5", rate: "0.02", amount: "0.25" }] },
+      { ...base, id: "zero", model: "audio-zero", amount: "0", usd: "0", display_amount: "0", lines: [{ kind: "audio_second", units: 0, quantity: "0", rate: "0.02", amount: "0" }] },
+    ];
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }))).mockImplementationOnce((_url, options) => Promise.resolve(new Response(JSON.stringify({ query: JSON.parse(options.body), generated_at: "2020-02-02T00:00:00Z", from: "2020-01-01T00:00:00Z", to: "2020-02-01T00:00:00Z", time_basis: "upstream_attempt_start", rows, totals: { "provider_estimate:USD": "0.25" }, unknown_count: 0, incomplete_count: 0, estimated_margin_usd: null, conversion: { currency: "CNY", usd_exchange_rate: "7.25" }, display_totals: { provider_estimate: "1.8125" } }))));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<BillingStatements api={api} side="provider" />);
+    fireEvent.change(screen.getByLabelText("对账单币种"), { target: { value: "CNY" } });
+    fireEvent.change(screen.getByLabelText("手动汇率：1 USD 兑目标币种"), { target: { value: "7.25" } });
+    fireEvent.submit(screen.getByRole("button", { name: "预览对账单" }).closest("form")!);
+    expect(await screen.findByText("换算金额：¥1.8125", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("换算金额：¥0.00", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("音频秒数: 12.5 × US$0.02 = US$0.25", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("音频秒数: 0 × US$0.02 = US$0.00", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("本地估算成本 · CNY: ¥1.8125", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText(/\/ 1M =/)).not.toBeInTheDocument();
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ display_currency: "CNY", display_exchange_rate: "7.25" });
   });
 });
 

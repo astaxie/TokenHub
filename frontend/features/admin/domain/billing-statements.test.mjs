@@ -35,3 +35,28 @@ test("statement native quantities retain exact decimals and locale separators", 
   assert.equal(formatStatementQuantity("1.25e-3", "en-US"), "0.00125");
   assert.equal(formatStatementQuantity("12.5e3", "en-US"), "12,500");
 });
+
+test("statement CSV preserves conversion snapshot metadata and unknown amounts", () => {
+  const data = sample();
+  data.query.side = "margin";
+  data.conversion = { currency: "CNY", usd_exchange_rate: "7.250000000000" };
+  data.display_totals = { tenant: "8.145061720337" };
+  data.display_estimated_margin = null;
+  data.rows[0].display_amount = "8.145061720337";
+  data.rows.push({ id: "unknown", source: "tenant", amount: null, currency: "USD", display_amount: null });
+  const csv = statementCSV(data);
+  assert.ok(csv.includes('"display_currency","CNY"'));
+  assert.ok(csv.includes('"display_exchange_rate_usd_to_currency","7.250000000000"'));
+  assert.ok(csv.includes('"display_total","tenant","8.145061720337"'));
+  assert.ok(csv.includes('"display_estimated_margin","unknown"'));
+  assert.ok(csv.includes('"display_amount"'));
+  assert.ok(csv.includes('"1.123456789012"'));
+  assert.ok(csv.split("\r\n").find(line => line.startsWith('"unknown"')).endsWith(',""'));
+});
+
+test("statement money formatting retains fractional token costs in supported currencies", () => {
+  for (const [currency, locale] of [["CNY", "zh-CN"], ["JPY", "ja-JP"], ["RUB", "ru-RU"]]) {
+    assert.match(formatStatementAmount("0.123456789012", currency, locale), /123456789012/);
+    assert.match(formatStatementAmount("0", currency, locale), /0/);
+  }
+});

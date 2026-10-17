@@ -24,7 +24,7 @@ export function statementResponse(query: StatementQuery, state: StatementState):
     { ...base, id: "ui-pending", request_id: "ui-request-pending", amount: null, usd: null, status: "pending", reason: "pricing_incomplete", units: {}, lines: [] },
   );
   if (query.side === "margin" && state !== "empty") rows.push({ ...base, id: "ui-attempt-cost", source: "provider_estimate", amount: "0.60", usd: "0.60", lines: [], units: { input: 1000000 } });
-  return {
+  const result: StatementResult = {
     query: structuredClone(query), generated_at: fixedTime,
     from: `${query.from}T00:00:00+08:00`, to: `${query.to}T00:00:00+08:00`,
     time_basis: provider ? "attempt_start" : "request_admission", rows,
@@ -32,6 +32,13 @@ export function statementResponse(query: StatementQuery, state: StatementState):
     unknown_count: state === "pending" ? 1 : 0, incomplete_count: state === "pending" ? 1 : 0,
     estimated_margin_usd: query.side === "margin" && state === "complete" ? "0.48" : null,
   };
+  if (query.display_currency === "USD") {
+    result.conversion = { currency: "USD", usd_exchange_rate: "1.000000000000" };
+    result.rows.forEach(row => { row.display_amount = row.usd; });
+    result.display_totals = state === "empty" ? {} : { [source]: state === "audio" ? "0.25" : "1.08", ...(query.side === "margin" ? { provider_estimate: "0.60" } : {}) };
+    if (query.side === "margin") result.display_estimated_margin = state === "complete" ? "0.48" : null;
+  }
+  return result;
 }
 
 export function readStatementQuery(body: unknown): StatementQuery {
@@ -42,5 +49,7 @@ export function readStatementQuery(body: unknown): StatementQuery {
   }
   if (!["tenant", "provider", "margin"].includes(value.side as string)) throw new Error("Unexpected statement side");
   if (!Array.isArray(value.project_ids) || value.project_ids.some(id => typeof id !== "string")) throw new Error("Expected project_ids string array");
+  if (value.display_currency !== undefined && !["USD", "CNY", "JPY", "RUB"].includes(value.display_currency as string)) throw new Error("Unexpected statement display currency");
+  if (value.display_exchange_rate !== undefined && typeof value.display_exchange_rate !== "string") throw new Error("Expected display_exchange_rate string");
   return value as StatementQuery;
 }
