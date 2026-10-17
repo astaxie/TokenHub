@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { statementCurrencyStorageKey } from "../domain/billing-currency";
 import { setActiveLanguage } from "../i18n/runtime";
@@ -65,6 +65,25 @@ describe("Statement currency preferences", () => {
     fireEvent.change(screen.getByLabelText("对账单币种"), { target: { value: "CNY" } });
     expect(screen.getByLabelText("手动汇率：1 USD 兑目标币种")).toHaveValue("7.25");
     expect(JSON.parse(window.localStorage.getItem(statementCurrencyStorageKey)!)).toEqual({ currency: "CNY", rates: { CNY: "7.25", JPY: "150" } });
+  });
+
+  it("preserves another form's saved rate when selecting and editing a different currency", () => {
+    mockStatements();
+    window.localStorage.setItem(statementCurrencyStorageKey, JSON.stringify({ currency: "CNY", rates: { CNY: "7.1", JPY: "150" } }));
+    const first = render(<BillingStatements api={api} side="provider" />);
+    const second = render(<BillingStatements api={api} side="provider" />);
+    const firstForm = within(first.container), secondForm = within(second.container);
+    fireEvent.change(firstForm.getByLabelText("手动汇率：1 USD 兑目标币种"), { target: { value: "7.3" } });
+    expect(JSON.parse(window.localStorage.getItem(statementCurrencyStorageKey)!).rates.CNY).toBe("7.3");
+    fireEvent.change(secondForm.getByLabelText("对账单币种"), { target: { value: "JPY" } });
+    expect(JSON.parse(window.localStorage.getItem(statementCurrencyStorageKey)!).rates.CNY).toBe("7.3");
+    fireEvent.change(secondForm.getByLabelText("手动汇率：1 USD 兑目标币种"), { target: { value: "151" } });
+    expect(JSON.parse(window.localStorage.getItem(statementCurrencyStorageKey)!)).toEqual({ currency: "JPY", rates: { CNY: "7.3", JPY: "151" } });
+    first.unmount(); second.unmount();
+    render(<BillingStatements api={api} side="provider" />);
+    expect(screen.getByLabelText("手动汇率：1 USD 兑目标币种")).toHaveValue("151");
+    fireEvent.change(screen.getByLabelText("对账单币种"), { target: { value: "CNY" } });
+    expect(screen.getByLabelText("手动汇率：1 USD 兑目标币种")).toHaveValue("7.3");
   });
 
   it("submits and persists the locale decimal separator without losing precision", async () => {
