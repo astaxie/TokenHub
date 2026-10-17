@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://tokenhub.tencentmaas.com/plan/v3"
       doc_url: "https://cloud.tencent.com/document/product/1823/130660"
       categories: []
-      models_count: 16
+      models_count: 36
 permissions:
   network:
     allow: []

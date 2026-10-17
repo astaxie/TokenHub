@@ -5,6 +5,299 @@
   "display_name": "Cohere",
   "models": [
     {
+      "id": "cohere-transcribe-arabic-07-2026",
+      "name": "Cohere Transcribe Arabic",
+      "display_name": "Cohere Transcribe Arabic",
+      "family": "cohere-transcribe",
+      "category": "cohere",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/v2/docs/models",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "evaluation",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "max_input_file_size_label": "25MB",
+        "pricing_source": "https://cohere.com/pricing",
+        "availability_note": "Rate-limited API evaluation; production deployment uses Model Vault.",
+        "pricing_note": "Production Model Vault is billed per instance-hour; native unit prices unverified.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native Audio Transcriptions payloads and billing require a dedicated adapter.",
+        "endpoints": "v2/audio/transcriptions"
+      },
+      "release_date": "2026-07-07",
+      "endpoints": "v2/audio/transcriptions"
+    },
+    {
+      "id": "cohere-transcribe-03-2026",
+      "name": "Cohere Transcribe",
+      "display_name": "Cohere Transcribe",
+      "family": "cohere-transcribe",
+      "category": "cohere",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/v2/docs/models",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "evaluation",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "max_input_file_size_label": "25MB",
+        "pricing_source": "https://cohere.com/pricing",
+        "availability_note": "Rate-limited API evaluation; production deployment uses Model Vault.",
+        "pricing_note": "Production Model Vault is billed per instance-hour; native unit prices unverified.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native Audio Transcriptions payloads and billing require a dedicated adapter.",
+        "endpoints": "v2/audio/transcriptions"
+      },
+      "release_date": "2026-03-26",
+      "endpoints": "v2/audio/transcriptions"
+    },
+    {
+      "id": "parse-v5.0",
+      "name": "Cohere Parse 5",
+      "display_name": "Cohere Parse 5",
+      "family": "cohere-parse",
+      "category": "cohere",
+      "type": "ocr",
+      "modalities": {
+        "input": [
+          "pdf",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/v2/docs/parse",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "operation": "document_parsing",
+        "input_file_types": "PDF,PPT,JPEG (Base64)",
+        "output_format": "Markdown",
+        "pricing_source": "https://cohere.com/pricing",
+        "pricing_note": "Model Vault per-instance rates must not be converted into token rates; serverless unit price unverified.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native Cohere Parse API payloads and metering are not implemented.",
+        "endpoints": "v2/parse"
+      },
+      "limit": {
+        "context": 8192
+      },
+      "release_date": "2026-08-27",
+      "endpoints": "v2/parse"
+    },
+    {
+      "id": "tiny-aya-water",
+      "name": "Tiny Aya Water",
+      "display_name": "Tiny Aya Water",
+      "family": "aya",
+      "category": "cohere",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/v2/docs/tiny-aya",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.cohere.com/v2/docs/tiny-aya",
+        "pricing_note": "Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish unrestricted free production usage.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible host adapter has not been verified.",
+        "endpoints": "v2/chat"
+      },
+      "limit": {
+        "context": 8000,
+        "output": 8000
+      },
+      "endpoints": "v2/chat"
+    },
+    {
+      "id": "tiny-aya-fire",
+      "name": "Tiny Aya Fire",
+      "display_name": "Tiny Aya Fire",
+      "family": "aya",
+      "category": "cohere",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/v2/docs/tiny-aya",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.cohere.com/v2/docs/tiny-aya",
+        "pricing_note": "Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish unrestricted free production usage.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible host adapter has not been verified.",
+        "endpoints": "v2/chat"
+      },
+      "limit": {
+        "context": 8000,
+        "output": 8000
+      },
+      "endpoints": "v2/chat"
+    },
+    {
+      "id": "tiny-aya-earth",
+      "name": "Tiny Aya Earth",
+      "display_name": "Tiny Aya Earth",
+      "family": "aya",
+      "category": "cohere",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/v2/docs/tiny-aya",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.cohere.com/v2/docs/tiny-aya",
+        "pricing_note": "Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish unrestricted free production usage.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible host adapter has not been verified.",
+        "endpoints": "v2/chat"
+      },
+      "limit": {
+        "context": 8000,
+        "output": 8000
+      },
+      "endpoints": "v2/chat"
+    },
+    {
+      "id": "tiny-aya-global",
+      "name": "Tiny Aya Global",
+      "display_name": "Tiny Aya Global",
+      "family": "aya",
+      "category": "cohere",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/v2/docs/tiny-aya",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.cohere.com/v2/docs/tiny-aya",
+        "pricing_note": "Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish unrestricted free production usage.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible host adapter has not been verified.",
+        "endpoints": "v2/chat"
+      },
+      "limit": {
+        "context": 8000,
+        "output": 8000
+      },
+      "endpoints": "v2/chat"
+    },
+    {
+      "id": "north-small-translate-1-0",
+      "name": "North Small Translate",
+      "display_name": "North Small Translate",
+      "family": "north",
+      "category": "cohere",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.cohere.com/v2/docs/north-small-translate-1.0",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "evaluation",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.cohere.com/v2/docs/north-small-translate-1.0",
+        "pricing_note": "Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish unrestricted free production usage.",
+        "availability_note": "Trial and production API keys are free only within the published rate limits; contact sales for production deployment.",
+        "license": "CC-BY-NC-4.0 (open weights)",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible host adapter has not been verified.",
+        "endpoints": "v2/chat"
+      },
+      "limit": {
+        "context": 16000,
+        "output": 16000
+      },
+      "release_date": "2026-09-09",
+      "endpoints": "v2/chat"
+    },
+    {
       "id": "rerank-v4.0-fast",
       "name": "Cohere Rerank 4 Fast",
       "display_name": "Cohere Rerank 4 Fast",

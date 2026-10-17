@@ -64,6 +64,9 @@ func jevCheckRequest(model ProviderModel, endpoint string, raw map[string]json.R
 	if budget < 0 {
 		return jevReject("invalid_output_budget", "")
 	}
+	if !catalogOutputBudgetFits(model, budget) {
+		return jevReject("output_limit_exceeded", "")
+	}
 	if len(model.OutputModalities) > 0 && !slices.Contains(model.OutputModalities, "text") {
 		return jevReject("output_modality_unsupported", "")
 	}

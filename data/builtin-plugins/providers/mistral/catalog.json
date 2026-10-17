@@ -5,6 +5,95 @@
   "display_name": "Mistral",
   "models": [
     {
+      "id": "mistral-ocr-4-1",
+      "name": "Mistral OCR 4.1",
+      "display_name": "Mistral OCR 4.1",
+      "family": "mistral-ocr",
+      "category": "mistral",
+      "type": "ocr",
+      "modalities": {
+        "input": [
+          "pdf",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.mistral.ai/models/ocr-4-1",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "operation": "ocr",
+        "ga_date": "2026-08-31",
+        "pricing_source": "https://docs.mistral.ai/models/ocr-4-1",
+        "billing_unit": "page,annotated_page",
+        "usd_per_thousand_pages": "4",
+        "usd_per_thousand_annotated_pages": "5",
+        "pricing_note": "Native USD per 1000 pages or annotated pages; not token pricing.",
+        "context_limit_status": "unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: native OCR page extraction, annotations and per-page billing are not implemented.",
+        "endpoints": "ocr"
+      },
+      "release_date": "2026-07-16",
+      "endpoints": "ocr"
+    },
+    {
+      "id": "zai-glm-5-3",
+      "name": "Z.ai GLM 5.3 (Mistral)",
+      "display_name": "Z.ai GLM 5.3 (Mistral)",
+      "family": "glm",
+      "category": "mistral",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "max_tokens",
+        "tools",
+        "response_format"
+      ],
+      "metadata": {
+        "upstream_source": "https://docs.mistral.ai/models/zai-glm-5-3",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "reference",
+        "pricing_source": "https://docs.mistral.ai/models/zai-glm-5-3",
+        "billing_unit": "input_tokens,output_tokens,cache_read_tokens",
+        "pricing_note": "Mistral-hosted USD per million token list rates. Do not substitute the Z.AI direct price.",
+        "release_date_note": "Mistral changelog records GA on September 28; the model card dates the upstream model September 15.",
+        "endpoints": "chat/completions",
+        "reasoning_controls_status": "unverified"
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "release_date": "2026-09-28",
+      "cost": {
+        "input": 1.4,
+        "output": 4.4,
+        "cache_read": 0.14
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "endpoints": "chat/completions"
+    },
+    {
       "id": "mistral-large-4",
       "name": "Mistral Large 4",
       "display_name": "Mistral Large 4",

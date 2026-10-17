@@ -135,7 +135,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-02-13",
-      "last_updated": "2026-02-13",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -161,6 +161,18 @@
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_source": "https://platform.minimax.io/docs/guides/models-intro",
+        "lifecycle_timezone": "unknown",
+        "lifecycle_date_precision": "date",
+        "notice_publication_date": "unknown",
+        "lifecycle_status": "deprecated",
+        "shutdown_date": "2026-11-18",
+        "new_user_restriction_date": "2026-10-19",
+        "lifecycle_note": "New users lose access on 2026-10-19; existing PAYG users may call until retirement on 2026-11-18. Vendor supplies dates without a timezone or exact shutdown instant."
       }
     },
     {
@@ -176,7 +188,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-03-18",
-      "last_updated": "2026-03-18",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -208,6 +220,18 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_source": "https://platform.minimax.io/docs/guides/models-intro",
+        "lifecycle_timezone": "unknown",
+        "lifecycle_date_precision": "date",
+        "notice_publication_date": "unknown",
+        "lifecycle_status": "deprecated",
+        "shutdown_date": "2026-11-18",
+        "new_user_restriction_date": "2026-10-19",
+        "lifecycle_note": "New users lose access on 2026-10-19; existing PAYG users may call until retirement on 2026-11-18. Vendor supplies dates without a timezone or exact shutdown instant."
       }
     },
     {
@@ -262,7 +286,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-02-12",
-      "last_updated": "2026-02-12",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -288,6 +312,18 @@
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_source": "https://platform.minimax.io/docs/guides/models-intro",
+        "lifecycle_timezone": "unknown",
+        "lifecycle_date_precision": "date",
+        "notice_publication_date": "unknown",
+        "lifecycle_status": "deprecated",
+        "shutdown_date": "2026-11-18",
+        "new_user_restriction_date": "2026-10-19",
+        "lifecycle_note": "New users lose access on 2026-10-19; existing PAYG users may call until retirement on 2026-11-18. Vendor supplies dates without a timezone or exact shutdown instant."
       }
     },
     {
@@ -307,7 +343,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-06-01",
-      "last_updated": "2026-06-01",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -324,9 +360,9 @@
         "output": 128000
       },
       "cost": {
-        "input": 0.6,
-        "output": 2.4,
-        "cache_read": 0.12
+        "input": 0.3,
+        "output": 1.2,
+        "cache_read": 0.06
       },
       "display_name": "MiniMax-M3",
       "type": "chat",
@@ -334,6 +370,18 @@
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "catalog_price_reference": "true",
+        "pricing_source": "https://platform.minimax.io/docs/pricing/overview",
+        "regional_currency": "USD",
+        "billing_unit": "per_million_tokens",
+        "pricing_tiers": "{\"currency\":\"USD\",\"unit\":\"per_million_tokens\",\"tiers\":[{\"service_tier\":\"standard\",\"input_length_label\":\"<=512k\",\"input\":0.3,\"output\":1.2,\"cache_read\":0.06},{\"service_tier\":\"standard\",\"input_length_label\":\">512k\",\"input\":0.6,\"output\":2.4,\"cache_read\":0.12},{\"service_tier\":\"priority\",\"input_length_label\":\"<=512k\",\"input\":0.45,\"output\":1.8,\"cache_read\":0.09},{\"service_tier\":\"priority\",\"input_length_label\":\">512k\",\"input\":0.9,\"output\":3.6,\"cache_read\":0.18}]}",
+        "pricing_note": "Permanent 50% discount; rates depend on <=512k versus >512k input and standard versus priority service tier. Confirm and save configured upstream costs before publication. CNY is not converted to USD; effective date and the numeric interpretation of the vendor's 512k label are not published.",
+        "upstream_source": "https://platform.minimax.io/docs/pricing/overview"
       }
     },
     {
@@ -349,7 +397,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-03-18",
-      "last_updated": "2026-03-18",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -381,6 +429,18 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_source": "https://platform.minimax.io/docs/guides/models-intro",
+        "lifecycle_timezone": "unknown",
+        "lifecycle_date_precision": "date",
+        "notice_publication_date": "unknown",
+        "lifecycle_status": "deprecated",
+        "shutdown_date": "2026-11-18",
+        "new_user_restriction_date": "2026-10-19",
+        "lifecycle_note": "New users lose access on 2026-10-19; existing PAYG users may call until retirement on 2026-11-18. Vendor supplies dates without a timezone or exact shutdown instant."
       }
     }
   ]
