@@ -9,7 +9,18 @@ import (
 // messages can. Retain only the gateway's known classifications and numeric
 // rate-limit metadata when reporting failures for privacy-sensitive endpoints.
 func copySanitizedHTTPErrorMetadata(target, original *HTTPError) {
-	target.Status, target.UpstreamStatus = original.Status, original.UpstreamStatus
+	if target == nil || original == nil {
+		return
+	}
+	// Plugin and provider errors are untrusted. Keep only valid HTTP status
+	// values; an out-of-range status would otherwise reach WriteHeader and can
+	// panic the request handler (for example, a plugin returning status 0).
+	if original.Status >= 100 && original.Status <= 599 {
+		target.Status = original.Status
+	}
+	if original.UpstreamStatus >= 100 && original.UpstreamStatus <= 599 {
+		target.UpstreamStatus = original.UpstreamStatus
+	}
 	if sensitiveEndpointErrorCodeAllowed(original.Code) {
 		target.Code = original.Code
 	}

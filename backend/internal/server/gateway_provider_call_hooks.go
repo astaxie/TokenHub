@@ -117,6 +117,22 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 	}
 	if responseDecodeErr != nil {
 		if protocol != providerRouteProtocolRerank {
+			if isAudioMediaProtocol(protocol) {
+				if usageDecodeErr != nil {
+					return nil, Usage{}, false, &ProviderInvocationError{Err: usageDecodeErr, Disposition: ProviderErrorPolicy}
+				}
+				// A provider-call hook can report metering independently from its
+				// response. Preserve valid audio evidence when response decoding
+				// fails, just as rerank preserves validated retrieval evidence.
+				usage = sanitizeAudioUsage(usage)
+				if err := validateAudioDuration(usage); err != nil {
+					return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+				}
+				if usageReported != nil {
+					*usageReported = usagePresent
+				}
+				return nil, usage, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}
+			}
 			return nil, Usage{}, false, &ProviderInvocationError{Err: responseDecodeErr, Disposition: ProviderErrorPolicy}
 		}
 		if usageDecodeErr != nil {

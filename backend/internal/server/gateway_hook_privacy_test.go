@@ -49,3 +49,26 @@ func TestSensitiveGatewayHookErrorsPreserveControlFlow(t *testing.T) {
 		}
 	}
 }
+
+func TestSensitiveGatewayHookErrorsRejectInvalidStatusMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "rerank zero", err: &HTTPError{Status: 0, Code: "provider_error", Message: "private"}, status: 502},
+		{name: "rerank too high", err: &HTTPError{Status: 700, Code: "provider_error", Message: "private"}, status: 502},
+		{name: "transcription zero", err: &HTTPError{Status: 0, Code: "provider_error", Message: "private"}, status: 502},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			call := CallContext{Model: Model{Modality: "rerank"}}
+			if strings.HasPrefix(tc.name, "transcription") {
+				call = CallContext{RouteProtocol: "audio/transcriptions"}
+			}
+			err := sanitizeSensitiveGatewayHookError(call, tc.err)
+			if got := AsHTTPError(err).Status; got != tc.status {
+				t.Fatalf("sanitized status = %d, want %d", got, tc.status)
+			}
+		})
+	}
+}

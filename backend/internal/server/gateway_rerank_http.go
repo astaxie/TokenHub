@@ -115,6 +115,16 @@ func (s *Server) handleRerank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hit {
+		// Cache plugins can provide their own usage evidence. Validate it against
+		// the selected rerank protocol before any response or attribution hooks
+		// run; otherwise an invalid native-unit claim can be priced as a valid
+		// tenant charge when the request is rejected.
+		usage, err = pluginRetrievalUsage(resp, usage, providerRerankProtocol(cacheRoute.Provider) == "cohere")
+		if err != nil {
+			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)
+			writeError(w, r, err)
+			return
+		}
 		resp, err = s.runGatewayResponsePostHooks(r.Context(), call, cacheRoute, resp, providerRouteProtocolRerank)
 		if err != nil {
 			s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, usage, err, auditPayload)

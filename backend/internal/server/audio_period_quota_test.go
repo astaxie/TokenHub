@@ -77,6 +77,7 @@ func TestAPIKeyPeriodUsageKeepsProviderEvidenceSeparateFromReservations(t *testi
 		{"explicit total takes precedence", Usage{TotalTokens: 200, PromptTokens: 150, CompletionTokens: 50, InputAudioTokens: 140, OutputAudioTokens: 40, RateLimitTokens: 900}, 200},
 		{"primary counters include details", Usage{PromptTokens: 150, CompletionTokens: 50, InputAudioTokens: 140, OutputAudioTokens: 40, RateLimitTokens: 900}, 200},
 		{"independent audio details", Usage{InputAudioTokens: 150, OutputAudioTokens: 50, RateLimitTokens: 900}, 200},
+		{"cache lifetime details", Usage{CacheWrite5mInputTokens: 120, CacheWrite1hInputTokens: 80, RateLimitTokens: 900}, 200},
 		{"no token evidence", Usage{RateLimitTokens: 900}, 0},
 	} {
 		for _, protocol := range []string{"audio/transcriptions", "audio/translations"} {
