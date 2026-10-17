@@ -46,7 +46,7 @@ func (s *Server) runGatewayRouteCandidatesHooks(ctx context.Context, call CallCo
 		next, err := applyGatewayRouteCandidatesPatch(selected, patch.Value)
 		if err != nil {
 			if result.FailurePolicy == pluginmeta.FailurePolicyFailOpen {
-				log.Printf("[tokenhub] gateway route_candidates hook %s/%s returned invalid candidates for request %s: %v", result.PluginID, result.HookID, call.RequestID, err)
+				log.Printf("[tokenhub] gateway route_candidates hook %s/%s returned invalid candidates for request %s: %v", result.PluginID, result.HookID, call.RequestID, sanitizeSensitiveGatewayHookError(call, err))
 				continue
 			}
 			return nil, NewHTTPError(http.StatusBadGateway, "gateway_hook_route_candidates_invalid", "Gateway routing plugin returned invalid route candidates")
@@ -97,7 +97,7 @@ func (s *Server) runGatewayRouteRankHooks(ctx context.Context, call CallContext,
 		}
 		next, err := applyGatewayRouteOrderPatch(ordered, patch.Value)
 		if err != nil {
-			log.Printf("[tokenhub] gateway route_rank hook %s/%s returned an invalid route order for request %s: %v", result.PluginID, result.HookID, call.RequestID, err)
+			log.Printf("[tokenhub] gateway route_rank hook %s/%s returned an invalid route order for request %s: %v", result.PluginID, result.HookID, call.RequestID, sanitizeSensitiveGatewayHookError(call, err))
 			continue
 		}
 		ordered = next

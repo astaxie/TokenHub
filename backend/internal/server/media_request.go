@@ -16,10 +16,13 @@ import (
 // Media fields remain opaque so vendor extensions and large integer IDs survive.
 // Files are bounded separately and are never placed in request audit payloads.
 type mediaRequest struct {
-	Fields    map[string]json.RawMessage
-	Files     []mediaFile
-	Multipart bool
-	Path      string
+	Fields          map[string]json.RawMessage
+	Files           []mediaFile
+	Multipart       bool
+	Path            string
+	maxBytes        int64
+	patched         bool
+	guardrailMasked bool
 }
 type mediaFile struct {
 	Header textproto.MIMEHeader
@@ -82,7 +85,7 @@ func (m mediaRequest) isControlField(name string) bool {
 }
 
 func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (mediaRequest, error) {
-	request := mediaRequest{Fields: map[string]json.RawMessage{}, Path: r.URL.Path}
+	request := mediaRequest{Fields: map[string]json.RawMessage{}, Path: r.URL.Path, maxBytes: limit}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	contentType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
@@ -135,6 +138,11 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 				fields[part.FormName()] = append(fields[part.FormName()], string(data))
 			}
 		}
+		if err == nil && request.requiresNativeTranscription() {
+			// Multipart EOF marks the final boundary, not the end of the body.
+			// Count any epilogue through the same limit, including buffered excess.
+			_, err = io.Copy(io.Discard, r.Body)
+		}
 		if err == nil {
 			for name, values := range fields {
 				if len(values) == 1 {
@@ -162,10 +170,16 @@ func decodeMediaRequest(w http.ResponseWriter, r *http.Request, limit int64) (me
 	if err := request.validateStream(); err != nil {
 		return request, NewHTTPError(400, "invalid_media_request", err.Error())
 	}
+	if err := request.validateAudioFiles(); err != nil {
+		return request, err
+	}
 	return request, nil
 }
 
 func (m mediaRequest) encode(model string) ([]byte, string, error) {
+	if err := m.validateTransformedAudioBounds(model); err != nil {
+		return nil, "", err
+	}
 	fields := cloneRawJSON(m.Fields, 1)
 	setRawJSONField(fields, "model", model, true)
 	if !m.Multipart {
@@ -174,31 +188,44 @@ func (m mediaRequest) encode(model string) ([]byte, string, error) {
 	}
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	for name, raw := range fields {
-		var values []string
-		var value string
-		if json.Unmarshal(raw, &value) == nil {
-			values = []string{value}
-		} else if json.Unmarshal(raw, &values) != nil {
-			return nil, "", NewHTTPError(400, "invalid_media_field", "Multipart media fields must be strings or arrays of strings")
-		}
-		for _, value := range values {
-			if err := writer.WriteField(name, value); err != nil {
-				return nil, "", err
-			}
-		}
-	}
-	for _, file := range m.Files {
-		part, err := writer.CreatePart(file.Header)
-		if err != nil {
-			return nil, "", err
-		}
-		if _, err = part.Write(file.Data); err != nil {
-			return nil, "", err
-		}
-	}
-	if err := writer.Close(); err != nil {
+	if err := writeMediaMultipart(writer, fields, m.Files); err != nil {
 		return nil, "", err
 	}
 	return body.Bytes(), writer.FormDataContentType(), nil
+}
+
+func writeMediaMultipart(writer *multipart.Writer, fields map[string]json.RawMessage, files []mediaFile) error {
+	for name, raw := range fields {
+		values, err := mediaMultipartFieldValues(raw)
+		if err != nil {
+			return err
+		}
+		for _, value := range values {
+			if err := writer.WriteField(name, value); err != nil {
+				return err
+			}
+		}
+	}
+	for _, file := range files {
+		part, err := writer.CreatePart(file.Header)
+		if err != nil {
+			return err
+		}
+		if _, err = part.Write(file.Data); err != nil {
+			return err
+		}
+	}
+	return writer.Close()
+}
+
+func mediaMultipartFieldValues(raw json.RawMessage) ([]string, error) {
+	var values []string
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		return []string{value}, nil
+	}
+	if json.Unmarshal(raw, &values) != nil {
+		return nil, NewHTTPError(400, "invalid_media_field", "Multipart media fields must be strings or arrays of strings")
+	}
+	return values, nil
 }

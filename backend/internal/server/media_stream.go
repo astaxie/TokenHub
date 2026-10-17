@@ -26,9 +26,23 @@ func mediaResponseIsSSE(contentType string) bool {
 
 // Inspect the original event bytes before plugins can transform or drop them.
 // Usage remains billable even when a later error or policy blocks delivery.
-func inspectMediaStream(body []byte, provider Provider) (Usage, error) {
+func inspectMediaStream(body []byte, provider Provider, endpoints ...string) (Usage, error) {
 	decoder := newMediaSSEDecoder(body)
 	var usage Usage
+	var transcriptionUsage transcriptionStreamUsage
+	transcription := audioTranscriptionEndpoint(endpoints)
+	capture := func(probe providerStreamEventProbe) bool {
+		if transcription {
+			present := transcriptionUsage.capture(probe)
+			usage = transcriptionUsage.usage
+			return present
+		}
+		parsed, present := mediaUsageFromProbe(probe)
+		if present {
+			usage = parsed
+		}
+		return present
+	}
 	for {
 		event, err := decoder.Next()
 		if err == io.EOF {
@@ -40,15 +54,18 @@ func inspectMediaStream(body []byte, provider Provider) (Usage, error) {
 		var probe providerStreamEventProbe
 		data := strings.TrimSpace(event.Data)
 		invalid := data != "" && data != "[DONE]" && (decodeResponsesJSON([]byte(data), &probe) != nil || probe == nil)
-		if parsed, ok := mediaUsageFromProbe(probe); ok {
-			usage = parsed
-		} else {
-			var response providerStreamEventProbe
-			if json.Unmarshal(probe["response"], &response) == nil {
-				if parsed, ok := mediaUsageFromProbe(response); ok {
-					usage = parsed
-				}
-			}
+		var response providerStreamEventProbe
+		_ = json.Unmarshal(probe["response"], &response)
+		if transcription {
+			// Keep independent evidence from both envelope levels. Outer usage
+			// retains precedence when both report the same cumulative quantity.
+			capture(response)
+			capture(probe)
+		} else if !capture(probe) {
+			capture(response)
+		}
+		if err := validateAudioDuration(usage); err != nil {
+			return usage, err
 		}
 		if invalid {
 			usage.MeteringInvalid = true

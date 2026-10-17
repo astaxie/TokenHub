@@ -3,6 +3,8 @@ import type { StatementState } from "../fixtures/billing";
 
 export const statements = [
   { id: "customer-complete", title: "客户对账单与分项依据", side: "tenant", state: "complete" },
+  { id: "customer-audio", title: "客户对账单：音频小数秒与实测零用量", side: "tenant", state: "audio" },
+  { id: "provider-audio", title: "上游对账单：按音频秒数展示用量与单价", side: "provider", state: "audio" },
   { id: "provider-pending", title: "上游成本：已知、免费与待核实", side: "provider", state: "pending" },
   { id: "margin-complete", title: "预计毛利汇总", side: "margin", state: "complete" },
   { id: "statement-empty", title: "对账单空状态", side: "tenant", state: "empty" },

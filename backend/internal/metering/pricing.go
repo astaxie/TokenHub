@@ -25,10 +25,11 @@ type Units struct {
 	Output       int64 `json:"output"`
 }
 type Line struct {
-	Kind   string `json:"kind"`
-	Units  int64  `json:"units"`
-	Rate   string `json:"rate"`
-	Amount string `json:"amount"`
+	Quantity string `json:"quantity,omitempty"`
+	Kind     string `json:"kind"`
+	Units    int64  `json:"units"`
+	Rate     string `json:"rate"`
+	Amount   string `json:"amount"`
 }
 type Charge struct {
 	Currency     string `json:"currency"`
@@ -94,7 +95,7 @@ func Price(r Rates, u Units, currency, fx string) (Charge, error) {
 		}
 		amount := new(big.Rat).Mul(rate, new(big.Rat).SetFrac(big.NewInt(count), big.NewInt(1000000)))
 		total.Add(total, amount)
-		result.Lines = append(result.Lines, Line{names[i], count, values[i], round(amount, false)})
+		result.Lines = append(result.Lines, Line{Kind: names[i], Units: count, Rate: values[i], Amount: round(amount, false)})
 	}
 	result.Amount = round(total, false)
 	if currency == "USD" {

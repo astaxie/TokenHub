@@ -443,7 +443,14 @@ paths:
       operationId: rerankDocuments
       tags: [Rerank]
       summary: Rerank text documents.
-      description: Ranks candidate text documents for a query. Provider protocol and prices must be configured.
+      description: |
+        Ranks 1-2048 candidate documents for a query. Each document is a nonempty string
+        or an object with nonempty string id and text. Text is limited to 65536 UTF-8
+        bytes and IDs to 256 UTF-8 bytes. Original indices and supplied IDs are preserved.
+        The normal JSON request limit applies (8 MiB by default); upstream responses
+        are bounded to 8 MiB. Native content-security masking is revalidated before cache
+        lookup and provider invocation; document or total-size overflow returns 413
+        request_too_large. Provider protocol and tenant prices must be configured.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       requestBody:
@@ -480,11 +487,15 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/ModelNotAllowed"
+        "413":
+          $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/QuotaExceeded"
         "501":
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
+          $ref: "#/components/responses/ProviderError"
+        "504":
           $ref: "#/components/responses/ProviderError"
   /v1/systemone:
     post:
@@ -684,7 +695,17 @@ paths:
         Routes a published model to an OpenAI or OpenAI-compatible provider. Vendor fields,
         multipart files, repeated form fields, and response formats are preserved.
         Requests use the configured multimodal size limit. Responses are buffered up to
-        128 MiB before delivery. Only upstream-reported token usage is billed.
+        128 MiB before delivery. Multipart uploads require one nonempty supported audio file,
+        up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. The total
+        limit includes all HTTP body bytes after the final multipart boundary. Uploaded
+        bytes remain in memory and are excluded from audit and provider error messages.
+        Multipart routes require a native adapter with the transcription capability;
+        matching provider hooks can handle JSON extensions only. Request hook patches
+        retain the multipart field, part-count, and configured total request size limits.
+        Native content-security masking is also revalidated; oversized masked uploads
+        return 413 request_too_large before provider or provider-hook invocation.
+        Reported tokens and audio seconds are recorded; duration billing uses configured
+        audio_price_usd_per_second metadata independently for tenant and provider prices.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: false
       requestBody:
@@ -695,7 +716,7 @@ paths:
               $ref: "#/components/schemas/MediaRequest"
           multipart/form-data:
             schema:
-              $ref: "#/components/schemas/MediaUploadRequest"
+              $ref: "#/components/schemas/AudioTranscriptionUploadRequest"
       responses:
         "200":
           description: Provider media response, with its original content type.
@@ -738,12 +759,17 @@ paths:
           $ref: "#/components/responses/ModelNotAllowed"
         "413":
           $ref: "#/components/responses/BadRequest"
+        "415":
+          $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/QuotaExceeded"
         "501":
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
           $ref: "#/components/responses/ProviderError"
+        "504":
+          $ref: "#/components/responses/ProviderError"
+
   /v1/audio/translations:
     post:
       operationId: createAudioTranslation
@@ -753,7 +779,17 @@ paths:
         Routes a published model to an OpenAI or OpenAI-compatible provider. Vendor fields,
         multipart files, repeated form fields, and response formats are preserved.
         Requests use the configured multimodal size limit. Responses are buffered up to
-        128 MiB before delivery. Only upstream-reported token usage is billed.
+        128 MiB before delivery. Multipart uploads require one nonempty supported audio file,
+        up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. The total
+        limit includes all HTTP body bytes after the final multipart boundary. Uploaded
+        bytes remain in memory and are excluded from audit and provider error messages.
+        Multipart routes require a native adapter with the transcription capability;
+        matching provider hooks can handle JSON extensions only. Request hook patches
+        retain the multipart field, part-count, and configured total request size limits.
+        Native content-security masking is also revalidated; oversized masked uploads
+        return 413 request_too_large before provider or provider-hook invocation.
+        Reported tokens and audio seconds are recorded; duration billing uses configured
+        audio_price_usd_per_second metadata independently for tenant and provider prices.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: false
       requestBody:
@@ -764,7 +800,7 @@ paths:
               $ref: "#/components/schemas/MediaRequest"
           multipart/form-data:
             schema:
-              $ref: "#/components/schemas/MediaUploadRequest"
+              $ref: "#/components/schemas/AudioTranscriptionUploadRequest"
       responses:
         "200":
           description: Provider media response, with its original content type.
@@ -807,12 +843,17 @@ paths:
           $ref: "#/components/responses/ModelNotAllowed"
         "413":
           $ref: "#/components/responses/BadRequest"
+        "415":
+          $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/QuotaExceeded"
         "501":
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
           $ref: "#/components/responses/ProviderError"
+        "504":
+          $ref: "#/components/responses/ProviderError"
+
   /v1/images/variations:
     post:
       operationId: createImageVariation
@@ -2903,8 +2944,22 @@ components:
           minItems: 1
           maxItems: 2048
           items:
-            type: string
-            minLength: 1
+            oneOf:
+              - type: string
+                minLength: 1
+                description: Nonempty document text, at most 65536 UTF-8 bytes.
+              - type: object
+                additionalProperties: false
+                required: [id, text]
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    description: Caller document ID, at most 256 UTF-8 bytes.
+                  text:
+                    type: string
+                    minLength: 1
+                    description: Nonempty document text, at most 65536 UTF-8 bytes.
         top_n:
           type: integer
           minimum: 1
@@ -2929,6 +2984,9 @@ components:
               index:
                 type: integer
                 minimum: 0
+              id:
+                type: string
+                description: Original document ID when supplied, even if return_documents is false.
               relevance_score:
                 type: number
               document:
@@ -3001,6 +3059,24 @@ components:
           type: string
         input:
           description: Provider-specific input, text, structured media, or task ID.
+        prompt:
+          type: string
+    AudioTranscriptionUploadRequest:
+      type: object
+      required: [model, file]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        file:
+          type: string
+          format: binary
+          description: One nonempty FLAC, MP3, MP4, MPEG, MPGA, M4A, OGG, WAV or WebM file, at most 25 MiB.
+        response_format:
+          type: string
+          description: Provider-supported transcription response format, for example json.
+        language:
+          type: string
         prompt:
           type: string
     MediaUploadRequest:

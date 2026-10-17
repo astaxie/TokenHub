@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -61,6 +62,12 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 				Disposition: ProviderErrorRouteSkipped,
 			}
 		}
+		// Sensitive endpoint sanitization already removed payload text while
+		// retaining the provider's cancellation, retry and outcome classification.
+		var invocation *ProviderInvocationError
+		if sensitiveGatewayHookCall(call) && (errors.Is(err, context.Canceled) || errors.As(err, &invocation)) {
+			return nil, Usage{}, false, err
+		}
 		return nil, Usage{}, false, &ProviderInvocationError{
 			Err:         gatewayHookHTTPError(pluginmeta.StageProviderCall, err),
 			Disposition: ProviderErrorPolicy,
@@ -69,36 +76,92 @@ func (s *Server) runGatewayProviderCallHooksOutputWithUsagePresence(ctx context.
 	var response any
 	var events []gatewayStreamEventView
 	var usage Usage
+	var outputDecodeErr error
+	var usageDecodeErr error
+	usagePresent := false
 	handled := false
 	for _, result := range report.Results {
 		if patch, ok := result.Writes[pluginmeta.DataProviderResponse]; ok {
 			if err := decodeGatewayHookResponsePayload(patch.Value, &response, protocol); err != nil {
-				return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
-			}
-			if stream == nil {
+				// Rerank response validation can fail after a complete leading
+				// object has supplied independent usage. Keep decoding DataUsage
+				// below so the failed attempt remains billable and rate-limited.
+				if outputDecodeErr == nil {
+					outputDecodeErr = err
+				}
+			} else if stream == nil {
 				handled = true
 			}
 		}
 
 		if patch, ok := result.Writes[pluginmeta.DataStreamEvents]; ok {
 			if stream == nil || decodeGatewayHookPayload(patch.Value, &events, "gateway_hook_stream_event_invalid", "Gateway provider plugin returned invalid stream events") != nil || events == nil {
-				return nil, Usage{}, false, &ProviderInvocationError{Err: NewHTTPError(502, "gateway_hook_stream_event_invalid", "Gateway provider plugin must return an array of stream events for a streaming request"), Disposition: ProviderErrorPolicy}
-			}
-			for _, event := range events {
-				if strings.ContainsAny(event.Event, "\r\n") {
-					return nil, Usage{}, false, &ProviderInvocationError{Err: NewHTTPError(502, "gateway_hook_stream_event_invalid", "Gateway provider plugin returned an invalid event name"), Disposition: ProviderErrorPolicy}
+				outputDecodeErr = NewHTTPError(502, "gateway_hook_stream_event_invalid", "Gateway provider plugin must return an array of stream events for a streaming request")
+			} else {
+				for _, event := range events {
+					if strings.ContainsAny(event.Event, "\r\n") {
+						outputDecodeErr = NewHTTPError(502, "gateway_hook_stream_event_invalid", "Gateway provider plugin returned an invalid event name")
+						break
+					}
 				}
 			}
+			// Usage is independent of output validation. Decode it below before
+			// returning an invalid stream, just as for an invalid JSON response.
 			handled = true
 		}
 		if patch, ok := result.Writes[pluginmeta.DataUsage]; ok {
 			if err := decodeGatewayHookPayload(patch.Value, &usage, "gateway_hook_usage_invalid", "Gateway plugin returned invalid usage"); err != nil {
-				return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+				if usageDecodeErr == nil {
+					usageDecodeErr = err
+				}
+				continue
 			}
-			if usageReported != nil {
-				*usageReported = true
-			}
+			usagePresent = true
 		}
+	}
+	if outputDecodeErr != nil {
+		if protocol != providerRouteProtocolRerank {
+			if isAudioMediaProtocol(protocol) {
+				if usageDecodeErr != nil {
+					return nil, Usage{}, false, &ProviderInvocationError{Err: usageDecodeErr, Disposition: ProviderErrorPolicy}
+				}
+				// A provider-call hook can report metering independently from its
+				// response. Preserve valid audio evidence when response decoding
+				// fails, just as rerank preserves validated retrieval evidence.
+				usage = sanitizeAudioUsage(usage)
+				if err := validateAudioDuration(usage); err != nil {
+					usage.MeteringInvalid = true
+					return nil, usage, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+				}
+				if usageReported != nil {
+					*usageReported = usagePresent
+				}
+				usage.MeteringInvalid = true
+				return nil, usage, false, &ProviderInvocationError{Err: outputDecodeErr, Disposition: ProviderErrorPolicy}
+			}
+			return nil, Usage{}, false, &ProviderInvocationError{Err: outputDecodeErr, Disposition: ProviderErrorPolicy}
+		}
+		if usageDecodeErr != nil {
+			return nil, Usage{}, false, &ProviderInvocationError{Err: usageDecodeErr, Disposition: ProviderErrorPolicy}
+		}
+		// Provider-call usage is only trusted after the same retrieval
+		// consistency checks used by a successful rerank response. A
+		// missing usage object therefore remains unpriced evidence.
+		validated, err := pluginRetrievalUsage(nil, usage, providerRerankProtocol(route.Provider) == "cohere")
+		if err != nil {
+			return nil, Usage{}, false, &ProviderInvocationError{Err: err, Disposition: ProviderErrorPolicy}
+		}
+		usage = validated
+		if usageReported != nil {
+			*usageReported = usagePresent
+		}
+		return nil, usage, false, &ProviderInvocationError{Err: outputDecodeErr, Disposition: ProviderErrorPolicy}
+	}
+	if usageDecodeErr != nil {
+		return nil, Usage{}, false, &ProviderInvocationError{Err: usageDecodeErr, Disposition: ProviderErrorPolicy}
+	}
+	if usageReported != nil {
+		*usageReported = usagePresent
 	}
 	if report.TerminalDecision == pluginmeta.HookDecisionShortCircuit && !handled {
 		return nil, Usage{}, false, &ProviderInvocationError{

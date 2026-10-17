@@ -94,19 +94,23 @@ func rerankPayload(p Provider, model string, r RerankRequest) (string, map[strin
 }
 func (a OpenAICompatibleAdapter) Rerank(ctx context.Context, p Provider, model string, r RerankRequest) (any, Usage, error) {
 	if err := validateRerankRequest(r); err != nil {
-		return nil, Usage{}, err
+		return nil, Usage{DocumentCount: len(r.Documents)}, err
 	}
 	path, payload, err := rerankPayload(p, model, r)
 	if err != nil {
-		return nil, Usage{}, err
+		return nil, Usage{DocumentCount: len(r.Documents)}, err
 	}
-	var raw any
-	if err = a.doJSON(ctx, p, http.MethodPost, path, payload, &raw); err != nil {
-		return nil, Usage{}, err
+	raw, err := a.rerankJSON(ctx, p, http.MethodPost, path, payload)
+	if err != nil && raw == nil {
+		return nil, Usage{DocumentCount: len(r.Documents)}, err
 	}
 	body, _ := raw.(map[string]any)
 	profile := providerRerankProtocol(p)
 	usage := retrievalUsage(body, profile == "cohere")
+	usage.DocumentCount = len(r.Documents)
+	if err != nil {
+		return nil, usage, err
+	}
 	if err := validateRetrievalUsageResult(usage); err != nil {
 		return nil, usage, err
 	}

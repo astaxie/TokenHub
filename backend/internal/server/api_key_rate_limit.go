@@ -102,7 +102,13 @@ func meteredTokens(usage Usage) int64 {
 	if usage.PromptTokens > 0 || usage.CompletionTokens > 0 {
 		return saturatingAddNonNegative(usage.PromptTokens, usage.CompletionTokens)
 	}
-	total := saturatingAddNonNegative(usage.CachedInputTokens, usage.CacheWriteInputTokens)
+	cacheWrites := usage.CacheWriteInputTokens
+	if cacheWrites == 0 {
+		// Some providers report only the cache lifetime buckets. They are
+		// independent detail evidence and must still count toward quotas.
+		cacheWrites = saturatingAddNonNegative(usage.CacheWrite5mInputTokens, usage.CacheWrite1hInputTokens)
+	}
+	total := saturatingAddNonNegative(usage.CachedInputTokens, cacheWrites)
 	total = saturatingAddNonNegative(total, usage.InputAudioTokens)
 	total = saturatingAddNonNegative(total, usage.ReasoningOutputTokens)
 	total = saturatingAddNonNegative(total, usage.OutputAudioTokens)

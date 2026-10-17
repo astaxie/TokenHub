@@ -87,31 +87,42 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	err = s.runMediaPreflight(r, &call, &request)
 	if err == nil {
 		audit.Guardrail, err = s.evaluateOutboundGuardrails(r.Context(), call.Project.ID, mediaGuardrailTargets(request.Fields))
+		if err == nil && len(audit.Guardrail.Replacements) > 0 {
+			err = request.validateAudioGuardrailBounds()
+		}
 		audit.Guardrail.Replacements = nil
 	}
 	if err != nil {
+		err = sanitizeMediaError(call.RouteProtocol, err)
 		s.finishFailedRoutedCall(r, RoutedCall{Call: call}, nil, Usage{}, err, audit)
 		writeError(w, r, err)
 		return
 	}
-	routed, ok := s.prepareAdmittedRoutedCallWithAudit(w, r, call, model, audit)
-	if !ok {
+	routed, err := s.prepareAdmittedRoutedCall(r.Context(), call, model)
+	if err != nil {
+		err = sanitizeMediaError(call.RouteProtocol, err)
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, audit)
+		writeError(w, r, err)
 		return
 	}
 	routes := routed.Routes[:0]
 	for _, route := range routed.Routes {
-		if s.routeSupportsMedia(routed.Call, route) {
+		if s.routeSupportsMedia(routed.Call, route, request) {
 			routes = append(routes, route)
 		}
 	}
 	routed.Routes = routes
 	if len(routes) == 0 {
 		err := NewHTTPError(501, "provider_capability_not_supported", "Publish a media model with a compatible provider or matching provider_call hook")
+		if request.requiresNativeTranscription() {
+			err.Message = "Multipart audio requires a native transcription adapter"
+		}
 		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, audit)
 		writeError(w, r, err)
 		return
 	}
-	result, route, usage, attempts, err := executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (mediaResponse, Usage, error) {
+	result, route, usage, attempts, err := executeRoutedWithStore(r.Context(), s.store, routed, false, func(ctx context.Context, route RouteSelection, _ bool, _ int) (result mediaResponse, usage Usage, err error) {
+		defer func() { err = sanitizeMediaError(call.RouteProtocol, err) }()
 		prepared, err := s.prepareRouteForUpstream(ctx, route)
 		if err != nil {
 			return mediaResponse{}, Usage{}, err
@@ -124,6 +135,7 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 		return s.invokeMediaRoute(ctx, routed.Call, prepared, strings.TrimPrefix(r.URL.Path, "/v1"), upstream)
 	})
 	if err != nil {
+		err = sanitizeMediaError(call.RouteProtocol, err)
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, audit)
 		writeError(w, r, err)
 		return
@@ -133,6 +145,7 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	result, usage, err = s.finishMediaHooks(r.Context(), routed.Call, route, result, usage)
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	if err != nil {
+		err = sanitizeMediaError(call.RouteProtocol, err)
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, audit)
 		writeError(w, r, err)
 		return
@@ -150,14 +163,23 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 	if err := decodeGatewayHookRequestPatch(data, &fields); err != nil {
 		return err
 	}
-	patched := mediaRequest{Fields: fields, Multipart: m.Multipart, Path: m.Path}
+	patched := *m
+	patched.Fields = fields
 	if err := patched.validateStream(); err != nil {
 		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned an invalid media stream mode")
 	}
 	if err := validateGatewayHookRequestInvariant(m.model(), m.stream(), patched.model(), patched.stream()); err != nil {
 		return err
 	}
+	if err := patched.validateAudioFiles(); err != nil {
+		return NewHTTPError(http.StatusBadGateway, "gateway_hook_patch_invalid", "Gateway plugin returned invalid transcription file fields")
+	}
+	if err := patched.validateAudioPatchBounds(patched.model()); err != nil {
+		return err
+	}
 	m.Fields = fields
+	m.patched = true
+	m.guardrailMasked = false
 	return nil
 }
 

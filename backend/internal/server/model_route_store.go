@@ -44,6 +44,9 @@ func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute) (Mod
 }
 
 func createModelRecord(db *gorm.DB, model Model) (Model, error) {
+	if err := validateAudioPriceMetadata(model.Metadata); err != nil {
+		return Model{}, err
+	}
 	if err := validateRetrievalPriceMetadata(model.Metadata); err != nil {
 		return Model{}, err
 	}
