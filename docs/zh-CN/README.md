@@ -7,7 +7,7 @@ TokenHub 文档现在按企业 Token Governance 里的三种角色组织。默�
 ## 模型请求 API 手册
 
 - [文本、图片、音频与视频 API](media-apis.md)：鉴权、模型选择、可运行请求、Seedance、异步任务、错误与计费边界。
-- [媒体协议运维](media-api-operations.md)：DMXAPI 兼容、高级媒体工作流、钩子、流校验与计量。
+- [媒体协议运维](media-api-operations.md)：供应商兼容、高级媒体工作流、钩子、流校验与计量。
 
 ## 架构与部署
 

@@ -1,10 +1,10 @@
-# メディアプロトコルの運用と DMXAPI 互換性
+# メディアプロトコルの運用と互換性
 
 言語：[English](../media-api-operations.md) | [简体中文](../zh-CN/media-api-operations.md) | 日本語
 
-[テキスト・マルチモーダル API ガイド](media-apis.md)の補足として、プロバイダー固有の処理、フック、計量、検証を説明します。DMXAPI Chat/Responses の補助フローは上流 ID をそのまま渡します。一方、APIMart 互換 Images/Videos はタスク ID を送信キーと元のアカウントに関連付け、`/v1/tasks/{task_id}` で照会します。
+[テキスト・マルチモーダル API ガイド](media-apis.md)の補足として、プロバイダー固有の処理、フック、計量、検証を説明します。Chat/Responses の補助フローは上流 ID をそのまま渡します。一方、Images/Videos の非同期要求はタスク ID を送信キーと元のアカウントに関連付け、`/v1/tasks/{task_id}` で照会します。
 
-TokenHub は [DMXAPI ドキュメント](https://doc.dmxapi.cn/jichu.html)で使用されるメディアプロトコルに対応します。プロバイダーを設定し、生成、アップロード、照会、ダウンロードの各モデルを公開してから呼び出してください。対応範囲はプロトコル互換性です。モデルの提供状況とパラメーターの仕様は上流プロバイダーに依存し、認証情報や料金は同梱しません。
+TokenHub は一般的なメディアプロトコルに対応します。プロバイダーを設定し、生成、アップロード、照会、ダウンロードの各モデルを公開してから呼び出してください。対応範囲はプロトコル互換性です。モデルの提供状況とパラメーターの仕様は上流プロバイダーに依存し、認証情報や料金は同梱しません。
 
 ## エンドポイント
 
@@ -20,14 +20,14 @@ TokenHub は [DMXAPI ドキュメント](https://doc.dmxapi.cn/jichu.html)で使
 | `POST /v1/chat/completions` | MiMo 音声合成/声の設計/クローン、Qwen Omni 音声説明とマルチモーダル音声、Recraft 画像 |
 | `POST /v1beta/models/{model}:generateContent` と `:streamGenerateContent` | Gemini ネイティブ画像生成/編集とマルチモーダル出力 |
 
-各モデルの上流ドキュメントで指定されたエンドポイントを使用します。DMXAPI の動画例は `/v1/responses` で作成と照会を行うため、新たな `/v1/videos` は不要です。既存の Chat、Responses、Gemini API のストリーミングと拡張フィールドは維持されます。OpenAPI 仕様は Chat の `input_audio` と、Wan メッセージや MiniMax 音声アップロードなどのプロバイダー固有 Responses 入出力オブジェクトを含みます。メディアフィールドは各プロバイダーの規則で検証されます。
+各モデルの上流ドキュメントで指定されたエンドポイントを使用します。動画の作成と照会は `/v1/responses` で行えるため、新たな `/v1/videos` は不要です。既存の Chat、Responses、Gemini API のストリーミングと拡張フィールドは維持されます。OpenAPI 仕様は Chat の `input_audio` と、Wan メッセージや MiniMax 音声アップロードなどのプロバイダー固有 Responses 入出力オブジェクトを含みます。メディアフィールドは各プロバイダーの規則で検証されます。
 
 ## プロバイダーとモデルの設定
 
-1. **OpenAI-compatible** プロバイダーに `https://www.dmxapi.cn/v1` と上流の認証情報を設定します。Gemini ネイティブの例では **Gemini** プロバイダーを使い、ベース URL を `https://www.dmxapi.cn/v1beta` に設定し、同じ上流アカウントを使用します。
+1. **OpenAI-compatible** プロバイダーに実際の上流ベース URL（例：`https://provider.example/v1`）と上流の認証情報を設定します。Gemini ネイティブの例では **Gemini** プロバイダーを使い、ベース URL を実際の上流 URL（例：`https://provider.example/v1beta`）に設定し、同じ上流アカウントを使用します。
 2. 公開モデルのルートを正確な上流モデル ID にマッピングします。モダリティは `image`、`video`、`audio`（音楽は `audio`）を選びます。マルチモーダルチャットではこれらの出力モダリティを設定することもできます。該当する Chat/Responses 要求は応答キャッシュを使用せず、生成結果の再利用や古いタスク状態を防ぎます。
 3. `seedance-2-0-get`、`MiniMax-Hailuo-query`、`MiniMax-Hailuo-get`、音声/素材アップロードなどの補助モデルも公開します。プロジェクトキーには処理全体で必要なモデルの権限を付与します。
-4. DMXAPI Chat/Responses の補助フローでは、生成と照会を同じプロバイダーアカウント/リソースに固定します。このフローのタスク ID、ファイル ID、大きな JSON 整数はそのまま渡し、所有権は自動的には関連付けません。名前空間の分離が必要なテナントには別の上流アカウントを使用してください。Images/Videos の受付結果は別の[タスク関連付けフロー](media-apis.md#非同期タスクの作成と照会)を使用します。
+4. Chat/Responses の補助フローでは、生成と照会を同じプロバイダーアカウント/リソースに固定します。このフローのタスク ID、ファイル ID、大きな JSON 整数はそのまま渡し、所有権は自動的には関連付けません。名前空間の分離が必要なテナントには別の上流アカウントを使用してください。Images/Videos の受付結果は別の[タスク関連付けフロー](media-apis.md#非同期タスクの作成と照会)を使用します。
 
 Gemini ネイティブメディアでは、公開モデルにメディアモダリティまたは出力モダリティを設定し、`/v1beta/models/{model}:generateContent` または `:streamGenerateContent?alt=sse` を呼び出します。これらの要求はキャッシュを使用せず、ネイティブの `generationConfig`（`responseModalities` と `imageConfig` を含む）、インラインメディア、思考署名を保持します。上流モデルはルートで選択されます。ネイティブ JSON/SSE 応答は生成メディアを保持し、`usageMetadata` で Token を計量します。両形式とも 128 MiB のメディア上限内でバッファリングして配信し、認証、テキストポリシー、スコープ付きフック、保護された送信経路を適用します。
 
@@ -76,7 +76,7 @@ multipart の `model` と `stream` は単一のテキストフィールドであ
 
 非ストリーミングのプロバイダーフックが返す JSON が応答サイズ上限を超えた場合も、要求とルート試行の両方の記録に報告済みの Token 使用量を保持します。Gemini ネイティブの `usageMetadata` にも適用し、ゼロを含む明示的なプラグイン使用量を優先します。応答は失敗のままで、再試行やプロバイダーの健全性へのペナルティは発生しません。
 
-Responses の OpenAPI 定義では `model` が必須で、`input` の要否は選択したプロバイダーモデルに依存します。例えば DMX の歌詞・音楽生成は `input` を省略し、プロンプトなしで生成できます。省略した入力には空の値を追加せず、そのまま転送します。`input` 配列は、Vidu Q3 の開始・終了フレームからの動画生成で使う画像 URL や data URI の文字列にも対応します。Responses の `output` は標準項目の配列またはプロバイダー固有のオブジェクトを受け付けます。例えば Qwen Image 3.0 の画像結果は `output.choices[].message.content[].image` にあります。完了したバックグラウンドジョブの応答も同じ構造に対応します。出力配列は Seedream の `{"type":"image_url","image_url":{"url":"..."}}` 形式の画像結果にも対応します。
+Responses の OpenAPI 定義では `model` が必須で、`input` の要否は選択したプロバイダーモデルに依存します。例えば一部の歌詞・音楽生成モデルは `input` を省略し、プロンプトなしで生成できます。省略した入力には空の値を追加せず、そのまま転送します。`input` 配列は、Vidu Q3 の開始・終了フレームからの動画生成で使う画像 URL や data URI の文字列にも対応します。Responses の `output` は標準項目の配列またはプロバイダー固有のオブジェクトを受け付けます。例えば Qwen Image 3.0 の画像結果は `output.choices[].message.content[].image` にあります。完了したバックグラウンドジョブの応答も同じ構造に対応します。出力配列は Seedream の `{"type":"image_url","image_url":{"url":"..."}}` 形式の画像結果にも対応します。
 
 JSON 応答処理は `application/json` と `+json` 接尾辞を持つ MIME タイプを認識し、パラメーターや大文字・小文字の違いにも対応します。同じ検証、Token 使用量の抽出、JSON フック形式を適用し、元の Content-Type を保持します。JSON の基本タイプを認識できる場合は、パラメーターが不正または重複していても検証を適用します。パラメーター内の `application/json` という文字列だけで、テキストやバイナリ応答を JSON と判断しません。
 

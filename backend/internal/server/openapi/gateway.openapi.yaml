@@ -5,7 +5,7 @@ info:
   description: |
     TokenHub exposes text, image, audio, and video model APIs using OpenAI-compatible,
     Anthropic-compatible, native Gemini, and TypeSafe System One protocols.
-    APIMart-compatible image and video submissions can be polled through /v1/tasks/{task_id}.
+    Asynchronous image and video submissions can be polled through /v1/tasks/{task_id}.
     Model names are administrator-published aliases, not a guarantee of upstream availability.
     Administrative, analytics, health, and metrics endpoints are intentionally excluded from this
     public gateway contract. They require a separate authenticated specification if documented later.
@@ -954,12 +954,12 @@ paths:
         Ordinary models pass `response_format` through to the provider. Built-in
         managed image models accept `url` or `b64_json`; managed plugin models
         enforce their configured response formats.
-        APIMart-compatible asynchronous responses keep their provider envelope, with
+        Compatible asynchronous responses keep their provider envelope, with
         task_id replaced by a TokenHub ID for GET /v1/tasks/{task_id}. Versioned
         generation.task receipts preserve HTTP 202, replace data.id, and rewrite
-        an existing poll_url to the TokenHub task path. Configure the provider header
-        X-APIMart-Response-Version: 2026-07-27 when required by the upstream;
-        client headers are not automatically forwarded. Task queries require
+        an existing poll_url to the TokenHub task path. If the upstream requires a
+        response-version header, configure the header specified by its documentation
+        in the provider settings; client headers are not automatically forwarded. Task queries require
         the same creating API key and are independent of local image jobs.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
@@ -1177,7 +1177,7 @@ paths:
       tags: [Videos]
       summary: Submit a video generation request.
       description: |
-        Routes a published video model to a compatible provider, including APIMart.
+        Routes a published video model to a compatible provider.
         Text, first/last frames, reference images, videos, audio, and provider-specific
         options are forwarded with the routed upstream model name. Supported parameters,
         resolutions, durations, and media combinations depend on the upstream model.
@@ -3410,7 +3410,7 @@ components:
         task_id fields and id fields explicitly tagged with object: generation.task
         are replaced with opaque TokenHub IDs. Existing poll_url fields become
         relative /v1/tasks/{TokenHub task ID} URLs. Ordinary synchronous asset IDs
-        remain untouched. APIMart legacy receipts use code and a data array;
+        remain untouched. Legacy receipts can use code and a data array;
         versioned HTTP 202 receipts use a generation.task data object. Compatible
         providers may also return the task at the root. Ambiguous task locations,
         conflicting identifiers, and malformed task collections are rejected.
@@ -3455,7 +3455,7 @@ components:
       additionalProperties: true
       description: |
         Provider task response, with its task identity mapped back to the TokenHub ID.
-        APIMart returns code and data. Known statuses include pending, processing,
+        Compatible providers return code and data. Known statuses include pending, processing,
         completed, failed, and cancelled. Provider cost fields are not TokenHub invoices.
       properties:
         code:

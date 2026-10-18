@@ -2,9 +2,9 @@
 
 言語：[English](../media-apis.md) | [简体中文](../zh-CN/media-apis.md) | 日本語
 
-TokenHub の共通ゲートウェイとプロジェクト API キーで、許可されたテキスト・メディアモデルを呼び出します。このガイドは [APIMart API マニュアル](https://docs.apimart.ai/cn/index)の用途別構成を参考にしながら、TokenHub 独自の認証、ルーティング、タスク分離、制限を説明します。
+TokenHub の共通ゲートウェイとプロジェクト API キーで、許可されたテキスト・メディアモデルを呼び出します。このガイドは用途別の API リファレンス構成で、TokenHub 独自の認証、ルーティング、タスク分離、制限を説明します。
 
-**エンドポイントへの対応は、モデルが利用可能であることを意味しません。** 管理者による上流認証情報の設定、公開モデル ID の登録、上流モデルへのマッピング、キーへのアクセス許可が必要です。形式、長さ、解像度、音声、モデルのバージョン、素材の有効期限は上流に依存します。TokenHub はベンダーアカウントを同梱せず、APIMart の全モデル・機能を保証しません。
+**エンドポイントへの対応は、モデルが利用可能であることを意味しません。** 管理者による上流認証情報の設定、公開モデル ID の登録、上流モデルへのマッピング、キーへのアクセス許可が必要です。形式、長さ、解像度、音声、モデルのバージョン、素材の有効期限は上流に依存します。TokenHub はベンダーアカウントを同梱せず、上流プロバイダーの全モデル・機能を保証しません。
 
 ## API を選ぶ
 
@@ -46,15 +46,15 @@ curl --fail-with-body "$TOKENHUB_URL/v1/chat/completions" \
   -d '{"model":"text-model","messages":[{"role":"user","content":"Explain an API gateway in one sentence."}],"stream":false}'
 ```
 
-テキストは `choices[].message.content` から読み取ります。調査用にリクエスト ID を保存し、**リクエストログ**で確認します。`/v1/models` への表示は可視性と利用条件を満たすルートの存在を示しますが、上流の全機能の稼働を保証しません。APIMart の `expand` メタデータ形式とアカウント残高 API は実装していません。
+テキストは `choices[].message.content` から読み取ります。調査用にリクエスト ID を保存し、**リクエストログ**で確認します。`/v1/models` への表示は可視性と利用条件を満たすルートの存在を示しますが、上流の全機能の稼働を保証しません。プロバイダー固有の `expand` メタデータ形式とアカウント残高 API は汎用 TokenHub API として実装していません。
 
 ## プロバイダー設定とモデル選択
 
-APIMart 互換アカウントには **OpenAI-compatible** プロバイダーを追加し、ベース URL を `https://api.apimart.ai/v1` に設定して認証情報を登録します。例えば `text-model` を利用可能なテキストモデルへ、`image-model` を `gpt-image-2` へ、`seedance-video` を `seedance-2.0` へマッピングします。用途に応じて `image`、`audio`、`video` を設定し、マルチモーダルチャットには入出力モダリティも設定します。メディアの Chat/Responses は応答キャッシュを使用しません。
+**OpenAI-compatible** プロバイダーを追加し、実際の上流ベース URL（例：`https://provider.example/v1`）を設定して認証情報を登録します。例えば `text-model` を利用可能なテキストモデルへ、`image-model` を画像モデルへ、`seedance-video` を Seedance 対応モデルへマッピングします。用途に応じて `image`、`audio`、`video` を設定し、マルチモーダルチャットには入出力モダリティも設定します。メディアの Chat/Responses は応答キャッシュを使用しません。
 
 Anthropic と Gemini のネイティブ要求には、そのプロトコルと応答形式に対応するルートが必要です。OpenAI-compatible のベース URL 設定だけではネイティブ互換性は確認できません。アダプターと SDK 設定は[利用者ガイド](user-guide.md)を参照してください。ベンダーの例ではテキスト応答にラッパーが付くこともあるため、クライアントが期待する形式を返すルートか確認してください。
 
-公開名 `gpt-image-2`、Codex サブスクリプション画像モデル、管理対象画像プラグインは TokenHub の管理対象画像フローを使います。APIMart 非同期生成など上流 Images の全仕様を使う場合は、`image-model` など別のエイリアスを公開し、`gpt-image-2` にマッピングします。[管理対象画像ガイド](user-guide.md#codex-サブスクリプション画像生成)を参照してください。
+公開名 `gpt-image-2`、Codex サブスクリプション画像モデル、管理対象画像プラグインは TokenHub の管理対象画像フローを使います。上流 Images の非同期生成など全仕様を使う場合は、`image-model` など別のエイリアスを公開し、上流の画像モデル ID にマッピングします。[管理対象画像ガイド](user-guide.md#codex-サブスクリプション画像生成)を参照してください。
 
 アップグレード時は通常の起動時マイグレーションで v8 `add-media-task-bindings` を適用します。タスク関連付けは再起動後も保持されます。保存した上流 ID を復号できるようサーバーの秘密鍵を維持してください。新しい環境変数は不要です。
 
@@ -114,7 +114,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
   -d '{"model":"image-model","prompt":"A watercolor lighthouse at sunrise","n":1,"size":"16:9","resolution":"2k"}'
 ```
 
-公開エイリアスを介して APIMart `gpt-image-2` のパラメーター形式を使用する例です。他のプロバイダーでは `1024x1024` などのピクセル指定が必要な場合があります。異なるモデルの規則を混在させないでください。
+公開エイリアスを介して上流の `gpt-image-2` 互換パラメーター形式を使用する例です。他のプロバイダーでは `1024x1024` などのピクセル指定が必要な場合があります。異なるモデルの規則を混在させないでください。
 
 | フィールド | 意味 |
 | --- | --- |
@@ -124,7 +124,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
 | `image_urls` など | 対応モデルの参照画像 |
 | `response_format` | `url`、`b64_json`、`base64` など上流が対応する形式 |
 
-同期応答は通常 `data[].url` または `data[].b64_json` を含みます。非同期応答は `data[].task_id`、または APIMart の新しい受付形式では `data.object:"generation.task"` を伴う `data.id` を含みます。返された各 TokenHub ID を以下のタスク API で照会します。プロバイダーの結果フィールドを保持し、TokenHub は URL のダウンロードや有効期限の延長を行いません。
+同期応答は通常 `data[].url` または `data[].b64_json` を含みます。非同期応答は `data[].task_id`、または `data.object:"generation.task"` を伴う `data.id` を含みます。返された各 TokenHub ID を以下のタスク API で照会します。プロバイダーの結果フィールドを保持し、TokenHub は URL のダウンロードや有効期限の延長を行いません。
 
 ### 画像編集とマスク
 
@@ -177,7 +177,7 @@ multipart の文字起こしと翻訳では、空でない `file` を 1 個だ�
 
 公開するルートのアダプターは明示的に `transcription` をサポートし、モデルのエンドポイントに対象操作を含める必要があります。OpenAI と設定済み OpenAI 互換/ローカルアダプターが対応し、各要求で最新のインポート済みエンドポイント情報も再確認します。JSON ベンダー拡張は一致するプロバイダー呼び出しフックで処理できますが、multipart アップロードにはネイティブアダプターが必要です。公開、フック、アップロード検証、SDK スモークテストは[文字起こしアップロードと計量の契約](media-api-operations.md#文字起こしアップロードと計量の契約)を参照してください。
 
-音声クローンと音楽は、既存のプロバイダー固有 Chat/Responses フローを引き続き使用できます。[メディア運用](media-api-operations.md)を参照してください。APIMart の `/v1/music/*`、音声・素材管理、アップロード、webhook 管理を汎用 TokenHub API としては実装していません。
+音声クローンと音楽は、既存のプロバイダー固有 Chat/Responses フローを引き続き使用できます。[メディア運用](media-api-operations.md)を参照してください。プロバイダー固有の `/v1/music/*`、音声・素材管理、アップロード、webhook 管理を汎用 TokenHub API としては実装していません。
 
 ## 動画と Seedance
 
@@ -188,7 +188,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
   -d '{"model":"seedance-video","prompt":"A calm ocean at sunrise, slow camera movement","duration":5,"size":"16:9","resolution":"720p","generate_audio":true}'
 ```
 
-`seedance-video` を APIMart `seedance-2.0` などの上流モデルに設定します。他の互換動画モデルも同じエンドポイントでそれぞれのオプションを使います。
+`seedance-video` を Seedance 対応の上流モデル（例：`seedance-2.0`）に設定します。他の互換動画モデルも同じエンドポイントでそれぞれのオプションを使います。
 
 | フィールド | 意味 |
 | --- | --- |
@@ -201,23 +201,23 @@ curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
 
 先頭・末尾フレーム、複数参照、長さの範囲、参照の組み合わせは共通仕様ではありません。Volcengine ネイティブの `/content_generation/tasks` は実装していません。
 
-DMXAPI Seedance は引き続き `/v1/responses` と生成モデル、`seedance-2-0-get` などの補助モデルを使います。タスク ID と照会規則は `/v1/tasks` と異なります。[DMXAPI の設定と例](media-api-operations.md)を参照してください。
+一部の Seedance 対応プロバイダーは `/v1/responses` と生成モデル、`seedance-2-0-get` などの補助モデルを使います。タスク ID と照会規則は `/v1/tasks` と異なる場合があります。[メディア運用](media-api-operations.md)を参照してください。
 
 ## 非同期タスクの作成と照会
 
-APIMart 互換の画像・動画要求は、通常、次の従来形式で受付結果を返します。
+画像・動画の互換要求は、通常、次の従来形式で受付結果を返します。
 
 ```json
 {"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
 ```
 
-Grok Imagine 2.0 Ext や GPT Image 2.5 Ext などの画像モデルは、APIMart の新しい HTTP `202` 受付形式にも対応します。
+Grok Imagine 2.0 Ext や GPT Image 2.5 Ext などの画像モデルは、新しい HTTP `202` 受付形式にも対応します。
 
 ```json
 {"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
 ```
 
-この上流形式を要求するには、プロバイダーのカスタムヘッダーに `X-APIMart-Response-Version: 2026-07-27` を設定します。TokenHub はクライアントのヘッダーを自動転送しません。HTTP `202` と受付構造を保持し、`data.id` を置き換え、既存の `poll_url` を対応する TokenHub パスに書き換えます。この相対パスをゲートウェイのオリジンに結合して照会してください。通常の同期画像のアセット ID は変更しません。
+この上流形式を要求するには、プロバイダーのカスタムヘッダーで、上流仕様が定めるバージョン選択ヘッダーを設定します。TokenHub はクライアントのヘッダーを自動転送しません。HTTP `202` と受付構造を保持し、`data.id` を置き換え、既存の `poll_url` を対応する TokenHub パスに書き換えます。この相対パスをゲートウェイのオリジンに結合して照会してください。通常の同期画像のアセット ID は変更しません。
 
 どちらの受付形式も上流が要求を受け付けたことを示し、生成完了を意味しません。TokenHub はベンダーのタスク ID を不透明な ID に置き換え、送信プロジェクト・キー・プロバイダー・リソースの関連を永続化します。**送信時と同じプロジェクト API キー**と返された ID を使ってください。
 
@@ -234,7 +234,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
 | `data.id` | この照会フローの TokenHub タスク ID |
 | `data.status` | 上流タスクの状態 |
 | `data.progress` | 任意の上流進捗。ゲートウェイの推定値ではない |
-| `data.result` | モデル固有の結果。APIMart は `images[]` や `videos[]` 内の `url` 配列などを返す |
+| `data.result` | モデル固有の結果。例えば `images[]` や `videos[]` 内の `url` 配列などを含む |
 | `data.error` | 存在する場合は上流タスクの失敗情報 |
 | `data.cost`、`data.credits_cost` | 上流メタデータ。TokenHub の請求額ではない |
 
@@ -265,7 +265,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
 
 | 仕組み | ID と照会 |
 | --- | --- |
-| APIMart 互換画像・動画タスク | 返された `task_id`。`GET /v1/tasks/{task_id}` |
+| 画像・動画の非同期タスク | 返された `task_id`。`GET /v1/tasks/{task_id}` |
 | TokenHub 管理対象画像ジョブ | [画像ガイド](user-guide.md#codex-サブスクリプション画像生成)の管理対象ジョブ仕様 |
 | Responses の `background:true` | ローカル Responses ジョブ。完了は上流 API 呼び出しの終了であり、上流レンダリング完了ではない |
 
@@ -305,6 +305,6 @@ Token 計量は報告された使用量に基づき、バイナリ音声、字�
 | 画像生成 | Images へ送信 → 同期結果を利用、または各タスク ID を照会 |
 | ナレーション付き動画 | 音声生成 → 上流から音声を取得できるよう保存 → 音声参照対応モデルに動画要求 → 照会 → 素材保存 |
 | 議事録 | 録音をアップロードして文字起こし → テキストを Chat/Responses に送信 |
-| DMXAPI Seedance | 同一アカウントで生成・照会モデルを公開 → Responses へ送信 → 上流 ID で照会 |
+| 補助照会モデルを使う動画生成 | 同一アカウントで生成・照会モデルを公開 → Responses へ送信 → 上流 ID で照会 |
 
-回帰テストは合成データとローカルプロバイダーでプロトコル、アクセス分離、アップロード、フック、計量を検証します。有料生成や実アカウントでの全モデルの可用性は検証していません。参考：[APIMart テキスト](https://docs.apimart.ai/en/api-reference/texts/general/chat-completions.md)、[画像](https://docs.apimart.ai/en/api-reference/images/gpt-image-2/generation.md)、[音声](https://docs.apimart.ai/en/api-reference/audios/tts.md)、[Seedance](https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation.md)、[タスク照会](https://docs.apimart.ai/en/api-reference/tasks/status.md)。
+回帰テストは合成データとローカルプロバイダーでプロトコル、アクセス分離、アップロード、フック、計量を検証します。有料生成や実アカウントでの全モデルの可用性は検証していません。各モデルの最新仕様、利用可能なパラメーター、タスク照会方法は、設定した上流プロバイダーのドキュメントを参照してください。

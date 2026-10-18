@@ -2,9 +2,9 @@
 
 Language: English | [简体中文](zh-CN/media-apis.md) | [日本語](ja/media-apis.md)
 
-Call approved text and media models through one TokenHub gateway and a project API key. This guide follows the task-oriented organization of the [APIMart API manual](https://docs.apimart.ai/cn/index), while documenting TokenHub's authentication, routing, task isolation, and limits.
+Call approved text and media models through one TokenHub gateway and a project API key. This guide covers authentication, model selection, request parameters, responses, asynchronous tasks, errors, and limits for each supported workflow.
 
-**Endpoint support does not imply model availability.** An administrator must configure the upstream credential, publish a public model ID, map it to the upstream model, and grant your key access. Formats, duration, resolution, voices, model versions, and asset expiration depend on the upstream. TokenHub does not bundle vendor accounts or promise the entire APIMart catalog.
+**Endpoint support does not imply model availability.** An administrator must configure the upstream credential, publish a public model ID, map it to the upstream model, and grant your key access. Formats, duration, resolution, voices, model versions, and asset expiration depend on the upstream. TokenHub does not bundle vendor accounts or guarantee access to every upstream model.
 
 ## Choose an API
 
@@ -46,15 +46,15 @@ curl --fail-with-body "$TOKENHUB_URL/v1/chat/completions" \
   -d '{"model":"text-model","messages":[{"role":"user","content":"Explain an API gateway in one sentence."}],"stream":false}'
 ```
 
-Read text from `choices[].message.content`. Save the request ID for **Request Logs**. A model appearing in `/v1/models` confirms visibility and routing eligibility, not live availability of every upstream feature. APIMart's `expand` metadata schema and account-balance APIs are not implemented.
+Read text from `choices[].message.content`. Save the request ID for **Request Logs**. A model appearing in `/v1/models` confirms visibility and routing eligibility, not live availability of every upstream feature. Provider-specific `expand` metadata and account-balance APIs are not part of the TokenHub model API.
 
 ## Provider setup and model selection
 
-For an APIMart-compatible account, add an **OpenAI-compatible** provider with base URL `https://api.apimart.ai/v1` and its credential. Publish aliases, for example `text-model` to the account's text model, `image-model` to `gpt-image-2`, and `seedance-video` to `seedance-2.0`. Select `image`, `audio`, or `video` as appropriate; configure input/output modalities for multimodal chat. Media Chat/Responses requests bypass response caches.
+For an account supporting the required endpoints, add an **OpenAI-compatible** provider with its base URL and credential. For example, replace `https://provider.example/v1` with the actual provider endpoint. Publish aliases, for example `text-model` to the account's text model, `image-model` to `gpt-image-2`, and `seedance-video` to `seedance-2.0`. Select `image`, `audio`, or `video` as appropriate; configure input/output modalities for multimodal chat. Media Chat/Responses requests bypass response caches.
 
 Native Anthropic and Gemini requests require a route that supports the native protocol and response shape; an OpenAI-compatible base URL alone does not establish native compatibility. See the [User Guide](user-guide.md) for adapters and SDK configuration. Vendor documentation may show wrapped text responses; verify the selected route returns the protocol your client expects.
 
-Public `gpt-image-2`, Codex subscription image models, and configured managed image plugins use TokenHub's managed image workflow. To use the full upstream Images contract, including APIMart asynchronous generation, publish a separate alias such as `image-model` mapped to `gpt-image-2`. See the [managed image guide](user-guide.md#codex-subscription-image-generation).
+Public `gpt-image-2`, Codex subscription image models, and configured managed image plugins use TokenHub's managed image workflow. To use the full upstream Images contract, including supported asynchronous generation, publish a separate alias such as `image-model` mapped to `gpt-image-2`. See the [managed image guide](user-guide.md#codex-subscription-image-generation).
 
 Upgrading applies database migration v8, `add-media-task-bindings`, through the normal startup migration process. Task bindings survive restarts; keep the configured server secret stable so encrypted upstream task IDs remain readable. No new environment variable is required.
 
@@ -114,7 +114,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
   -d '{"model":"image-model","prompt":"A watercolor lighthouse at sunrise","n":1,"size":"16:9","resolution":"2k"}'
 ```
 
-This uses APIMart `gpt-image-2` parameters through a public alias. Other providers may require dimensions such as `1024x1024`; do not mix model-specific conventions.
+This example requires an image route that accepts aspect ratios and resolution tiers through a public alias. Other providers may require dimensions such as `1024x1024`; do not mix model-specific conventions.
 
 | Field | Meaning |
 | --- | --- |
@@ -124,7 +124,7 @@ This uses APIMart `gpt-image-2` parameters through a public alias. Other provide
 | `image_urls`, other reference fields | Reference images when supported |
 | `response_format` | Upstream-supported format, such as `url`, `b64_json`, or `base64` |
 
-Synchronous responses commonly contain `data[].url` or `data[].b64_json`. Asynchronous responses contain `data[].task_id`, or `data.id` with `data.object:"generation.task"` in APIMart's versioned receipt; poll each returned TokenHub ID using the task API below. Provider result fields are preserved. TokenHub does not download returned URLs or extend their lifetime.
+Synchronous responses commonly contain `data[].url` or `data[].b64_json`. Supported asynchronous receipts contain `data[].task_id`, or `data.id` with `data.object:"generation.task"`; poll each returned TokenHub ID using the task API below. Provider result fields are preserved. TokenHub does not download returned URLs or extend their lifetime.
 
 ### Edit an image or supply a mask
 
@@ -177,7 +177,7 @@ Multipart transcription and translation require exactly one nonempty `file`, at 
 
 Publish a route whose adapter explicitly supports `transcription` and whose model endpoints include the requested operation. OpenAI and configured OpenAI-compatible/local adapters support it; current imported endpoint metadata is checked again on each request. JSON vendor extensions can use matching provider-call hooks, while multipart uploads require a native adapter. See the [transcription upload and metering contract](media-api-operations.md#transcription-upload-and-metering-contract) for publication, hooks, upload validation, and SDK smoke tests.
 
-Voice cloning and music remain available through existing provider-specific Chat/Responses workflows in [media operations](media-api-operations.md). APIMart's `/v1/music/*`, voice/asset management, uploads, and webhook management are not implemented as a general TokenHub API family.
+Voice cloning and music remain available through existing provider-specific Chat/Responses workflows in [media operations](media-api-operations.md). Separate `/v1/music/*`, voice/asset management, upload, and webhook management APIs are not implemented as a general TokenHub API family.
 
 ## Videos, including Seedance
 
@@ -188,7 +188,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
   -d '{"model":"seedance-video","prompt":"A calm ocean at sunrise, slow camera movement","duration":5,"size":"16:9","resolution":"720p","generate_audio":true}'
 ```
 
-Configure `seedance-video` to an upstream model such as APIMart `seedance-2.0`. Other compatible video models use the same endpoint with their own options.
+Configure `seedance-video` to a compatible upstream model such as `seedance-2.0`. Other compatible video models use the same endpoint with their own options.
 
 | Field | Meaning |
 | --- | --- |
@@ -201,23 +201,23 @@ Configure `seedance-video` to an upstream model such as APIMart `seedance-2.0`. 
 
 First/last frames, multiple references, duration ranges, and reference combinations are not universal. TokenHub does not implement Volcengine-native `/content_generation/tasks`.
 
-DMXAPI Seedance remains available through `/v1/responses`, with a generation model and an auxiliary model such as `seedance-2-0-get`. Its task IDs and polling rules differ from `/v1/tasks`; see [DMXAPI setup and examples](media-api-operations.md).
+Providers exposing Seedance through `/v1/responses` use a generation model and an auxiliary model such as `seedance-2-0-get`. Their task IDs and polling rules differ from `/v1/tasks`; see [provider setup and examples](media-api-operations.md).
 
 ## Submit and poll asynchronous tasks
 
-APIMart-compatible image/video submissions commonly return this legacy receipt:
+Compatible image/video submissions can return this task-list receipt:
 
 ```json
 {"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
 ```
 
-Some image models, including Grok Imagine 2.0 Ext and GPT Image 2.5 Ext, support APIMart's versioned HTTP `202` receipt:
+Some upstream image routes support this HTTP `202` task-object receipt:
 
 ```json
 {"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
 ```
 
-To request this upstream format, configure `X-APIMart-Response-Version: 2026-07-27` in the provider's custom headers. TokenHub does not automatically forward client headers. It preserves HTTP `202` and the receipt structure, replaces `data.id`, and rewrites an existing `poll_url` to the corresponding TokenHub path. Use the gateway origin with that relative URL. Ordinary synchronous image asset IDs remain unchanged.
+If the upstream selects this format through a version-selection header, configure the header name and value specified in that provider's documentation in its custom headers. TokenHub does not automatically forward client headers. It preserves HTTP `202` and the receipt structure, replaces `data.id`, and rewrites an existing `poll_url` to the corresponding TokenHub path. Use the gateway origin with that relative URL. Ordinary synchronous image asset IDs remain unchanged.
 
 Either receipt means the upstream accepted work, not that generation is complete. TokenHub replaces vendor task IDs with opaque IDs and persists the submitting project/key and provider/resource binding. Use **the same project API key** and exact returned ID:
 
@@ -234,7 +234,7 @@ The optional `language` query parameter accepts `en`, `zh`, `ja`, `ko`, `ru`, `f
 | `data.id` | TokenHub task ID for this polling workflow |
 | `data.status` | Upstream task status |
 | `data.progress` | Optional upstream progress, not a gateway estimate |
-| `data.result` | Model-specific output; APIMart may return `images[]` or `videos[]` with `url` arrays |
+| `data.result` | Model-specific output; may contain `images[]` or `videos[]` with `url` arrays |
 | `data.error` | Upstream task failure details when present |
 | `data.cost`, `data.credits_cost` | Upstream metadata, not a TokenHub invoice |
 
@@ -265,7 +265,7 @@ Do not interchange these asynchronous mechanisms:
 
 | Mechanism | ID and query |
 | --- | --- |
-| APIMart-compatible image/video task | Returned `task_id`; `GET /v1/tasks/{task_id}` |
+| Bound image/video task | Returned `task_id` or `data.id`; `GET /v1/tasks/{task_id}` |
 | Managed TokenHub image job | Managed job contract in the [image guide](user-guide.md#codex-subscription-image-generation) |
 | Responses with `background:true` | Local Responses job; completion means the upstream API call finished, not that vendor rendering finished |
 
@@ -305,6 +305,6 @@ Token accounting uses reported usage; binary audio, subtitles, and providers wit
 | Image generation | Submit Images → use synchronous result or poll every returned task ID |
 | Narrated video | Generate speech → host audio for the provider → submit a model supporting audio references → poll → save assets |
 | Meeting notes | Transcribe uploaded recording → send returned text to Chat/Responses |
-| DMXAPI Seedance | Publish generation/query models on one account → submit Responses → query with vendor ID |
+| Seedance through Responses | Publish generation/query models on one account → submit Responses → query with vendor ID |
 
-Regression tests use synthetic local providers to verify protocol behavior, access isolation, uploads, hooks, and accounting. They do not verify paid generation or all vendor models with a live account. Sources: [APIMart text](https://docs.apimart.ai/en/api-reference/texts/general/chat-completions.md), [images](https://docs.apimart.ai/en/api-reference/images/gpt-image-2/generation.md), [speech](https://docs.apimart.ai/en/api-reference/audios/tts.md), [Seedance](https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation.md), and [task status](https://docs.apimart.ai/en/api-reference/tasks/status.md).
+Regression tests use synthetic local providers to verify protocol behavior, access isolation, uploads, hooks, and accounting. They do not verify paid generation or all vendor models with a live account. Check the selected provider's current model documentation for supported parameters and availability.

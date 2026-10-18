@@ -2,9 +2,9 @@
 
 语言：[English](../media-apis.md) | 简体中文 | [日本語](../ja/media-apis.md)
 
-使用同一个 TokenHub 网关和项目 API Key，调用获准使用的文本与多模态模型。本文参考 [APIMart API 手册](https://docs.apimart.ai/cn/index)按任务组织的方式，说明 TokenHub 自身的鉴权、路由、任务隔离和限制。
+使用同一个 TokenHub 网关和项目 API Key，调用获准使用的文本与多模态模型。本文按任务组织接口选择、请求参数、响应结果和调用示例，并说明 TokenHub 的鉴权、路由、任务隔离和限制。
 
-**支持接口不等于模型已经可用。** 管理员需要配置上游凭证、发布公开模型 ID、映射上游模型并授权项目密钥。格式、时长、分辨率、音色、模型版本和素材有效期取决于上游。TokenHub 不内置供应商账户，也不承诺支持 APIMart 的全部模型与功能。
+**支持接口不等于模型已经可用。** 管理员需要配置上游凭证、发布公开模型 ID、映射上游模型并授权项目密钥。格式、时长、分辨率、音色、模型版本和素材有效期取决于上游。TokenHub 不内置供应商账户；可用模型与功能取决于已配置的上游和路由能力。
 
 ## 选择接口
 
@@ -46,15 +46,15 @@ curl --fail-with-body "$TOKENHUB_URL/v1/chat/completions" \
   -d '{"model":"text-model","messages":[{"role":"user","content":"Explain an API gateway in one sentence."}],"stream":false}'
 ```
 
-从 `choices[].message.content` 读取文本，保留请求 ID 以便在**请求日志**中排查。出现在 `/v1/models` 中只表示模型可见且有符合条件的路由，不代表上游所有功能均已实时验证。TokenHub 未实现 APIMart 的 `expand` 元数据结构及账户余额接口。
+从 `choices[].message.content` 读取文本，保留请求 ID 以便在**请求日志**中排查。出现在 `/v1/models` 中只表示模型可见且有符合条件的路由，不代表上游所有功能均已实时验证。TokenHub 未提供供应商扩展的 `expand` 模型元数据结构及上游账户余额接口。
 
 ## 配置供应商与选择模型
 
-接入 APIMart 兼容账户时，添加 **OpenAI-compatible** 供应商，基础地址填写 `https://api.apimart.ai/v1`，配置供应商凭证。可发布 `text-model` 映射到账户可用文本模型、`image-model` 映射到 `gpt-image-2`、`seedance-video` 映射到 `seedance-2.0`。按用途选择 `image`、`audio` 或 `video` 模态，多模态对话模型同时配置输入/输出模态。媒体 Chat/Responses 请求会跳过响应缓存。
+接入兼容账户时，添加 **OpenAI-compatible** 供应商，配置其基础地址和供应商凭证。例如，将 `https://provider.example/v1` 替换为实际供应商地址。可发布 `text-model` 映射到账户可用文本模型、`image-model` 映射到 `gpt-image-2`、`seedance-video` 映射到 `seedance-2.0`。按用途选择 `image`、`audio` 或 `video` 模态，多模态对话模型同时配置输入/输出模态。媒体 Chat/Responses 请求会跳过响应缓存。
 
 Anthropic、Gemini 原生请求需要路由支持相应原生协议和响应结构；仅设置 OpenAI-compatible 基础地址并不意味着原生协议也兼容。适配器和 SDK 配置见[用户指南](user-guide.md)。供应商文档可能展示带包装层的文本响应，需验证所选路由是否返回客户端要求的协议结构。
 
-公开名称 `gpt-image-2`、Codex 订阅图片模型及配置为托管模式的图片插件采用 TokenHub 托管生图流程。需要完整上游 Images 参数或 APIMart 异步生图时，应另外发布 `image-model` 等别名并映射到 `gpt-image-2`。见[托管生图指南](codex-image-generation-api.md)。
+公开名称 `gpt-image-2`、Codex 订阅图片模型及配置为托管模式的图片插件采用 TokenHub 托管生图流程。需要完整上游 Images 参数或上游异步生图时，应另外发布 `image-model` 等别名并映射到 `gpt-image-2`。见[托管生图指南](codex-image-generation-api.md)。
 
 升级时通过正常启动迁移流程应用数据库 v8 迁移 `add-media-task-bindings`。任务绑定在重启后保留；保持服务器密钥不变，以便解密保存的上游任务 ID。无需新增环境变量。
 
@@ -114,7 +114,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
   -d '{"model":"image-model","prompt":"A watercolor lighthouse at sunrise","n":1,"size":"16:9","resolution":"2k"}'
 ```
 
-示例通过公开别名使用 APIMart `gpt-image-2` 的参数风格。其他供应商可能要求 `1024x1024` 等像素尺寸，不应混用不同模型的参数约定。
+示例通过公开别名调用支持宽高比和分辨率档位参数的 `gpt-image-2` 上游路由。其他供应商可能要求 `1024x1024` 等像素尺寸，不应混用不同模型的参数约定。
 
 | 字段 | 说明 |
 | --- | --- |
@@ -124,7 +124,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
 | `image_urls` 等参考字段 | 模型支持时使用的参考图片 |
 | `response_format` | 上游支持的格式，如 `url`、`b64_json` 或 `base64` |
 
-同步响应通常包含 `data[].url` 或 `data[].b64_json`；异步响应包含 `data[].task_id`，或 APIMart 新版回执中带有 `data.object:"generation.task"` 的 `data.id`，需使用返回的 TokenHub ID 按下文任务接口逐个查询。供应商结果字段会保留。TokenHub 不自动下载响应 URL，也不延长素材有效期。
+同步响应通常包含 `data[].url` 或 `data[].b64_json`；异步响应包含 `data[].task_id`，或带有 `data.object:"generation.task"` 的对象式回执中的 `data.id`，需使用返回的 TokenHub ID 按下文任务接口逐个查询。供应商结果字段会保留。TokenHub 不自动下载响应 URL，也不延长素材有效期。
 
 ### 编辑图片与使用蒙版
 
@@ -177,7 +177,7 @@ multipart 转录和翻译必须包含且仅包含一个非空 `file`，最多 25
 
 发布的路由必须由显式支持 `transcription` 的适配器处理，模型端点须包含所请求的操作。OpenAI 及配置的 OpenAI 兼容/本地适配器支持此能力，每次请求还会检查最新导入的端点元数据。JSON 厂商扩展可由匹配的供应商调用钩子处理，multipart 上传必须使用原生适配器。发布、钩子、上传校验和 SDK 冒烟测试详见[转录上传与计量契约](media-api-operations.md#转录上传与计量契约)。
 
-声音克隆与音乐可继续通过已有供应商特定的 Chat/Responses 工作流使用，见[媒体运维说明](media-api-operations.md)。APIMart 的 `/v1/music/*`、声音/素材管理、上传及 webhook 管理未作为通用 TokenHub API 接口族实现。
+声音克隆与音乐可继续通过已有供应商特定的 Chat/Responses 工作流使用，见[媒体运维说明](media-api-operations.md)。`/v1/music/*`、声音/素材管理、上传及 webhook 管理未作为通用 TokenHub API 接口族实现。
 
 ## 视频与 Seedance
 
@@ -188,7 +188,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
   -d '{"model":"seedance-video","prompt":"A calm ocean at sunrise, slow camera movement","duration":5,"size":"16:9","resolution":"720p","generate_audio":true}'
 ```
 
-将 `seedance-video` 映射到 APIMart `seedance-2.0` 等上游模型。其他兼容视频模型使用同一接口，参数按各自契约填写。
+将 `seedance-video` 映射到 `seedance-2.0` 等上游模型。其他兼容视频模型使用同一接口，参数按各自契约填写。
 
 | 字段 | 说明 |
 | --- | --- |
@@ -201,23 +201,23 @@ curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
 
 首尾帧、多参考素材、时长范围和素材组合限制并非所有模型通用。TokenHub 未实现火山引擎原生 `/content_generation/tasks` 协议。
 
-DMXAPI 的 Seedance 仍可通过 `/v1/responses` 使用，分别调用生成模型与 `seedance-2-0-get` 等辅助模型。其任务 ID 与查询规则不同于 `/v1/tasks`，见 [DMXAPI 配置与示例](media-api-operations.md)。
+部分上游也支持通过 `/v1/responses` 调用 Seedance，分别使用生成模型与 `seedance-2-0-get` 等辅助模型。其任务 ID 与查询规则不同于 `/v1/tasks`，见[供应商工作流配置与示例](media-api-operations.md)。
 
 ## 提交与查询异步任务
 
-APIMart 兼容图片/视频提交后，常见的旧版回执结构如下：
+兼容的图片/视频提交接口可返回以下数组式任务回执：
 
 ```json
 {"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
 ```
 
-部分图片模型（包括 Grok Imagine 2.0 Ext 和 GPT Image 2.5 Ext）支持 APIMart 新版 HTTP `202` 回执：
+部分上游图片模型（包括 Grok Imagine 2.0 Ext 和 GPT Image 2.5 Ext）支持以下 HTTP `202` 对象式回执：
 
 ```json
 {"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
 ```
 
-如需请求此上游格式，在供应商自定义请求头中配置 `X-APIMart-Response-Version: 2026-07-27`；TokenHub 不会自动转发客户端请求头。网关保留 HTTP `202` 与回执结构，替换 `data.id`，并将已有的 `poll_url` 改写为对应的 TokenHub 路径。使用网关地址拼接这一相对路径即可查询。普通同步图片的素材 ID 保持不变。
+如上游需要指定响应版本，在供应商自定义请求头中配置其文档规定的版本选择请求头和值；TokenHub 不会自动转发客户端请求头。网关保留 HTTP `202` 与回执结构，替换 `data.id`，并将已有的 `poll_url` 改写为对应的 TokenHub 路径。使用网关地址拼接这一相对路径即可查询。普通同步图片的素材 ID 保持不变。
 
 两种回执都表示上游已接受任务，不表示生成完成。TokenHub 将供应商任务 ID 替换为不透明 ID，持久化保存提交项目、密钥及供应商/资源绑定。使用**提交时的同一项目 API Key**和原样返回的 ID 查询：
 
@@ -234,7 +234,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
 | `data.id` | 此查询流程使用的 TokenHub 任务 ID |
 | `data.status` | 上游任务状态 |
 | `data.progress` | 可选的上游进度，不是网关估算值 |
-| `data.result` | 模型特定结果；APIMart 可返回 `images[]` 或 `videos[]`，其中 `url` 可能是数组 |
+| `data.result` | 模型特定结果；上游可返回 `images[]` 或 `videos[]`，其中 `url` 可能是数组 |
 | `data.error` | 存在时表示上游任务失败信息 |
 | `data.cost`、`data.credits_cost` | 上游元数据，不是 TokenHub 账单 |
 
@@ -265,7 +265,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
 
 | 机制 | ID 与查询方式 |
 | --- | --- |
-| APIMart 兼容图片/视频任务 | 返回的 `task_id`；`GET /v1/tasks/{task_id}` |
+| 上游图片/视频任务 | 返回的 `task_id`；`GET /v1/tasks/{task_id}` |
 | TokenHub 托管图片任务 | 使用[生图指南](codex-image-generation-api.md)的托管任务契约 |
 | Responses 的 `background:true` | 本地 Responses 任务；完成只表示上游 API 调用结束，不表示供应商渲染完成 |
 
@@ -305,6 +305,6 @@ Token 计量以返回的用量为准；二进制音频、字幕或没有用量�
 | 图片生成 | 提交 Images → 使用同步结果或逐个查询任务 ID |
 | 配音视频 | 生成语音 → 将音频放到供应商可访问的位置 → 提交支持音频参考的视频模型 → 轮询 → 保存素材 |
 | 会议纪要 | 上传录音转写 → 将文本交给 Chat/Responses |
-| DMXAPI Seedance | 同一账户发布生成/查询模型 → 提交 Responses → 用供应商 ID 查询 |
+| Responses 视频工作流 | 同一账户发布生成/查询模型 → 提交 Responses → 用供应商 ID 查询 |
 
-回归测试使用本地模拟供应商，验证协议、访问隔离、上传、钩子和计量；没有验证付费生成或真实账户下全部模型的可用性。参考来源：[APIMart 文本](https://docs.apimart.ai/en/api-reference/texts/general/chat-completions.md)、[图片](https://docs.apimart.ai/en/api-reference/images/gpt-image-2/generation.md)、[语音](https://docs.apimart.ai/en/api-reference/audios/tts.md)、[Seedance](https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation.md)、[任务查询](https://docs.apimart.ai/en/api-reference/tasks/status.md)。
+回归测试使用本地模拟供应商，验证协议、访问隔离、上传、钩子和计量；没有验证付费生成或真实账户下全部模型的可用性。具体参数和功能范围以已发布模型、所选路由和对应的上游模型文档为准。

@@ -7,7 +7,7 @@ TokenHub documentation is organized around the three roles used in enterprise To
 ## Model Request API Manual
 
 - [Text, Image, Audio, and Video APIs](media-apis.md): authentication, model selection, runnable requests, Seedance, asynchronous tasks, errors, and billing boundaries.
-- [Media Protocol Operations](media-api-operations.md): DMXAPI compatibility, advanced media workflows, hooks, streaming validation, and accounting.
+- [Media Protocol Operations](media-api-operations.md): provider compatibility, advanced media workflows, hooks, streaming validation, and accounting.
 
 ## Architecture and Deployment
 

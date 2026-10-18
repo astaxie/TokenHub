@@ -1,10 +1,10 @@
-# 媒体协议运维与 DMXAPI 兼容说明
+# 媒体协议运维与供应商兼容说明
 
 语言：[English](../media-api-operations.md) | 简体中文 | [日本語](../ja/media-api-operations.md)
 
-本文是[文本与多模态 API 指南](media-apis.md)的补充，说明供应商特定工作流、钩子、计量和校验。DMXAPI Chat/Responses 辅助工作流原样传递供应商 ID；APIMart 兼容 Images/Videos 提交则将返回任务 ID 绑定到提交密钥和原供应商账户，用于 `/v1/tasks/{task_id}` 查询。
+本文是[文本与多模态 API 指南](media-apis.md)的补充，说明供应商特定工作流、钩子、计量和校验。Chat/Responses 辅助工作流原样传递供应商 ID；兼容的 Images/Videos 提交则将返回任务 ID 绑定到提交密钥和原供应商账户，用于 `/v1/tasks/{task_id}` 查询。
 
-TokenHub 支持 [DMXAPI 文档](https://doc.dmxapi.cn/jichu.html)使用的媒体协议。调用前需配置上游供应商，并分别发布生成、上传、查询和下载模型。这里的支持指协议兼容；模型可用性和参数取值由上游决定，不内置供应商凭证或价格。
+TokenHub 通过兼容的媒体协议接入上游模型。调用前需配置上游供应商，并分别发布生成、上传、查询和下载模型。这里的支持指协议兼容；模型可用性和参数取值由上游决定，不内置供应商凭证或价格。
 
 ## 接口范围
 
@@ -20,14 +20,14 @@ TokenHub 支持 [DMXAPI 文档](https://doc.dmxapi.cn/jichu.html)使用的媒体
 | `POST /v1/chat/completions` | MiMo 语音合成/音色设计/克隆、Qwen Omni 音频描述与多模态音频、Recraft 绘图 |
 | `POST /v1beta/models/{model}:generateContent` 和 `:streamGenerateContent` | Gemini 原生绘图、图片编辑和多模态输出 |
 
-以具体模型的上游文档为准。DMXAPI 视频示例通过 `/v1/responses` 提交和查询，不需要新增 `/v1/videos`。现有 Chat、Responses 和 Gemini 接口保留流式能力与供应商扩展字段。OpenAPI 契约包含 Chat 的 `input_audio` 内容，以及 Wan 消息、MiniMax 语音上传等供应商自定义 Responses 输入/输出对象；媒体字段由供应商按自身规则校验。
+以具体模型的上游文档为准。本页视频示例通过 `/v1/responses` 提交和查询。现有 Chat、Responses 和 Gemini 接口保留流式能力与供应商扩展字段。OpenAPI 契约包含 Chat 的 `input_audio` 内容，以及 Wan 消息、MiniMax 语音上传等供应商自定义 Responses 输入/输出对象；媒体字段由供应商按自身规则校验。
 
 ## 配置供应商和模型
 
-1. 添加 **OpenAI-compatible** 供应商，基础地址为 `https://www.dmxapi.cn/v1`，填入供应商凭证。原生 Gemini 示例使用 **Gemini** 类型，基础地址为 `https://www.dmxapi.cn/v1beta`，使用同一上游账户。
+1. 添加 **OpenAI-compatible** 供应商，填入供应商凭证，将示例基础地址 `https://provider.example/v1` 替换为实际供应商地址。原生 Gemini 示例使用 **Gemini** 类型，将 `https://provider.example/v1beta` 替换为该账户支持的原生协议地址。
 2. 发布公开模型，将路由映射到准确的上游模型 ID。模态选择 `image`、`video` 或 `audio`（音乐使用 `audio`），多模态对话模型也可配置这些输出模态。这些 Chat/Responses 请求跳过响应缓存，避免复用生成结果或读到过期任务状态。
 3. 同时发布辅助模型，例如 `seedance-2-0-get`、`MiniMax-Hailuo-query`、`MiniMax-Hailuo-get` 和声音/素材上传模型。项目密钥必须获准访问整个流程所需的模型。
-4. DMXAPI Chat/Responses 辅助工作流应将生成和辅助模型路由固定到同一个供应商账户/资源。该工作流的任务 ID、文件 ID 和大整数原样传递，不自动绑定供应商任务归属；需要隔离任务命名空间的租户应使用独立上游账户。Images/Videos 任务回执使用独立的[任务绑定流程](media-apis.md#提交与查询异步任务)。
+4. Chat/Responses 辅助工作流应将生成和辅助模型路由固定到同一个供应商账户/资源。该工作流的任务 ID、文件 ID 和大整数原样传递，不自动绑定供应商任务归属；需要隔离任务命名空间的租户应使用独立上游账户。Images/Videos 任务回执使用独立的[任务绑定流程](media-apis.md#提交与查询异步任务)。
 
 调用 Gemini 原生媒体接口时，为公开模型配置媒体模态或输出模态，然后调用 `/v1beta/models/{model}:generateContent` 或 `:streamGenerateContent?alt=sse`。这些请求跳过缓存，保留原生 `generationConfig`（包括 `responseModalities` 和 `imageConfig`）、内嵌媒体及思考签名；上游模型由路由选择。原生 JSON/SSE 响应保留生成的媒体，并按 `usageMetadata` 统计 Token。两种响应均在 128 MiB 媒体上限内缓冲交付，执行鉴权、文本策略、作用域钩子和受保护的出站传输。
 
@@ -76,7 +76,7 @@ multipart 的 `model` 和 `stream` 必须是单个文本字段。`/v1/audio/spee
 
 非流式供应商钩子的 JSON 超过响应大小上限时，请求和路由尝试记录仍会保留已报告的 Token 用量，包括 Gemini 原生 `usageMetadata`。插件显式用量（包括零）优先。响应仍记为失败，不重试，也不扣减供应商健康状态。
 
-Responses 的 OpenAPI 定义要求提供 `model`；`input` 是否必填取决于所选供应商模型。例如 DMX 的歌词/音乐生成可以省略 `input`，在没有用户提示词的情况下生成。省略的输入会原样转发，不自动补空值。`input` 数组还接受图片 URL 或 data URI 字符串，用于 Vidu Q3 首尾帧视频生成等场景。Responses 的 `output` 支持标准条目数组或供应商自定义对象，例如 Qwen Image 3.0 的图片结果位于 `output.choices[].message.content[].image`；已完成的后台任务响应也支持这些结构。输出数组还接受 Seedream 的 `{"type":"image_url","image_url":{"url":"..."}}` 图片结果条目。
+Responses 的 OpenAPI 定义要求提供 `model`；`input` 是否必填取决于所选供应商模型。例如部分上游的歌词/音乐生成可以省略 `input`，在没有用户提示词的情况下生成。省略的输入会原样转发，不自动补空值。`input` 数组还接受图片 URL 或 data URI 字符串，用于 Vidu Q3 首尾帧视频生成等场景。Responses 的 `output` 支持标准条目数组或供应商自定义对象，例如 Qwen Image 3.0 的图片结果位于 `output.choices[].message.content[].image`；已完成的后台任务响应也支持这些结构。输出数组还接受 Seedream 的 `{"type":"image_url","image_url":{"url":"..."}}` 图片结果条目。
 
 JSON 响应处理识别 `application/json` 和带 `+json` 后缀的 MIME 类型，并支持参数及大小写差异。这些响应使用相同的校验、Token 用量提取和 JSON 钩子数据格式，同时保留原始内容类型。已识别的 JSON 基础类型即使参数格式错误或重复，也仍会接受校验。参数中出现 `application/json` 字样不会把文本或二进制响应误判为 JSON。
 
