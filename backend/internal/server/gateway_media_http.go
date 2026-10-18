@@ -179,15 +179,19 @@ func (s *Server) handleAdmittedMedia(w http.ResponseWriter, r *http.Request, pro
 	identity := mediaTaskResponseIdentity(result, request.Task != nil)
 	if err == nil {
 		if request.Task != nil {
-			result.Body = redactProviderErrorSecrets(result.Body, bindingRoute.Provider)
+			err = redactMediaTaskResult(&result, bindingRoute.Provider)
 		}
-		result, usage, err = s.finishMediaHooks(r.Context(), routed.Call, route, result, usage)
+		if err == nil {
+			result, usage, err = s.finishMediaHooks(r.Context(), routed.Call, route, result, usage)
+		}
 	}
 	if err == nil && protectTaskIdentity && identity != mediaTaskResponseIdentity(result, request.Task != nil) {
 		err = NewHTTPError(502, "gateway_hook_response_invalid", "Gateway plugin cannot change media task identifiers")
 	}
 	if request.Task != nil {
-		result.Body = redactProviderErrorSecrets(result.Body, bindingRoute.Provider)
+		if err == nil {
+			err = redactMediaTaskResult(&result, bindingRoute.Provider)
+		}
 		usage = Usage{}
 	}
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)

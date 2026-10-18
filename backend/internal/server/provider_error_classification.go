@@ -237,7 +237,7 @@ func normalizeProviderErrorProfileBody(profile providerErrorProfileDescriptor, d
 	return wrapped
 }
 
-func redactProviderErrorSecrets(data []byte, provider Provider) []byte {
+func providerErrorSecretValues(provider Provider) []string {
 	values := make([]string, 0, len(provider.SensitiveHeaders)+1)
 	if value := strings.TrimSpace(provider.APIKey); value != "" {
 		values = append(values, value)
@@ -247,10 +247,15 @@ func redactProviderErrorSecrets(data []byte, provider Provider) []byte {
 			values = append(values, value)
 		}
 	}
+	sort.Slice(values, func(i, j int) bool { return len(values[i]) > len(values[j]) })
+	return values
+}
+
+func redactProviderErrorSecrets(data []byte, provider Provider) []byte {
+	values := providerErrorSecretValues(provider)
 	if len(values) == 0 {
 		return data
 	}
-	sort.Slice(values, func(i, j int) bool { return len(values[i]) > len(values[j]) })
 	if providerErrorBodyLooksLikeJSON(data) {
 		// Validate without materialising strings or maps first. A truncated or
 		// malformed JSON body has no unambiguous string boundaries, so failing
@@ -307,7 +312,7 @@ func redactProviderJSONSecrets(data []byte, secrets []string) ([]byte, bool) {
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return nil, false
 	}
-	redacted, changed := redactProviderJSONValue(payload, secrets)
+	redacted, changed := redactProviderJSONValue(payload, secrets, nil)
 	if !changed {
 		return data, true
 	}
@@ -318,7 +323,7 @@ func redactProviderJSONSecrets(data []byte, secrets []string) ([]byte, bool) {
 	return encoded, true
 }
 
-func redactProviderJSONValue(value any, secrets []string) (any, bool) {
+func redactProviderJSONValue(value any, secrets []string, protocolKeys map[string]bool) (any, bool) {
 	switch typed := value.(type) {
 	case string:
 		redacted := typed
@@ -329,7 +334,7 @@ func redactProviderJSONValue(value any, secrets []string) (any, bool) {
 	case []any:
 		changed := false
 		for index, item := range typed {
-			redacted, itemChanged := redactProviderJSONValue(item, secrets)
+			redacted, itemChanged := redactProviderJSONValue(item, secrets, protocolKeys)
 			if itemChanged {
 				typed[index] = redacted
 				changed = true
@@ -340,8 +345,11 @@ func redactProviderJSONValue(value any, secrets []string) (any, bool) {
 		changed := false
 		redactedMap := make(map[string]any, len(typed))
 		for key, item := range typed {
-			redactedKey, keyChanged := redactProviderJSONValue(key, secrets)
-			redactedItem, itemChanged := redactProviderJSONValue(item, secrets)
+			redactedKey, keyChanged := redactProviderJSONValue(key, secrets, nil)
+			if protocolKeys[key] {
+				redactedKey, keyChanged = key, false
+			}
+			redactedItem, itemChanged := redactProviderJSONValue(item, secrets, protocolKeys)
 			redactedMap[redactedKey.(string)] = redactedItem
 			changed = changed || keyChanged || itemChanged
 		}
