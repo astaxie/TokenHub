@@ -20,7 +20,7 @@ TokenHub 通过兼容的媒体协议接入上游模型。调用前需配置上�
 | `POST /v1/chat/completions` | MiMo 语音合成/音色设计/克隆、Qwen Omni 音频描述与多模态音频、Recraft 绘图 |
 | `POST /v1beta/models/{model}:generateContent` 和 `:streamGenerateContent` | Gemini 原生绘图、图片编辑和多模态输出 |
 
-以具体模型的上游文档为准。本页视频示例通过 `/v1/responses` 提交和查询。现有 Chat、Responses 和 Gemini 接口保留流式能力与供应商扩展字段。OpenAPI 契约包含 Chat 的 `input_audio` 内容，以及 Wan 消息、MiniMax 语音上传等供应商自定义 Responses 输入/输出对象；媒体字段由供应商按自身规则校验。
+以具体模型的上游文档为准。本页视频示例通过 `/v1/responses` 提交和查询；支持 `/v1/videos/generations` 的供应商使用独立的[视频任务流程](media-apis.md#提交与查询异步任务)。现有 Chat、Responses 和 Gemini 接口保留流式能力与供应商扩展字段。OpenAPI 契约包含 Chat 的 `input_audio` 内容，以及 Wan 消息、MiniMax 语音上传等供应商自定义 Responses 输入/输出对象；媒体字段由供应商按自身规则校验。
 
 ## 配置供应商和模型
 

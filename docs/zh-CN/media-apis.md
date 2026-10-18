@@ -211,7 +211,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
 {"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
 ```
 
-部分上游图片模型（包括 Grok Imagine 2.0 Ext 和 GPT Image 2.5 Ext）支持以下 HTTP `202` 对象式回执：
+部分上游图片路由支持以下 HTTP `202` 对象式任务回执：
 
 ```json
 {"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
@@ -265,7 +265,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
 
 | 机制 | ID 与查询方式 |
 | --- | --- |
-| 上游图片/视频任务 | 返回的 `task_id`；`GET /v1/tasks/{task_id}` |
+| 上游图片/视频任务 | 返回的 `task_id` 或 `data.id`；`GET /v1/tasks/{task_id}` |
 | TokenHub 托管图片任务 | 使用[生图指南](codex-image-generation-api.md)的托管任务契约 |
 | Responses 的 `background:true` | 本地 Responses 任务；完成只表示上游 API 调用结束，不表示供应商渲染完成 |
 

@@ -20,7 +20,7 @@ TokenHub は一般的なメディアプロトコルに対応します。プロ�
 | `POST /v1/chat/completions` | MiMo 音声合成/声の設計/クローン、Qwen Omni 音声説明とマルチモーダル音声、Recraft 画像 |
 | `POST /v1beta/models/{model}:generateContent` と `:streamGenerateContent` | Gemini ネイティブ画像生成/編集とマルチモーダル出力 |
 
-各モデルの上流ドキュメントで指定されたエンドポイントを使用します。動画の作成と照会は `/v1/responses` で行えるため、新たな `/v1/videos` は不要です。既存の Chat、Responses、Gemini API のストリーミングと拡張フィールドは維持されます。OpenAPI 仕様は Chat の `input_audio` と、Wan メッセージや MiniMax 音声アップロードなどのプロバイダー固有 Responses 入出力オブジェクトを含みます。メディアフィールドは各プロバイダーの規則で検証されます。
+各モデルの上流ドキュメントで指定されたエンドポイントを使用します。本ページの動画例は `/v1/responses` で作成と照会を行います。`/v1/videos/generations` に対応するプロバイダーは、別の[動画タスクフロー](media-apis.md#非同期タスクの作成と照会)を使用します。既存の Chat、Responses、Gemini API のストリーミングと拡張フィールドは維持されます。OpenAPI 仕様は Chat の `input_audio` と、Wan メッセージや MiniMax 音声アップロードなどのプロバイダー固有 Responses 入出力オブジェクトを含みます。メディアフィールドは各プロバイダーの規則で検証されます。
 
 ## プロバイダーとモデルの設定
 

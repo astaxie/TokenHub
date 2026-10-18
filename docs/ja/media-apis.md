@@ -211,13 +211,13 @@ curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
 {"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
 ```
 
-Grok Imagine 2.0 Ext や GPT Image 2.5 Ext などの画像モデルは、新しい HTTP `202` 受付形式にも対応します。
+一部の上流画像ルートは、次の HTTP `202` タスクオブジェクト形式にも対応します。
 
 ```json
 {"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
 ```
 
-この上流形式を要求するには、プロバイダーのカスタムヘッダーで、上流仕様が定めるバージョン選択ヘッダーを設定します。TokenHub はクライアントのヘッダーを自動転送しません。HTTP `202` と受付構造を保持し、`data.id` を置き換え、既存の `poll_url` を対応する TokenHub パスに書き換えます。この相対パスをゲートウェイのオリジンに結合して照会してください。通常の同期画像のアセット ID は変更しません。
+上流がバージョン選択ヘッダーでこの形式を選ぶ場合は、プロバイダーのカスタムヘッダーに、そのドキュメントで指定されたヘッダー名と値を設定します。TokenHub はクライアントのヘッダーを自動転送しません。HTTP `202` と受付構造を保持し、`data.id` を置き換え、既存の `poll_url` を対応する TokenHub パスに書き換えます。この相対パスをゲートウェイのオリジンに結合して照会してください。通常の同期画像のアセット ID は変更しません。
 
 どちらの受付形式も上流が要求を受け付けたことを示し、生成完了を意味しません。TokenHub はベンダーのタスク ID を不透明な ID に置き換え、送信プロジェクト・キー・プロバイダー・リソースの関連を永続化します。**送信時と同じプロジェクト API キー**と返された ID を使ってください。
 
@@ -265,7 +265,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
 
 | 仕組み | ID と照会 |
 | --- | --- |
-| 画像・動画の非同期タスク | 返された `task_id`。`GET /v1/tasks/{task_id}` |
+| 画像・動画の非同期タスク | 返された `task_id` または `data.id`。`GET /v1/tasks/{task_id}` |
 | TokenHub 管理対象画像ジョブ | [画像ガイド](user-guide.md#codex-サブスクリプション画像生成)の管理対象ジョブ仕様 |
 | Responses の `background:true` | ローカル Responses ジョブ。完了は上流 API 呼び出しの終了であり、上流レンダリング完了ではない |
 
