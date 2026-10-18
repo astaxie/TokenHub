@@ -916,6 +916,15 @@ paths:
               schema:
                 type: string
                 format: binary
+        "202":
+          description: Provider asynchronous media task accepted.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaTaskSubmission"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -946,8 +955,12 @@ paths:
         managed image models accept `url` or `b64_json`; managed plugin models
         enforce their configured response formats.
         APIMart-compatible asynchronous responses keep their provider envelope, with
-        task_id replaced by a TokenHub ID for GET /v1/tasks/{task_id}. This requires
-        the same creating API key and is independent of local image jobs.
+        task_id replaced by a TokenHub ID for GET /v1/tasks/{task_id}. Versioned
+        generation.task receipts preserve HTTP 202, replace data.id, and rewrite
+        an existing poll_url to the TokenHub task path. Configure the provider header
+        X-APIMart-Response-Version: 2026-07-27 when required by the upstream;
+        client headers are not automatically forwarded. Task queries require
+        the same creating API key and are independent of local image jobs.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       parameters:
@@ -991,7 +1004,7 @@ paths:
                       - status: submitted
                         task_id: task_example
         "202":
-          description: Asynchronous image job accepted.
+          description: Local image job or provider asynchronous task accepted.
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestID"
@@ -1012,7 +1025,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ImageJob"
+                anyOf:
+                  - $ref: "#/components/schemas/ImageJob"
+                  - $ref: "#/components/schemas/MediaTaskSubmission"
+              examples:
+                providerTask:
+                  value:
+                    code: 202
+                    data:
+                      id: task_example
+                      object: generation.task
+                      type: image
+                      status: pending
+                      poll_url: /v1/tasks/task_example
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1098,7 +1123,7 @@ paths:
                   - $ref: "#/components/schemas/ImageResponse"
                   - $ref: "#/components/schemas/MediaTaskSubmission"
         "202":
-          description: Asynchronous image edit job accepted.
+          description: Local image edit job or provider asynchronous task accepted.
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestID"
@@ -1119,7 +1144,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ImageJob"
+                anyOf:
+                  - $ref: "#/components/schemas/ImageJob"
+                  - $ref: "#/components/schemas/MediaTaskSubmission"
+              examples:
+                providerTask:
+                  value:
+                    code: 202
+                    data:
+                      id: task_example
+                      object: generation.task
+                      type: image
+                      status: pending
+                      poll_url: /v1/tasks/task_example
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1216,6 +1253,15 @@ paths:
                     data:
                       - status: submitted
                         task_id: task_example
+        "202":
+          description: Provider asynchronous media task accepted.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaTaskSubmission"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -3360,30 +3406,50 @@ components:
       type: object
       additionalProperties: true
       description: |
-        Provider-specific submission envelope. Recognized task_id fields are replaced
-        with opaque TokenHub IDs, up to 128 task IDs per submission. An APIMart response
-        uses code and a data array; compatible providers may use a data object or root task_id.
+        Provider-specific submission envelope, with up to 128 bound tasks. Legacy
+        task_id fields and id fields explicitly tagged with object: generation.task
+        are replaced with opaque TokenHub IDs. Existing poll_url fields become
+        relative /v1/tasks/{TokenHub task ID} URLs. Ordinary synchronous asset IDs
+        remain untouched. APIMart legacy receipts use code and a data array;
+        versioned HTTP 202 receipts use a generation.task data object. Compatible
+        providers may also return the task at the root. Ambiguous task locations,
+        conflicting identifiers, and malformed task collections are rejected.
       properties:
         code:
           type: integer
         task_id:
           type: string
+        id:
+          type: string
+          description: TokenHub task ID when object is generation.task.
+        object:
+          type: string
+        poll_url:
+          type: string
+          description: TokenHub task path when present on a recognized task object.
         data:
           oneOf:
-            - type: object
-              additionalProperties: true
-              properties:
-                task_id:
-                  type: string
+            - $ref: "#/components/schemas/MediaTaskSubmissionItem"
             - type: array
               items:
-                type: object
-                additionalProperties: true
-                properties:
-                  task_id:
-                    type: string
-                  status:
-                    type: string
+                $ref: "#/components/schemas/MediaTaskSubmissionItem"
+    MediaTaskSubmissionItem:
+      type: object
+      additionalProperties: true
+      properties:
+        task_id:
+          type: string
+        id:
+          type: string
+          description: TokenHub task ID when object is generation.task.
+        object:
+          type: string
+          description: generation.task identifies a versioned asynchronous receipt.
+        poll_url:
+          type: string
+          description: Relative TokenHub task path; only present when supplied by the provider.
+        status:
+          type: string
     MediaTaskResponse:
       type: object
       additionalProperties: true

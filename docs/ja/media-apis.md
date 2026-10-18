@@ -124,7 +124,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
 | `image_urls` など | 対応モデルの参照画像 |
 | `response_format` | `url`、`b64_json`、`base64` など上流が対応する形式 |
 
-同期応答は通常 `data[].url` または `data[].b64_json`、非同期応答は `data[].task_id` を含みます。非同期の場合は以下のタスク API で各 ID を照会します。プロバイダーの結果フィールドを保持し、TokenHub は URL のダウンロードや有効期限の延長を行いません。
+同期応答は通常 `data[].url` または `data[].b64_json` を含みます。非同期応答は `data[].task_id`、または APIMart の新しい受付形式では `data.object:"generation.task"` を伴う `data.id` を含みます。返された各 TokenHub ID を以下のタスク API で照会します。プロバイダーの結果フィールドを保持し、TokenHub は URL のダウンロードや有効期限の延長を行いません。
 
 ### 画像編集とマスク
 
@@ -205,13 +205,21 @@ DMXAPI Seedance は引き続き `/v1/responses` と生成モデル、`seedance-2
 
 ## 非同期タスクの作成と照会
 
-APIMart 互換の画像・動画要求は、次の形式で受付結果を返します。
+APIMart 互換の画像・動画要求は、通常、次の従来形式で受付結果を返します。
 
 ```json
 {"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
 ```
 
-これは上流が要求を受け付けたことを示し、生成完了を意味しません。TokenHub はベンダーのタスク ID を不透明な ID に置き換え、送信プロジェクト・キー・プロバイダー・リソースの関連を永続化します。**送信時と同じプロジェクト API キー**と返された ID を使ってください。
+Grok Imagine 2.0 Ext や GPT Image 2.5 Ext などの画像モデルは、APIMart の新しい HTTP `202` 受付形式にも対応します。
+
+```json
+{"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
+```
+
+この上流形式を要求するには、プロバイダーのカスタムヘッダーに `X-APIMart-Response-Version: 2026-07-27` を設定します。TokenHub はクライアントのヘッダーを自動転送しません。HTTP `202` と受付構造を保持し、`data.id` を置き換え、既存の `poll_url` を対応する TokenHub パスに書き換えます。この相対パスをゲートウェイのオリジンに結合して照会してください。通常の同期画像のアセット ID は変更しません。
+
+どちらの受付形式も上流が要求を受け付けたことを示し、生成完了を意味しません。TokenHub はベンダーのタスク ID を不透明な ID に置き換え、送信プロジェクト・キー・プロバイダー・リソースの関連を永続化します。**送信時と同じプロジェクト API キー**と返された ID を使ってください。
 
 ```bash
 export TOKENHUB_TASK_ID='TASK_ID_FROM_SUBMISSION'

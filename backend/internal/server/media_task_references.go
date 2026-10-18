@@ -123,13 +123,25 @@ func (m mediaRequest) validateTaskReferencePatch(fields map[string]json.RawMessa
 		return nil
 	}
 	for _, field := range mediaTaskReferenceFields {
-		original, present := m.Fields[field]
-		patched, patchedPresent := fields[field]
-		if present != patchedPresent || string(original) != string(patched) {
+		if !mediaTaskStringFieldEqual(m.Fields, fields, field) {
 			return mediaTaskPatchInvalid("Gateway plugin cannot change media task references")
 		}
 	}
 	return nil
+}
+
+func mediaTaskStringFieldEqual(original, patched map[string]json.RawMessage, field string) bool {
+	before, present := original[field]
+	after, patchedPresent := patched[field]
+	if present != patchedPresent {
+		return false
+	}
+	if !present {
+		return true
+	}
+	var beforeValue, afterValue *string
+	return json.Unmarshal(before, &beforeValue) == nil && beforeValue != nil &&
+		json.Unmarshal(after, &afterValue) == nil && afterValue != nil && *beforeValue == *afterValue
 }
 
 func mediaTaskPatchInvalid(message string) error {

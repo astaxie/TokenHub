@@ -212,7 +212,7 @@ func (m *mediaRequest) applyPatch(data json.RawMessage) error {
 	}
 	patched := *m
 	patched.Fields = fields
-	if m.Task != nil && (string(fields["task_id"]) != string(m.Fields["task_id"]) || string(fields["language"]) != string(m.Fields["language"])) {
+	if m.Task != nil && (!mediaTaskStringFieldEqual(m.Fields, fields, "task_id") || !mediaTaskStringFieldEqual(m.Fields, fields, "language")) {
 		return mediaTaskPatchInvalid("Gateway plugin cannot change the media task identity or language")
 	}
 	if err := m.validateTaskReferencePatch(fields); err != nil {

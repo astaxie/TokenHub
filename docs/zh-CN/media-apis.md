@@ -124,7 +124,7 @@ curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
 | `image_urls` 等参考字段 | 模型支持时使用的参考图片 |
 | `response_format` | 上游支持的格式，如 `url`、`b64_json` 或 `base64` |
 
-同步响应通常包含 `data[].url` 或 `data[].b64_json`；异步响应包含 `data[].task_id`，需按下文任务接口逐个查询。供应商结果字段会保留。TokenHub 不自动下载响应 URL，也不延长素材有效期。
+同步响应通常包含 `data[].url` 或 `data[].b64_json`；异步响应包含 `data[].task_id`，或 APIMart 新版回执中带有 `data.object:"generation.task"` 的 `data.id`，需使用返回的 TokenHub ID 按下文任务接口逐个查询。供应商结果字段会保留。TokenHub 不自动下载响应 URL，也不延长素材有效期。
 
 ### 编辑图片与使用蒙版
 
@@ -205,13 +205,21 @@ DMXAPI 的 Seedance 仍可通过 `/v1/responses` 使用，分别调用生成模�
 
 ## 提交与查询异步任务
 
-APIMart 兼容图片/视频提交后，回执结构如下：
+APIMart 兼容图片/视频提交后，常见的旧版回执结构如下：
 
 ```json
 {"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
 ```
 
-回执表示上游已接受任务，不表示生成完成。TokenHub 将供应商任务 ID 替换为不透明 ID，持久化保存提交项目、密钥及供应商/资源绑定。使用**提交时的同一项目 API Key**和原样返回的 ID 查询：
+部分图片模型（包括 Grok Imagine 2.0 Ext 和 GPT Image 2.5 Ext）支持 APIMart 新版 HTTP `202` 回执：
+
+```json
+{"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
+```
+
+如需请求此上游格式，在供应商自定义请求头中配置 `X-APIMart-Response-Version: 2026-07-27`；TokenHub 不会自动转发客户端请求头。网关保留 HTTP `202` 与回执结构，替换 `data.id`，并将已有的 `poll_url` 改写为对应的 TokenHub 路径。使用网关地址拼接这一相对路径即可查询。普通同步图片的素材 ID 保持不变。
+
+两种回执都表示上游已接受任务，不表示生成完成。TokenHub 将供应商任务 ID 替换为不透明 ID，持久化保存提交项目、密钥及供应商/资源绑定。使用**提交时的同一项目 API Key**和原样返回的 ID 查询：
 
 ```bash
 export TOKENHUB_TASK_ID='TASK_ID_FROM_SUBMISSION'

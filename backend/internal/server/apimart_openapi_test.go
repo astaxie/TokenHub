@@ -105,3 +105,12 @@ func TestAPIMartImageTaskEnvelopeSchemas(t *testing.T) {
 		}
 	}
 }
+
+func TestAPIMartVersionedTaskEnvelopeSchemas(t *testing.T) {
+	document := mediaOpenAPIDocument(t)
+	for _, path := range []string{"/v1/images/generations", "/v1/images/edits", "/v1/images/variations", "/v1/videos/generations"} {
+		for _, status := range []string{"200", "202"} {
+			assertMediaOperationSchema(t, document, path, "post", status, `{"code":202,"request_id":"provider-request","data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}`)
+		}
+	}
+}

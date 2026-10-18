@@ -124,7 +124,7 @@ This uses APIMart `gpt-image-2` parameters through a public alias. Other provide
 | `image_urls`, other reference fields | Reference images when supported |
 | `response_format` | Upstream-supported format, such as `url`, `b64_json`, or `base64` |
 
-Synchronous responses commonly contain `data[].url` or `data[].b64_json`. Asynchronous responses contain `data[].task_id`; poll each ID using the task API below. Provider result fields are preserved. TokenHub does not download returned URLs or extend their lifetime.
+Synchronous responses commonly contain `data[].url` or `data[].b64_json`. Asynchronous responses contain `data[].task_id`, or `data.id` with `data.object:"generation.task"` in APIMart's versioned receipt; poll each returned TokenHub ID using the task API below. Provider result fields are preserved. TokenHub does not download returned URLs or extend their lifetime.
 
 ### Edit an image or supply a mask
 
@@ -205,13 +205,21 @@ DMXAPI Seedance remains available through `/v1/responses`, with a generation mod
 
 ## Submit and poll asynchronous tasks
 
-APIMart-compatible image/video submissions return a receipt shaped like this:
+APIMart-compatible image/video submissions commonly return this legacy receipt:
 
 ```json
 {"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
 ```
 
-This means the upstream accepted work, not that generation is complete. TokenHub replaces vendor task IDs with opaque IDs and persists the submitting project/key and provider/resource binding. Use **the same project API key** and exact returned ID:
+Some image models, including Grok Imagine 2.0 Ext and GPT Image 2.5 Ext, support APIMart's versioned HTTP `202` receipt:
+
+```json
+{"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
+```
+
+To request this upstream format, configure `X-APIMart-Response-Version: 2026-07-27` in the provider's custom headers. TokenHub does not automatically forward client headers. It preserves HTTP `202` and the receipt structure, replaces `data.id`, and rewrites an existing `poll_url` to the corresponding TokenHub path. Use the gateway origin with that relative URL. Ordinary synchronous image asset IDs remain unchanged.
+
+Either receipt means the upstream accepted work, not that generation is complete. TokenHub replaces vendor task IDs with opaque IDs and persists the submitting project/key and provider/resource binding. Use **the same project API key** and exact returned ID:
 
 ```bash
 export TOKENHUB_TASK_ID='TASK_ID_FROM_SUBMISSION'
