@@ -65,7 +65,30 @@ describe("Provider API Key pool", () => {
     expect(screen.queryByLabelText(/^API Key/, { selector: 'input[type="password"]' })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "保存 API Key 资源" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
-    expect(requestBody(fetcher)).toMatchObject({ provider_id: provider.id, api_key: "", name: "Default Key" });
+    expect(requestBody(fetcher)).toMatchObject({ provider_id: provider.id, api_key: "", name: "Default Key", rate_limit_rpm: 0, token_limit_tpm: 0, max_concurrency: 0 });
+  });
+
+  describe.each(["create", "edit"] as const)("%s scheduling validation", (mode) => {
+    it.each([{ field: "priority", label: "优先级" }, { field: "weight", label: "权重" }].flatMap((field) => [
+      { ...field, value: "0", description: "zero" },
+      { ...field, value: "-1", description: "negative" },
+      { ...field, value: "", description: "blank" },
+      { ...field, value: "1.5", description: "fractional" },
+    ]))("rejects $description $field without saving", async ({ label, value }) => {
+      const { user, fetcher, onSaved } = setup(mode === "edit" ? [resource] : []);
+      await user.click(screen.getByRole("button", { name: mode === "edit" ? "编辑" : "添加 API Key" }));
+      if (mode === "create") {
+        await user.type(screen.getByLabelText("API Key 名称"), "Validation Key");
+        await user.click(screen.getByLabelText("使用 Provider 已保存的密钥"));
+      }
+      await user.click(screen.getByText("调度与限流设置"));
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+      await user.click(screen.getByRole("button", { name: "保存 API Key 资源" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("优先级和权重须为正整数，限流和并发须为非负整数。");
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(screen.getByLabelText(label)).toHaveValue(value === "" ? null : Number(value));
+    });
   });
 
   it("keeps blank edited credentials and unrelated advanced settings untouched", async () => {
@@ -76,11 +99,13 @@ describe("Provider API Key pool", () => {
     expect(screen.getByLabelText(/^API Key/, { selector: 'input[type="password"]' })).toHaveValue("");
     await user.clear(screen.getByLabelText("API Key 名称"));
     await user.type(screen.getByLabelText("API Key 名称"), "Renamed Key");
+    await user.click(screen.getByText("调度与限流设置"));
+    fireEvent.change(screen.getByLabelText("优先级"), { target: { value: "3" } });
     await user.click(screen.getByRole("button", { name: "保存 API Key 资源" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     expect(fetcher.mock.calls[0][0]).toBe("http://localhost:8080/api/admin/provider-resources/key%2Fone");
     expect(fetcher.mock.calls[0][1].method).toBe("PATCH");
-    expect(requestBody(fetcher)).toMatchObject({ name: "Renamed Key", base_url: resource.base_url, group: resource.group, region: resource.region, environment: resource.environment, healthy: true, priority: 2, weight: 75, rate_limit_rpm: 15, token_limit_tpm: 10000, max_concurrency: 3 });
+    expect(requestBody(fetcher)).toMatchObject({ name: "Renamed Key", base_url: resource.base_url, group: resource.group, region: resource.region, environment: resource.environment, healthy: true, priority: 3, weight: 75, rate_limit_rpm: 15, token_limit_tpm: 10000, max_concurrency: 3 });
     for (const key of ["api_key", "options", "headers", "sensitive_headers"]) expect(requestBody(fetcher)).not.toHaveProperty(key);
   });
 
@@ -103,10 +128,12 @@ describe("Provider API Key pool", () => {
   });
 
   it("updates status without losing scheduling and deletes only after confirmation", async () => {
-    const { user, fetcher, onSaved } = setup([resource]);
+    const { user, fetcher, onSaved } = setup([resource], vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ success: 1, failed: 0 }))).mockResolvedValueOnce(new Response(null, { status: 204 })));
     await user.click(screen.getByRole("button", { name: "停用" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
-    expect(requestBody(fetcher)).toMatchObject({ status: "disabled", priority: 2, weight: 75, max_concurrency: 3, base_url: resource.base_url, healthy: true });
+    expect(fetcher.mock.calls[0][0]).toBe("http://localhost:8080/api/admin/provider-resources/bulk");
+    expect(fetcher.mock.calls[0][1].method).toBe("POST");
+    expect(requestBody(fetcher)).toEqual({ action: "disable", ids: [resource.id] });
     await user.click(screen.getByRole("button", { name: "删除" }));
     expect(fetcher).toHaveBeenCalledTimes(1);
     const confirmation = screen.getByRole("group", { name: "删除 API Key 资源" });
@@ -115,6 +142,36 @@ describe("Provider API Key pool", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2));
     expect(fetcher.mock.calls[1][1]).toMatchObject({ method: "DELETE" });
     expect(fetcher.mock.calls[1][0]).toBe("http://localhost:8080/api/admin/provider-resources/key%2Fone");
+  });
+
+  it("enables a disabled unhealthy resource using the recovery action", async () => {
+    const disabled = { ...resource, status: "disabled", healthy: false };
+    const { user, fetcher, onSaved } = setup([disabled], vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: 1, failed: 0 }))));
+    await user.click(screen.getByRole("button", { name: "启用" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(fetcher.mock.calls[0][0]).toBe("http://localhost:8080/api/admin/provider-resources/bulk");
+    expect(fetcher.mock.calls[0][1].method).toBe("POST");
+    expect(requestBody(fetcher)).toEqual({ action: "enable", ids: [resource.id] });
+    expect(screen.getByRole("status")).toHaveTextContent("API Key 资源已更新。");
+  });
+
+  it.each([
+    { name: "HTTP failure", result: { error: { message: "Synthetic status failure" } }, status: 503, message: "Synthetic status failure" },
+    { name: "bulk failure", result: { success: 0, failed: 1, errors: ["Synthetic bulk failure"] }, status: 200, message: "Synthetic bulk failure" },
+    { name: "partial bulk failure", result: { success: 1, failed: 1, errors: ["Synthetic partial failure"] }, status: 200, message: "Synthetic partial failure" },
+    { name: "incomplete bulk result", result: {}, status: 200, message: "保存失败" },
+  ])("reports $name without a success notice and allows retry", async ({ result, status, message }) => {
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(result), { status }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: 1, failed: 0 })));
+    const { user, onSaved } = setup([{ ...resource, status: "disabled", healthy: false }], fetcher);
+    await user.click(screen.getByRole("button", { name: "启用" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "启用" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(requestBody(fetcher, 1)).toEqual({ action: "enable", ids: [resource.id] });
   });
 
   it("does not expose the direct API Key pool for account adapters", async () => {

@@ -35,6 +35,19 @@ function installPool(api: MockAPI, failSave = false) {
     resources.push(resource);
     return { status: 201, json: resource };
   });
+  api.define("POST", "/api/admin/provider-resources/bulk", input => {
+    const body = input.body as { action: "enable" | "disable"; ids: string[] };
+    expect(["enable", "disable"]).toContain(body.action);
+    expect(body.ids).toEqual(["rsrc_ui_key_1"]);
+    expect(Object.keys(body).sort()).toEqual(["action", "ids"]);
+    const current = resources.find(resource => resource.id === body.ids[0]);
+    expect(current).toBeDefined();
+    if (body.action === "enable") expect(current).toMatchObject({ status: "disabled", healthy: false });
+    resources = resources.map(resource => resource.id === body.ids[0] ? {
+      ...resource, status: body.action === "enable" ? "active" : "disabled", healthy: body.action === "enable",
+    } : resource);
+    return { json: { action: body.action, success: 1, failed: 0, resources: resources.filter(resource => body.ids.includes(resource.id)) } };
+  });
   for (const id of ["rsrc_ui_key_1", "rsrc_ui_key_2"]) {
     api.define("PATCH", `/api/admin/provider-resources/${id}`, input => {
       const body = input.body as Partial<ProviderResource>;
@@ -68,6 +81,12 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     const keyInput = editor.locator('input[type="password"]');
     await expect(keyInput).toHaveAttribute("autocomplete", "new-password");
     await keyInput.fill("synthetic-pool-key");
+    await editor.getByText("调度与限流设置", { exact: true }).click();
+    await editor.getByLabel("优先级", { exact: true }).fill("0");
+    await editor.getByRole("button", { name: "保存 API Key 资源", exact: true }).click();
+    await expect(pool.getByRole("alert")).toContainText("优先级和权重须为正整数");
+    expect(api.calls.filter(call => call.method === "POST" && call.path === "/api/admin/provider-resources")).toHaveLength(0);
+    await editor.getByLabel("优先级", { exact: true }).fill("1");
     await editor.getByRole("button", { name: "保存 API Key 资源", exact: true }).click();
     await expect(pool.getByText(keyName, { exact: true })).toBeVisible();
     await expect(editor).toHaveCount(0);
@@ -86,6 +105,11 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     const edit = pool.getByRole("group", { name: "编辑 API Key 资源", exact: true });
     await expect(edit.locator('input[type="password"]')).toHaveValue("");
     await edit.getByText("调度与限流设置", { exact: true }).click();
+    await edit.getByLabel("优先级", { exact: true }).fill("0");
+    await edit.getByRole("button", { name: "保存 API Key 资源", exact: true }).click();
+    await expect(pool.getByRole("alert")).toContainText("优先级和权重须为正整数");
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(0);
+    await edit.getByLabel("优先级", { exact: true }).fill("2");
     await edit.getByLabel("权重", { exact: true }).fill("75");
     await edit.getByLabel("最大并发", { exact: true }).fill("3");
     await expect(edit.getByLabel("权重", { exact: true })).toHaveValue("75");
@@ -99,9 +123,16 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     await edit.getByRole("button", { name: "保存 API Key 资源", exact: true }).click();
     await expect(edit).toHaveCount(0);
     const update = api.calls.find(call => call.method === "PATCH" && call.path.endsWith("rsrc_ui_key_1"));
-    expect(update?.body).toMatchObject({ weight: 75, max_concurrency: 3 });
+    expect(update?.body).toMatchObject({ priority: 2, weight: 75, max_concurrency: 3 });
     await first.getByRole("button", { name: "停用", exact: true }).click();
     await expect(first.getByRole("button", { name: "启用", exact: true })).toBeVisible();
+    await expect(first.getByText("不可用", { exact: true })).toBeVisible();
+    await first.getByRole("button", { name: "启用", exact: true }).click();
+    await expect(first.getByRole("button", { name: "停用", exact: true })).toBeVisible();
+    await expect(first.getByText("健康", { exact: true })).toBeVisible();
+    expect(api.calls.filter(call => call.path === "/api/admin/provider-resources/bulk").map(call => call.body)).toEqual([
+      { action: "disable", ids: ["rsrc_ui_key_1"] }, { action: "enable", ids: ["rsrc_ui_key_1"] },
+    ]);
     await first.getByRole("button", { name: "删除", exact: true }).click();
     const confirmation = pool.getByRole("group", { name: "删除 API Key 资源", exact: true });
     await expect(confirmation).toContainText("绑定它的路由将改为自动选择其他资源或 Provider 默认连接");

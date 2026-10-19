@@ -123,6 +123,78 @@ func TestProviderAPIKeyPoolPreservesExplicitResourceBinding(t *testing.T) {
 	}
 }
 
+func TestProviderAPIKeyPoolBulkEnableRestoresFailedBoundKey(t *testing.T) {
+	fixture := newProviderKeyPoolFixture(t, nil)
+	resource := fixture.resources[0]
+	resource.BaseURL = fixture.provider.BaseURL
+	resource.Group = "key-pool-lifecycle"
+	resource.Priority = 2
+	resource.Weight = 75
+	resource.RateLimitRPM = 20
+	resource.TokenLimitTPM = 10000
+	if _, err := fixture.store.UpdateProviderResource(resource.ID, resource); err != nil {
+		t.Fatal(err)
+	}
+	fixture.route.ProviderResourceID = resource.ID
+	if _, err := fixture.store.UpdateRoute(fixture.route.ID, fixture.route); err != nil {
+		t.Fatal(err)
+	}
+	fixture.store.failureThreshold = 2
+	tripBreaker(t, fixture.store, resource.ID)
+
+	for _, action := range []string{"disable", "enable"} {
+		response := doJSON(t, fixture.app, http.MethodPost, "/api/admin/provider-resources/bulk", map[string]any{
+			"action": action, "ids": []string{resource.ID},
+		}, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s pooled key = %d: %s", action, response.Code, response.Body)
+		}
+		var result ProviderResourceBulkResult
+		if err := json.Unmarshal([]byte(response.Body), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Success != 1 || result.Failed != 0 || strings.Contains(response.Body, "synthetic-pool-key-") {
+			t.Fatalf("unexpected %s result: %s", action, response.Body)
+		}
+		stored, ok := fixture.store.GetProviderResource(resource.ID)
+		if !ok || stored.APIKey != "synthetic-pool-key-1" {
+			t.Fatalf("%s lost the pooled key credential", action)
+		}
+		if stored.BaseURL != resource.BaseURL || stored.Group != resource.Group ||
+			stored.Priority != resource.Priority || stored.Weight != resource.Weight ||
+			stored.RateLimitRPM != resource.RateLimitRPM || stored.TokenLimitTPM != resource.TokenLimitTPM ||
+			stored.MaxConcurrency != resource.MaxConcurrency {
+			t.Fatalf("%s changed connection or scheduling settings", action)
+		}
+		var route ModelRoute
+		if err := fixture.store.db.First(&route, "id = ?", fixture.route.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if route.ProviderResourceID != resource.ID || route.Status != StatusActive {
+			t.Fatalf("%s changed the explicit route binding: %+v", action, route)
+		}
+		if action == "disable" {
+			if stored.Status != StatusDisabled || stored.Healthy || stored.FailureCount == 0 {
+				t.Fatal("disable must deactivate the failed resource without clearing its failure history")
+			}
+			if response := fixture.request(t); response.Code == http.StatusOK {
+				t.Fatal("a route bound to the disabled resource must not use another pooled key")
+			}
+			if counts := fixture.upstreamCounts(); len(counts) != 0 {
+				t.Fatalf("disabled bound key reached the upstream: %v", counts)
+			}
+		} else if stored.Status != StatusActive || !stored.Healthy || stored.FailureCount != 0 || stored.CooldownUntil != nil {
+			t.Fatal("enable must reactivate the resource and reset health, failures, and cooldown")
+		}
+	}
+	if response := fixture.request(t); response.Code != http.StatusOK {
+		t.Fatalf("request after enabling the pooled key = %d: %s", response.Code, response.Body)
+	}
+	if counts := fixture.upstreamCounts(); len(counts) != 1 || counts["synthetic-pool-key-1"] != 1 {
+		t.Fatalf("request after enabling did not use the preserved bound key: %v", counts)
+	}
+}
+
 type providerKeyPoolFixture struct {
 	store     *GormStore
 	app       http.Handler

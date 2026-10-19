@@ -47,14 +47,22 @@ export function ProviderAPIKeyPool({ api, provider, resources, onSaved }: {
     setError("");
   }
 
-  async function mutate(method: "POST" | "PATCH" | "DELETE", resource: ProviderResource | null, payload?: Record<string, unknown>) {
+  async function mutate(method: "POST" | "PATCH" | "DELETE" | "enable" | "disable", resource: ProviderResource | null, payload?: Record<string, unknown>) {
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const path = `/api/admin/provider-resources${resource ? `/${encodeURIComponent(resource.id)}` : ""}`;
-      const response = await adminFetch(api, path, { method, ...(payload ? { body: JSON.stringify(payload) } : {}) });
+      const bulk = method === "enable" || method === "disable";
+      const path = `/api/admin/provider-resources${bulk ? "/bulk" : resource ? `/${encodeURIComponent(resource.id)}` : ""}`;
+      const body = bulk ? { action: method, ids: [resource?.id] } : payload;
+      const response = await adminFetch(api, path, { method: bulk ? "POST" : method, ...(body ? { body: JSON.stringify(body) } : {}) });
       if (!response.ok) throw new Error(await readAdminError(response, tx("保存 API Key 资源")));
+      if (bulk) {
+        const result = await response.json() as { success?: number; failed?: number; errors?: string[] };
+        if (result.success !== 1 || (result.failed ?? 0) !== 0 || result.errors?.length) {
+          throw new Error(result.errors?.[0] || tx("保存失败"));
+        }
+      }
       setDraft(null);
       setEditing(null);
       setDeleting(null);
@@ -76,8 +84,8 @@ export function ProviderAPIKeyPool({ api, provider, resources, onSaved }: {
     if (!editing && !inheritKey && !draft.api_key?.trim()) { setError(tx("请填写 API Key，或选择使用 Provider 已保存的密钥。")); return; }
     if (schedulingFields.some((field) => {
       const value = Number(draft[field.key] || "0");
-      return !Number.isSafeInteger(value) || value < (field.key === "weight" ? 1 : 0);
-    })) { setError(tx("权重须为正整数，优先级、限流和并发须为非负整数。")); return; }
+      return !Number.isSafeInteger(value) || value < (field.key === "priority" || field.key === "weight" ? 1 : 0);
+    })) { setError(tx("优先级和权重须为正整数，限流和并发须为非负整数。")); return; }
     const values = { ...draft, name: draft.name.trim(), api_key: inheritKey ? "" : draft.api_key };
     void mutate(editing ? "PATCH" : "POST", editing, editing ? updatePayload(editing, values) : providerResourcePayload(values));
   }
@@ -97,7 +105,7 @@ export function ProviderAPIKeyPool({ api, provider, resources, onSaved }: {
               <div className="provider-key-pool-name"><strong>{resource.name}</strong><div><StatusPill status={resource.status} /><StatusPill status={resource.healthy ? "healthy" : "down"} /></div></div>
               <div className="provider-key-pool-actions">
                 <button className="secondary-button" disabled={busy || Boolean(draft)} onClick={() => openEditor(resource)} type="button">{tx("编辑")}</button>
-                <button className="secondary-button" disabled={busy || Boolean(draft)} onClick={() => void mutate("PATCH", resource, updatePayload(resource, { status: resource.status === "active" ? "disabled" : "active" }))} type="button">{tx(resource.status === "active" ? "停用" : "启用")}</button>
+                <button className="secondary-button" disabled={busy || Boolean(draft)} onClick={() => void mutate(resource.status === "active" ? "disable" : "enable", resource)} type="button">{tx(resource.status === "active" ? "停用" : "启用")}</button>
                 <button className="danger-button" disabled={busy || Boolean(draft)} onClick={() => { setDeleting(resource); setDraft(null); setError(""); setNotice(""); }} type="button">{tx("删除")}</button>
               </div>
             </li>
@@ -122,7 +130,7 @@ export function ProviderAPIKeyPool({ api, provider, resources, onSaved }: {
         {!editing ? <label className="checkbox-line"><input type="checkbox" checked={inheritKey} onChange={(event) => { setInheritKey(event.target.checked); update("api_key", ""); }} /><span>{tx("使用 Provider 已保存的密钥")}</span></label> : null}
         <details className="provider-key-pool-scheduling">
           <summary>{tx("调度与限流设置")}</summary>
-          <p>{tx("优先级数值越小越优先；同优先级按路由策略与权重分配。限流和并发填 0 表示不限制。")}</p>
+          <p>{tx("优先级从 1 开始，数值越小越优先；同优先级按路由策略与权重分配。限流和并发填 0 表示不限制。")}</p>
           <div className="provider-key-pool-fields">
             <ProviderInlineField field={{ key: "base_url", label: "Base URL", help: "留空继承 Provider 地址。" }} value={draft.base_url} values={draft} onChange={(value) => update("base_url", value)} />
             {schedulingFields.map((field) => <ProviderInlineField key={field.key} field={field} value={draft[field.key]} values={draft} onChange={(value) => update(field.key, value)} />)}
