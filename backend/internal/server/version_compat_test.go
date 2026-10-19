@@ -76,3 +76,14 @@ func TestRollbackCompatibilityOnMemoryStoreUsesExpandedSchema(t *testing.T) {
 		t.Fatalf("memory store uses the current expanded schema state, got %+v", verdict)
 	}
 }
+
+func TestCompatibilityManifestTargetsLatestRegisteredMigration(t *testing.T) {
+	manifest := CurrentCompatibilityManifest()
+	var latest int64
+	for _, migration := range SchemaMigrationRegistry() {
+		latest = max(latest, migration.Version)
+	}
+	if manifest.TargetVersion != latest || manifest.MaxCompatible < latest || manifest.MinCompatible > manifest.TargetVersion {
+		t.Fatalf("compatibility manifest %+v does not cover latest migration %d", manifest, latest)
+	}
+}
