@@ -1,8 +1,16 @@
 package server
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+const maximumUsageQueryDuration = 10 * time.Second
 
 func (s *Server) usageSummaryForUser(ctx context.Context, user AdminUser) (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(ctx, maximumUsageQueryDuration)
+	defer cancel()
+	s = s.usageQueryServer(ctx)
 	summary, err := s.store.QueryUsageSummary(ctx, s.usageSummaryQueryForUser(user))
 	if err != nil {
 		return nil, err
@@ -63,4 +71,14 @@ func usageAttributedUserIDs(user AdminUser, users []AdminUser) []string {
 		}
 	}
 	return ids
+}
+
+// usageQueryServer scopes metadata and permission reads to the same deadline as
+// the analytics queries. Keep this view limited to read-only usage helpers so no
+// server mutexes or background workers are copied.
+func (s *Server) usageQueryServer(ctx context.Context) *Server {
+	if store, ok := s.store.(*GormStore); ok {
+		return &Server{store: store.WithContext(ctx), config: s.config}
+	}
+	return s
 }

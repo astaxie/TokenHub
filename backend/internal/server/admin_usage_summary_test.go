@@ -285,9 +285,9 @@ func TestUsageSummarySQLiteQueryUsesScopeIndexes(t *testing.T) {
 		t.Fatalf("scoped summary query scans usage history instead of using indexes:\n%s", joined)
 	}
 	for _, indexName := range []string{
-		"idx_usage_records_attributed_user_id",
+		"idx_usage_records_attributed_user_created",
 		"idx_usage_records_project_id",
-		"idx_usage_records_api_key_id",
+		"idx_usage_records_api_key_created",
 	} {
 		if !strings.Contains(joined, indexName) {
 			t.Fatalf("query plan does not use %s:\n%s", indexName, joined)

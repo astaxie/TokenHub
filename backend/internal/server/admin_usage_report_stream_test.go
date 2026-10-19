@@ -94,8 +94,9 @@ func TestUsageReportStreamingStopsWhenCanceled(t *testing.T) {
 
 func assertUsageReportBreakdownMatchesLegacy(t *testing.T, server *Server, user AdminUser, report map[string]any) {
 	t.Helper()
-	expected := server.usageBreakdownForUser(user)
 	records := server.filterUsageRecordsForUser(user, server.store.ListUsageRecords())
+	expected := server.usageBreakdownFromRecords(records, indexProjectsByID(server.store.ListProjects()))
+	expected["members"] = server.aggregateUsageByMember(user, records, indexProjectsByID(server.store.ListProjects()))
 	expected["api_keys"] = aggregateUsage(records, func(record UsageRecord) string { return record.APIKeyID })
 	if !isPlatformAdminRole(user.Role) {
 		delete(expected, "providers")

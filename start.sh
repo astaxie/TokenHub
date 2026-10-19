@@ -9,6 +9,7 @@ FRONTEND_DIR="$ROOT_DIR/frontend"
 # single source for both the defaults applied below and the environment handed to the
 # backend process, so a new variable is added in one place.
 BACKEND_VAR_DEFAULTS=(
+  "GOMEMLIMIT=2GiB"
   "TOKENHUB_ENV=dev"
   "TOKENHUB_HTTP_ADDR=:8080"
   "TOKENHUB_PUBLIC_BASE_URL=http://localhost:8080"

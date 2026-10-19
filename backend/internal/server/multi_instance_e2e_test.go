@@ -72,6 +72,7 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 	t.Run("gateway read snapshots use repeatable read", func(t *testing.T) {
 		testPostgresGatewayReadSnapshot(t, storeA)
 	})
+	t.Run("usage aggregates preserve snapshots and UTC windows", testPostgresUsageGroupsAndUTCTimeseries)
 	t.Run("API key deletion is ordered with admission and settlement", func(t *testing.T) {
 		testPostgresAPIKeyDeletionOrdering(t, storeA)
 	})

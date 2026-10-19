@@ -37,14 +37,18 @@ func TestUsageBreakdownQueryCountDoesNotGrowWithRecords(t *testing.T) {
 	}
 
 	insertUsageRecords(0, 1)
-	server.usageBreakdownForUser(admin)
+	_, _ = server.usageBreakdownForUser(t.Context(), admin)
 	smallQueries := countStoreQueries(t, store, func() {
-		server.usageBreakdownForUser(admin)
+		_, _ = server.usageBreakdownForUser(t.Context(), admin)
 	})
 	insertUsageRecords(1, 99)
 	var breakdown map[string]any
 	largeQueries := countStoreQueries(t, store, func() {
-		breakdown = server.usageBreakdownForUser(admin)
+		var err error
+		breakdown, err = server.usageBreakdownForUser(t.Context(), admin)
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	if largeQueries > smallQueries {

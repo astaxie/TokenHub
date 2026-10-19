@@ -323,6 +323,19 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 Only use `down -v` when you intentionally want to delete local data.
 
+### Memory budgets for the bundled application
+
+The default SQLite and local PostgreSQL Compose files cap the combined backend/frontend application container at 4 GiB. `TOKENHUB_CONTAINER_MEMORY_LIMIT=4g` sets both `mem_limit` and `memswap_limit`, disabling container swap. `GOMEMLIMIT=2GiB` gives the Go runtime a lower soft target, leaving room for SQLite/cgo allocations, Next.js, and page cache charged to the container. Go can exceed its soft target; it is not an RSS limit. Reaching the container limit can terminate the application and interrupt requests. These limits contain resource growth; they do not establish the cause of an earlier outage or guarantee availability under overload.
+
+Adjust both values in `deploy/.env` to the host and workload, reserving memory for the OS and other services (including a local PostgreSQL server). Keep the Go target below the container limit; reducing only the container limit can cause avoidable restarts. Apply changes by recreating the application container with the original Compose file, for example:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d tokenhub-backend
+docker inspect --format 'memory={{.HostConfig.Memory}} memory_swap={{.HostConfig.MemorySwap}} oom_killed={{.State.OOMKilled}} restarts={{.RestartCount}}' tokenhub-backend
+```
+
+`./start.sh` also defaults the backend to `GOMEMLIMIT=2GiB`; override it in the launching shell, for example `GOMEMLIMIT=1GiB ./start.sh`. Go reads this setting before application `.env` loading, so placing it only in `backend/.env` does not configure the runtime. Direct/native launches need an exported `GOMEMLIMIT` or service environment and their own OS memory limit. The remote PostgreSQL multi-instance Compose file and Helm deployments require their own per-service resource budgets; these bundled-container defaults do not apply to them.
+
 ## Running the Production Build Locally (without Docker)
 
 `deploy/local/run-local.sh` runs the backend and the console on your own machine from a production build, with no Docker, no root and no systemd. This is a development aid, not a deployment method: to install TokenHub on a server, use [Native Release with systemd](#native-release-with-systemd) or [Docker Compose](#docker-compose).
@@ -478,6 +491,26 @@ Recommended production setup:
 - Store backups outside the application container.
 - Rotate old backups according to your retention policy.
 - Keep provider credentials and admin tokens in a secret manager or protected environment variables.
+
+### Diagnosing SQLite latency and memory pressure
+
+File-backed SQLite in WAL mode uses one primary connection for writes, two query-only connections for settings, authentication/session validation and routing reads, and one query-only analytics connection. Usage aggregation cannot occupy the critical read pool, and readers can proceed alongside a WAL writer. These are bounded pools, not a guarantee of sub-second responses: login session creation, quota/accounting, and audit persistence still need durable writes, and all pools share the same disk. In-memory SQLite keeps the shared primary connection; PostgreSQL retains its configured pool behavior.
+
+The administrative database status response exposes `pools` statistics for `primary`, `read`, and `analytics`, including `max_open_connections`, `open_connections`, `in_use`, `idle`, `wait_count`, and cumulative `wait_duration_ms`. `sqlite_files` reports `database_bytes`, `wal_bytes`, and `shm_bytes` from filesystem metadata without running a checkpoint. Database ping failure logs identify the pool with `pool=<name>`.
+
+Daily usage and the UTC timeseries aggregate within their indexed time windows in SQL instead of loading historical usage records into Go. Breakdown dimensions share one database snapshot, preserving consistent totals while requests are being recorded. Usage requests have a 10-second deadline covering metadata loading and database queries. The legacy summary and breakdown endpoints still cover all history, so their database work can grow with retained data; these changes do not guarantee sub-second responses for every workload. An additive schema migration installs composite usage indexes. On a large existing database, plan a migration window with sufficient disk space and I/O capacity for the first startup after upgrading, as index creation must read existing rows.
+
+Record timestamps and compare the same time window before restarting, if the host is still responsive:
+
+- Capture `docker stats --no-stream tokenhub-backend`, the targeted `docker inspect` command above, host available memory, and disk utilization/latency. On Linux, `vmstat 1 10` and `iostat -xz 1 10` help separate CPU load, paging, and I/O wait. Check kernel OOM events and cgroup `memory.events` as well as Docker's OOM flag; a high RSS or a 502 alone does not prove an OOM kill.
+- Compare `/livez` with `/readyz` (or compatible `/healthz`). A responsive liveness endpoint with failed readiness can indicate a database or schema-readiness problem. Preserve database ping diagnostics: `in_use` and `idle` describe the pool, while `wait_count` and `wait_duration` are cumulative counters since that pool opened. Compare their deltas over a measured interval; `wait_duration` is not one request's latency, and a ping timeout alone does not distinguish connection waiting from slow storage.
+- If protected Prometheus metrics are already enabled, compare `go_memstats_heap_alloc_bytes` with `process_resident_memory_bytes` and container memory. SQLite/cgo, the frontend, and filesystem cache can grow independently of the Go heap. Also record request concurrency, request sizes, usage-query time windows, database/WAL sizes, and disk free space. Keep credentials and payload content out of incident reports.
+
+Stored request and response audit snapshots are each limited to 8 KiB, including any truncation marker, with UTF-8 boundaries and redaction preserved. Very large or complex payloads are omitted before making full serialization/redaction copies and carry an omission marker plus the truncated flag. Trace payload capture uses the same bounded snapshots. This reduces per-request audit work; it does not remove existing large snapshots or cap total database size. Configure request-payload retention in gateway settings and monitor database growth separately.
+
+For WAL maintenance, use SQLite's backup API or TokenHub's backup feature before making changes; copying only an active `.db` file can lose committed WAL data. A long-lived reader or sustained traffic can prevent a checkpoint from completing. A large WAL is a diagnostic signal, not proof of corruption or a single root cause. Never delete `-wal` or `-shm` files manually.
+
+Schedule a maintenance window, drain requests, stop every process that opens the database, and use a SQLite CLI with access to the persistent volume. Run `PRAGMA wal_checkpoint(TRUNCATE);` against the database and inspect its busy/log/checkpointed result; a busy result means the checkpoint did not complete, so investigate remaining connections instead of repeatedly forcing it. `VACUUM` is optional offline space reclamation after retention cleanup: it rewrites the database, needs exclusive access and substantial temporary free disk space (potentially up to twice the database size). It is not a routine live-load remedy. Restart the application and verify readiness and a small usage query afterward.
 
 ## Catalog Files
 

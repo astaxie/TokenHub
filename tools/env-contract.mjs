@@ -24,6 +24,7 @@ const VAR = "TOKENHUB_[A-Z0-9_]+";
 export const KNOWN_CONSUMERS = {
   "deploy/.env.example": new Map([
     ["TOKENHUB_IMAGE_TAG", "docker-compose image tag"],
+    ["TOKENHUB_CONTAINER_MEMORY_LIMIT", "bundled docker-compose memory and memory-plus-swap limits"],
     ["TOKENHUB_BACKEND_PORT", "docker-compose port publishing"],
     ["TOKENHUB_FRONTEND_PORT", "docker-compose port publishing"],
     ["TOKENHUB_BACKEND_REPLICAS", "docker-compose scale (remote-postgres)"],

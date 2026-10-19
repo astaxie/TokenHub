@@ -8,6 +8,9 @@ import (
 )
 
 func (s *Server) usageDailyForUser(ctx context.Context, user AdminUser, now time.Time) (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(ctx, maximumUsageQueryDuration)
+	defer cancel()
+	s = s.usageQueryServer(ctx)
 	timezone := s.dashboardTimezone()
 	location, timezoneName, err := usageDailyLocation(timezone)
 	if err != nil {
@@ -28,21 +31,9 @@ func (s *Server) usageDailyForUser(ctx context.Context, user AdminUser, now time
 		return nil, err
 	}
 
-	records := make([]UsageRecord, 0)
-	for _, record := range s.filterUsageRecordsForUser(user, s.store.ListUsageRecords()) {
-		createdAt := record.CreatedAt.UTC()
-		if !createdAt.Before(startUTC) && createdAt.Before(endUTC) {
-			records = append(records, record)
-		}
-	}
-
-	projectsByID := indexProjectsByID(s.store.ListProjects())
-	breakdown := s.usageBreakdownFromRecords(records, projectsByID)
-	breakdown["api_keys"] = aggregateUsage(records, func(record UsageRecord) string { return record.APIKeyID })
-	breakdown["members"] = s.aggregateUsageByMember(user, records, projectsByID)
-	if !isPlatformAdminRole(user.Role) {
-		delete(breakdown, "providers")
-		delete(breakdown, "provider_resources")
+	breakdown, err := s.usageBreakdownForScope(ctx, user, summaryQuery.UsageRecords, true, true)
+	if err != nil {
+		return nil, err
 	}
 
 	return map[string]any{

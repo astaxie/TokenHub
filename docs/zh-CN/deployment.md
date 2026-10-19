@@ -323,6 +323,19 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 仅在明确需要删除本地数据时使用 `down -v`。
 
+### 合并应用容器的内存预算
+
+默认 SQLite 和本地 PostgreSQL Compose 将前后端合并应用容器的内存上限设为 4 GiB。`TOKENHUB_CONTAINER_MEMORY_LIMIT=4g` 同时设置 `mem_limit` 和 `memswap_limit`，禁止容器使用 swap。`GOMEMLIMIT=2GiB` 为 Go 运行时设置较低的软目标，为 SQLite/cgo 分配、Next.js 以及计入容器的文件页缓存留出空间。Go 可以超过该软目标，它不是 RSS 上限；达到容器硬上限时，应用可能被终止并中断请求。这些限制用于控制资源增长的影响范围，不能据此确认此前故障的根因，也不保证过载时仍然可用。
+
+根据主机和工作负载在 `deploy/.env` 中同时调整这两个值，为操作系统和其他服务（包括本地 PostgreSQL）预留内存。Go 目标应低于容器上限；仅降低容器上限可能导致本可避免的重启。使用原 Compose 文件重建应用容器以应用设置，例如：
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d tokenhub-backend
+docker inspect --format 'memory={{.HostConfig.Memory}} memory_swap={{.HostConfig.MemorySwap}} oom_killed={{.State.OOMKilled}} restarts={{.RestartCount}}' tokenhub-backend
+```
+
+`./start.sh` 也默认给后端设置 `GOMEMLIMIT=2GiB`，可在启动 shell 中覆盖，例如 `GOMEMLIMIT=1GiB ./start.sh`。Go 在应用加载 `.env` 之前读取该值，因此仅写入 `backend/.env` 不会配置运行时。直接启动或原生部署需要导出的 `GOMEMLIMIT` 或服务环境变量，并单独配置操作系统内存限制。远端 PostgreSQL 多实例 Compose 和 Helm 部署需要各自的服务资源预算，不适用这里的合并容器默认值。
+
 ## 本地运行生产构建（不使用 Docker）
 
 `deploy/local/run-local.sh` 以完全不依赖 Docker、不需要 root、不需要 systemd 的方式，在自己的机器上用生产构建运行后端和控制台。它是开发辅助手段，不是部署方式：要把 TokenHub 装到服务器上，请使用[原生 Release + systemd](#原生-release--systemd) 或 [Docker Compose](#docker-compose)。
@@ -475,6 +488,26 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 - 将备份保存到应用容器外部。
 - 按保留策略清理旧备份。
 - 将 Provider 凭证和 Admin Token 放在密钥管理系统或受保护的环境变量中。
+
+### 排查 SQLite 延迟与内存压力
+
+WAL 模式的文件型 SQLite 使用一个主连接处理写入、两个只读连接处理设置、认证/会话校验和路由读取，以及一个独立只读分析连接。用量聚合不会占用关键读取连接池，读取可与 WAL 写入并行。这些是有界连接池，不保证响应必定低于一秒：登录会话创建、配额/记账及审计持久化仍需持久写入，所有连接池也共享同一磁盘。内存型 SQLite 保留共享的主连接；PostgreSQL 保持原有连接池配置行为。
+
+管理员数据库状态响应提供 `primary`、`read`、`analytics` 的 `pools` 统计，包括 `max_open_connections`、`open_connections`、`in_use`、`idle`、`wait_count` 和累计 `wait_duration_ms`。`sqlite_files` 通过文件元数据报告 `database_bytes`、`wal_bytes`、`shm_bytes`，不会触发检查点。database ping 失败日志通过 `pool=<name>` 标识对应连接池。
+
+每日用量和 UTC 时间序列在 SQL 中按带索引的时间窗口聚合，不再将历史用量记录全部加载到 Go。明细分组的各个维度共享同一数据库快照，因此持续写入请求时，各维度总量也保持一致。用量请求的 10 秒截止时间覆盖元数据加载和数据库查询。原有汇总、明细分组接口仍覆盖全部历史，其数据库工作量仍可能随保留数据增长；这些改动不保证所有负载下都能在一秒内返回。增量数据库迁移会安装用量复合索引。对于已有大型数据库，升级后的首次启动应安排迁移窗口，预留足够磁盘空间和 I/O 能力，因为创建索引需要读取已有记录。
+
+若主机仍可响应，在重启前记录时间戳，并对照同一时间窗口：
+
+- 收集 `docker stats --no-stream tokenhub-backend`、上文限定字段的 `docker inspect` 结果、主机可用内存和磁盘利用率/延迟。Linux 上可用 `vmstat 1 10` 和 `iostat -xz 1 10` 区分 CPU 负载、换页和 I/O wait。除 Docker OOM 标志外，也检查内核 OOM 事件和 cgroup `memory.events`；仅凭高 RSS 或 502 不能认定发生 OOM kill。
+- 对比 `/livez` 与 `/readyz`（或兼容的 `/healthz`）。存活接口正常而就绪失败，可能是数据库或数据库演进就绪状态异常。保留 database ping 诊断：`in_use`、`idle` 描述连接池状态，`wait_count`、`wait_duration` 是该池打开以来的累计值。应比较固定时间间隔的增量；`wait_duration` 不是单次请求延迟，仅凭 ping 超时也不能区分连接排队与存储缓慢。
+- 若已启用受保护的 Prometheus 指标，对照 `go_memstats_heap_alloc_bytes`、`process_resident_memory_bytes` 和容器内存。SQLite/cgo、前端和文件缓存可独立于 Go 堆增长。同步记录请求并发、请求大小、用量查询时间窗口、数据库/WAL 大小及剩余磁盘空间。故障报告中不要包含凭据和负载正文。
+
+存储的请求、响应审计快照各限制为 8 KiB，包含截断标记，并保留 UTF-8 边界及脱敏处理。特别大或复杂的负载在完整序列化/脱敏复制前省略，保留省略标记和截断标志。Trace 负载采集也使用同样有界的快照。这会减少单请求审计开销，但不会删除已有的大快照，也不限制数据库总体积。请在网关设置中配置请求负载保留期，并单独监控数据库增长。
+
+维护 WAL 前，使用 SQLite 备份 API 或 TokenHub 备份功能生成备份；只复制正在运行的 `.db` 文件可能丢失已经提交到 WAL 的数据。长时间读取或持续流量可能阻止检查点完成。较大的 WAL 是诊断线索，不等于数据库损坏或已确认唯一根因。不要手动删除 `-wal`、`-shm` 文件。
+
+安排维护窗口，排空请求，停止所有打开该数据库的进程，再使用能访问持久卷的 SQLite CLI 操作。对数据库执行 `PRAGMA wal_checkpoint(TRUNCATE);`，检查返回的 busy/log/checkpointed 值；busy 表示检查点未完成，应排查剩余连接，而非反复强制操作。`VACUUM` 是保留期清理后可选的离线空间回收操作：它会重写数据库，需要独占访问以及较大的临时空闲磁盘空间（可能达到数据库大小的两倍），不应作为线上高负载的常规补救措施。完成后重启应用，检查就绪状态并执行小范围用量查询。
 
 ## 目录文件
 
