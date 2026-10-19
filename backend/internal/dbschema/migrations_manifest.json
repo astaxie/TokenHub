@@ -58,6 +58,15 @@
       "checksum": "tokenhub-schema-image-job-worker-instance-v1",
       "lock_timeout_seconds": 30,
       "statement_budget": 8
+    },
+    {
+      "version": 8,
+      "name": "add-media-task-bindings",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "9fd17cac8b4faa5998586c4282f56880b29cdf3d1c0a105e3d05b5c39361aca4",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 10
     }
   ]
 }

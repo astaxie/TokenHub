@@ -6,14 +6,16 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 )
 
 const maxMediaResponseBytes = 128 << 20
 
 type mediaResponse struct {
-	Body        []byte
-	ContentType string
-	Status      int
+	Body         []byte
+	ContentType  string
+	Status       int
+	BindingRoute *RouteSelection
 }
 
 type providerMedia interface {
@@ -21,8 +23,18 @@ type providerMedia interface {
 }
 
 func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, model, endpoint string, request mediaRequest) (mediaResponse, Usage, error) {
+	method := http.MethodPost
 	switch endpoint {
-	case "/audio/speech", "/audio/transcriptions", "/audio/translations", "/images/generations", "/images/edits", "/images/variations":
+	case "/audio/speech", "/audio/transcriptions", "/audio/translations", "/images/generations", "/images/edits", "/images/variations", "/videos/generations":
+	case "/tasks":
+		if !validMediaTaskID(request.UpstreamTaskID) {
+			return mediaResponse{}, Usage{}, mediaTaskNotFound()
+		}
+		method = http.MethodGet
+		endpoint += "/" + url.PathEscape(request.UpstreamTaskID)
+		if request.TaskLanguage != "" {
+			endpoint += "?" + url.Values{"language": {request.TaskLanguage}}.Encode()
+		}
 	default:
 		return mediaResponse{}, Usage{}, NewHTTPError(400, "invalid_media_endpoint", "Unsupported media endpoint")
 	}
@@ -33,7 +45,10 @@ func (a OpenAICompatibleAdapter) Media(ctx context.Context, provider Provider, m
 	if err != nil {
 		return mediaResponse{}, Usage{}, err
 	}
-	req, err := openAICompatibleRequest(ctx, provider, http.MethodPost, model, endpoint, data)
+	if method == http.MethodGet {
+		data = nil
+	}
+	req, err := openAICompatibleRequest(ctx, provider, method, model, endpoint, data)
 	if err != nil {
 		return mediaResponse{}, Usage{}, err
 	}
