@@ -66,7 +66,10 @@ func sqliteFileSizes(dsn string) map[string]int64 {
 		}
 		path = parsed.Path
 		if path == "" {
-			path = parsed.Opaque
+			path, err = url.PathUnescape(parsed.Opaque)
+			if err != nil {
+				return nil
+			}
 		}
 	}
 	sizes := make(map[string]int64)
