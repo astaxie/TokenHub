@@ -1,4 +1,4 @@
-import type { AdapterDescriptor, PluginDescriptor, Provider, ProviderCatalogEntry } from "../../features/admin/core/types";
+import type { AdapterDescriptor, PluginDescriptor, Provider, ProviderCatalogEntry, ProviderResource } from "../../features/admin/core/types";
 import { test, expect, capture } from "./harness";
 import { fixedTime } from "./fixtures/shell";
 import type { MockAPI } from "./network";
@@ -18,6 +18,7 @@ const adapters: AdapterDescriptor[] = [
 
 function installProviderFixtures(api: MockAPI, state: string) {
   const custom = state === "custom" || state === "late-connection";
+  const accountRetry = state === "account-retry";
   let releaseConnection: (() => void) | undefined;
   const delayedConnection = state === "late-connection"
     ? new Promise<{ json: { healthy: boolean; latency_ms: number } }>((resolve) => {
@@ -58,9 +59,10 @@ function installProviderFixtures(api: MockAPI, state: string) {
     return delayedConnection ?? (state === "connection-failure" ? { status: 502, json: { error: { message: "Synthetic provider rejected the key" } } } : { json: { healthy: true, latency_ms: 35 } });
   });
   api.define("POST", "/api/admin/providers", input => {
-    const connection = custom ? customConnection : direct;
-    const catalogID = custom ? "custom" : direct.id;
-    expect(input.body).toMatchObject({ catalog_id: catalogID, name: connection.name, type: connection.type, api_key: "synthetic-ui-key", selected_models: [catalogModel.id] });
+    const connection = accountRetry ? subscription : custom ? customConnection : direct;
+    const catalogID = accountRetry ? subscription.id : custom ? "custom" : direct.id;
+    expect(input.body).toMatchObject({ catalog_id: catalogID, name: connection.name, type: connection.type, api_key: accountRetry ? "" : "synthetic-ui-key", selected_models: [catalogModel.id] });
+    if (accountRetry) expect(api.calls.filter(call => call.method === "POST" && call.path === "/api/admin/providers")).toHaveLength(1);
     if (custom) expect(input.body).toMatchObject({ base_url: customConnection.base_url, system_prompt_transform_policy: "preserve", custom_models: [expect.objectContaining({ id: catalogModel.id })] });
     if (state === "save-failure") return { status: 500, json: { error: { message: "Synthetic provider save failed" } } };
     const provider: Provider = { id: "prv_ui_created", name: connection.name, type: connection.type, base_url: connection.base_url, priority: 10, healthy: true, status: "active", options: { catalog_id: catalogID } };
@@ -68,10 +70,79 @@ function installProviderFixtures(api: MockAPI, state: string) {
     api.replaceResponse("GET", "/api/admin/provider-models", { data: [{ id: "pm_ui_created", provider_id: provider.id, upstream_model: catalogModel.id, status: "active" }] });
     return { status: 201, json: { provider, imported_models: 1 } };
   });
+  if (accountRetry) {
+    api.define("POST", "/api/admin/provider-catalog/ui-subscription", input => {
+      expect(input.body).toMatchObject({ access_token: "synthetic-account-retry-token", account_id: "ui-account-retry" });
+      return { json: { data: { ...subscription, models: [catalogModel] } } };
+    });
+    api.define("PATCH", "/api/admin/providers/prv_ui_created", input => {
+      expect(input.body).toMatchObject({ name: "UI Retried Subscription", type: subscription.type, catalog_id: subscription.id, selected_models: [catalogModel.id] });
+      const provider: Provider = { id: "prv_ui_created", name: "UI Retried Subscription", type: subscription.type, base_url: subscription.base_url, priority: 10, healthy: true, status: "active", options: { catalog_id: subscription.id } };
+      api.replaceResponse("GET", "/api/admin/providers", { data: [provider] });
+      return { json: { provider, imported_models: 1 } };
+    });
+    let resourceAttempts = 0;
+    api.define("POST", "/api/admin/provider-resources", input => {
+      resourceAttempts++;
+      expect(input.body).toMatchObject({ provider_id: "prv_ui_created", resource_type: "ui_subscription_account", api_key: "synthetic-account-retry-token", credentials: { access_token: "synthetic-account-retry-token", account_id: "ui-account-retry" } });
+      if (resourceAttempts === 1) {
+        expect(input.body).toMatchObject({ name: "UI Initial Account" });
+        return { status: 409, json: { error: { message: "Synthetic account name conflict" } } };
+      }
+      expect(resourceAttempts).toBe(2);
+      expect(input.body).toMatchObject({ name: "UI Retried Account" });
+      const resource: ProviderResource = { id: "rsrc_ui_retried", provider_id: "prv_ui_created", name: "UI Retried Account", resource_type: "ui_subscription_account", status: "active", healthy: true, priority: 1, weight: 100 };
+      api.replaceResponse("GET", "/api/admin/provider-resources", { data: [resource] });
+      return { status: 201, json: resource };
+    });
+  }
   return () => releaseConnection?.();
 }
 
 for (const viewport of ["desktop", "mobile"] as const) {
+  test(`provider-onboarding account-create retry ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    installProviderFixtures(api, "account-retry");
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    await editor.getByRole("button", { name: /UI Subscription/ }).click();
+    await editor.getByLabel(/^账号资源名称/).fill("UI Initial Account");
+    await editor.getByText("高级：手动粘贴 Token", { exact: true }).click();
+    await editor.getByLabel("访问 Token", { exact: false }).fill("synthetic-account-retry-token");
+    await editor.getByLabel(/^账号 ID/).fill("ui-account-retry");
+    await editor.getByRole("button", { name: "下一步", exact: true }).click();
+    const model = editor.getByRole("checkbox", { name: /UI Chat/ });
+    await model.check();
+    await editor.getByRole("button", { name: "添加供应商并引入模型", exact: true }).click();
+    const error = editor.getByRole("alert");
+    await expect(error).toHaveText("Provider 已保存，但账号资源创建失败：Synthetic account name conflict。请修正后重试，将继续使用已保存的 Provider。");
+    await expect(model).toBeChecked();
+    await capture(page, testInfo, error, `provider-onboarding-account-retry-error-${viewport}`, "账号资源保存失败：说明 Provider 已保存，可修正草稿后重试");
+
+    await editor.getByRole("button", { name: "上一步", exact: true }).click();
+    await expect(editor.getByLabel(/^账号资源名称/)).toHaveValue("UI Initial Account");
+    await editor.getByText("高级：手动粘贴 Token", { exact: true }).click();
+    await expect(editor.getByLabel("访问 Token", { exact: false })).toHaveValue("synthetic-account-retry-token");
+    await expect(editor.getByLabel(/^账号 ID/)).toHaveValue("ui-account-retry");
+    await editor.getByText("高级连接设置", { exact: true }).click();
+    await editor.getByLabel("通道名称", { exact: true }).fill("UI Retried Subscription");
+    await editor.getByLabel(/^账号资源名称/).fill("UI Retried Account");
+    await editor.getByRole("button", { name: "下一步", exact: true }).click();
+    await expect(model).toBeChecked();
+    await editor.getByRole("button", { name: "添加供应商并引入模型", exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    const savedProvider = page.getByRole("row").filter({ hasText: "UI Retried Subscription" });
+    await expect(savedProvider).toHaveCount(1);
+    await capture(page, testInfo, savedProvider, `provider-onboarding-account-retry-saved-${viewport}`, "重试成功：更新同一 Provider 并创建账号资源");
+    const writes = api.calls.filter(call => call.method === "PATCH" || (call.method === "POST" && ["/api/admin/providers", "/api/admin/provider-resources"].includes(call.path)));
+    expect(writes.map(call => `${call.method} ${call.path}`)).toEqual([
+      "POST /api/admin/providers", "POST /api/admin/provider-resources", "PATCH /api/admin/providers/prv_ui_created", "POST /api/admin/provider-resources",
+    ]);
+    expect(writes[2].body).toMatchObject({ name: "UI Retried Subscription", selected_models: [catalogModel.id] });
+    expect(writes[3].body).toMatchObject({ provider_id: "prv_ui_created", name: "UI Retried Account" });
+  });
+
   test(`provider-onboarding category filters ${viewport}`, async ({ page, api }, testInfo) => {
     if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
     installProviderFixtures(api, "catalog-filters");

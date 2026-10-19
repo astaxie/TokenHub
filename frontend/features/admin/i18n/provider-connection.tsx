@@ -1,5 +1,6 @@
 export const providerConnectionTranslations: Record<"en" | "ja", Record<string, string>> = {
   en: {
+    "Provider 已保存，但账号资源创建失败：{message}。请修正后重试，将继续使用已保存的 Provider。": "The Provider was saved, but the account resource could not be created: {message}. Correct the problem and retry to continue with the saved Provider.",
     "API Key 资源池": "API Key pool",
     "添加 API Key": "Add API Key",
     "同一 Provider 可添加多个上游 API Key，共享模型与路由，分别配置权重和限流。": "Add multiple upstream API keys to one Provider, sharing its models and routes with individual weights and rate limits.",
@@ -147,6 +148,7 @@ export const providerConnectionTranslations: Record<"en" | "ja", Record<string, 
     "完全收敛": "Full convergence",
   },
   ja: {
+    "Provider 已保存，但账号资源创建失败：{message}。请修正后重试，将继续使用已保存的 Provider。": "Provider は保存されましたが、アカウントリソースを作成できませんでした：{message}。問題を修正して再試行すると、保存済みの Provider を引き続き使用します。",
     "API Key 资源池": "API Key プール",
     "添加 API Key": "API Key を追加",
     "同一 Provider 可添加多个上游 API Key，共享模型与路由，分别配置权重和限流。": "1 つの Provider に複数の上流 API Key を追加し、モデルとルートを共有しながら重みとレート制限を個別に設定できます。",

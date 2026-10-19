@@ -153,6 +153,7 @@ function updatePayload(resource: ProviderResource, values: Record<string, string
   const payload = providerResourceUpdatePayload({ ...providerResourceToForm(resource), ...values });
   // This editor owns credentials and scheduling only. Keep advanced settings
   // untouched, including masked headers and plugin-specific options.
+  delete payload.group;
   delete payload.headers;
   delete payload.sensitive_headers;
   delete payload.options;

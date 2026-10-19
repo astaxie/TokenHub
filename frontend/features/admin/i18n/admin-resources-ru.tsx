@@ -1,4 +1,5 @@
 export const adminResourcesRuTranslations: Record<string, string> = {
+  "Provider 已保存，但账号资源创建失败：{message}。请修正后重试，将继续使用已保存的 Provider。": "Provider сохранён, но не удалось создать ресурс аккаунта: {message}. Исправьте проблему и повторите попытку, чтобы продолжить с сохранённым Provider.",
   "API Key 资源池": "Пул API Key",
   "添加 API Key": "Добавить API Key",
   "同一 Provider 可添加多个上游 API Key，共享模型与路由，分别配置权重和限流。": "Добавьте несколько ключей API к одному Provider: общие модели и маршруты, отдельные веса и ограничения запросов.",

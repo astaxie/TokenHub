@@ -59,6 +59,8 @@ Enter a new secret when adding a resource, or explicitly select **Use the saved 
 
 In **Routing Policies**, leave the route's resource binding empty to select from eligible resources for that Provider; an optional resource group narrows the pool. An explicit resource binding pins that route to the selected resource. Resource priorities and weights participate in routing, while concurrency, RPM, and TPM settings apply to the selected resource. The Provider's primary API Key is not an additional pool member when eligible resources exist: add an inheriting resource if that credential should participate alongside other keys.
 
+Editing a key preserves its existing resource group, including an empty group, so renaming or rotating it does not change which group-filtered routes can select it.
+
 For ordinary API Providers, an unbound route retains the existing fallback to the Provider connection when no resource is eligible, such as when all pool entries are disabled or unhealthy. Disabling every pool entry therefore does not disable the Provider's primary credential. Disable the Provider or route to stop that traffic, or use explicit resource bindings when a route must require a particular resource. Subscription/account Providers continue to require their account resources.
 
 Deleting a resource clears its route bindings. Those routes return to automatic resource selection and may use another pool key or the Provider's primary credential. Disable a resource instead of deleting it to preserve its route bindings.
@@ -72,6 +74,8 @@ For example, to pool two DeepSeek keys:
 5. Make requests in **Model Playground** and inspect the selected Provider resource in diagnostics or request logs.
 
 Choosing DeepSeek again in **Add provider** creates a separate Provider instance and does not overwrite the existing connection. Use separate instances for different configurations or inventories; use the API Key pool when the keys should share one Provider's configuration and models.
+
+For subscription/account onboarding, if the Provider saves but the account resource fails to save, keep the editor open, correct the error, and retry. The retry updates that saved Provider with the current settings and selected models, then creates its account resource; it does not create another Provider. Closing the editor ends this retry session; reopen the saved Provider to add its account resource.
 
 ## Plugin Management
 

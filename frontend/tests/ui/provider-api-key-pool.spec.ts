@@ -56,6 +56,7 @@ function installPool(api: MockAPI, failSave = false, initialResources: ProviderR
       else expect(body).not.toHaveProperty("api_key");
       expect(body).not.toHaveProperty("headers");
       expect(body).not.toHaveProperty("options");
+      expect(body).not.toHaveProperty("group");
       const savedFields = { ...body };
       delete savedFields.api_key;
       resources = resources.map(resource => resource.id === id ? { ...resource, ...savedFields } : resource);
@@ -66,6 +67,7 @@ function installPool(api: MockAPI, failSave = false, initialResources: ProviderR
       return { json: { deleted: true } };
     });
   }
+  return { resources: () => structuredClone(resources) };
 }
 
 for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "mobile", width: 390, height: 844 }]) {
@@ -153,7 +155,7 @@ test("providers api-key-pool legacy-priority", async ({ page, api }, testInfo) =
     status: "active", healthy: true, priority: 0, weight: 75,
     rate_limit_rpm: 15, token_limit_tpm: 10000, max_concurrency: 3,
   };
-  installPool(api, false, [legacyResource]);
+  const fixture = installPool(api, false, [legacyResource]);
   await page.goto("/providers");
   await page.getByRole("row").filter({ hasText: provider.name }).getByRole("button", { name: "编辑", exact: true }).click();
   const pool = page.getByRole("region", { name: "API Key 资源池", exact: true });
@@ -178,6 +180,8 @@ test("providers api-key-pool legacy-priority", async ({ page, api }, testInfo) =
     name: "UI Rotated Legacy Key", api_key: "synthetic-rotated-legacy-key", priority: 0,
     weight: 75, rate_limit_rpm: 15, token_limit_tpm: 10000, max_concurrency: 3,
   });
+  expect(api.calls.find(call => call.method === "PATCH")?.body).not.toHaveProperty("group");
+  expect(fixture.resources()[0]).not.toHaveProperty("group");
   await pool.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(editor.locator('input[type="password"]')).toHaveValue("");
   await editor.getByText("调度与限流设置", { exact: true }).click();

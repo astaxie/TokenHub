@@ -106,9 +106,10 @@ export function ProviderAdvancedFields({
   onUpdate,
   accountIntegration,
   creating = false,
+  idReadOnly = !creating,
   idPlaceholder,
   providerTypeOptions = [],
-}: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
+}: ProviderEditSectionProps & { accountIntegration: boolean; creating?: boolean; idReadOnly?: boolean; idPlaceholder?: string; providerTypeOptions?: ProviderTypeOption[] }) {
   const effectiveProviderTypeOptions = providerTypeOptions.length > 0 ? providerTypeOptions : providerTypeOptionsForCurrentValue(values.type);
   const showReasoningCompatibility = providerTypeSupportsReasoningConfig(effectiveProviderTypeOptions, values.type);
   return (
@@ -118,9 +119,9 @@ export function ProviderAdvancedFields({
           <span>Provider ID</span>
           <input
             value={values.id ?? ""}
-            readOnly={!creating}
+            readOnly={idReadOnly}
             placeholder={idPlaceholder}
-            onChange={creating ? (event) => onUpdate("id", event.target.value) : undefined}
+            onChange={!idReadOnly ? (event) => onUpdate("id", event.target.value) : undefined}
           />
         </label>
         <label className="field">

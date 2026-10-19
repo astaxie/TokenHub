@@ -105,8 +105,20 @@ describe("Provider API Key pool", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     expect(fetcher.mock.calls[0][0]).toBe("http://localhost:8080/api/admin/provider-resources/key%2Fone");
     expect(fetcher.mock.calls[0][1].method).toBe("PATCH");
-    expect(requestBody(fetcher)).toMatchObject({ name: "Renamed Key", base_url: resource.base_url, group: resource.group, region: resource.region, environment: resource.environment, healthy: true, priority: 3, weight: 75, rate_limit_rpm: 15, token_limit_tpm: 10000, max_concurrency: 3 });
-    for (const key of ["api_key", "options", "headers", "sensitive_headers"]) expect(requestBody(fetcher)).not.toHaveProperty(key);
+    expect(requestBody(fetcher)).toMatchObject({ name: "Renamed Key", base_url: resource.base_url, region: resource.region, environment: resource.environment, healthy: true, priority: 3, weight: 75, rate_limit_rpm: 15, token_limit_tpm: 10000, max_concurrency: 3 });
+    for (const key of ["api_key", "group", "options", "headers", "sensitive_headers"]) expect(requestBody(fetcher)).not.toHaveProperty(key);
+  });
+
+  it.each([{ description: "omitted", group: undefined }, { description: "empty", group: "" }])("preserves an $description group when renaming and rotating a key", async ({ group }) => {
+    const { user, fetcher, onSaved } = setup([{ ...resource, group }]);
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.clear(screen.getByLabelText("API Key 名称"));
+    await user.type(screen.getByLabelText("API Key 名称"), "Renamed Ungrouped Key");
+    await user.type(screen.getByLabelText(/^API Key/, { selector: 'input[type="password"]' }), "synthetic-rotated-ungrouped-key");
+    await user.click(screen.getByRole("button", { name: "保存 API Key 资源" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(requestBody(fetcher)).toMatchObject({ name: "Renamed Ungrouped Key", api_key: "synthetic-rotated-ungrouped-key" });
+    expect(requestBody(fetcher)).not.toHaveProperty("group");
   });
 
   it("rotates a legacy resource key without changing its unspecified priority", async () => {

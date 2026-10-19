@@ -179,6 +179,55 @@ func TestProviderAPIKeyPoolRotatesLegacyZeroPriorityWithoutReordering(t *testing
 	}
 }
 
+func TestProviderAPIKeyPoolRotationPreservesUngroupedResourceScope(t *testing.T) {
+	fixture := newProviderKeyPoolFixture(t, nil)
+	grouped := fixture.resources[0]
+	grouped.Group = "default"
+	if _, err := fixture.store.UpdateProviderResource(grouped.ID, grouped); err != nil {
+		t.Fatal(err)
+	}
+	ungrouped := fixture.resources[1]
+	if ungrouped.Group != "" {
+		t.Fatalf("omitted resource group = %q, want empty", ungrouped.Group)
+	}
+	fixture.route.ResourceGroup = "default"
+	if _, err := fixture.store.UpdateRoute(fixture.route.ID, fixture.route); err != nil {
+		t.Fatal(err)
+	}
+	for _, phase := range []string{"before rotation", "after rotation"} {
+		if phase == "after rotation" {
+			rotatedKey := "synthetic-pool-key-1"
+			updated := doJSON(t, fixture.app, http.MethodPatch, "/api/admin/provider-resources/"+ungrouped.ID, map[string]any{
+				"name": "Renamed ungrouped key", "api_key": rotatedKey,
+				"priority": ungrouped.Priority, "weight": ungrouped.Weight,
+				"status": ungrouped.Status, "healthy": ungrouped.Healthy,
+			}, "")
+			if updated.Code != http.StatusOK || strings.Contains(updated.Body, rotatedKey) {
+				t.Fatalf("rotate ungrouped key = %d: %s", updated.Code, updated.Body)
+			}
+			stored, ok := fixture.store.GetProviderResource(ungrouped.ID)
+			if !ok || stored.Group != "" || stored.Name != "Renamed ungrouped key" || stored.APIKey != rotatedKey {
+				t.Fatal("rotation must preserve empty group while updating the name and credential")
+			}
+		}
+		candidates, err := fixture.store.SelectRouteCandidates(fixture.route.ModelName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(candidates) != 1 || candidates[0].Resource == nil || candidates[0].Resource.ID != grouped.ID {
+			t.Fatalf("%s: grouped route must exclude the ungrouped key", phase)
+		}
+		if response := fixture.request(t); response.Code != http.StatusOK {
+			t.Fatalf("request %s = %d: %s", phase, response.Code, response.Body)
+		}
+	}
+	for _, log := range fixture.store.ListRequestLogs() {
+		if log.ProviderResourceID != grouped.ID {
+			t.Fatal("rotating an ungrouped key changed grouped route membership")
+		}
+	}
+}
+
 func TestProviderAPIKeyPoolBulkEnableRestoresFailedBoundKey(t *testing.T) {
 	fixture := newProviderKeyPoolFixture(t, nil)
 	resource := fixture.resources[0]

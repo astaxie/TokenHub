@@ -12,7 +12,7 @@ import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider
 import { defaultProviderSystemPromptTransformPolicy, providerSystemPromptTransformPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerResourceBaseURLForProviderUpdate, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
-import { clearCustomValidity, countRatioWithUnit, countWithLabel, handleRequiredFieldInvalid, languageLocale, providerImportHintText, providerSaveMessage, tx } from "../i18n/runtime";
+import { clearCustomValidity, countRatioWithUnit, countWithLabel, formatTranslationTemplate, handleRequiredFieldInvalid, languageLocale, providerImportHintText, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceActionSelection, providerResourceDraftDefaults, providerResourceSelectionSupportsAction, runProviderResourcePluginAction } from "../resources/provider-model-config";
 import { providerTypeManagedHeaders, type ProviderTypeOption } from "../shared/ui";
@@ -134,6 +134,8 @@ export function ProviderUpsertModal({
     ...providerReasoningFormValues(provider?.options),
   }));
   const [credentialMode, setCredentialMode] = useState<ProviderCredentialMode>(editingAccountProvider ? "account_integration" : "provider_api_key");
+  const [createdAccountProvider, setCreatedAccountProvider] = useState<{ catalogID: string; id: string } | null>(null);
+  const pendingAccountProviderID = mode === "create" && credentialMode === "account_integration" && createdAccountProvider?.catalogID === catalogID ? createdAccountProvider.id : undefined;
   const [accountValues, setAccountValues] = useState<Record<string, string>>(() => providerResourceDraftDefaults({
     provider_id: "",
     name: mode === "edit" ? provider?.name ?? "" : initialEntry?.display_name || initialEntry?.name || "",
@@ -844,6 +846,7 @@ export function ProviderUpsertModal({
 
   function selectCatalog(entry: ProviderCatalogEntry) {
     if (entry.id === catalogID) return;
+    setCreatedAccountProvider(null);
     loadedCustomConnection.current = "";
     setQuickAPITab("connect");
     const nextName = entry.display_name || entry.name || values.name;
@@ -869,6 +872,7 @@ export function ProviderUpsertModal({
 
   function selectCustomCatalog() {
     if (catalogID === "custom") return;
+    setCreatedAccountProvider(null);
     loadedCustomConnection.current = "";
     setQuickAPITab("connect");
     setCatalogID("custom");
@@ -980,7 +984,8 @@ export function ProviderUpsertModal({
         if (accountResourceNameConflict) throw new Error(tx("账号资源名称已存在，请使用唯一名称。"));
         assertProviderAccountResourceReady(accountValues);
       }
-      const payload = (mode === "edit" ? providerUpdatePayload : providerPayload)({
+      const targetProviderID = mode === "edit" ? provider?.id : pendingAccountProviderID;
+      const payload = (targetProviderID ? providerUpdatePayload : providerPayload)({
         ...values,
         api_key: mode === "create" && credentialMode !== "provider_api_key" ? "" : values.api_key,
         catalog_id: catalogID,
@@ -988,28 +993,35 @@ export function ProviderUpsertModal({
         selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
         custom_models: (selectedCatalogUsesDiscoveryPreview || usesAccountCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
       });
-      const resp = await adminFetch(api, mode === "edit" && provider ? `/api/admin/providers/${provider.id}` : "/api/admin/providers", {
-        method: mode === "edit" ? "PATCH" : "POST",
+      const resp = await adminFetch(api, targetProviderID ? `/api/admin/providers/${encodeURIComponent(targetProviderID)}` : "/api/admin/providers", {
+        method: targetProviderID ? "PATCH" : "POST",
         body: JSON.stringify(mode === "edit" && provider ? preserveRetrievalCatalog(payload, provider) : payload),
       });
-      if (!resp.ok) throw new Error(await readAdminError(resp, `${mode === "edit" ? tx("更新") : tx("创建")} ${tx("Provider 渠道")}`));
+      if (!resp.ok) throw new Error(await readAdminError(resp, `${targetProviderID ? tx("更新") : tx("创建")} ${tx("Provider 渠道")}`));
       const result = (await resp.json()) as { imported_models?: number; provider?: Provider };
       let accountResourceCreated = false;
       if (mode === "create" && credentialMode === "account_integration") {
         const payloadProviderID = typeof payload.id === "string" ? payload.id : "";
-        const providerID = result.provider?.id || payloadProviderID || values.id;
+        const providerID = result.provider?.id || targetProviderID || payloadProviderID || values.id;
         if (!providerID) throw new Error(tx("Provider 已创建，但无法确认账号资源所属 Provider。"));
+        setCreatedAccountProvider({ catalogID, id: providerID });
+        setValues((current) => ({ ...current, id: providerID }));
         const resourceValues = {
           ...accountValues,
           provider_id: providerID,
           name: accountValues.name?.trim() || defaultProviderResourceName(result.provider?.name || values.name || providerID),
           base_url: accountValues.base_url?.trim() || values.base_url || selectedEntry?.base_url || "",
         };
-        const resourceResp = await adminFetch(api, "/api/admin/provider-resources", {
-          method: "POST",
-          body: JSON.stringify(providerResourcePayload(resourceValues)),
-        });
-        if (!resourceResp.ok) throw new Error(await readAdminError(resourceResp, tx("创建账号资源")));
+        try {
+          const resourceResp = await adminFetch(api, "/api/admin/provider-resources", {
+            method: "POST",
+            body: JSON.stringify(providerResourcePayload(resourceValues)),
+          });
+          if (!resourceResp.ok) throw new Error(await readAdminError(resourceResp, tx("创建账号资源")));
+        } catch (err) {
+          if (isAuthExpiredError(err)) throw err;
+          throw new Error(formatTranslationTemplate(tx("Provider 已保存，但账号资源创建失败：{message}。请修正后重试，将继续使用已保存的 Provider。"), { message: err instanceof Error ? err.message : tx("保存失败") }));
+        }
         accountResourceCreated = true;
       }
       const imported = result.imported_models ?? 0;
@@ -1400,7 +1412,7 @@ export function ProviderUpsertModal({
               <ProviderResourceProbePanel api={api} accountCatalogErrors={accountCatalogErrors} accountCatalogLoading={accountCatalogLoading} accountResources={accountResources} pluginActions={pluginActions} providerType={values.type} selectedAccountCatalog={selectedAccountCatalog} selectedAccountID={selectedAccountID} selectedAccountResources={selectedAccountResources} />
             ) : null}
             {mode === "create" && createStep === 2 && credentialMode === "account_integration" ? (
-              <details className="provider-onboarding-advanced"><summary>{tx("高级连接设置")}</summary><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} creating idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} values={{ ...values, catalog_id: catalogID }} onUpdate={update} providerTypeOptions={providerTypeOptions} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" values={values} /></details>
+              <details className="provider-onboarding-advanced"><summary>{tx("高级连接设置")}</summary><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} creating idReadOnly={Boolean(pendingAccountProviderID)} idPlaceholder={catalogID === "custom" ? tx("例如 prv_company_proxy") : tx("留空自动生成")} values={{ ...values, catalog_id: catalogID }} onUpdate={update} providerTypeOptions={providerTypeOptions} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" values={values} /></details>
             ) : null}
 
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
