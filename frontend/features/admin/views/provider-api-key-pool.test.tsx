@@ -109,6 +109,33 @@ describe("Provider API Key pool", () => {
     for (const key of ["api_key", "options", "headers", "sensitive_headers"]) expect(requestBody(fetcher)).not.toHaveProperty(key);
   });
 
+  it("rotates a legacy resource key without changing its unspecified priority", async () => {
+    const { user, fetcher, onSaved } = setup([{ ...resource, priority: 0 }]);
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.clear(screen.getByLabelText("API Key 名称"));
+    await user.type(screen.getByLabelText("API Key 名称"), "Renamed Legacy Key");
+    await user.type(screen.getByLabelText(/^API Key/, { selector: 'input[type="password"]' }), "synthetic-rotated-legacy-key");
+    await user.click(screen.getByRole("button", { name: "保存 API Key 资源" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(requestBody(fetcher)).toMatchObject({
+      name: "Renamed Legacy Key", api_key: "synthetic-rotated-legacy-key", priority: 0,
+      weight: resource.weight, rate_limit_rpm: resource.rate_limit_rpm,
+      token_limit_tpm: resource.token_limit_tpm, max_concurrency: resource.max_concurrency,
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each(["", "-1", "1.5"])("rejects invalid priority %j when editing a legacy resource", async (value) => {
+    const { user, fetcher, onSaved } = setup([{ ...resource, priority: 0 }]);
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.click(screen.getByText("调度与限流设置"));
+    fireEvent.change(screen.getByLabelText("优先级"), { target: { value } });
+    await user.click(screen.getByRole("button", { name: "保存 API Key 资源" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("优先级和权重须为正整数，限流和并发须为非负整数。");
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
   it("preserves the secret draft on failure and retries without submitting the outer Provider form", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "Synthetic save failure" } }), { status: 503 })).mockResolvedValueOnce(new Response("{}"));
     const { user, onSaved } = setup([], fetcher);

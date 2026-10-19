@@ -84,6 +84,7 @@ export function ProviderAPIKeyPool({ api, provider, resources, onSaved }: {
     if (!editing && !inheritKey && !draft.api_key?.trim()) { setError(tx("请填写 API Key，或选择使用 Provider 已保存的密钥。")); return; }
     if (schedulingFields.some((field) => {
       const value = Number(draft[field.key] || "0");
+      if (field.key === "priority" && editing?.priority === 0 && draft.priority?.trim() && value === 0) return false;
       return !Number.isSafeInteger(value) || value < (field.key === "priority" || field.key === "weight" ? 1 : 0);
     })) { setError(tx("优先级和权重须为正整数，限流和并发须为非负整数。")); return; }
     const values = { ...draft, name: draft.name.trim(), api_key: inheritKey ? "" : draft.api_key };
@@ -131,6 +132,7 @@ export function ProviderAPIKeyPool({ api, provider, resources, onSaved }: {
         <details className="provider-key-pool-scheduling">
           <summary>{tx("调度与限流设置")}</summary>
           <p>{tx("优先级从 1 开始，数值越小越优先；同优先级按路由策略与权重分配。限流和并发填 0 表示不限制。")}</p>
+          {editing?.priority === 0 ? <p>{tx("此资源的优先级 0 表示未指定，调度时按 9999 处理；可保留原值，或改为正整数。")}</p> : null}
           <div className="provider-key-pool-fields">
             <ProviderInlineField field={{ key: "base_url", label: "Base URL", help: "留空继承 Provider 地址。" }} value={draft.base_url} values={draft} onChange={(value) => update("base_url", value)} />
             {schedulingFields.map((field) => <ProviderInlineField key={field.key} field={field} value={draft[field.key]} values={draft} onChange={(value) => update(field.key, value)} />)}

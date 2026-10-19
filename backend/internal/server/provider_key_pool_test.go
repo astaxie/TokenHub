@@ -123,6 +123,62 @@ func TestProviderAPIKeyPoolPreservesExplicitResourceBinding(t *testing.T) {
 	}
 }
 
+func TestProviderAPIKeyPoolRotatesLegacyZeroPriorityWithoutReordering(t *testing.T) {
+	fixture := newProviderKeyPoolFixture(t, nil)
+	fixture.route.Strategy = RouteStrategyPriorityOnly
+	if _, err := fixture.store.UpdateRoute(fixture.route.ID, fixture.route); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.store.DeleteProviderResource(fixture.resources[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	created := doJSON(t, fixture.app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+		"provider_id": fixture.provider.ID, "name": "Legacy default-priority key",
+		"resource_type": ProviderResourceAPIKey, "api_key": "synthetic-legacy-pool-key",
+	}, "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create legacy key = %d: %s", created.Code, created.Body)
+	}
+	var resource ProviderResource
+	if err := json.Unmarshal([]byte(created.Body), &resource); err != nil {
+		t.Fatal(err)
+	}
+	if resource.Priority != 0 {
+		t.Fatalf("omitted resource priority = %d, want zero", resource.Priority)
+	}
+	if response := fixture.request(t); response.Code != http.StatusOK {
+		t.Fatalf("request before rotation = %d: %s", response.Code, response.Body)
+	}
+	rotatedKey := "synthetic-pool-key-2"
+	updated := doJSON(t, fixture.app, http.MethodPatch, "/api/admin/provider-resources/"+resource.ID, map[string]any{
+		"name": "Renamed default-priority key", "api_key": rotatedKey,
+		"priority": 0, "weight": resource.Weight, "status": resource.Status, "healthy": resource.Healthy,
+	}, "")
+	if updated.Code != http.StatusOK || strings.Contains(updated.Body, rotatedKey) {
+		t.Fatalf("rotate legacy key = %d: %s", updated.Code, updated.Body)
+	}
+	stored, ok := fixture.store.GetProviderResource(resource.ID)
+	if !ok || stored.Priority != 0 || stored.Name != "Renamed default-priority key" || stored.APIKey != rotatedKey {
+		t.Fatal("rotation must preserve zero priority while updating the name and credential")
+	}
+	if response := fixture.request(t); response.Code != http.StatusOK {
+		t.Fatalf("request after rotation = %d: %s", response.Code, response.Body)
+	}
+	if counts := fixture.upstreamCounts(); len(counts) != 1 || counts["synthetic-pool-key-1"] != 2 {
+		t.Fatalf("zero-priority key must remain behind the explicitly prioritized key: %v", counts)
+	}
+	fixture.route.ProviderResourceID = resource.ID
+	if _, err := fixture.store.UpdateRoute(fixture.route.ID, fixture.route); err != nil {
+		t.Fatal(err)
+	}
+	if response := fixture.request(t); response.Code != http.StatusOK {
+		t.Fatalf("bound request after rotation = %d: %s", response.Code, response.Body)
+	}
+	if counts := fixture.upstreamCounts(); counts[rotatedKey] != 1 {
+		t.Fatalf("bound request did not use the rotated credential: %v", counts)
+	}
+}
+
 func TestProviderAPIKeyPoolBulkEnableRestoresFailedBoundKey(t *testing.T) {
 	fixture := newProviderKeyPoolFixture(t, nil)
 	resource := fixture.resources[0]

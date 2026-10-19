@@ -6,8 +6,8 @@ const provider: Provider = { id: "prv_ui_pool", name: "UI Key Pool Provider", ty
 const catalog: ProviderCatalogEntry = { id: "ui-pool", name: provider.name, display_name: provider.name, type: provider.type, base_url: provider.base_url, source: "ui-fixture", models_count: 0, models: [] };
 const keyName = "UI Production Key With a Long Regional Deployment Name";
 
-function installPool(api: MockAPI, failSave = false) {
-  let resources: ProviderResource[] = [];
+function installPool(api: MockAPI, failSave = false, initialResources: ProviderResource[] = []) {
+  let resources = structuredClone(initialResources);
   api.respond("GET", "/api/admin/providers", { data: [provider] });
   api.respond("GET", "/api/admin/provider-catalog", { data: [catalog] });
   api.respond("GET", "/api/admin/provider-catalog/ui-pool", { data: catalog });
@@ -48,14 +48,17 @@ function installPool(api: MockAPI, failSave = false) {
     } : resource);
     return { json: { action: body.action, success: 1, failed: 0, resources: resources.filter(resource => body.ids.includes(resource.id)) } };
   });
-  for (const id of ["rsrc_ui_key_1", "rsrc_ui_key_2"]) {
+  for (const id of ["rsrc_ui_key_1", "rsrc_ui_key_2", ...initialResources.map(resource => resource.id)]) {
     api.define("PATCH", `/api/admin/provider-resources/${id}`, input => {
-      const body = input.body as Partial<ProviderResource>;
+      const body = input.body as Partial<ProviderResource> & { api_key?: string };
       expect(body).toMatchObject({ provider_id: provider.id, resource_type: "api_key", healthy: true });
-      expect(body).not.toHaveProperty("api_key");
+      if (id === "rsrc_ui_legacy_key") expect(body).toMatchObject({ priority: 0, api_key: "synthetic-rotated-legacy-key" });
+      else expect(body).not.toHaveProperty("api_key");
       expect(body).not.toHaveProperty("headers");
       expect(body).not.toHaveProperty("options");
-      resources = resources.map(resource => resource.id === id ? { ...resource, ...body } : resource);
+      const savedFields = { ...body };
+      delete savedFields.api_key;
+      resources = resources.map(resource => resource.id === id ? { ...resource, ...savedFields } : resource);
       return { json: resources.find(resource => resource.id === id) };
     });
     api.define("DELETE", `/api/admin/provider-resources/${id}`, () => {
@@ -143,6 +146,43 @@ for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: 
     expect(api.calls.filter(call => call.path === "/api/admin/providers" && call.method !== "GET")).toHaveLength(0);
   });
 }
+
+test("providers api-key-pool legacy-priority", async ({ page, api }, testInfo) => {
+  const legacyResource: ProviderResource = {
+    id: "rsrc_ui_legacy_key", provider_id: provider.id, name: "UI Legacy Key", resource_type: "api_key",
+    status: "active", healthy: true, priority: 0, weight: 75,
+    rate_limit_rpm: 15, token_limit_tpm: 10000, max_concurrency: 3,
+  };
+  installPool(api, false, [legacyResource]);
+  await page.goto("/providers");
+  await page.getByRole("row").filter({ hasText: provider.name }).getByRole("button", { name: "编辑", exact: true }).click();
+  const pool = page.getByRole("region", { name: "API Key 资源池", exact: true });
+  await pool.getByRole("button", { name: "编辑", exact: true }).click();
+  const editor = pool.getByRole("group", { name: "编辑 API Key 资源", exact: true });
+  await editor.getByLabel("API Key 名称", { exact: true }).fill("UI Rotated Legacy Key");
+  await editor.locator('input[type="password"]').fill("synthetic-rotated-legacy-key");
+  await editor.getByText("调度与限流设置", { exact: true }).click();
+  await expect(editor.getByLabel("优先级", { exact: true })).toHaveValue("0");
+  await expect(editor).toContainText("此资源的优先级 0 表示未指定，调度时按 9999 处理");
+  await editor.getByLabel("优先级", { exact: true }).fill("");
+  await editor.getByRole("button", { name: "保存 API Key 资源", exact: true }).click();
+  await expect(pool.getByRole("alert")).toContainText("优先级和权重须为正整数");
+  expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(0);
+  await editor.getByLabel("优先级", { exact: true }).fill("0");
+  await editor.scrollIntoViewIfNeeded();
+  await capture(page, testInfo, editor, "provider-key-pool-legacy-priority", "保留旧资源的未指定优先级并轮换密钥", "viewport");
+  await editor.getByRole("button", { name: "保存 API Key 资源", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(pool.getByText("UI Rotated Legacy Key", { exact: true })).toBeVisible();
+  expect(api.calls.find(call => call.method === "PATCH")?.body).toMatchObject({
+    name: "UI Rotated Legacy Key", api_key: "synthetic-rotated-legacy-key", priority: 0,
+    weight: 75, rate_limit_rpm: 15, token_limit_tpm: 10000, max_concurrency: 3,
+  });
+  await pool.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(editor.locator('input[type="password"]')).toHaveValue("");
+  await editor.getByText("调度与限流设置", { exact: true }).click();
+  await expect(editor.getByLabel("优先级", { exact: true })).toHaveValue("0");
+});
 
 test("providers api-key-pool save-error", async ({ page, api }, testInfo) => {
   installPool(api, true);
