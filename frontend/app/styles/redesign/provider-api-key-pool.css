@@ -1,0 +1,27 @@
+.provider-key-pool { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--surface-soft); margin-top: 16px; }
+.provider-key-pool-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.provider-key-pool-head h3 { margin: 0 0 6px; font-size: 14px; }
+.provider-key-pool p { font-size: 12px; line-height: 1.6; }
+.provider-key-pool-head p { margin: 0; color: var(--muted-strong); }
+.provider-key-pool-guidance, .provider-key-pool-scheduling p { color: var(--muted-strong); }
+.provider-key-pool-list { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 10px; }
+.provider-key-pool-list > li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.provider-key-pool-name { min-width: 0; display: grid; gap: 6px; font-size: 12px; }
+.provider-key-pool-name strong { overflow-wrap: anywhere; }
+.provider-key-pool-name > div, .provider-key-pool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.provider-key-pool-actions { flex-shrink: 0; }
+.provider-key-pool-actions > button, .provider-key-pool-head > button { flex-shrink: 0; white-space: nowrap; }
+.provider-key-pool .danger-button { width: auto; min-width: 48px; height: 34px; padding: 0 11px; font-size: 12px; }
+.provider-key-pool-editor { min-width: 0; margin: 16px 0 0; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.provider-key-pool-editor legend { font-size: 12px; font-weight: 600; padding: 0 6px; }
+.provider-key-pool-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.provider-key-pool-fields .field, .provider-key-pool-fields input { min-width: 0; }
+.provider-key-pool-scheduling { margin: 16px 0; }
+.provider-key-pool-scheduling summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+.provider-key-pool-confirm { padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.provider-key-pool-error { color: var(--red); }
+@media (max-width: 600px) {
+  .provider-key-pool { padding: 12px; }
+  .provider-key-pool-head, .provider-key-pool-list > li { flex-direction: column; align-items: stretch; gap: 12px; }
+  .provider-key-pool-fields { grid-template-columns: minmax(0, 1fr); }
+}

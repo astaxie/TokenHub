@@ -26,6 +26,7 @@ import { ProviderInlineField, providerCreateWizardSteps, providerCredentialModeL
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
+import { ProviderAPIKeyPool } from "./provider-api-key-pool";
 import { ProviderPluginPanels, providerQuotaPanelDescription, providerQuotaPanelSelection } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
@@ -1269,7 +1270,8 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "edit" && editTab === "connect" ? (
-              <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} /></>
+              <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} />
+                {provider && !editingAccountProvider && !accountProviderTypesFromPlugins(plugins, providerAdapters).includes(provider.type) ? <ProviderAPIKeyPool api={api} provider={provider} resources={resources} onSaved={onAccountsChanged ?? onSaved} /> : null}</>
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
               <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={{ ...values, catalog_id: values.type === provider?.type ? provider.options?.catalog_id ?? "" : catalogID }} onUpdate={update} providerTypeOptions={providerTypeOptions} />

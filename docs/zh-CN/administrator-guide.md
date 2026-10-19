@@ -49,6 +49,28 @@ Anthropic Provider 默认使用 `x-api-key` 认证。如果 Anthropic 兼容上�
 
 使用合成数据的界面截图：[供应商选择](../assets/screenshots/admin-management/provider-picker.png)、[供应商列表](../assets/screenshots/admin-management/providers.png)、[API 连接](../assets/screenshots/admin-management/provider-connection.png)、[模型目录](../assets/screenshots/admin-management/models.png)、[创建模型](../assets/screenshots/admin-management/model-create.png)、[路由摘要](../assets/screenshots/admin-management/routes.png)、[路由编辑器](../assets/screenshots/admin-management/route-editor.png)和[移动端路由](../assets/screenshots/admin-management/mobile-routes.png)。
 
+### 一个 Provider 使用多个 API Key
+
+一个 API Provider 可以包含多个上游 API Key 资源，共享模型库存和默认连接配置。编辑 Provider，在「连接」页签中使用「API Key 资源池」添加、编辑、启用、禁用或删除资源。每个资源都有独立的名称、可选 Base URL 覆盖值、优先级、权重、最大并发、RPM 和 TPM。密钥池操作立即保存，独立于 Provider 表单的「保存」操作；关闭 Provider 编辑器不会撤销这些操作。
+
+添加资源时填写新密钥，或明确勾选「使用 Provider 已保存的密钥」以继承 Provider 已保存的凭据。已保存的密钥不会回填到编辑器。编辑现有资源时，API Key 留空会保留当前凭据，填写新值则轮换密钥。没有独立凭据的资源会继承 Provider API Key，因此更新 Provider 凭据也会改变该资源实际使用的密钥。
+
+在「路由策略」中，将线路的资源绑定留空，即可从该 Provider 的可用资源中选择；可选的资源组会进一步缩小范围。明确绑定资源后，该线路只使用所选资源。资源优先级和权重参与路由，并发、RPM 和 TPM 设置作用于所选资源。存在可用资源时，Provider 的主 API Key 不会自动作为额外成员加入密钥池；如果希望它与其他密钥共同参与，请添加一个继承主密钥的资源。
+
+普通 API Provider 的未绑定线路保留现有回退行为：没有可用资源时（例如所有资源均被禁用或不健康），会回退到 Provider 连接。因此，禁用全部池成员不会停用 Provider 的主凭据。要停止这类流量，请禁用 Provider 或线路；如果线路必须依赖某个资源，请明确绑定该资源。订阅/账号型 Provider 仍要求使用其账号资源。
+
+删除资源会清除其线路绑定，这些线路会恢复自动选择资源，可能使用池内其他密钥或 Provider 的主凭据。如果需要保留线路绑定，请禁用资源而非删除。
+
+例如，为两个 DeepSeek 密钥配置密钥池：
+
+1. 添加一个 DeepSeek Provider，测试连接并引入所需模型。
+2. 编辑该 Provider，进入「连接 > API Key 资源池」，添加 `DeepSeek Key A`；如果第一个密钥已保存在 Provider 上，勾选「使用 Provider 已保存的密钥」。
+3. 添加 `DeepSeek Key B` 并填写第二个密钥。按各自上游额度设置资源限制。如果使用优先级加权策略并希望均衡分配，为两个资源设置相同优先级和相等权重。
+4. 发布对外模型，配置到此 DeepSeek Provider 及已引入上游模型的线路。资源绑定留空即可使用密钥池，也可以选择某个资源，将线路固定到该资源。
+5. 在「模型演练场」发起请求，通过诊断信息或请求日志检查实际选中的 Provider 资源。
+
+在「添加供应商」中再次选择 DeepSeek 会创建独立的 Provider 实例，不会覆盖已有连接。不同配置或模型库存适合使用独立实例；多个密钥需要共享同一 Provider 的配置和模型时，使用 API Key 资源池。
+
 ## 插件管理
 
 打开「插件管理」，可以按 Provider 集成、请求链路、UI 模板或自动化分类浏览统一的内置与已安装插件列表。每个详情页都会说明插件用途并展示插件包文件；只有已经实现的声明式设置界面才会显示设置页。从插件市场或本地包安装时，系统会校验 checksum，将包写入 `TOKENHUB_PLUGIN_DIR`，并通过运行时热加载评估。声明式界面包可以生效。带后端命令的启用外部包则会显示为「启动失败」，保持已安装且可检查，并且不会注册 Provider、Hook、任务或 Action，因为当前版本尚不支持外部执行。内置插件可以启用或禁用，但不能卸载；外部包还可以更新或卸载。

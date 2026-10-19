@@ -49,6 +49,28 @@ Anthropic Provider は既定で `x-api-key` 認証を使用します。Anthropic
 
 合成データによる画面例：[プロバイダー選択](../assets/screenshots/admin-management/provider-picker.png)、[プロバイダー一覧](../assets/screenshots/admin-management/providers.png)、[API 接続](../assets/screenshots/admin-management/provider-connection.png)、[モデル一覧](../assets/screenshots/admin-management/models.png)、[モデル作成](../assets/screenshots/admin-management/model-create.png)、[ルート概要](../assets/screenshots/admin-management/routes.png)、[ルート設定](../assets/screenshots/admin-management/route-editor.png)、[モバイルのルート一覧](../assets/screenshots/admin-management/mobile-routes.png)。
 
+### 1 つの Provider で複数の API Key を使用する
+
+API Provider には、モデル一覧と接続の既定値を共有する複数の上流 API Key リソースを登録できます。Provider を編集し、「接続」タブの「API Key プール」でリソースを追加、編集、有効化、無効化、削除します。各リソースには独立した名前、任意の Base URL 上書き、優先度、重み、最大同時実行数、RPM、TPM があります。プールの操作は Provider フォームの「保存」とは独立して即座に保存されるため、Provider 編集画面を閉じても取り消されません。
+
+リソースの追加時は新しいシークレットを入力するか、「保存済みの Provider API Key を使用」を明示的に選択して Provider に保存された認証情報を継承します。保存済みのシークレットは編集画面に再表示されません。既存リソースの編集時に API Key を空欄にすると現在の認証情報を保持し、新しい値を入力するとキーを更新します。独自の認証情報を持たないリソースは Provider API Key を継承するため、Provider の認証情報を変更すると、そのリソースが使用するキーも変わります。
+
+「ルーティングポリシー」でルートのリソース割り当てを空欄にすると、その Provider の利用可能なリソースから選択します。任意のリソースグループで対象をさらに絞り込めます。リソースを明示的に割り当てると、そのルートは選択したリソースに固定されます。リソースの優先度と重みはルーティングに使用され、同時実行数、RPM、TPM の設定は選択したリソースに適用されます。利用可能なリソースがある場合、Provider の主 API Key が追加のプールメンバーになることはありません。他のキーと一緒に使用するには、主キーを継承するリソースを追加してください。
+
+通常の API Provider では、リソース未指定のルートに既存のフォールバック動作が適用されます。すべてのリソースが無効または不健康であるなど、利用可能なリソースがない場合は Provider 接続にフォールバックします。そのため、プール全体を無効化しても Provider の主認証情報は無効化されません。この通信を停止するには Provider またはルートを無効化し、特定のリソースを必須にするには明示的に割り当ててください。サブスクリプション/アカウント型 Provider では引き続きアカウントリソースが必要です。
+
+リソースを削除すると、そのルート割り当てが解除されます。対象ルートは自動選択に戻り、プール内の他のキーや Provider の主認証情報を使用する場合があります。ルートの割り当てを保持するには、削除せずにリソースを無効化してください。
+
+例えば、2 つの DeepSeek キーをプールする場合：
+
+1. DeepSeek Provider を 1 つ追加し、接続をテストして必要なモデルを取り込みます。
+2. 編集画面の「接続 > API Key プール」で `DeepSeek Key A` を追加します。最初のキーを Provider に保存済みなら、「保存済みの Provider API Key を使用」を選択します。
+3. 2 つ目のキーを入力して `DeepSeek Key B` を追加し、それぞれの上流の許容量に合わせてリソースの制限を設定します。優先度加重戦略で均等に配分する場合は、同じ優先度と等しい重みを設定します。
+4. クライアント向けモデルを公開し、この DeepSeek Provider と取り込み済みの上流モデルへのルートを設定します。プールを使用する場合はリソース割り当てを空欄にし、固定する場合は対象リソースを選択します。
+5. 「モデルプレイグラウンド」でリクエストを実行し、診断またはリクエストログで選択された Provider リソースを確認します。
+
+「プロバイダーを追加」で再び DeepSeek を選択すると、既存の接続を上書きせずに独立した Provider インスタンスを作成します。設定やモデル一覧が異なる場合は別インスタンスを使い、複数のキーで同じ Provider の設定とモデルを共有する場合は API Key プールを使ってください。
+
 ## プラグイン管理
 
 **Plugin Management** では、組み込みおよびインストール済みプラグインの統一リストを Provider Integration、Request Pipeline、UI Template、Automation ごとに参照できます。各詳細ページはプラグインの用途とパッケージファイルを表示し、実装済みの宣言的設定画面だけに設定ページを表示します。Marketplace またはローカルパッケージからのインストールは checksum で検証され、`TOKENHUB_PLUGIN_DIR` に書き込まれ、ランタイムのホットリロードで評価されます。宣言的な画面パッケージは有効化できます。バックエンドコマンドを持つ有効な外部パッケージは、現行リリースで外部実行を利用できないため **Startup Failed** と表示され、インストール済みで検査可能なまま Provider、Hook、ジョブ、Action を登録しません。組み込みプラグインは有効化または無効化できますがアンインストールできません。外部パッケージは更新とアンインストールもできます。

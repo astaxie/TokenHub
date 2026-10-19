@@ -44,7 +44,11 @@ func (s *Server) handleAdminProvidersPost(w http.ResponseWriter, r *http.Request
 		writeError(w, r, err)
 		return
 	}
-	created := s.store.AddProvider(provider)
+	created, err := s.store.CreateProvider(provider)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
 	result := ProviderCreateResult{
 		Provider:      created,
 		CatalogSource: catalogSource,

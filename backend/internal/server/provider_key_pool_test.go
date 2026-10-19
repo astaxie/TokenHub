@@ -1,0 +1,232 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+func TestProviderAPIKeyPoolDistributesRequests(t *testing.T) {
+	fixture := newProviderKeyPoolFixture(t, nil)
+	for index := 0; index < 64; index++ {
+		response := fixture.request(t)
+		if response.Code != http.StatusOK {
+			t.Fatalf("pooled request %d = %d: %s", index, response.Code, response.Body)
+		}
+	}
+	counts := fixture.upstreamCounts()
+	if counts["synthetic-pool-key-1"] == 0 || counts["synthetic-pool-key-2"] == 0 {
+		t.Fatalf("both keys should receive requests, got %v", counts)
+	}
+	if len(counts) != 2 {
+		t.Fatalf("unexpected upstream credentials used: %v", counts)
+	}
+	logs := fixture.store.ListRequestLogs()
+	if len(logs) != 64 {
+		t.Fatalf("request log count = %d, want 64", len(logs))
+	}
+	for _, log := range logs {
+		if log.ProviderID != fixture.provider.ID || (log.ProviderResourceID != fixture.resources[0].ID && log.ProviderResourceID != fixture.resources[1].ID) {
+			t.Fatalf("request was not attributed to a pooled key: %+v", log)
+		}
+	}
+}
+
+func TestProviderAPIKeyPoolFailsOverAtConcurrencyLimit(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	fixture := newProviderKeyPoolFixture(t, func(key string) {
+		if key == "synthetic-pool-key-1" {
+			select {
+			case entered <- struct{}{}:
+			case <-release:
+				return
+			}
+			<-release
+		}
+	})
+	fixture.route.Strategy = RouteStrategyPriorityOnly
+	if _, err := fixture.store.UpdateRoute(fixture.route.ID, fixture.route); err != nil {
+		t.Fatal(err)
+	}
+	first := make(chan responseBody, 1)
+	go func() { first <- fixture.request(t) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first request did not reach the upstream")
+	}
+	second := make(chan responseBody, 1)
+	go func() { second <- fixture.request(t) }()
+	select {
+	case response := <-second:
+		if response.Code != http.StatusOK {
+			t.Fatalf("concurrent request = %d: %s", response.Code, response.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("concurrent request did not fail over to the available key")
+	}
+	counts := fixture.upstreamCounts()
+	if counts["synthetic-pool-key-1"] != 1 || counts["synthetic-pool-key-2"] != 1 {
+		t.Fatalf("upstream requests should use separate keys: %v", counts)
+	}
+	unblock()
+	select {
+	case response := <-first:
+		if response.Code != http.StatusOK {
+			t.Fatalf("first request = %d: %s", response.Code, response.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("first request did not complete after release")
+	}
+	var skipped RouteAttemptLog
+	if err := fixture.store.db.Where("provider_resource_id = ? AND invoked = ? AND error_code = ?", fixture.resources[0].ID, false, "provider_resource_concurrency_exceeded").First(&skipped).Error; err != nil {
+		t.Fatalf("missing concurrency failover attempt: %v", err)
+	}
+}
+
+func TestProviderAPIKeyPoolPreservesExplicitResourceBinding(t *testing.T) {
+	fixture := newProviderKeyPoolFixture(t, nil)
+	resource := fixture.resources[0]
+	fixture.route.ProviderResourceID = resource.ID
+	if _, err := fixture.store.UpdateRoute(fixture.route.ID, fixture.route); err != nil {
+		t.Fatal(err)
+	}
+	leaseID, _, err := fixture.store.CheckProviderResourceCapacity(context.Background(), resource.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fixture.store.ReleaseProviderResourceCapacity(resource.ID, leaseID)
+	response := fixture.request(t)
+	if response.Code != http.StatusTooManyRequests || !strings.Contains(response.Body, "provider_resource_concurrency_exceeded") {
+		t.Fatalf("bound resource at capacity = %d: %s", response.Code, response.Body)
+	}
+	if counts := fixture.upstreamCounts(); len(counts) != 0 {
+		t.Fatalf("explicit binding must not use another pooled key: %v", counts)
+	}
+	fixture.store.ReleaseProviderResourceCapacity(resource.ID, leaseID)
+	response = fixture.request(t)
+	if response.Code != http.StatusOK {
+		t.Fatalf("bound resource after release = %d: %s", response.Code, response.Body)
+	}
+	if counts := fixture.upstreamCounts(); len(counts) != 1 || counts["synthetic-pool-key-1"] != 1 {
+		t.Fatalf("request did not use the bound key: %v", counts)
+	}
+}
+
+type providerKeyPoolFixture struct {
+	store     *GormStore
+	app       http.Handler
+	provider  Provider
+	resources []ProviderResource
+	route     ModelRoute
+	secret    string
+	mu        sync.Mutex
+	counts    map[string]int
+}
+
+func newProviderKeyPoolFixture(t *testing.T, beforeResponse func(string)) *providerKeyPoolFixture {
+	t.Helper()
+	fixture := &providerKeyPoolFixture{counts: map[string]int{}}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		fixture.mu.Lock()
+		fixture.counts[key]++
+		fixture.mu.Unlock()
+		if r.URL.Path != "/v1/chat/completions" || (key != "synthetic-pool-key-1" && key != "synthetic-pool-key-2") {
+			http.Error(w, "unexpected upstream request or credential", http.StatusUnauthorized)
+			return
+		}
+		if beforeResponse != nil {
+			beforeResponse(key)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "synthetic-chat", "object": "chat.completion", "model": "pool-chat",
+			"choices": []map[string]any{{"index": 0, "message": map[string]string{"role": "assistant", "content": "Pool response"}, "finish_reason": "stop"}},
+			"usage":   map[string]int{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	t.Cleanup(upstream.Close)
+	fixture.store = NewMemoryStoreWithConfig(Config{SecretKey: "synthetic-key-pool-encryption-key"})
+	t.Cleanup(func() { _ = fixture.store.Close() })
+	project := fixture.store.CreateProject(Project{Name: "Key pool application", Status: StatusActive})
+	_, secret, err := fixture.store.CreateAPIKey(project.ID, APIKey{Name: "Key pool client", Status: StatusActive, Allowed: []string{"pool-chat"}}, "thk_synthetic_pool_client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.secret = secret
+	fixture.provider = fixture.store.AddProvider(Provider{
+		ID: "prv_key_pool", Name: "Key pool provider", Type: ProviderOpenAICompatible,
+		BaseURL: upstream.URL + "/v1", APIKey: "synthetic-default-provider-key", Status: StatusActive, Healthy: true,
+	})
+	fixture.store.AddModel(Model{Name: "pool-chat", Modality: "chat", Status: StatusActive})
+	fixture.route = fixture.store.AddRoute(ModelRoute{
+		ID: "route_key_pool", ModelName: "pool-chat", ProviderID: fixture.provider.ID, ProviderModel: "pool-chat",
+		Status: StatusActive, Priority: 1, Weight: 100, Strategy: RouteStrategyPriorityWeighted,
+	})
+	fixture.app = New(fixture.store).Handler()
+	for index := 1; index <= 2; index++ {
+		key := fmt.Sprintf("synthetic-pool-key-%d", index)
+		created := doJSON(t, fixture.app, http.MethodPost, "/api/admin/provider-resources", map[string]any{
+			"id": fmt.Sprintf("rsrc_key_pool_%d", index), "provider_id": fixture.provider.ID,
+			"name": fmt.Sprintf("Pool key %d", index), "resource_type": ProviderResourceAPIKey, "api_key": key,
+			"status": StatusActive, "healthy": true, "priority": 1, "weight": 100, "max_concurrency": 1,
+		}, "")
+		if created.Code != http.StatusCreated {
+			t.Fatalf("create pooled key = %d: %s", created.Code, created.Body)
+		}
+		if strings.Contains(created.Body, key) {
+			t.Fatal("resource create response exposed the key")
+		}
+		var resource ProviderResource
+		if err := json.Unmarshal([]byte(created.Body), &resource); err != nil {
+			t.Fatal(err)
+		}
+		fixture.resources = append(fixture.resources, resource)
+		var stored ProviderResource
+		if err := fixture.store.db.First(&stored, "id = ?", resource.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(stored.APIKey, "enc:v1:") || strings.Contains(stored.APIKey, key) {
+			t.Fatal("pooled resource key was not encrypted at rest")
+		}
+	}
+	listed := doJSON(t, fixture.app, http.MethodGet, "/api/admin/provider-resources", nil, "")
+	if listed.Code != http.StatusOK || strings.Contains(listed.Body, "synthetic-pool-key-") {
+		t.Fatalf("resource list did not redact keys: status=%d", listed.Code)
+	}
+	audit, err := json.Marshal(fixture.store.ListAuditEvents())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(audit), "synthetic-pool-key-") {
+		t.Fatal("resource audit events exposed pooled keys")
+	}
+	return fixture
+}
+
+func (fixture *providerKeyPoolFixture) request(t *testing.T) responseBody {
+	t.Helper()
+	return doJSON(t, fixture.app, http.MethodPost, "/v1/chat/completions", map[string]any{
+		"model": "pool-chat", "messages": []map[string]string{{"role": "user", "content": "Use a pooled key"}},
+	}, fixture.secret)
+}
+
+func (fixture *providerKeyPoolFixture) upstreamCounts() map[string]int {
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	counts := make(map[string]int, len(fixture.counts))
+	for key, count := range fixture.counts {
+		counts[key] = count
+	}
+	return counts
+}

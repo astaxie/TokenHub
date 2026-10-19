@@ -135,6 +135,7 @@ type Store interface {
 	DeleteAPIKey(id string) error
 	ValidateAPIKey(rawSecret string, clientIP string) (Project, APIKey, error)
 	AddProvider(provider Provider) Provider
+	CreateProvider(provider Provider) (Provider, error)
 	GetProvider(id string) (Provider, bool)
 	ListProviders() []Provider
 	AddProviderModel(model ProviderModel) ProviderModel
