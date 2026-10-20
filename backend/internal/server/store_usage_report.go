@@ -21,7 +21,7 @@ func (s *GormStore) StreamUsageReportRecords(ctx context.Context, query UsageSum
 }
 
 func (s *GormStore) streamUsageReportUsage(ctx context.Context, scope UsageSummaryScope, visit func(UsageRecord)) (resultErr error) {
-	query, err := applyUsageSummaryScope(s.db.WithContext(ctx).Model(&UsageRecord{}), s.dbDriver, scope)
+	query, err := applyUsageSummaryScope(s.analyticsDB.WithContext(ctx).Model(&UsageRecord{}), s.dbDriver, scope)
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func (s *GormStore) streamUsageReportUsage(ctx context.Context, scope UsageSumma
 			return err
 		}
 		var record UsageRecord
-		if err := s.db.ScanRows(rows, &record); err != nil {
+		if err := s.analyticsDB.ScanRows(rows, &record); err != nil {
 			return err
 		}
 		visit(record)
@@ -47,7 +47,7 @@ func (s *GormStore) streamUsageReportUsage(ctx context.Context, scope UsageSumma
 }
 
 func (s *GormStore) streamUsageReportRequests(ctx context.Context, scope UsageSummaryScope, visit func(UsageReportRequest)) (resultErr error) {
-	query, err := applyUsageSummaryScope(s.db.WithContext(ctx).Model(&RequestLog{}), s.dbDriver, scope)
+	query, err := applyUsageSummaryScope(s.analyticsDB.WithContext(ctx).Model(&RequestLog{}), s.dbDriver, scope)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (s *GormStore) streamUsageReportRequests(ctx context.Context, scope UsageSu
 			return err
 		}
 		var log UsageReportRequest
-		if err := s.db.ScanRows(rows, &log); err != nil {
+		if err := s.analyticsDB.ScanRows(rows, &log); err != nil {
 			return err
 		}
 		visit(log)

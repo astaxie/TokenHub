@@ -30,7 +30,10 @@ services:
       args:
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     restart: unless-stopped
+    mem_limit: ${TOKENHUB_CONTAINER_MEMORY_LIMIT:-4g}
+    memswap_limit: ${TOKENHUB_CONTAINER_MEMORY_LIMIT:-4g}
     environment:
+      GOMEMLIMIT: ${GOMEMLIMIT:-2GiB}
       TOKENHUB_ENV: ${TOKENHUB_ENV:-prod}
       TOKENHUB_DEPLOYMENT_TYPE: container
       TOKENHUB_MANAGED_UPDATES: "true"

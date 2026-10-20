@@ -1,6 +1,6 @@
 {
   "name": "tokenhub-sdk-smoke-tests",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
@@ -8,7 +8,9 @@
     "test:anthropic-messages": "node ./test-anthropic-messages.mjs",
     "test:deepseek": "node ./test-deepseek.mjs",
     "test:security-policy": "node ./test-security-policy.mjs",
-    "test:systemone": "node ./test-systemone.mjs"
+    "test:systemone": "node ./test-systemone.mjs",
+    "test:transcriptions": "node ./test-transcriptions.mjs",
+    "test:rerank": "node ./test-rerank.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "2.0.50",

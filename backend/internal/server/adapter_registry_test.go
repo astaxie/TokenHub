@@ -25,12 +25,12 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityImageGenerate, AdapterCapabilityMedia,
 		AdapterCapabilityProbe, AdapterCapabilityResponses,
-		AdapterCapabilityResponseStream,
+		AdapterCapabilityResponseStream, AdapterCapabilityTranscription,
 	},
 	ProviderOpenAICompatible: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityMedia, AdapterCapabilityProbe, AdapterCapabilityRerank,
-		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
+		AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityTranscription,
 	},
 	ProviderOpenAICodex: {
 		AdapterCapabilityImageGenerate, AdapterCapabilityModels,
@@ -73,7 +73,7 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	"local": {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
 		AdapterCapabilityEmbeddings, AdapterCapabilityProbe, AdapterCapabilityRerank,
-		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
+		AdapterCapabilityResponses, AdapterCapabilityResponseStream, AdapterCapabilityTranscription,
 	},
 }
 
@@ -241,7 +241,7 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !compatible.ProviderPolicy.DefaultCatalogProviderType {
 		t.Fatal("OpenAI-compatible should declare itself as the default catalog provider type")
 	}
-	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"audio/speech", "audio/transcriptions", "audio/translations", "chat/completions", "embeddings", "images/edits", "images/generations", "images/variations", "rerank", "responses"}) {
+	if !reflect.DeepEqual(compatible.ProviderPolicy.RouteProtocols, []string{"audio/speech", "audio/transcriptions", "audio/translations", "chat/completions", "embeddings", "images/edits", "images/generations", "images/variations", "rerank", "responses", "tasks", "videos/generations"}) {
 		t.Fatalf("OpenAI-compatible route protocols = %v", compatible.ProviderPolicy.RouteProtocols)
 	}
 

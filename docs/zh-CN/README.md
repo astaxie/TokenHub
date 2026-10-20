@@ -4,7 +4,10 @@ Language: [English](../README.md) | 简体中文 | [日本語](../ja/README.md)
 
 TokenHub 文档现在按企业 Token Governance 里的三种角色组织。默认文档语言是英文；中文和日文版本复用同一套英文截图和英文样例数据，避免多语言截图不一致。
 
-- [媒体 API](media-apis.md)：绘图、音频、视频、音乐和 DMXAPI 接入。
+## 模型请求 API 手册
+
+- [文本、图片、音频与视频 API](media-apis.md)：鉴权、模型选择、可运行请求、Seedance、异步任务、错误与计费边界。
+- [媒体协议运维](media-api-operations.md)：供应商兼容、高级媒体工作流、钩子、流校验与计量。
 
 ## 架构与部署
 

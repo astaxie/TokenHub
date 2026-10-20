@@ -49,6 +49,34 @@ If an existing route uses a strategy the editor does not recognize, its stored i
 
 Screenshots with synthetic data: [provider picker](assets/screenshots/admin-management/provider-picker.png), [provider list](assets/screenshots/admin-management/providers.png), [API connection](assets/screenshots/admin-management/provider-connection.png), [model directory](assets/screenshots/admin-management/models.png), [model creation](assets/screenshots/admin-management/model-create.png), [route summary](assets/screenshots/admin-management/routes.png), [route editor](assets/screenshots/admin-management/route-editor.png), and [mobile routes](assets/screenshots/admin-management/mobile-routes.png).
 
+### Multiple API Keys for One Provider
+
+An API Provider can contain multiple upstream API Key resources that share its model inventory and connection defaults. Edit the Provider, open **Connect**, and use **API Key pool** to add, edit, enable, disable, or delete these resources. Each resource has its own name, optional Base URL override, priority, weight, maximum concurrency, RPM, and TPM. Pool changes save immediately, independently of the Provider form's **Save** action; closing the Provider editor does not undo them.
+
+The pool editor requires positive integer weights. New or changed priorities must be positive integers, starting at 1; lower numbers are preferred. Existing resources with priority 0 can keep it when edited: 0 remains unspecified and routes as priority 9999, so renaming or rotating a key does not change its scheduling order. Set concurrency, RPM, or TPM to 0 for no limit. Enabling a resource restores its healthy state and clears its failure count and cooldown so it can receive traffic again.
+
+Enter a new secret when adding a resource, or explicitly select **Use the saved Provider API Key** to inherit the Provider's saved credential. Saved secrets are never filled back into the editor. When editing an existing resource, leave its API Key blank to preserve the current credential; enter a replacement to rotate it. A resource without its own credential inherits the Provider API Key, so updating that Provider credential also changes what the resource uses.
+
+In **Routing Policies**, leave the route's resource binding empty to select from eligible resources for that Provider; an optional resource group narrows the pool. An explicit resource binding pins that route to the selected resource. Resource priorities and weights participate in routing, while concurrency, RPM, and TPM settings apply to the selected resource. The Provider's primary API Key is not an additional pool member when eligible resources exist: add an inheriting resource if that credential should participate alongside other keys.
+
+Editing a key preserves its existing resource group, including an empty group, so renaming or rotating it does not change which group-filtered routes can select it.
+
+For ordinary API Providers, an unbound route retains the existing fallback to the Provider connection when no resource is eligible, such as when all pool entries are disabled or unhealthy. Disabling every pool entry therefore does not disable the Provider's primary credential. Disable the Provider or route to stop that traffic, or use explicit resource bindings when a route must require a particular resource. Subscription/account Providers continue to require their account resources.
+
+Deleting a resource clears its route bindings. Those routes return to automatic resource selection and may use another pool key or the Provider's primary credential. Disable a resource instead of deleting it to preserve its route bindings.
+
+For example, to pool two DeepSeek keys:
+
+1. Add one DeepSeek Provider, test its connection, and import the required models.
+2. Edit it and open **Connect > API Key pool**. Add `DeepSeek Key A`, choosing **Use the saved Provider API Key** if the first key is already saved on the Provider.
+3. Add `DeepSeek Key B` with the second key. Set each resource's limits to match its upstream allowance. For equal distribution with the priority-weighted strategy, use the same priority and equal weights.
+4. Publish the client-facing model and configure a route to this DeepSeek Provider and the imported upstream model. Leave the resource binding empty for pooling, or select one of the resources to pin that route.
+5. Make requests in **Model Playground** and inspect the selected Provider resource in diagnostics or request logs.
+
+Choosing DeepSeek again in **Add provider** creates a separate Provider instance and does not overwrite the existing connection. Use separate instances for different configurations or inventories; use the API Key pool when the keys should share one Provider's configuration and models.
+
+For subscription/account onboarding, if the Provider saves but the account resource fails to save, keep the editor open, correct the error, and retry. The retry updates that saved Provider with the current settings and selected models, then creates its account resource; it does not create another Provider. Closing the editor ends this retry session; reopen the saved Provider to add its account resource.
+
 ## Plugin Management
 
 Open **Plugin Management** to browse the unified list of built-in and installed plugins by Provider Integration, Request Pipeline, UI Template, or Automation. Each detail page explains the plugin's purpose and exposes package files; settings appear only for implemented declarative settings surfaces. Marketplace and local package installs are validated by checksum, written to `TOKENHUB_PLUGIN_DIR`, and evaluated by a runtime reload. Declarative presentation packages can become active. An enabled external package with a backend command is instead shown as **Startup Failed**, remains installed and inspectable, and does not register its Provider, hook, job, or action because external execution is unavailable in this release. Built-ins can be enabled or disabled but not uninstalled; external packages can also be updated or uninstalled.

@@ -21,7 +21,7 @@ func (s *Server) runGatewayTraceExportHooks(ctx context.Context, completion Gate
 		},
 		Data: pluginmeta.GatewayHookData{},
 	}
-	if usage, ok := marshalGatewayHookData(completion.Usage); ok {
+	if usage, ok := marshalGatewayHookData(sanitizeAudioUsage(completion.Usage)); ok {
 		input.Data[pluginmeta.DataUsage] = usage
 	}
 	if audit, ok := marshalGatewayHookData(gatewayTraceExportAuditView(completion)); ok {

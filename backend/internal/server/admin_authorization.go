@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 )
 
 func (s *Server) authorizeAdminUser(w http.ResponseWriter, r *http.Request) (AdminUser, bool) {
@@ -269,14 +268,6 @@ func (s *Server) linkProjectQuotaPolicy(quota AdminResource, payload map[string]
 	return err
 }
 
-func (s *Server) usageBreakdownForUser(user AdminUser) map[string]any {
-	records := s.filterUsageRecordsForUser(user, s.store.ListUsageRecords())
-	projectsByID := indexProjectsByID(s.store.ListProjects())
-	breakdown := s.usageBreakdownFromRecords(records, projectsByID)
-	breakdown["members"] = s.aggregateUsageByMember(user, records, projectsByID)
-	return breakdown
-}
-
 func indexProjectsByID(projects []Project) map[string]Project {
 	projectsByID := make(map[string]Project, len(projects))
 	for _, project := range projects {
@@ -396,48 +387,6 @@ func canAttributeUsageToMember(user AdminUser, usersByID map[string]AdminUser, m
 		return memberRole == "user" || memberRole == "team_leader"
 	}
 	return memberID == user.ID
-}
-
-func (s *Server) usageTimeseriesForUser(user AdminUser, days int) []map[string]any {
-	if days <= 0 {
-		days = 31
-	}
-	if days > 90 {
-		days = 90
-	}
-	now := time.Now().UTC()
-	series := make([]map[string]any, 0, days)
-	indexByDay := map[string]int{}
-	for i := days - 1; i >= 0; i-- {
-		day := now.AddDate(0, 0, -i).Format("2006-01-02")
-		indexByDay[day] = len(series)
-		series = append(series, map[string]any{
-			"date":                day,
-			"request_count":       int64(0),
-			"input_tokens":        int64(0),
-			"cached_input_tokens": int64(0),
-			"output_tokens":       int64(0),
-			"total_tokens":        int64(0),
-			"estimated_cost_usd":  float64(0),
-		})
-	}
-	for _, record := range s.filterUsageRecordsForUser(user, s.store.ListUsageRecords()) {
-		if record.CreatedAt.Before(now.AddDate(0, 0, -days+1)) {
-			continue
-		}
-		day := record.CreatedAt.UTC().Format("2006-01-02")
-		idx, ok := indexByDay[day]
-		if !ok {
-			continue
-		}
-		series[idx]["request_count"] = series[idx]["request_count"].(int64) + 1
-		series[idx]["input_tokens"] = series[idx]["input_tokens"].(int64) + record.InputTokens
-		series[idx]["cached_input_tokens"] = series[idx]["cached_input_tokens"].(int64) + record.CachedInputTokens
-		series[idx]["output_tokens"] = series[idx]["output_tokens"].(int64) + record.OutputTokens
-		series[idx]["total_tokens"] = series[idx]["total_tokens"].(int64) + record.TotalTokens
-		series[idx]["estimated_cost_usd"] = series[idx]["estimated_cost_usd"].(float64) + record.CostUSD
-	}
-	return series
 }
 
 func (s *Server) filterUsageRecordsForUser(user AdminUser, records []UsageRecord) []UsageRecord {

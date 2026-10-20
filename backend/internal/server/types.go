@@ -438,6 +438,11 @@ type ModelRoutePolicy struct {
 }
 
 type Usage struct {
+	AudioDurationUnit        string                  `json:"audio_duration_unit,omitempty"`
+	DocumentCount            int                     `json:"document_count,omitempty"`
+	AudioDurationSeconds     *float64                `json:"audio_duration_seconds,omitempty"`
+	AudioDurationSource      string                  `json:"audio_duration_source,omitempty"`
+	AudioDurationRaw         string                  `json:"audio_duration_raw,omitempty"`
 	RetrievalEvidence        *RetrievalUsageEvidence `json:"retrieval_evidence,omitempty"`
 	MeteringRaw              *metering.Units         `json:"-"`
 	MeteringInvalid          bool                    `json:"-"`

@@ -27,6 +27,8 @@ type meteringRateCard struct {
 }
 
 type meteringPriceSnapshot struct {
+	Modality            string         `json:"modality,omitempty"`
+	AudioPricePerSecond string         `json:"audio_price_usd_per_second,omitempty"`
 	SearchUnitPrice     string         `json:"search_unit_price,omitempty"`
 	ExchangeRateVersion string         `json:"exchange_rate_version,omitempty"`
 	ExchangeRate        string         `json:"exchange_rate,omitempty"`

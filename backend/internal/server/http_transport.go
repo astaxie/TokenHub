@@ -224,28 +224,10 @@ func errorResponseHeaders(w http.ResponseWriter, err error) string {
 	return requestID
 }
 
-const auditPayloadMaxChars = 64 * 1024
-
 func (s *Server) recordRequestPayload(requestID string, requestPayload any, responsePayload any) {
 	requestBody, requestTruncated := auditPayloadBody(requestPayload)
 	responseBody, responseTruncated := auditPayloadBody(responsePayload)
 	s.store.RecordRequestPayload(requestID, requestBody, requestTruncated, responseBody, responseTruncated)
-}
-
-func auditPayloadBody(value any) (string, bool) {
-	if value == nil {
-		return "", false
-	}
-	raw, err := json.MarshalIndent(redactAuditPayload(value), "", "  ")
-	if err != nil {
-		raw, _ = json.MarshalIndent(map[string]any{"error": "payload_not_serializable"}, "", "  ")
-	}
-	text := string(raw)
-	runes := []rune(text)
-	if len(runes) <= auditPayloadMaxChars {
-		return text, false
-	}
-	return string(runes[:auditPayloadMaxChars]) + "\n... truncated", true
 }
 
 func redactAuditPayload(value any) any {

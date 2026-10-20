@@ -3,14 +3,17 @@ info:
   title: TokenHub Public Gateway API
   summary: OpenAPI contract for TokenHub's externally supported model gateway.
   description: |
-    TokenHub exposes OpenAI-compatible, Anthropic-compatible, native Gemini, and TypeSafe System One gateway endpoints.
+    TokenHub exposes text, image, audio, and video model APIs using OpenAI-compatible,
+    Anthropic-compatible, native Gemini, and TypeSafe System One protocols.
+    Asynchronous image and video submissions can be polled through /v1/tasks/{task_id}.
+    Model names are administrator-published aliases, not a guarantee of upstream availability.
     Administrative, analytics, health, and metrics endpoints are intentionally excluded from this
     public gateway contract. They require a separate authenticated specification if documented later.
 
     Entered project API keys are bearer tokens. Documentation clients must keep them in memory,
     never in URLs, local storage, logs, examples, or exported files.
   version: 0.7.0
-  x-tokenhub-contract-version: gateway-2026-09-systemone
+  x-tokenhub-contract-version: gateway-2026-10-multimodal
 jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
 servers:
   - url: https://tokenhub.example
@@ -34,6 +37,10 @@ tags:
     description: Image generation, edits, asynchronous jobs, and signed asset downloads.
   - name: Audio
     description: Speech synthesis, transcription, and translation through compatible providers.
+  - name: Videos
+    description: Text, image, and reference-media video generation through compatible providers.
+  - name: Media Tasks
+    description: Query provider-managed image and video tasks using their TokenHub task IDs.
   - name: Gemini Native
     description: Native Gemini v1beta model, generation, streaming, and token-counting routes.
 paths:
@@ -443,7 +450,14 @@ paths:
       operationId: rerankDocuments
       tags: [Rerank]
       summary: Rerank text documents.
-      description: Ranks candidate text documents for a query. Provider protocol and prices must be configured.
+      description: |
+        Ranks 1-2048 candidate documents for a query. Each document is a nonempty string
+        or an object with nonempty string id and text. Text is limited to 65536 UTF-8
+        bytes and IDs to 256 UTF-8 bytes. Original indices and supplied IDs are preserved.
+        The normal JSON request limit applies (8 MiB by default); upstream responses
+        are bounded to 8 MiB. Native content-security masking is revalidated before cache
+        lookup and provider invocation; document or total-size overflow returns 413
+        request_too_large. Provider protocol and tenant prices must be configured.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       requestBody:
@@ -480,11 +494,15 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/ModelNotAllowed"
+        "413":
+          $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/QuotaExceeded"
         "501":
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
+          $ref: "#/components/responses/ProviderError"
+        "504":
           $ref: "#/components/responses/ProviderError"
   /v1/systemone:
     post:
@@ -684,7 +702,17 @@ paths:
         Routes a published model to an OpenAI or OpenAI-compatible provider. Vendor fields,
         multipart files, repeated form fields, and response formats are preserved.
         Requests use the configured multimodal size limit. Responses are buffered up to
-        128 MiB before delivery. Only upstream-reported token usage is billed.
+        128 MiB before delivery. Multipart uploads require one nonempty supported audio file,
+        up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. The total
+        limit includes all HTTP body bytes after the final multipart boundary. Uploaded
+        bytes remain in memory and are excluded from audit and provider error messages.
+        Multipart routes require a native adapter with the transcription capability;
+        matching provider hooks can handle JSON extensions only. Request hook patches
+        retain the multipart field, part-count, and configured total request size limits.
+        Native content-security masking is also revalidated; oversized masked uploads
+        return 413 request_too_large before provider or provider-hook invocation.
+        Reported tokens and audio seconds are recorded; duration billing uses configured
+        audio_price_usd_per_second metadata independently for tenant and provider prices.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: false
       requestBody:
@@ -695,7 +723,7 @@ paths:
               $ref: "#/components/schemas/MediaRequest"
           multipart/form-data:
             schema:
-              $ref: "#/components/schemas/MediaUploadRequest"
+              $ref: "#/components/schemas/AudioTranscriptionUploadRequest"
       responses:
         "200":
           description: Provider media response, with its original content type.
@@ -738,12 +766,17 @@ paths:
           $ref: "#/components/responses/ModelNotAllowed"
         "413":
           $ref: "#/components/responses/BadRequest"
+        "415":
+          $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/QuotaExceeded"
         "501":
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
           $ref: "#/components/responses/ProviderError"
+        "504":
+          $ref: "#/components/responses/ProviderError"
+
   /v1/audio/translations:
     post:
       operationId: createAudioTranslation
@@ -753,7 +786,17 @@ paths:
         Routes a published model to an OpenAI or OpenAI-compatible provider. Vendor fields,
         multipart files, repeated form fields, and response formats are preserved.
         Requests use the configured multimodal size limit. Responses are buffered up to
-        128 MiB before delivery. Only upstream-reported token usage is billed.
+        128 MiB before delivery. Multipart uploads require one nonempty supported audio file,
+        up to 25 MiB; at most 128 parts and 1 MiB per text field are accepted. The total
+        limit includes all HTTP body bytes after the final multipart boundary. Uploaded
+        bytes remain in memory and are excluded from audit and provider error messages.
+        Multipart routes require a native adapter with the transcription capability;
+        matching provider hooks can handle JSON extensions only. Request hook patches
+        retain the multipart field, part-count, and configured total request size limits.
+        Native content-security masking is also revalidated; oversized masked uploads
+        return 413 request_too_large before provider or provider-hook invocation.
+        Reported tokens and audio seconds are recorded; duration billing uses configured
+        audio_price_usd_per_second metadata independently for tenant and provider prices.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: false
       requestBody:
@@ -764,7 +807,7 @@ paths:
               $ref: "#/components/schemas/MediaRequest"
           multipart/form-data:
             schema:
-              $ref: "#/components/schemas/MediaUploadRequest"
+              $ref: "#/components/schemas/AudioTranscriptionUploadRequest"
       responses:
         "200":
           description: Provider media response, with its original content type.
@@ -807,12 +850,17 @@ paths:
           $ref: "#/components/responses/ModelNotAllowed"
         "413":
           $ref: "#/components/responses/BadRequest"
+        "415":
+          $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/QuotaExceeded"
         "501":
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
           $ref: "#/components/responses/ProviderError"
+        "504":
+          $ref: "#/components/responses/ProviderError"
+
   /v1/images/variations:
     post:
       operationId: createImageVariation
@@ -868,6 +916,15 @@ paths:
               schema:
                 type: string
                 format: binary
+        "202":
+          description: Provider asynchronous media task accepted.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaTaskSubmission"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -882,6 +939,8 @@ paths:
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
           $ref: "#/components/responses/ProviderError"
+        "503":
+          $ref: "#/components/responses/MediaTaskUnavailable"
   /v1/images/generations:
     post:
       operationId: createImageGeneration
@@ -895,6 +954,13 @@ paths:
         Ordinary models pass `response_format` through to the provider. Built-in
         managed image models accept `url` or `b64_json`; managed plugin models
         enforce their configured response formats.
+        Compatible asynchronous responses keep their provider envelope, with
+        task_id replaced by a TokenHub ID for GET /v1/tasks/{task_id}. Versioned
+        generation.task receipts preserve HTTP 202, replace data.id, and rewrite
+        an existing poll_url to the TokenHub task path. If the upstream requires a
+        response-version header, configure the header specified by its documentation
+        in the provider settings; client headers are not automatically forwarded. Task queries require
+        the same creating API key and are independent of local image jobs.
       x-tokenhub-public-gateway: true
       x-tokenhub-interactive: true
       parameters:
@@ -908,7 +974,7 @@ paths:
               $ref: "#/components/schemas/ImageGenerationRequest"
       responses:
         "200":
-          description: Generated image payload.
+          description: Generated image payload or provider asynchronous submission.
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestID"
@@ -927,9 +993,18 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ImageResponse"
+                anyOf:
+                  - $ref: "#/components/schemas/ImageResponse"
+                  - $ref: "#/components/schemas/MediaTaskSubmission"
+              examples:
+                providerTask:
+                  value:
+                    code: 200
+                    data:
+                      - status: submitted
+                        task_id: task_example
         "202":
-          description: Asynchronous image job accepted.
+          description: Local image job or provider asynchronous task accepted.
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestID"
@@ -950,7 +1025,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ImageJob"
+                anyOf:
+                  - $ref: "#/components/schemas/ImageJob"
+                  - $ref: "#/components/schemas/MediaTaskSubmission"
+              examples:
+                providerTask:
+                  value:
+                    code: 202
+                    data:
+                      id: task_example
+                      object: generation.task
+                      type: image
+                      status: pending
+                      poll_url: /v1/tasks/task_example
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -963,6 +1050,8 @@ paths:
           $ref: "#/components/responses/ProviderCapabilityNotSupported"
         "502":
           $ref: "#/components/responses/ProviderError"
+        "503":
+          $ref: "#/components/responses/MediaTaskUnavailable"
   /v1/images/edits:
     post:
       operationId: createImageEdit
@@ -1030,9 +1119,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ImageResponse"
+                anyOf:
+                  - $ref: "#/components/schemas/ImageResponse"
+                  - $ref: "#/components/schemas/MediaTaskSubmission"
         "202":
-          description: Asynchronous image edit job accepted.
+          description: Local image edit job or provider asynchronous task accepted.
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestID"
@@ -1053,7 +1144,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ImageJob"
+                anyOf:
+                  - $ref: "#/components/schemas/ImageJob"
+                  - $ref: "#/components/schemas/MediaTaskSubmission"
+              examples:
+                providerTask:
+                  value:
+                    code: 202
+                    data:
+                      id: task_example
+                      object: generation.task
+                      type: image
+                      status: pending
+                      poll_url: /v1/tasks/task_example
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1066,6 +1169,220 @@ paths:
           $ref: "#/components/responses/ImageMaskNotSupported"
         "502":
           $ref: "#/components/responses/ProviderError"
+        "503":
+          $ref: "#/components/responses/MediaTaskUnavailable"
+  /v1/videos/generations:
+    post:
+      operationId: createVideoGeneration
+      tags: [Videos]
+      summary: Submit a video generation request.
+      description: |
+        Routes a published video model to a compatible provider.
+        Text, first/last frames, reference images, videos, audio, and provider-specific
+        options are forwarded with the routed upstream model name. Supported parameters,
+        resolutions, durations, and media combinations depend on the upstream model.
+        Async task_id values are replaced with opaque TokenHub IDs bound to the creating
+        project API key and provider resource. Poll GET /v1/tasks/{task_id} with the same key.
+        Submission completion does not mean that video generation has finished.
+        At most 128 task IDs can be bound in one submission; oversized or invalid
+        task receipts fail atomically. Ambiguous generation failures are not automatically resubmitted.
+        Top-level draft_task_id, draft_from_task_id, extend_from_task_id, and source_task_id
+        reference TokenHub handles returned by previous submissions. The same API key must
+        retain access to the source and target models, and the source binding must be unexpired.
+        References resolve to provider IDs on the original provider account/resource, without
+        switching accounts. A different target alias, route, or upstream model is allowed on
+        that account. The provider validates model-specific follow-up requirements.
+        Conflicting source accounts return 400 invalid_media_task_reference;
+        malformed, unknown, expired, inaccessible, or raw provider IDs return 404 media_task_not_found.
+        Changed source-account fingerprints return 503 media_task_route_unavailable.
+        Ordinary routing, policy, and capacity errors still apply when the original account is unavailable;
+        no other account is used.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoGenerationRequest"
+            examples:
+              textToVideo:
+                value:
+                  model: seedance-video
+                  prompt: A calm ocean at sunrise
+                  duration: 5
+                  size: "16:9"
+                  resolution: 720p
+                  generate_audio: true
+              firstAndLastFrame:
+                value:
+                  model: seedance-video
+                  prompt: A smooth transition from daylight to sunset
+                  image_with_roles:
+                    - url: https://example.com/day.png
+                      role: first_frame
+                    - url: https://example.com/sunset.png
+                      role: last_frame
+                  duration: 5
+      responses:
+        "200":
+          description: Provider submission response with TokenHub task IDs.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaTaskSubmission"
+              examples:
+                submitted:
+                  value:
+                    code: 200
+                    data:
+                      - status: submitted
+                        task_id: task_example
+        "202":
+          description: Provider asynchronous media task accepted.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaTaskSubmission"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+        "413":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: A referenced source task is unknown, expired, or inaccessible to this API key.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          $ref: "#/components/responses/MediaTaskUnavailable"
+  /v1/tasks/{task_id}:
+    get:
+      operationId: getMediaTask
+      tags: [Media Tasks]
+      summary: Query an image or video generation task.
+      description: |
+        Retrieves current upstream state for a task created through TokenHub. Use the
+        opaque task_id returned by an image or video submission and the exact same
+        project API key. Unknown tasks, other keys' tasks, and revoked model access
+        are not accessible. The original provider/resource is pinned; a task cannot
+        fail over to a different account. Responses are not cached.
+        Bindings expire after 30 days. Replacing the original upstream credentials,
+        base URL, or account headers makes its existing task queries unavailable.
+        Provider result URLs and extensions are preserved; TokenHub does not download
+        the media. Polling consumes request quota but does not bill cumulative upstream
+        generation tokens again. Task state remains owned by the upstream provider.
+        This endpoint is separate from local /v1/image-jobs and /v1/responses jobs.
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: true
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: Opaque TokenHub task ID from the submission response.
+          schema:
+            type: string
+        - name: language
+          in: query
+          description: Optional upstream task error language; no other query parameters are accepted.
+          schema:
+            type: string
+            enum: [en, zh, ja, ko, ru, fr, de, id, pt, es]
+      responses:
+        "200":
+          description: Current upstream task status, progress, result, or task failure.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+            x-ratelimit-limit-requests:
+              $ref: "#/components/headers/XRateLimitLimitRequests"
+            x-ratelimit-remaining-requests:
+              $ref: "#/components/headers/XRateLimitRemainingRequests"
+            x-ratelimit-reset-requests:
+              $ref: "#/components/headers/XRateLimitResetRequests"
+            x-ratelimit-limit-tokens:
+              $ref: "#/components/headers/XRateLimitLimitTokens"
+            x-ratelimit-remaining-tokens:
+              $ref: "#/components/headers/XRateLimitRemainingTokens"
+            x-ratelimit-reset-tokens:
+              $ref: "#/components/headers/XRateLimitResetTokens"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaTaskResponse"
+              examples:
+                completedVideo:
+                  value:
+                    code: 200
+                    data:
+                      id: task_example
+                      status: completed
+                      progress: 100
+                      result:
+                        videos:
+                          - url: ["https://example.com/video.mp4"]
+                failed:
+                  value:
+                    code: 200
+                    data:
+                      id: task_example
+                      status: failed
+                      error:
+                        message: The upstream could not generate this video
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ModelNotAllowed"
+        "429":
+          $ref: "#/components/responses/QuotaExceeded"
+        "501":
+          $ref: "#/components/responses/ProviderCapabilityNotSupported"
+        "502":
+          $ref: "#/components/responses/ProviderError"
+        "404":
+          description: Task not found or not accessible to this API key.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          $ref: "#/components/responses/MediaTaskUnavailable"
   /v1/image-jobs/{job_id}:
     get:
       operationId: getImageJob
@@ -1463,6 +1780,15 @@ components:
       schema:
         type: string
   responses:
+    MediaTaskUnavailable:
+      description: The task binding could not be saved or loaded, or the original provider account is unavailable or has changed. Do not blindly resubmit a generation after a binding failure.
+      headers:
+        x-request-id:
+          $ref: "#/components/headers/XRequestID"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     BadRequest:
       description: Invalid request.
       headers:
@@ -2903,8 +3229,22 @@ components:
           minItems: 1
           maxItems: 2048
           items:
-            type: string
-            minLength: 1
+            oneOf:
+              - type: string
+                minLength: 1
+                description: Nonempty document text, at most 65536 UTF-8 bytes.
+              - type: object
+                additionalProperties: false
+                required: [id, text]
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    description: Caller document ID, at most 256 UTF-8 bytes.
+                  text:
+                    type: string
+                    minLength: 1
+                    description: Nonempty document text, at most 65536 UTF-8 bytes.
         top_n:
           type: integer
           minimum: 1
@@ -2929,6 +3269,9 @@ components:
               index:
                 type: integer
                 minimum: 0
+              id:
+                type: string
+                description: Original document ID when supplied, even if return_documents is false.
               relevance_score:
                 type: number
               document:
@@ -2992,6 +3335,148 @@ components:
             additionalProperties: true
         usage:
           $ref: "#/components/schemas/Usage"
+    VideoGenerationRequest:
+      type: object
+      required: [model]
+      additionalProperties: true
+      description: Model-specific video parameters are validated by the upstream provider.
+      properties:
+        model:
+          type: string
+          description: Published TokenHub model alias.
+        prompt:
+          type: string
+        duration:
+          type: number
+          description: Requested duration in seconds; supported values depend on the model.
+        size:
+          type: string
+          description: Provider-specific aspect ratio, for example 16:9.
+        resolution:
+          type: string
+        generate_audio:
+          type: boolean
+        return_last_frame:
+          type: boolean
+        seed:
+          type: integer
+        image_urls:
+          type: array
+          items:
+            type: string
+        image_with_roles:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            properties:
+              url:
+                type: string
+              role:
+                type: string
+        video_urls:
+          type: array
+          items:
+            type: string
+        audio_urls:
+          type: array
+          items:
+            type: string
+        draft_task_id:
+          $ref: "#/components/schemas/MediaTaskReference"
+          description: TokenHub source task handle for a compatible draft-to-final operation, such as Seedance 2.5.
+        draft_from_task_id:
+          $ref: "#/components/schemas/MediaTaskReference"
+          description: TokenHub source task handle for a compatible draft-to-final operation, such as FLUX.3.
+        extend_from_task_id:
+          $ref: "#/components/schemas/MediaTaskReference"
+          description: TokenHub source task handle for compatible video extension models.
+        source_task_id:
+          $ref: "#/components/schemas/MediaTaskReference"
+          description: TokenHub source task handle for compatible regeneration models, including operations using a different target model.
+    MediaTaskReference:
+      type: string
+      description: |
+        An opaque TokenHub task ID owned by the same project API key, with an unexpired
+        30-day binding and continued source-model access. Raw provider IDs are not accepted.
+        Resolved only for recognized top-level video reference fields; prompts, asset URLs,
+        and nested vendor identifiers remain unchanged. Follow-up submissions use the original
+        provider account/resource and can create a separately billable task.
+    MediaTaskSubmission:
+      type: object
+      additionalProperties: true
+      description: |
+        Provider-specific submission envelope, with up to 128 bound tasks. Legacy
+        task_id fields and id fields explicitly tagged with object: generation.task
+        are replaced with opaque TokenHub IDs. Existing poll_url fields become
+        relative /v1/tasks/{TokenHub task ID} URLs. Ordinary synchronous asset IDs
+        remain untouched. Legacy receipts can use code and a data array;
+        versioned HTTP 202 receipts use a generation.task data object. Compatible
+        providers may also return the task at the root. Ambiguous task locations,
+        conflicting identifiers, and malformed task collections are rejected.
+      properties:
+        code:
+          type: integer
+        task_id:
+          type: string
+        id:
+          type: string
+          description: TokenHub task ID when object is generation.task.
+        object:
+          type: string
+        poll_url:
+          type: string
+          description: TokenHub task path when present on a recognized task object.
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/MediaTaskSubmissionItem"
+            - type: array
+              items:
+                $ref: "#/components/schemas/MediaTaskSubmissionItem"
+    MediaTaskSubmissionItem:
+      type: object
+      additionalProperties: true
+      properties:
+        task_id:
+          type: string
+        id:
+          type: string
+          description: TokenHub task ID when object is generation.task.
+        object:
+          type: string
+          description: generation.task identifies a versioned asynchronous receipt.
+        poll_url:
+          type: string
+          description: Relative TokenHub task path; only present when supplied by the provider.
+        status:
+          type: string
+    MediaTaskResponse:
+      type: object
+      additionalProperties: true
+      description: |
+        Provider task response, with its task identity mapped back to the TokenHub ID.
+        Compatible providers return code and data. Known statuses include pending, processing,
+        completed, failed, and cancelled. Provider cost fields are not TokenHub invoices.
+      properties:
+        code:
+          type: integer
+        data:
+          type: object
+          additionalProperties: true
+          properties:
+            id:
+              type: string
+            task_id:
+              type: string
+            status:
+              type: string
+            progress:
+              type: number
+            result:
+              type: object
+              additionalProperties: true
+            error:
+              description: Provider failure details, present for a failed task.
     MediaRequest:
       type: object
       required: [model]
@@ -3001,6 +3486,24 @@ components:
           type: string
         input:
           description: Provider-specific input, text, structured media, or task ID.
+        prompt:
+          type: string
+    AudioTranscriptionUploadRequest:
+      type: object
+      required: [model, file]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        file:
+          type: string
+          format: binary
+          description: One nonempty FLAC, MP3, MP4, MPEG, MPGA, M4A, OGG, WAV or WebM file, at most 25 MiB.
+        response_format:
+          type: string
+          description: Provider-supported transcription response format, for example json.
+        language:
+          type: string
         prompt:
           type: string
     MediaUploadRequest:

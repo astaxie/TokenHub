@@ -4,7 +4,10 @@ Language: English | [简体中文](zh-CN/README.md) | [日本語](ja/README.md)
 
 TokenHub documentation is organized around the three roles used in enterprise Token Governance. The default documentation language is English. Localized Chinese and Japanese versions use the same English screenshots and the same English sample data set.
 
-- [Media APIs](media-apis.md): images, audio, video, music, and DMXAPI integration.
+## Model Request API Manual
+
+- [Text, Image, Audio, and Video APIs](media-apis.md): authentication, model selection, runnable requests, Seedance, asynchronous tasks, errors, and billing boundaries.
+- [Media Protocol Operations](media-api-operations.md): provider compatibility, advanced media workflows, hooks, streaming validation, and accounting.
 
 ## Architecture and Deployment
 

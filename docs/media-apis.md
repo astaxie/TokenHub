@@ -1,95 +1,310 @@
-# Images, audio, video, and music APIs
+# Text, image, audio, and video API guide
 
 Language: English | [简体中文](zh-CN/media-apis.md) | [日本語](ja/media-apis.md)
 
-TokenHub supports the media protocol families used in the [DMXAPI documentation](https://doc.dmxapi.cn/jichu.html). Configure the upstream provider and publish each generation, upload, query, or download model before calling it. This is protocol compatibility: model availability and accepted parameters remain the upstream provider's responsibility. No vendor credentials or prices are bundled.
+Call approved text and media models through one TokenHub gateway and a project API key. This guide covers authentication, model selection, request parameters, responses, asynchronous tasks, errors, and limits for each supported workflow.
 
-## Endpoint coverage
+**Endpoint support does not imply model availability.** An administrator must configure the upstream credential, publish a public model ID, map it to the upstream model, and grant your key access. Formats, duration, resolution, voices, model versions, and asset expiration depend on the upstream. TokenHub does not bundle vendor accounts or guarantee access to every upstream model.
 
-| Endpoint | Uses and examples |
-| --- | --- |
-| `POST /v1/images/generations` | GPT Image, Seedream/Jimeng, Qwen Image; preserves vendor options, reference images, multiple results, URLs, and base64 |
-| `POST /v1/images/edits` | JSON or multipart edits; preserves masks and uploaded files |
-| `POST /v1/images/variations` | Compatible provider image variations |
-| `POST /v1/audio/speech` | Speech synthesis, including MiniMax speech-2.6; returns provider audio bytes |
-| `POST /v1/audio/transcriptions` | Multipart speech recognition, including gpt-4o-transcribe; JSON, text, SRT, or VTT results |
-| `POST /v1/audio/translations` | Compatible provider audio translation |
-| `POST /v1/responses` | Seedance, Hailuo, Kling, Vidu, PixVerse/Paiwo, Wan, HappyHorse videos; Seedream, Wan, Qwen, Agnes and SciDraw images; MiniMax voice upload/clone, advanced speech, music/lyrics and Mureka |
-| `POST /v1/chat/completions` | MiMo TTS/voice design/clone, Qwen Omni captioning and multimodal audio, Recraft drawing |
-| `POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent` | Gemini native image generation/editing and multimodal output |
+## Choose an API
 
-Use the endpoint specified for the particular model in the upstream documentation. The DMXAPI video examples submit and query through `/v1/responses`; they do not require a new `/v1/videos` endpoint. Existing Chat, Responses, and Gemini APIs retain their streaming support and vendor extension fields. The OpenAPI contract includes Chat `input_audio` parts and provider-specific Responses input/output objects, including Wan messages and MiniMax voice uploads; providers validate their own media fields.
+| Task | Method and path | Result |
+| --- | --- | --- |
+| Discover approved models | `GET /v1/models` | Models available to this key |
+| Text, vision, tool calls | `POST /v1/chat/completions` | Chat JSON or SSE |
+| Responses-compatible requests | `POST /v1/responses` | Response JSON or SSE; optional local background job |
+| Anthropic Messages | `POST /v1/messages` | Anthropic JSON or SSE |
+| Gemini native requests | `POST /v1beta/models/{model}:generateContent` | Native Gemini JSON |
+| Gemini native streaming | `POST /v1beta/models/{model}:streamGenerateContent?alt=sse` | Native Gemini SSE |
+| Generate images | `POST /v1/images/generations` | Images or an upstream task receipt |
+| Edit / vary images | `POST /v1/images/edits`, `POST /v1/images/variations` | Provider image response |
+| Text to speech | `POST /v1/audio/speech` | Audio bytes or provider-supported stream |
+| Speech recognition / translation | `POST /v1/audio/transcriptions`, `POST /v1/audio/translations` | JSON, text, or subtitles |
+| Generate video | `POST /v1/videos/generations` | Upstream task receipt |
+| Poll an image / video task | `GET /v1/tasks/{task_id}` | Provider status and results |
 
-## Provider and model setup
+For embeddings and document ranking, see [Embeddings](embeddings.md) and [Reranking](rerank.md). The deployment's interactive contract is at `/docs`, with machine-readable schemas at `/openapi.json`.
 
-1. Add an **OpenAI-compatible** provider with base URL `https://www.dmxapi.cn/v1` and its credential. Native Gemini examples require a **Gemini** provider with base URL `https://www.dmxapi.cn/v1beta` and the same upstream account.
-2. Publish the public model and map its route to the exact upstream model ID. Select `image`, `video`, or `audio` as its modality (music uses `audio`), or include those output modalities for a multimodal chat model. These Chat/Responses requests bypass response caches so generation is not reused and task status remains fresh.
-3. Publish auxiliary models too, for example `seedance-2-0-get`, `MiniMax-Hailuo-query`, `MiniMax-Hailuo-get`, and voice/asset upload models. Grant the project key access to every model needed in the workflow.
-4. Pin generation and auxiliary routes to the same provider account/resource. Provider task/file IDs are passed through unchanged, including large JSON integers. TokenHub does not translate these into local background jobs or automatically bind vendor task ownership. Use separate upstream accounts for tenants needing isolated vendor task namespaces.
+## Authentication and quickstart
 
-For native Gemini media, configure a media modality or output modality on the published model and call its `/v1beta/models/{model}:generateContent` or `:streamGenerateContent?alt=sse` endpoint. These requests bypass caches and preserve native `generationConfig` (including `responseModalities` and `imageConfig`), inline media, and thought signatures. The provider model is selected by the route. Native JSON/SSE responses preserve generated media and use `usageMetadata` for token accounting. Both responses are buffered under the 128 MiB media limit; authentication, text policies, scoped hooks, and guarded transport apply.
-
-Native Gemini media streams reject terminal SSE event names, `type:"error"` or `*.failed` payloads, and non-null nested `response.error` fields, including provider-hook output. Such errors remain failures even after a candidate reports a finish reason; known token usage and explicit plugin usage overrides are retained, and error credentials are not returned. A nested `response.error:null` remains compatible with successful events.
-
-The managed `gpt-image-2`, Codex subscription, and plugin image profiles retain their existing validation, one-image job flow, stored assets, and `Prefer: respond-async` support. To use a provider's full Images contract for an upstream model with a managed public name, publish a separate public alias (for example `vendor-gpt-image`) mapped to that upstream ID. Ordinary image routes return the provider's response directly; local job polling and signed TokenHub image URLs apply only to managed jobs. Direct image requests accept provider-specific `response_format` strings, such as Qwen Image `base64`; built-in managed images still accept only `url` or `b64_json`, while managed plugin models enforce their configured formats.
-
-With `background:true` on `/v1/responses`, the response body's `id` identifies TokenHub's local request job. Completed media polling replies expose the vendor's original root ID in `x-tokenhub-upstream-response-id`; use that ID with the vendor's auxiliary query model. Local completion means the upstream API call finished; vendor rendering may still require polling. String and numeric IDs are preserved exactly. The header is omitted for nonscalar IDs, control characters, surrounding whitespace, or values over 2048 bytes.
-
-## Examples
-
-Replace `TOKENHUB_API_KEY` with a project key in your environment. Model names below must already be published and allowed for that key.
+Use the gateway address, not the console's port. Examples use a root URL without `/v1`; OpenAI SDK clients instead receive `base_url="$TOKENHUB_URL/v1"`. Project API keys come from **Key Management**; console login tokens cannot call model APIs.
 
 ```bash
-curl https://tokenhub.example/v1/audio/speech \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"speech-2.6-hd","input":"Hello from TokenHub","voice":"male-qn-qingse","response_format":"mp3"}' \
-  --output speech.mp3
+export TOKENHUB_URL='http://localhost:8080'
+export TOKENHUB_API_KEY='YOUR_TOKENHUB_PROJECT_KEY'
 
-curl https://tokenhub.example/v1/audio/transcriptions \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -F model=gpt-4o-transcribe -F file=@sample.wav
-
-curl https://tokenhub.example/v1/responses \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"doubao-seedance-2-0-260128","input":[{"type":"text","text":"A calm ocean at sunrise"}],"duration":4,"resolution":"720p","generate_audio":true}'
-
-# Save the returned id, then query until the upstream reports completion.
-curl https://tokenhub.example/v1/responses \
-  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"seedance-2-0-get","input":"TASK_ID_FROM_SUBMISSION"}'
+curl --fail-with-body "$TOKENHUB_URL/v1/models" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY"
 ```
 
-## Limits, accounting, and verification
+Use a returned `data[].id` as `model`. Names such as `text-model`, `image-model`, `speech-model`, `transcription-model`, and `seedance-video` below are example **public aliases** to publish or replace. They need not equal upstream model IDs.
 
-The new direct media routes use `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` (32 MiB by default). Multipart requests allow up to 128 parts and 1 MiB per text field. Responses are buffered up to 128 MiB before delivery and keep the provider content type; this direct path does not provide low-latency chunk delivery. Existing managed image limits remain unchanged. Files are not downloaded from response URLs by TokenHub.
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"text-model","messages":[{"role":"user","content":"Explain an API gateway in one sentence."}],"stream":false}'
+```
 
-Multipart `model` and `stream` controls must be single text fields. On `/v1/audio/speech`, `stream_format:"sse"` also selects streaming admission and provider hooks; `stream_format` must be a single non-empty text value, and request hooks cannot change the effective stream mode. JSON `stream` must be a boolean; multipart `stream` must contain a boolean text value. Ambiguous controls are rejected before routing, including request-hook patches. Text policies inspect every value of `input`, `instructions`, `prompt`, `negative_prompt`, and `text`, including repeated multipart fields, while preserving repeated options such as `timestamp_granularities[]`.
+Read text from `choices[].message.content`. Save the request ID for **Request Logs**. A model appearing in `/v1/models` confirms visibility and routing eligibility, not live availability of every upstream feature. Provider-specific `expand` metadata and account-balance APIs are not part of the TokenHub model API.
 
-Authentication, model allowlists, quotas, scoped routing, provider resource capacity, text preflight policies, response hooks, and usage attribution apply. Request hooks see JSON/text fields; multipart file bytes are opaque. Request-header hook data redacts client authentication values, including Gemini `X-Goog-Api-Key`; upstream calls use configured provider credentials. Media Responses text policies also inspect vendor prompts, Kling `multi_prompt[].prompt` shot descriptions, lyrics, and Wan text in nested messages, `input.input.prompt`, and `parameters.negative_prompt` while preserving opaque asset/task IDs. Direct media audit records contain model, sanitized policy decisions, content type, and byte count, not uploaded/generated media. Client cookies and authorization are not forwarded; configured provider credentials and guarded outbound transport are used. An ambiguous media submission failure does not trigger an automatic second generation on another route, including media models on Chat/Responses. Definite authentication or rate-limit rejections still allow failover.
+## Provider setup and model selection
 
-Matching `provider_call` hooks run before direct media adapters and can deny, skip, or handle a route. Direct image hooks use the actual endpoint protocol (`images/generations`, `images/edits`, or `images/variations`) for scope matching; managed image jobs retain `images/generations`. Non-stream hooks return a JSON provider response, or a binary envelope with string `data_base64` and `content_type` fields. Streaming hooks return `stream_events`; delivery remains buffered. Response/guardrail hooks processing binary or text bodies must preserve valid `data_base64`; malformed patches fail instead of returning an empty successful response. Provider and response hooks both allow CR/LF line breaks in Base64, but reject additional encoded data after padding. The 128 MiB response limit applies to both hook outputs, using serialized JSON bytes or decoded binary bytes without counting Base64 line breaks; oversized replacements fail while retaining reported usage.
+For an account supporting the required endpoints, add an **OpenAI-compatible** provider with its base URL and credential. For example, replace `https://provider.example/v1` with the actual provider endpoint. Publish aliases, for example `text-model` to the account's text model, `image-model` to `gpt-image-2`, and `seedance-video` to `seedance-2.0`. Select `image`, `audio`, or `video` as appropriate; configure input/output modalities for multimodal chat. Media Chat/Responses requests bypass response caches.
 
-Non-stream provider-hook JSON that exceeds the response size limit also retains reported token usage in both request and route-attempt accounting, including native Gemini `usageMetadata`. Explicit plugin usage, including zero, takes precedence. The response remains a failure without retry or a provider health penalty.
+Native Anthropic and Gemini requests require a route that supports the native protocol and response shape; an OpenAI-compatible base URL alone does not establish native compatibility. See the [User Guide](user-guide.md) for adapters and SDK configuration. Vendor documentation may show wrapped text responses; verify the selected route returns the protocol your client expects.
 
-The Responses OpenAPI schema requires `model`; `input` requirements depend on the chosen provider model. For example, DMX lyric/music generation can omit `input` to generate without a supplied prompt. Omitted input is forwarded without adding an empty value. The `input` array also accepts image URL or data-URI strings, as used by Vidu Q3 start/end-frame generation. Responses `output` accepts a standard item array or a provider-specific object, such as Qwen Image 3.0 results under `output.choices[].message.content[].image`; the same shapes apply to completed background jobs. Output arrays also accept Seedream image results as `{"type":"image_url","image_url":{"url":"..."}}` items.
+Public `gpt-image-2`, Codex subscription image models, and configured managed image plugins use TokenHub's managed image workflow. To use the full upstream Images contract, including supported asynchronous generation, publish a separate alias such as `image-model` mapped to `gpt-image-2`. See the [managed image guide](user-guide.md#codex-subscription-image-generation).
 
-JSON response handling recognizes `application/json` and MIME types with a `+json` suffix, including parameters and case variations. These responses receive the same validation, token metering, and JSON hook payloads; their original content type is preserved. A recognized JSON base type still receives validation when its parameters are malformed or duplicated. A parameter containing the text `application/json` does not turn a text or binary response into JSON.
+Upgrading applies database migration v8, `add-media-task-bindings`, through the normal startup migration process. Task bindings survive restarts; keep the configured server secret stable so encrypted upstream task IDs remain readable. No new environment variable is required.
 
-Direct media JSON containing a non-null top-level `error` is a failure even when the upstream HTTP status is 200. This also applies to provider-hook output and final response/guardrail-hook replacements. Failures return a generic message without upstream credentials, retain reported token usage, and do not resubmit generation; `error:null` remains compatible with successful responses.
+## Text and multimodal understanding
 
-SSE response handling recognizes the `text/event-stream` MIME base type even when its parameters are malformed or duplicated, so invalid parameters cannot bypass event validation, token metering, or event hooks. A parameter containing `text/event-stream` does not turn a text or binary response into SSE.
+### Chat Completions
 
-Direct media SSE requires each non-empty event payload other than `[DONE]` to be one complete JSON object. Malformed upstream or provider-hook events fail before buffered delivery and retain known usage, including a complete leading object with invalid trailing data. Response and stream hooks cannot turn valid events into malformed payloads or successful error streams; final validation retains the original upstream usage.
+| Field | Requirement | Meaning |
+| --- | --- | --- |
+| `model` | Required | Published public model ID |
+| `messages` | Required | Conversation; supported models accept content parts |
+| `stream` | Optional boolean | Explicit `true` for SSE or `false` for one JSON response |
+| `max_tokens`, `max_completion_tokens` | Optional | Output limit, subject to route/model behavior |
+| `temperature`, `reasoning_effort` | Optional | Model-dependent generation controls |
+| `tools`, `tool_choice`, `response_format` | Optional | Tools and structured output when supported |
 
-For SSE responses, `stream_transform`, `response_post`, and `guardrail_post` run on individual events before buffered delivery. Upstream token usage is retained even if a subsequent stream error or policy blocks the result. Terminal stream errors are recorded as failures and do not trigger a second generation; provider credentials in error messages are redacted. Client cancellation and classified outbound proxy failures do not count as provider health failures; proxy failures also stop failover. If a provider-hook stream exceeds the response buffer limit, usage from earlier complete events is retained unless explicit plugin usage overrides it; overflow remains a failure without retry. Plugin-produced SSE receives the same error and usage inspection; explicit plugin usage, including zero, overrides event usage. Plugin-produced JSON also uses response-body token usage when no explicit plugin usage is supplied; explicit zero still overrides it. JSON responses must contain one complete object with no trailing values or garbage. Final JSON output after response/guardrail hooks must also remain an object; null, arrays, and scalar replacements are rejected. Invalid responses fail without resubmission, retaining usage from a complete leading object even if reading the response later fails or exceeds the size limit. Incomplete JSON objects do not invent usage. Failed usage-attribution hooks retain original upstream usage. If final post-hook response validation fails after attribution, request and route-attempt accounting retain the same attributed usage. Direct media HTTP 408 responses do not trigger automatic resubmission. Audit records retain sanitized policy decisions without replacement text or media content.
+For streaming, use `curl -N` and `"stream":true`; consume incremental `choices[].delta` events until completion. Do not infer a universal streaming default from another provider's documentation.
 
-Media models on the streaming Responses API recognize standard Responses completion events, Wan `[DONE]` markers, and MiniMax `data.status=2` completion frames. Top-level and nested token usage is retained; streams ending without a completion marker are recorded as failed. MiniMax music events with top-level `status:"failed"` are terminal provider failures: error messages are redacted before delivery, known usage is retained, and later completion markers cannot turn the failure into success. Non-empty event data other than `[DONE]` must be one complete JSON object. Malformed events are rejected before forwarding, retain known usage, and cannot turn a broken stream into a successful completion; heartbeats and valid vendor events remain unchanged. Media events are bounded at 128 MiB per event. Text-model Responses retain their existing completion rules.
+For vision, replace the user message with content parts on a model configured for image input:
 
-OpenAI-compatible Chat streams for models configured with media output also allow events up to 128 MiB, including providers that return a complete generated audio clip in one event. Text-model Chat streams retain the 8 MiB event limit; client audio fields alone do not raise it.
+```json
+{"role":"user","content":[{"type":"text","text":"Describe this image."},{"type":"image_url","image_url":{"url":"https://your-assets.example/reference.png"}}]}
+```
 
-Token billing uses upstream-reported usage. Direct Images/Audio and streaming media Responses metering preserve positive `output_tokens` when `completion_tokens` is a zero placeholder, as in Seedream responses. These aliases are not added together; explicit plugin usage, including zero, still takes precedence. Transcription JSON and SSE usage preserves the audio-token breakdown reported in `input_token_details.audio_tokens`. Binary audio, text subtitles, and providers that report no tokens do not acquire an invented token cost; request/concurrency limits and request logs still apply. Per-second, per-image, and character-based billing are not converted into token prices. Configure pricing for token-reporting models and reconcile other charges with the upstream bill.
+Replace asset URLs with accessible files. OpenAI-compatible routes preserve supported image/audio fields; translated native routes have narrower capabilities. Chat-to-Gemini accepts base64 image data URIs, and unsupported audio parts return an error rather than being dropped. See [protocol differences](user-guide.md#tool-calling-and-multimodal-content-on-anthropic-and-gemini-routes).
 
-Regression tests use local HTTP providers and synthetic payloads for media uploads, binary and text responses, vendor image fields, asynchronous video request shapes, voice assets, large IDs, permission failures, hooks, and cache bypass. They verify protocol handling without paid live generation; individual vendor/model availability must be checked with your account.
+### Responses, Anthropic, and Gemini
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/responses" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"text-model","input":"Summarize the benefits of a shared gateway.","stream":false}'
+
+curl --fail-with-body "$TOKENHUB_URL/v1/messages" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'anthropic-version: 2023-06-01' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"claude-model","max_tokens":256,"messages":[{"role":"user","content":"Hello"}]}'
+
+curl --fail-with-body "$TOKENHUB_URL/v1beta/models/gemini-model:generateContent" \
+  -H "x-goog-api-key: $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'
+```
+
+Read Responses output from `output`, Anthropic text from `content[]`, and Gemini content from `candidates[].content.parts[]`. Preserve tool and reasoning fields for subsequent turns. Responses also carries supported vendor media objects. Native Gemini media preserves `generationConfig`, `responseModalities`, `imageConfig`, inline media, and thought signatures; media JSON/SSE is buffered under the media limit.
+
+## Images
+
+### Generate an image
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/images/generations" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"image-model","prompt":"A watercolor lighthouse at sunrise","n":1,"size":"16:9","resolution":"2k"}'
+```
+
+This example requires an image route that accepts aspect ratios and resolution tiers through a public alias. Other providers may require dimensions such as `1024x1024`; do not mix model-specific conventions.
+
+| Field | Meaning |
+| --- | --- |
+| `model`, `prompt` | Public model and image description |
+| `n` | Image count; upstream enforces its maximum |
+| `size`, `resolution`, `quality` | Upstream-specific aspect ratio, dimensions, resolution tier, and quality |
+| `image_urls`, other reference fields | Reference images when supported |
+| `response_format` | Upstream-supported format, such as `url`, `b64_json`, or `base64` |
+
+Synchronous responses commonly contain `data[].url` or `data[].b64_json`. Supported asynchronous receipts contain `data[].task_id`, or `data.id` with `data.object:"generation.task"`; poll each returned TokenHub ID using the task API below. Provider result fields are preserved. TokenHub does not download returned URLs or extend their lifetime.
+
+### Edit an image or supply a mask
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/images/edits" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -F 'model=image-model' \
+  -F 'prompt=Replace the background with a sunrise sky' \
+  -F 'image=@input.png' \
+  -F 'mask=@mask.png'
+```
+
+Use local files and a route supporting multipart edits. Let cURL generate the multipart boundary. JSON edits and `/v1/images/variations` work with compatible providers; masks, repeated image fields, and options follow that provider's contract. Managed image jobs retain separate one-image validation, stored assets, and `Prefer: respond-async` behavior.
+
+## Audio
+
+### Text to speech
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/audio/speech" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"speech-model","input":"Hello from TokenHub.","voice":"alloy","response_format":"opus","speed":1}' \
+  --output speech.opus
+```
+
+| Field | Meaning |
+| --- | --- |
+| `model` | Published speech model |
+| `input` | Text; length limit belongs to the upstream |
+| `voice` | Upstream voice ID; `alloy` is an example, not universal |
+| `response_format` | Supported format; save with a matching extension |
+| `speed` | Speaking speed if supported |
+
+A successful response is audio bytes with the upstream content type, not JSON or a base64 wrapper. Check HTTP status before using the saved file. Provider SSE speech is accepted where supported, but direct media delivery is buffered rather than low-latency audio streaming.
+
+### Transcribe or translate audio
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/audio/transcriptions" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -F 'model=transcription-model' \
+  -F 'file=@sample.wav' \
+  -F 'response_format=json'
+```
+
+`file` is the local upload and `model` the public speech-recognition model. Optional `language`, `prompt`, `response_format`, and repeated `timestamp_granularities[]` follow the upstream contract. JSON commonly returns `{"text":"..."}`; text, SRT, VTT, and verbose JSON are provider-dependent. Use `/v1/audio/translations` with a compatible model for translation; target-language behavior belongs to the model.
+
+Multipart transcription and translation require exactly one nonempty `file`, at most 25 MiB, in FLAC, MP3, MP4, MPEG, MPGA, M4A, OGG, WAV, or WebM format. Its extension, media type, and container signature must agree; the upstream checks codec support. The total request limit still applies. Missing files return `400 missing_audio_file`, unsupported formats `415 unsupported_audio_format`, and oversized files `413 audio_file_too_large`.
+
+Publish a route whose adapter explicitly supports `transcription` and whose model endpoints include the requested operation. OpenAI and configured OpenAI-compatible/local adapters support it; current imported endpoint metadata is checked again on each request. JSON vendor extensions can use matching provider-call hooks, while multipart uploads require a native adapter. See the [transcription upload and metering contract](media-api-operations.md#transcription-upload-and-metering-contract) for publication, hooks, upload validation, and SDK smoke tests.
+
+Voice cloning and music remain available through existing provider-specific Chat/Responses workflows in [media operations](media-api-operations.md). Separate `/v1/music/*`, voice/asset management, upload, and webhook management APIs are not implemented as a general TokenHub API family.
+
+## Videos, including Seedance
+
+```bash
+curl --fail-with-body "$TOKENHUB_URL/v1/videos/generations" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"seedance-video","prompt":"A calm ocean at sunrise, slow camera movement","duration":5,"size":"16:9","resolution":"720p","generate_audio":true}'
+```
+
+Configure `seedance-video` to a compatible upstream model such as `seedance-2.0`. Other compatible video models use the same endpoint with their own options.
+
+| Field | Meaning |
+| --- | --- |
+| `model`, `prompt` | Public model and scene description |
+| `duration` | Requested seconds; allowed values depend on the model |
+| `size`, `resolution` | Model-specific aspect ratio and resolution |
+| `generate_audio` | Accompanying audio when supported |
+| `image_urls`, `video_urls`, `audio_urls` | Model-supported reference assets; use reachable URLs |
+| Other options | Provider extensions are preserved and validated upstream |
+
+First/last frames, multiple references, duration ranges, and reference combinations are not universal. TokenHub does not implement Volcengine-native `/content_generation/tasks`.
+
+Providers exposing Seedance through `/v1/responses` use a generation model and an auxiliary model such as `seedance-2-0-get`. Their task IDs and polling rules differ from `/v1/tasks`; see [provider setup and examples](media-api-operations.md).
+
+## Submit and poll asynchronous tasks
+
+Compatible image/video submissions can return this task-list receipt:
+
+```json
+{"code":200,"data":[{"status":"submitted","task_id":"task_example"}]}
+```
+
+Some upstream image routes support this HTTP `202` task-object receipt:
+
+```json
+{"code":202,"data":{"id":"task_example","object":"generation.task","type":"image","status":"pending","progress":0,"poll_url":"/v1/tasks/task_example"}}
+```
+
+If the upstream selects this format through a version-selection header, configure the header name and value specified in that provider's documentation in its custom headers. TokenHub does not automatically forward client headers. It preserves HTTP `202` and the receipt structure, replaces `data.id`, and rewrites an existing `poll_url` to the corresponding TokenHub path. Use the gateway origin with that relative URL. Ordinary synchronous image asset IDs remain unchanged.
+
+Either receipt means the upstream accepted work, not that generation is complete. TokenHub replaces vendor task IDs with opaque IDs and persists the submitting project/key and provider/resource binding. Use **the same project API key** and exact returned ID:
+
+```bash
+export TOKENHUB_TASK_ID='TASK_ID_FROM_SUBMISSION'
+curl --fail-with-body "$TOKENHUB_URL/v1/tasks/$TOKENHUB_TASK_ID?language=en" \
+  -H "Authorization: Bearer $TOKENHUB_API_KEY"
+```
+
+The optional `language` query parameter accepts `en`, `zh`, `ja`, `ko`, `ru`, `fr`, `de`, `id`, `pt`, or `es` for upstream task error text. Repeated `language` values and other query parameters return `400 invalid_task_query`.
+
+| Response field | Meaning |
+| --- | --- |
+| `data.id` | TokenHub task ID for this polling workflow |
+| `data.status` | Upstream task status |
+| `data.progress` | Optional upstream progress, not a gateway estimate |
+| `data.result` | Model-specific output; may contain `images[]` or `videos[]` with `url` arrays |
+| `data.error` | Upstream task failure details when present |
+| `data.cost`, `data.credits_cost` | Upstream metadata, not a TokenHub invoice |
+
+Poll `pending`/`processing` with a bounded timeout and a delay, for example 3–5 seconds with backoff. `completed` means success; `failed` and `cancelled` are terminal failures. Treat other nonterminal states according to the upstream contract. Save result URLs promptly and honor `expires_at`. HTTP 200 may contain a failed task; inspect both HTTP status and `data.status`.
+
+Queries use the original route/account without failover. The key must remain active and permitted to use the model. Another key, even in the same project, cannot retrieve the task; arbitrary vendor IDs are not accepted. Route/provider changes may make existing tasks unavailable. The upstream runs the background work; TokenHub adds no worker, cancellation, or completion webhook service. Provider callbacks configured outside TokenHub use provider identifiers and semantics.
+
+Bindings expire **30 days after submission**, independently of the upstream asset URL's lifetime. Expired, unknown, or inaccessible tasks return `404 media_task_not_found`; rotating a project key does not transfer its tasks to the replacement key. Replacing the original provider credential, URL, headers, or other account settings prevents polling with `503 media_task_route_unavailable`, even if the replacement account can serve the same model. If saving a binding fails, submission returns `503 media_task_binding_unavailable`; the upstream may already have accepted the generation, so inspect logs before retrying.
+
+### Continue or regenerate a video
+
+For video models that support a previous-task reference, pass the **TokenHub task ID returned by the source submission** in the relevant top-level field:
+
+| Field | Upstream operation example |
+| --- | --- |
+| `draft_task_id` | Seedance 2.5 draft to final video |
+| `draft_from_task_id` | FLUX.3 draft to final video |
+| `extend_from_task_id` | Gemini Omni or PixVerse video extension |
+| `source_task_id` | MiniMax H3 regeneration using a different target model |
+
+These fields are recognized only on `POST /v1/videos/generations`. For example, `{"model":"followup-video","source_task_id":"task_example"}` uses an administrator-published alias for a compatible regeneration model. Model-specific completion, age, resolution, and parameter restrictions still apply upstream; not every model supports every field. Prompt text, asset URLs, and nested extension identifiers are not interpreted as task references.
+
+Use the same project API key, retain permission to both the source and target models, and reference an unexpired binding within its 30-day lifetime. Malformed, unknown, expired, foreign-key, or raw vendor task IDs return `404 media_task_not_found` before generation. TokenHub resolves authorized handles to provider IDs and uses the original provider account/resource. The target alias, route, and upstream model may differ when that account supports the follow-up operation. TokenHub never switches to another account. A changed account fingerprint, including changed credentials or settings, returns `503 media_task_route_unavailable`; ordinary routing, policy, and capacity errors still apply when the original account is unavailable.
+
+References to conflicting accounts return `400 invalid_media_task_reference`. The upstream decides whether a combination of otherwise valid references is supported. Each accepted follow-up creates a new task and may incur a new upstream charge. Request hooks retain the public handles; provider-call hooks receive the resolved provider IDs.
+
+Do not interchange these asynchronous mechanisms:
+
+| Mechanism | ID and query |
+| --- | --- |
+| Bound image/video task | Returned `task_id` or `data.id`; `GET /v1/tasks/{task_id}` |
+| Managed TokenHub image job | Managed job contract in the [image guide](user-guide.md#codex-subscription-image-generation) |
+| Responses with `background:true` | Local Responses job; completion means the upstream API call finished, not that vendor rendering finished |
+
+Completed background media Responses expose a valid vendor root ID in `x-tokenhub-upstream-response-id`; pass it to the provider's auxiliary query model. It is not a `/v1/tasks` ID.
+
+## Errors, limits, and billing
+
+Gateway errors normally use this envelope; native Anthropic/Gemini use protocol-specific errors:
+
+```json
+{"error":{"message":"Model is not allowed for this API key","type":"model_not_allowed","code":"model_not_allowed"},"request_id":"REQUEST_ID"}
+```
+
+| HTTP status | Typical cause | Next step |
+| --- | --- | --- |
+| `400` | Invalid JSON, multipart controls, or parameters | Correct the request for the selected model |
+| `401` / `403` | Invalid, disabled, expired key or model access denied | Check project key and model grants |
+| `404` | Unknown or inaccessible task/model | Check ID and submitting key |
+| `413` | Request exceeds size limit | Reduce upload or adjust administrator limit |
+| `429` | Rate, concurrency, quota, or budget limit | Inspect error code and retry headers |
+| `501` | Route cannot serve the protocol | Configure a supported provider/route |
+| `502` / `503` | Invalid upstream output, unavailable route, or provider failure | Inspect Request Logs with the request ID |
+
+Direct media requests use `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` (32 MiB default); multipart allows at most 128 parts and 1 MiB per text field. Direct responses are buffered up to 128 MiB. Managed image limits remain separate; upstream file/format limits may be lower. Send multipart `model` and `stream` only once; JSON `stream` must be boolean.
+
+A submission can bind at most 128 returned task IDs. Invalid task IDs or oversized task batches fail with `502 invalid_media_task`; this is not evidence that the upstream canceled its work.
+
+Authentication, allowlists, quotas, rate limits, text policies, scoped hooks, guarded outbound transport, and logging apply. File bytes stay opaque to text policies. Client credentials and cookies are not forwarded; configured provider credentials are used. Ambiguous generation failures do not automatically resubmit on another route. Avoid blind client retries after timeouts: the upstream may already have accepted a billable generation.
+
+Token accounting uses reported usage; binary audio, subtitles, and providers without usage do not acquire invented token charges. Polling is not counted again as generation-token usage. Duration-metered transcription uses a separate `metadata.audio_price_usd_per_second` rate on both the public model and provider inventory model; fractional seconds are retained, and missing rates remain unknown rather than falling back to token prices. Per-image, character, and vendor-credit charges are not automatically converted into token prices; reconcile unsupported units with the upstream bill. See [media protocol operations](media-api-operations.md) for duration billing, token-detail quotas, hooks, and stream validation.
+
+## Integration recipes
+
+| Goal | Sequence |
+| --- | --- |
+| Chat assistant | List models → send conversation → preserve tool/reasoning continuity |
+| Image generation | Submit Images → use synchronous result or poll every returned task ID |
+| Narrated video | Generate speech → host audio for the provider → submit a model supporting audio references → poll → save assets |
+| Meeting notes | Transcribe uploaded recording → send returned text to Chat/Responses |
+| Seedance through Responses | Publish generation/query models on one account → submit Responses → query with vendor ID |
+
+Regression tests use synthetic local providers to verify protocol behavior, access isolation, uploads, hooks, and accounting. They do not verify paid generation or all vendor models with a live account. Check the selected provider's current model documentation for supported parameters and availability.

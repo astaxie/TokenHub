@@ -135,6 +135,7 @@ type Store interface {
 	DeleteAPIKey(id string) error
 	ValidateAPIKey(rawSecret string, clientIP string) (Project, APIKey, error)
 	AddProvider(provider Provider) Provider
+	CreateProvider(provider Provider) (Provider, error)
 	GetProvider(id string) (Provider, bool)
 	ListProviders() []Provider
 	AddProviderModel(model ProviderModel) ProviderModel
@@ -217,6 +218,8 @@ type Store interface {
 	GetImageAsset(id string) (ImageAsset, bool)
 	ListUsageRecords() []UsageRecord
 	QueryUsageSummary(ctx context.Context, query UsageSummaryQuery) (UsageSummary, error)
+	StreamUsageGroups(ctx context.Context, scope UsageSummaryScope, dimensions []string, visit func(string, UsageGroup)) error
+	QueryUsageTimeseries(ctx context.Context, scope UsageSummaryScope) ([]UsageDay, error)
 	StreamUsageReportRecords(ctx context.Context, query UsageSummaryQuery, usage func(UsageRecord), request func(UsageReportRequest)) error
 	QueryAPIKeyUsage(ctx context.Context, query APIKeyUsageQuery) (APIKeyUsage, error)
 	CreateAnalyticsCredential(credential AnalyticsCredential, rawSecret string) (AnalyticsCredential, string, error)
@@ -300,6 +303,7 @@ var _ Store = (*GormStore)(nil)
 type GormStore struct {
 	db                  *gorm.DB
 	analyticsDB         *gorm.DB
+	readDB              *gorm.DB
 	mu                  *sync.Mutex
 	leaseHeartbeats     *sync.Map
 	lastUsed            *lastUsedThrottle

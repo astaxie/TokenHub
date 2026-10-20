@@ -17,18 +17,21 @@ import (
 const statementRowLimit = 10000
 
 type statementQuery struct {
-	Side       string   `json:"side"`
-	From       string   `json:"from"`
-	To         string   `json:"to"`
-	Timezone   string   `json:"timezone"`
-	Customer   string   `json:"customer"`
-	ProjectIDs []string `json:"project_ids"`
-	ProviderID string   `json:"provider_id"`
-	ResourceID string   `json:"resource_id"`
-	Model      string   `json:"model"`
+	DisplayCurrency     string   `json:"display_currency,omitempty"`
+	DisplayExchangeRate string   `json:"display_exchange_rate,omitempty"`
+	Side                string   `json:"side"`
+	From                string   `json:"from"`
+	To                  string   `json:"to"`
+	Timezone            string   `json:"timezone"`
+	Customer            string   `json:"customer"`
+	ProjectIDs          []string `json:"project_ids"`
+	ProviderID          string   `json:"provider_id"`
+	ResourceID          string   `json:"resource_id"`
+	Model               string   `json:"model"`
 }
 
 type statementRow struct {
+	DisplayAmount     **string               `json:"display_amount,omitempty"`
 	ExternalID        string                 `json:"external_id,omitempty"`
 	ExternalRequestID string                 `json:"external_request_id,omitempty"`
 	UsageQuantity     int64                  `json:"usage_quantity,omitempty"`
@@ -56,19 +59,25 @@ type statementRow struct {
 }
 
 type statementResult struct {
-	Query              statementQuery    `json:"query"`
-	GeneratedAt        time.Time         `json:"generated_at"`
-	From               time.Time         `json:"from"`
-	To                 time.Time         `json:"to"`
-	TimeBasis          string            `json:"time_basis"`
-	Rows               []statementRow    `json:"rows"`
-	Totals             map[string]string `json:"totals"`
-	UnknownCount       int               `json:"unknown_count"`
-	IncompleteCount    int               `json:"incomplete_count"`
-	EstimatedMarginUSD *string           `json:"estimated_margin_usd"`
+	Conversion             *statementCurrencyConversion `json:"conversion,omitempty"`
+	DisplayTotals          map[string]string            `json:"display_totals,omitempty"`
+	DisplayEstimatedMargin **string                     `json:"display_estimated_margin,omitempty"`
+	Query                  statementQuery               `json:"query"`
+	GeneratedAt            time.Time                    `json:"generated_at"`
+	From                   time.Time                    `json:"from"`
+	To                     time.Time                    `json:"to"`
+	TimeBasis              string                       `json:"time_basis"`
+	Rows                   []statementRow               `json:"rows"`
+	Totals                 map[string]string            `json:"totals"`
+	UnknownCount           int                          `json:"unknown_count"`
+	IncompleteCount        int                          `json:"incomplete_count"`
+	EstimatedMarginUSD     *string                      `json:"estimated_margin_usd"`
 }
 
 func (q *statementQuery) window() (time.Time, time.Time, error) {
+	if err := q.validateDisplayCurrency(); err != nil {
+		return time.Time{}, time.Time{}, err
+	}
 	bad := func() (time.Time, time.Time, error) {
 		return time.Time{}, time.Time{}, NewHTTPError(400, "invalid_statement_query", "Select a valid side, time zone, date range (up to 93 days), and customer projects")
 	}
@@ -171,7 +180,10 @@ func (s *GormStore) BillingStatement(ctx context.Context, q statementQuery) (sta
 				return err
 			}
 		}
-		return summarizeStatement(&out)
+		if err := summarizeStatement(&out); err != nil {
+			return err
+		}
+		return convertStatementCurrency(&out)
 	}, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	return out, err
 }

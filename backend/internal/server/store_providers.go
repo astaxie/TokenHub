@@ -16,6 +16,16 @@ import (
 )
 
 func (s *GormStore) AddProvider(provider Provider) Provider {
+	provider, _ = s.saveProvider(provider, false)
+	return provider
+}
+
+// CreateProvider never replaces an existing provider, even across instances.
+func (s *GormStore) CreateProvider(provider Provider) (Provider, error) {
+	return s.saveProvider(provider, true)
+}
+
+func (s *GormStore) saveProvider(provider Provider, createOnly bool) (Provider, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -39,15 +49,25 @@ func (s *GormStore) AddProvider(provider Provider) Provider {
 		provider.Headers = headers
 		provider.SensitiveHeaders = sensitive
 	} else {
+		if createOnly {
+			return Provider{}, err
+		}
 		log.Printf("[tokenhub] refusing invalid headers for trusted provider create id=%s: %v", provider.ID, err)
 		provider.Headers = nil
 		provider.SensitiveHeaders = nil
 	}
 	provider.APIKey = s.encryptSecret(provider.APIKey)
-	_ = s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&provider).Error
+	conflict := clause.OnConflict{UpdateAll: true}
+	if createOnly {
+		conflict = clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoNothing: true}
+	}
+	result := s.db.Clauses(conflict).Create(&provider)
+	if createOnly && result.Error == nil && result.RowsAffected == 0 {
+		return Provider{}, NewHTTPError(http.StatusConflict, "provider_exists", "Provider ID already exists; edit the existing provider or use a different ID")
+	}
 	provider.APIKey = ""
 	provider.Headers = maskedProviderHeaders(s.revealProviderHeaders(provider.Headers, provider.SensitiveHeaders), provider.SensitiveHeaders)
-	return provider
+	return provider, result.Error
 }
 
 func (s *GormStore) ListProviders() []Provider {

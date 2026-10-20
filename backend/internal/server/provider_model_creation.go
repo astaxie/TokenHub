@@ -10,6 +10,11 @@ func (s *Server) providerForCreate(ctx context.Context, req ProviderCreateReques
 	if err := validateProviderRouteCreation(req); err != nil {
 		return Provider{}, ProviderCatalogEntry{}, "", err
 	}
+	// Catalog entries are templates, not provider identities. A second create
+	// must not replace the first provider's credentials or configuration.
+	if strings.TrimSpace(req.ID) == "" {
+		req.ID = NewID("prv")
+	}
 	provider, catalog, source, err := s.providerFromCreateRequest(ctx, req)
 	if err == nil {
 		if effectiveSystemPromptTransformPolicy(provider.Options) == "" {

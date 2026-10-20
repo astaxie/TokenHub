@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -19,6 +20,7 @@ func newMediaGatewayFixture(t *testing.T, upstream http.HandlerFunc, modality st
 	remote := httptest.NewServer(upstream)
 	t.Cleanup(remote.Close)
 	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
 	project := store.CreateProject(Project{Name: "Media fixture", Status: StatusActive})
 	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Media key", Allowed: []string{"public-media"}, Status: StatusActive}, "thk_media_fixture")
 	if err != nil {
@@ -30,6 +32,31 @@ func newMediaGatewayFixture(t *testing.T, upstream http.HandlerFunc, modality st
 	server := NewWithConfig(store, Config{AdminToken: "media-admin", SecretKey: "media-secret", ImageStorageDir: t.TempDir()})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 	return server, store, secret
+}
+
+func TestMediaGatewayFixtureClosesDatabasePools(t *testing.T) {
+	var store *GormStore
+	t.Run("fixture", func(t *testing.T) {
+		_, store, _ = newMediaGatewayFixture(t, func(http.ResponseWriter, *http.Request) {}, "video")
+	})
+	if store == nil {
+		t.Fatal("fixture did not create a store")
+	}
+	// Release resources even when the fixture lifecycle regression fails.
+	t.Cleanup(func() { _ = store.Close() })
+	primary, err := store.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	analytics, err := store.analyticsDB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, pool := range map[string]*sql.DB{"primary": primary, "analytics": analytics} {
+		if err := pool.PingContext(context.Background()); err == nil {
+			t.Errorf("%s database pool remains open after fixture cleanup", name)
+		}
+	}
 }
 
 func TestMediaSpeechPreservesBinaryAndProviderCredentials(t *testing.T) {
@@ -111,7 +138,7 @@ func TestMediaMultipartRetainsFilesRepeatedFieldsAndTextResponses(t *testing.T) 
 				}
 				defer file.Close()
 				data, _ := io.ReadAll(file)
-				if header.Filename != "sample.wav" || !bytes.Equal(data, []byte{0, 1, 2, 255}) {
+				if header.Filename != "sample.wav" || !bytes.Equal(data, transcriptionWAVFixture("fixture audio")) {
 					t.Errorf("file changed: %s %v", header.Filename, data)
 				}
 				w.Header().Set("Content-Type", "text/vtt")
@@ -128,7 +155,7 @@ func TestMediaMultipartRetainsFilesRepeatedFieldsAndTextResponses(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := file.Write([]byte{0, 1, 2, 255}); err != nil {
+			if _, err := file.Write(transcriptionWAVFixture("fixture audio")); err != nil {
 				t.Fatal(err)
 			}
 			if err := writer.Close(); err != nil {

@@ -4,6 +4,10 @@ import "strings"
 
 func gatewayRequestProtocol(path string) string {
 	switch {
+	case strings.HasPrefix(path, "/v1/tasks/"):
+		return "tasks"
+	case path == "/v1/videos/generations":
+		return "videos/generations"
 	case strings.HasPrefix(path, "/v1/audio/"):
 		return strings.TrimPrefix(path, "/v1/")
 	case path == "/v1/systemone":

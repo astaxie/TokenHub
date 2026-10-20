@@ -95,6 +95,7 @@ func (s *Server) emitGatewayCompletionTraceExports(completion GatewayCallComplet
 // convenient: Langfuse v4 creates a duplicate observation for a re-ingested span ID,
 // so "exactly once per call" is a correctness requirement and not a tidiness one.
 func (s *Server) finishCall(completion GatewayCallCompletion) {
+	completion = sanitizeCompletionAudioUsage(completion)
 	if completion.Kind == "" {
 		completion.Kind = CompletionKindRouted
 	}
@@ -245,5 +246,5 @@ func (s *Server) emitGatewayTrace(completion GatewayCallCompletion) {
 	if s.traceEmitter == nil {
 		return
 	}
-	s.traceEmitter.EmitGatewayCall(completion)
+	s.traceEmitter.EmitGatewayCall(sanitizeCompletionAudioUsage(completion))
 }

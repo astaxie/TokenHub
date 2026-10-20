@@ -47,20 +47,11 @@ func (s *GormStore) QueryUsageSummary(ctx context.Context, query UsageSummaryQue
 		TotalTokens       int64
 		EstimatedCostUSD  float64
 	}
-	usageQuery, err := applyUsageSummaryScope(s.db.WithContext(ctx).Model(&UsageRecord{}), s.dbDriver, query.UsageRecords)
+	usageQuery, err := applyUsageSummaryScope(s.analyticsDB.WithContext(ctx).Model(&UsageRecord{}), s.dbDriver, query.UsageRecords)
 	if err != nil {
 		return UsageSummary{}, err
 	}
-	if err := usageQuery.Select(
-		"COUNT(*) AS usage_record_count, " +
-			"COALESCE(SUM(input_tokens), 0) AS input_tokens, " +
-			"COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens, " +
-			"COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens, " +
-			"COALESCE(SUM(output_tokens), 0) AS output_tokens, " +
-			"COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens, " +
-			"COALESCE(SUM(total_tokens), 0) AS total_tokens, " +
-			"COALESCE(SUM(cost_usd), 0) AS estimated_cost_usd",
-	).Scan(&usage).Error; err != nil {
+	if err := usageQuery.Select(usageGroupMetrics).Scan(&usage).Error; err != nil {
 		return UsageSummary{}, err
 	}
 
@@ -68,7 +59,7 @@ func (s *GormStore) QueryUsageSummary(ctx context.Context, query UsageSummaryQue
 		RequestCount int64
 		Errors       int64
 	}
-	requestQuery, err := applyUsageSummaryScope(s.db.WithContext(ctx).Model(&RequestLog{}), s.dbDriver, query.RequestLogs)
+	requestQuery, err := applyUsageSummaryScope(s.analyticsDB.WithContext(ctx).Model(&RequestLog{}), s.dbDriver, query.RequestLogs)
 	if err != nil {
 		return UsageSummary{}, err
 	}

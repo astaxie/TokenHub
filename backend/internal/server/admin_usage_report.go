@@ -21,6 +21,9 @@ func (s *Server) handleAdminUsageReport(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) usageReportForUser(ctx context.Context, user AdminUser, selectedRange string, now time.Time) (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(ctx, maximumUsageQueryDuration)
+	defer cancel()
+	s = s.usageQueryServer(ctx)
 	selectedRange = strings.TrimSpace(selectedRange)
 	if selectedRange == "" {
 		selectedRange = "today"

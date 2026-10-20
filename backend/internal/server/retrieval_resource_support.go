@@ -40,6 +40,9 @@ func (s *Server) providerInventoryRetrievalSupport(provider Provider, model Prov
 	if !retrievalTextInputSupported(model) {
 		return false
 	}
+	if model.Modality == "audio" {
+		return s.providerAudioSupport(provider, model.Metadata["endpoints"])
+	}
 	if model.Modality != "embedding" && canonicalProviderModality(model.Modality) != "rerank" {
 		return s.providerRetrievalSupport(provider, model.Modality)
 	}
@@ -56,8 +59,15 @@ func (s *Server) providerInventoryRetrievalSupport(provider Provider, model Prov
 }
 
 func (s *Server) validateRetrievalProviderPrice(model Model, route ModelRoute, provider Provider) error {
-	if !s.providerRetrievalSupport(provider, model.Modality) {
+	if !s.providerRetrievalSupport(provider, model.Modality) || model.Modality == "audio" && !s.providerAudioSupport(provider, model.Metadata["endpoints"]) {
 		return NewHTTPError(400, "model_operation_unsupported", "Provider cannot execute this model operation; retain it in the catalog without publishing a route")
+	}
+	if model.Modality == "audio" {
+		endpoints, compatible := s.audioRouteModelEndpoints(provider.ID, route.ProviderModel)
+		if !compatible || !s.providerAudioSupport(provider, model.Metadata["endpoints"], endpoints) {
+			return NewHTTPError(400, "model_operation_mismatch", "Upstream and public model operations differ")
+		}
+		return nil
 	}
 	if model.Modality != "embedding" && model.Modality != "rerank" {
 		return nil

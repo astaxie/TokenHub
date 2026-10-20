@@ -83,6 +83,9 @@ func (s *GormStore) ListModels() []Model {
 }
 
 func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
+	if err := validateAudioPriceMetadata(patch.Metadata); err != nil {
+		return Model{}, err
+	}
 	if err := validateRetrievalPriceMetadata(patch.Metadata); err != nil {
 		return Model{}, err
 	}
@@ -640,8 +643,8 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 		if err != nil {
 			return err
 		}
-		addUsage(&dayCounter.QuotaCounter, usage)
-		addUsage(&monthCounter.QuotaCounter, usage)
+		addUsage(&dayCounter.QuotaCounter, apiKeyPeriodUsage(call, usage))
+		addUsage(&monthCounter.QuotaCounter, apiKeyPeriodUsage(call, usage))
 		if err := tx.Save(&dayCounter).Error; err != nil {
 			return err
 		}
@@ -688,7 +691,7 @@ func (s *GormStore) finishCallTransaction(tx *gorm.DB, call CallContext, route R
 			}
 		}
 	}
-	if usage.TotalTokens > 0 || usage.CostUSD > 0 || usage.ProviderCostUSD > 0 || usage.RetrievalEvidence != nil {
+	if usage.TotalTokens > 0 || usage.CostUSD > 0 || usage.ProviderCostUSD > 0 || usage.RetrievalEvidence != nil || audioDurationEvidence(usage) != nil || usage.DocumentCount > 0 || hasTranscriptionTokenUsage(call, usage) {
 		if err := tx.Create(newUsageRecord(call, route, usage, now)).Error; err != nil {
 			return err
 		}
