@@ -158,21 +158,33 @@ func openAnalyticsDatabase(driver string, dsn string, config Config, primary *go
 
 func sqliteSupportsWAL(dsn string) bool {
 	path, options := sqliteDatabaseLocation(dsn)
-	return path != "" && path != ":memory:" && options.Get("mode") != "memory"
+	return path != "" && path != ":memory:" && options.Get("mode") != "memory" && options.Get("vfs") != "memdb"
 }
 
 func sqliteDatabaseIsConnectionLocal(dsn string) bool {
 	path, options := sqliteDatabaseLocation(dsn)
-	return path == "" || ((path == ":memory:" || options.Get("mode") == "memory") && options.Get("cache") != "shared")
+	if path == "" || path == ":memory:" || options.Get("mode") == "memory" {
+		return path == "" || options.Get("cache") != "shared"
+	}
+	// memdb shares named stores with a leading slash or backslash, or through
+	// SQLite's shared cache. Other names belong to the opening connection.
+	if options.Get("vfs") == "memdb" {
+		sharedName := len(path) > 1 && (path[0] == '/' || path[0] == '\\')
+		return !sharedName && options.Get("cache") != "shared"
+	}
+	return false
 }
 
 // Match SQLite URI decoding without changing case. go-sqlite3 removes query
 // options from non-file DSNs before opening SQLite, so mode/cache have no
-// effect there; a bare :memory: database is always connection-local.
+// effect there; vfs is passed separately and still applies to bare DSNs.
 func sqliteDatabaseLocation(dsn string) (string, url.Values) {
-	path, _, _ := strings.Cut(dsn, "?")
+	path, rawQuery, _ := strings.Cut(dsn, "?")
 	if !strings.HasPrefix(path, "file:") {
-		return path, nil
+		options, _ := url.ParseQuery(rawQuery)
+		options.Del("mode")
+		options.Del("cache")
+		return path, options
 	}
 	parsed, err := url.Parse(dsn)
 	if err != nil {

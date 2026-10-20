@@ -26,6 +26,18 @@ func TestSQLiteDatabaseStorageClassification(t *testing.T) {
 		{"absolute file URI", "file:///tmp/database.db", true, false},
 		{"absolute memory filename is a file", "file:///tmp/:memory:", true, false},
 		{"empty URI is temporary and private", "file:?cache=shared", false, true},
+		{"private memdb VFS", "file:private?vfs=memdb", false, true},
+		{"escaped memdb VFS", "file:private?%76fs=%6demdb", false, true},
+		{"bare private memdb VFS", "private?vfs=memdb&cache=shared", false, true},
+		{"shared memdb VFS", "file:/shared?vfs=memdb", false, false},
+		{"shared memdb private cache", "file:/shared?vfs=memdb&cache=private", false, false},
+		{"escaped shared memdb VFS", "file:%2Fshared?vfs=memdb", false, false},
+		{"backslash shared memdb VFS", "file:%5Cshared?vfs=memdb", false, false},
+		{"bare shared memdb VFS", "/shared?vfs=memdb", false, false},
+		{"relative memdb shared cache", "file:shared?vfs=memdb&cache=shared", false, false},
+		{"memory mode overrides memdb sharing", "file:/private?vfs=memdb&mode=memory", false, true},
+		{"shared memory mode with memdb", "file:/shared?vfs=memdb&mode=memory&cache=shared", false, false},
+		{"memdb slash without name", "file:/?vfs=memdb", false, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

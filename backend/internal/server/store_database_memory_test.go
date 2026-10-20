@@ -6,7 +6,18 @@ import (
 )
 
 func TestPrivateSQLiteMemoryStoreUsageQueries(t *testing.T) {
-	for _, dsn := range []string{"sqlite::memory:", "sqlite::memory:?cache=shared", "file::memory:", "file:%3Amemory%3A", "file:private_usage?mode=memory&cache=private", "file:named_usage?mode=memory"} {
+	for _, dsn := range []string{
+		"sqlite::memory:",
+		"sqlite::memory:?cache=shared",
+		"file::memory:",
+		"file:%3Amemory%3A",
+		"file:private_usage?mode=memory&cache=private",
+		"file:named_usage?mode=memory",
+		"file:private_usage?vfs=memdb",
+		"file:private_encoded_usage?%76fs=%6demdb",
+		"private_bare_usage?vfs=memdb&cache=shared",
+		"file:/private_mode_usage?vfs=memdb&mode=memory",
+	} {
 		t.Run(dsn, func(t *testing.T) {
 			store, err := NewSQLiteStoreWithConfig(dsn, Config{})
 			if err != nil {

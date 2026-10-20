@@ -491,7 +491,7 @@ SQLite 是项目、Key、Provider、路由、用户、请求日志、用量、�
 
 ### 排查 SQLite 延迟与内存压力
 
-WAL 模式的文件型 SQLite 使用一个主连接处理写入、两个只读连接处理设置、认证/会话校验和路由读取，以及一个独立只读分析连接。用量聚合不会占用关键读取连接池，读取可与 WAL 写入并行。这些是有界连接池，不保证响应必定低于一秒：登录会话创建、配额/记账及审计持久化仍需持久写入，所有连接池也共享同一磁盘。私有内存型 SQLite 的分析查询复用唯一的主连接；命名共享内存数据库保留独立的分析连接池。PostgreSQL 保持原有连接池配置行为。
+WAL 模式的文件型 SQLite 使用一个主连接处理写入、两个只读连接处理设置、认证/会话校验和路由读取，以及一个独立只读分析连接。用量聚合不会占用关键读取连接池，读取可与 WAL 写入并行。这些是有界连接池，不保证响应必定低于一秒：登录会话创建、配额/记账及审计持久化仍需持久写入，所有连接池也共享同一磁盘。私有内存型 SQLite 的分析查询复用唯一的主连接；命名共享内存数据库保留独立的分析连接池。使用 `vfs=memdb` 时，`file:local?vfs=memdb` 为私有数据库，`file:/shared?vfs=memdb` 为命名共享数据库；两者均不使用 WAL。PostgreSQL 保持原有连接池配置行为。
 
 管理员数据库状态响应提供 `primary`、`read`、`analytics` 的 `pools` 统计，包括 `max_open_connections`、`open_connections`、`in_use`、`idle`、`wait_count` 和累计 `wait_duration_ms`。`sqlite_files` 通过文件元数据报告 `database_bytes`、`wal_bytes`、`shm_bytes`，不会触发检查点。database ping 失败日志通过 `pool=<name>` 标识对应连接池。
 

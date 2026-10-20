@@ -8,7 +8,12 @@ import (
 )
 
 func TestPrivateSQLiteMemoryUsageCancellationPreservesDatabase(t *testing.T) {
-	for _, dsn := range []string{"sqlite::memory:", "file::memory:", "file:private_usage_cancel?mode=memory&cache=private"} {
+	for _, dsn := range []string{
+		"sqlite::memory:",
+		"file::memory:",
+		"file:private_usage_cancel?mode=memory&cache=private",
+		"file:private_usage_cancel?vfs=memdb",
+	} {
 		t.Run(dsn, func(t *testing.T) {
 			store, err := NewSQLiteStoreWithConfig(dsn, Config{})
 			if err != nil {
@@ -61,7 +66,7 @@ func TestPrivateSQLiteMemoryUsageCancellationPreservesDatabase(t *testing.T) {
 }
 
 func TestPrivateSQLiteMemoryUsagePoolWaitHonorsDeadline(t *testing.T) {
-	for _, dsn := range []string{"sqlite::memory:", "file::memory:", "file:private_usage_wait?mode=memory&cache=private"} {
+	for _, dsn := range []string{"sqlite::memory:", "file::memory:", "file:private_usage_wait?mode=memory&cache=private", "file:private_usage_wait?vfs=memdb"} {
 		t.Run(dsn, func(t *testing.T) {
 			store, err := NewSQLiteStoreWithConfig(dsn, Config{})
 			if err != nil {
