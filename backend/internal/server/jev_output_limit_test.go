@@ -13,11 +13,13 @@ func TestJevOutputLimitExcludesIncompatibleDefault(t *testing.T) {
 			server, routed, _, _ := jevFixture(t)
 			store := server.store.(*GormStore)
 			for _, model := range store.ListProviderModels() {
-				limit := "131072"
+				limit := int64(131072)
 				if model.ProviderID == "provider_0" {
-					limit = "65536"
+					limit = 65536
 				}
-				if _, err := store.UpdateProviderModel(model.ID, ProviderModel{ContextWindow: 1048576, SupportedParameters: []string{budgetField}, Metadata: map[string]string{"max_output_tokens": limit}}); err != nil {
+				if _, err := server.importProviderModels(ProviderModelImportRequest{ProviderID: model.ProviderID, Models: []ProviderCatalogModel{{
+					ID: model.UpstreamModel, Type: "chat", ContextWindow: 1048576, MaxOutputTokens: limit, SupportedParameters: []string{budgetField},
+				}}}); err != nil {
 					t.Fatal(err)
 				}
 			}
