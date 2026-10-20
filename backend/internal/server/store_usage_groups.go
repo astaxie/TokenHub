@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
@@ -50,11 +49,7 @@ func (s *GormStore) StreamUsageGroups(ctx context.Context, scope UsageSummarySco
 		}
 		return ctx.Err()
 	}
-	db := s.analyticsDB.WithContext(ctx)
-	if s.dbDriver == "postgres" {
-		return db.Transaction(read, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
-	}
-	return db.Transaction(read)
+	return s.withAnalyticsReadSnapshot(ctx, read)
 }
 
 func (s *GormStore) usageGroupQuery(ctx context.Context, scope UsageSummaryScope, dimension string) (*gorm.DB, error) {

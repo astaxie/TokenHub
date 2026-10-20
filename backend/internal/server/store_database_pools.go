@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"net/url"
 	"strings"
@@ -24,8 +26,15 @@ type namedDatabasePool struct {
 
 func (s *GormStore) databasePools() []namedDatabasePool {
 	pools := make([]namedDatabasePool, 0, 3)
+	seen := make(map[*sql.DB]bool)
 	for _, pool := range []namedDatabasePool{{"primary", s.db}, {"read", s.readDB}, {"analytics", s.analyticsDB}} {
 		if pool.db != nil {
+			if db, err := pool.db.DB(); err == nil {
+				if seen[db] {
+					continue
+				}
+				seen[db] = true
+			}
 			pools = append(pools, pool)
 		}
 	}
@@ -37,6 +46,24 @@ func (s *GormStore) criticalReadDatabase() *gorm.DB {
 		return s.readDB
 	}
 	return s.db
+}
+
+func (s *GormStore) withAnalyticsReadSnapshot(ctx context.Context, read func(*gorm.DB) error) error {
+	db := s.analyticsDB.WithContext(ctx)
+	if s.dbDriver == "postgres" {
+		return db.Transaction(read, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	}
+	if s.analyticsDB.Statement.ConnPool == s.db.Statement.ConnPool {
+		// Private in-memory SQLite has only one connection. Holding it excludes
+		// every writer and keeps the snapshot stable without a transaction.
+		// A transaction tied to ctx would discard that sole connection on
+		// cancellation and destroy the database. Connection still honors ctx
+		// while waiting for the pool; queries retain their own request context.
+		return db.Connection(func(conn *gorm.DB) error {
+			return read(conn.Session(&gorm.Session{NewDB: true}))
+		})
+	}
+	return db.Transaction(read)
 }
 
 // Driver DSN options are applied whenever database/sql opens a connection,
@@ -98,8 +125,14 @@ func openSQLiteReadDatabase(dsn string, maxOpen int) (*gorm.DB, error) {
 	return db, nil
 }
 
-func openAnalyticsDatabase(driver string, dsn string, config Config) (*gorm.DB, error) {
+func openAnalyticsDatabase(driver string, dsn string, config Config, primary *gorm.DB) (*gorm.DB, error) {
 	if driver == "sqlite" {
+		// A private in-memory database belongs to its connection. Opening a
+		// separate pool creates an empty database, so analytics must share the
+		// existing primary pool without enabling query_only on its writer.
+		if sqliteDatabaseIsConnectionLocal(dsn) {
+			return primary, nil
+		}
 		return openSQLiteReadDatabase(dsn, 1)
 	}
 	if driver != "postgres" {
@@ -124,7 +157,33 @@ func openAnalyticsDatabase(driver string, dsn string, config Config) (*gorm.DB, 
 }
 
 func sqliteSupportsWAL(dsn string) bool {
-	path, rawQuery, _ := strings.Cut(strings.ToLower(strings.TrimSpace(dsn)), "?")
-	query, _ := url.ParseQuery(rawQuery)
-	return path != "" && path != ":memory:" && path != "file::memory:" && query.Get("mode") != "memory"
+	path, options := sqliteDatabaseLocation(dsn)
+	return path != "" && path != ":memory:" && options.Get("mode") != "memory"
+}
+
+func sqliteDatabaseIsConnectionLocal(dsn string) bool {
+	path, options := sqliteDatabaseLocation(dsn)
+	return path == "" || ((path == ":memory:" || options.Get("mode") == "memory") && options.Get("cache") != "shared")
+}
+
+// Match SQLite URI decoding without changing case. go-sqlite3 removes query
+// options from non-file DSNs before opening SQLite, so mode/cache have no
+// effect there; a bare :memory: database is always connection-local.
+func sqliteDatabaseLocation(dsn string) (string, url.Values) {
+	path, _, _ := strings.Cut(dsn, "?")
+	if !strings.HasPrefix(path, "file:") {
+		return path, nil
+	}
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return path, nil
+	}
+	path = parsed.Path
+	if parsed.Opaque != "" {
+		path, err = url.PathUnescape(parsed.Opaque)
+		if err != nil {
+			return "", nil
+		}
+	}
+	return path, parsed.Query()
 }

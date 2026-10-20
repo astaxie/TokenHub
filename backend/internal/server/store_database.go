@@ -323,13 +323,13 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 			}
 		}
 	}()
-	analyticsDB, err := openAnalyticsDatabase(driver, dsn, config)
+	analyticsDB, err := openAnalyticsDatabase(driver, dsn, config, db)
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() {
-		if !opened {
+		if !opened && analyticsDB != db {
 			if pool, err := analyticsDB.DB(); err == nil {
 				_ = pool.Close()
 			}
