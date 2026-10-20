@@ -34,4 +34,40 @@ describe("ModelCatalogNotices", () => {
     const { container } = render(<ModelCatalogNotices metadata={{ source: "custom" }} />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("shows a calendar-only date without inventing a vendor time", () => {
+    setActiveLanguage("en");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-19T11:59:59Z"));
+    render(<ModelCatalogNotices metadata={{ lifecycle_status: "deprecated", shutdown_date: "2026-11-18" }} />);
+    expect(screen.getByText(/Shutdown date: Nov 18, 2026/)).toBeVisible();
+    expect(screen.queryByText(/endpoint has retired/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Official shutdown:/)).not.toBeInTheDocument();
+  });
+
+  it("only marks date-only retirement after every timezone has passed the date", () => {
+    setActiveLanguage("en");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-19T12:00:00Z"));
+    render(<ModelCatalogNotices metadata={{ lifecycle_status: "deprecated", shutdown_date: "2026-11-18" }} />);
+    expect(screen.getByText("The official endpoint has retired; choose a replacement model.")).toBeVisible();
+  });
+
+  it("keeps a scheduled alias change distinct from a completed redirect", () => {
+    setActiveLanguage("en");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-16T00:00:00Z"));
+    render(<ModelCatalogNotices metadata={{ lifecycle_status: "redirected", redirect_date: "2026-10-19", replacement_model: "new-model" }} />);
+    expect(screen.getByText("A redirect is scheduled; verify the model actually serving requests.")).toBeVisible();
+    expect(screen.getByText(/Planned redirect date: Oct 19, 2026/)).toBeVisible();
+    expect(screen.queryByText("This is a redirected alias; the underlying model may have changed.")).not.toBeInTheDocument();
+  });
+
+  it("keeps regional Legacy information separate from global retirement", () => {
+    setActiveLanguage("en");
+    render(<ModelCatalogNotices metadata={{ regional_lifecycle_status: "legacy", regional_eol_date: "2027-03-30", lifecycle_regions: '["us-east-1","us-west-2"]' }} />);
+    expect(screen.getByText(/Legacy in selected regions: us-east-1, us-west-2/)).toBeVisible();
+    expect(screen.getByText(/Regional end-of-life date: Mar 30, 2027/)).toBeVisible();
+    expect(screen.queryByText(/endpoint has retired/)).not.toBeInTheDocument();
+  });
 });

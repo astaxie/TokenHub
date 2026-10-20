@@ -426,6 +426,118 @@
           "mode": "fixed"
         }
       }
+    },
+    {
+      "id": "kimi-k3",
+      "name": "Kimi K3",
+      "display_name": "Kimi K3",
+      "family": "kimi",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.kimi.com/docs/guide/kimi-k3-quickstart",
+        "verified_at": "2026-10-16",
+        "availability": "active",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "sampling_note": "Fixed temperature=1, top_p=.95,n=1,penalties=0; omit.",
+        "vision_note": "Public image URLs unsupported; use base64 or ms://file-id.",
+        "output_note": "max_completion_tokens defaults to 131072; documented maximum 1048576; source calls context 1M.",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "1048576",
+        "pricing_status": "unverified",
+        "access_region": "China",
+        "pricing_note": "China prices remain unverified; global USD prices do not apply.",
+        "access_requirement": "A paid top-up of at least CNY 10 is required; the new-user voucher cannot unlock K3."
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 1048576
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "kimi",
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "max_completion_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kimi-k2.7-code-highspeed",
+      "name": "Kimi K2.7 Code Highspeed",
+      "display_name": "Kimi K2.7 Code Highspeed",
+      "family": "kimi",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.kimi.com/docs/guide/kimi-k2-7-code-quickstart",
+        "verified_at": "2026-10-16",
+        "availability": "active",
+        "thinking_can_disable": "false",
+        "sampling_note": "K2.7 Code family fixes temperature=1, top_p=.95,n=1,penalties=0.",
+        "tool_choice_allowed": "auto,none",
+        "spec_source": "https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart",
+        "output_note": "32768 is documented default max_tokens, not verified hard output limit.",
+        "pricing_status": "unverified",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "endpoints": "chat/completions",
+        "access_region": "China",
+        "pricing_note": "China prices remain unverified; global USD prices do not apply."
+      },
+      "limit": {
+        "context": 256000
+      },
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "kimi",
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions"
     }
   ]
 }

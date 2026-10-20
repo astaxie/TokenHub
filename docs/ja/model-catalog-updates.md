@@ -2,9 +2,20 @@
 
 Language: [English](../model-catalog-updates.md) | [简体中文](../zh-CN/model-catalog-updates.md) | 日本語
 
-2026-10-10 のカタログ確認では、現在の上流モデルと、アクセス条件、提供終了、呼び出し互換性、料金の適用範囲を記録しました。カタログへの掲載は候補の発見を支援するものであり、呼び出し対応、アカウント権限、稼働状況、本番デプロイを保証しません。
+2026-10-16 までのカタログ確認では、上流モデルと、アクセス条件、提供終了、呼び出し互換性、料金の適用範囲を記録しました。カタログへの掲載は候補の発見を支援するものであり、呼び出し対応、アカウント権限、稼働状況、本番デプロイを保証しません。
 
-## 対象範囲
+## 2026-10-16 の更新
+
+ライフサイクルと条件付き料金の根拠、地域別・プラン別モデルを追加し、`gemini-4-argon` の基本的な Gemini ネイティブ契約を拡張します。中国国内の Kimi/GLM、Alibaba と Tencent のサブスクリプションカタログ、Voyage のテキスト埋め込み、専用操作の候補が対象です。今回の発見が新規リリースとは限らず、資料の更新日とモデルの公開日は区別します。
+
+- **ライフサイクルの日付**：MiniMax M2.5/M2.7 の従量 API は 2026 年 10 月 19 日に新規ユーザーへの提供を停止し、11 月 18 日に提供を終了します。同じ旧 ID のサブスクリプションは、10 月 19 日から `MiniMax-M3.1-Flash-Preview` にリダイレクトされ、引き続き受け付けられます。Perplexity Agent の終了は、告知で指定された Agent サービスだけに適用します。新しい GPT-4 スナップショットの告知も、正確な OpenAI 公式サービスだけが対象で、第三者のデプロイや似た名前の全エイリアスを終了扱いにしません。[MiniMax 告知](https://platform.minimax.io/docs/guides/models-intro)、[Perplexity 変更履歴](https://docs.perplexity.ai/docs/resources/changelog)、[OpenAI 非推奨情報](https://developers.openai.com/api/docs/deprecations)を参照してください。
+- **日付の精度**：公式情報が日付のみの場合は `shutdown_date` を保存し、`shutdown_at` や公式タイムゾーンを補いません。バックエンドと UI は、指定日の UTC 00:00 から 36 時間後という同じ保守的な境界を使います。その時点で、すべての民用タイムゾーンで当日が終了しています。これは新規ルートの確認と状態表示に用いる TokenHub の境界であり、公式の停止時刻でも、それまでの利用を保証する期限でもありません。日付の通知は公表された暦日を維持し、タイムゾーン未公表と表示します。将来の `redirect_date` は予定として表示し、エイリアスを無効化しません。
+- **地域別ライフサイクル**：Bedrock の Legacy/EOL は、対象地域と日付を通知用 metadata に記録します。基礎モデル、クロスリージョン inference profile、元の提供元の API に対する一律の提供終了規則ではありません。[AWS ライフサイクル表](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html)で実際のデプロイ地域とアカウント権限を確認してください。
+- **Gemini ネイティブ対応の範囲**：`gemini-4-argon` は共有の 1,048,576 Token コンテキストを使います。今回対応する既定の同期フローの最大出力は 65,536 Token で、思考強度は `low`、`medium`、`high` です。共有 1M ウィンドウに近い出力に必要なバックグラウンド長文デコードと継続フローは、今回未対応です。公表された上限を既定の同期出力能力として扱わないでください。[モデルカード](https://ai.google.dev/gemini-api/docs/models/gemini-4-argon)を参照してください。
+- **コストとプラン**：MiniMax M3 は入力長と Standard/Priority の料金段階を保持し、中国の CNY とグローバルの USD 見積を分けます。Alibaba/Tencent の Credits・ポイントと個人プランの利用制限も、該当サービスに保持します。OpenAI Ultrafast と Gemini の初期・将来価格は条件付き参考値です。今回、料金段階の自動選択、キャンペーン時計、通貨換算、これらの参考単価による自動計量は追加しません。不明、ゼロ、試用、サブスクリプションの参考値は無料の根拠になりません。新規ルートの公開前に実際のアカウントコストを確認してください。設定済みコストと過去のリクエストスナップショットは保持します。[MiniMax 料金](https://platform.minimax.io/docs/pricing/overview)、[Alibaba 個人プラン](https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview)、[Tencent プラン](https://cloud.tencent.com/document/product/1823/130659)、[Ultrafast](https://developers.openai.com/api/docs/guides/ultrafast-mode)が出典です。
+- **カタログ掲載のみの操作**：専用 Agent/Decisions API、リアルタイム音声、OCR/Parse、Contextualized・マルチモーダル埋め込みなど、`call_support=unsupported` の項目は発見可能な候補ですが、新しい有効ルートとして公開できません。通常の Chat やテキスト埋め込みへの対応は、これらの要求契約や固有の課金単位への対応を証明しません。中国 MiniMax のプレビューモデルも、設定済みエンドポイントとの互換性が未確認のため掲載のみです。実アカウントの権限、実際の上流推論の成功、請求内容、本番利用の準備完了を確認したものではありません。
+
+## 2026-10-10 の確認範囲
 
 標準モデルテンプレート、公式 Provider カタログ、生成される組み込み Provider プラグインカタログを更新します。OpenAI GPT-6 Sol/Luna と新しいメディアモデル、Claude 5.5 と Fable 5.1、Gemini 3.8 と Embedding 2、Qwen 3.8 とテキスト検索・画像・リアルタイムモデル、DeepSeek V4.1 Flash、Grok 4.7 と Imagine、MiMo V2.6、Doubao Seed 2.1、Mistral Large 4、Cohere Embed 5/Rerank 4、Voyage Rerank 3、および確認した Kimi、GLM、MiniMax、StepFun モデルが対象です。同じモデルが地域別やサブスクリプション別の Provider に載るため、Provider エントリー数と一意のテンプレート数は異なります。
 
@@ -16,11 +27,11 @@ Language: [English](../model-catalog-updates.md) | [简体中文](../zh-CN/model
 
 ## 管理画面での表示と動作
 
-Provider の選択、モデル作成、Provider のモデル在庫で、プレビュー、サブスクリプションや追加権限、終了日時、代替 ID、リダイレクト、未対応の操作、確認が必要なコストを表示します。日時は選択した UI 言語とローカルタイムゾーンで表示します。
+Provider の選択、モデル作成、Provider のモデル在庫で、プレビュー、サブスクリプションや追加権限、終了日時、代替 ID、リダイレクト、未対応の操作、確認が必要なコストを表示します。タイムスタンプは選択した UI 言語とローカルタイムゾーンで表示し、日付のみの通知はタイムゾーン変換せず公表された暦日を保持します。
 
 - `active` は上流の提供状態であり、個別アカウントの利用権限を保証しません。
 - `preview` は上流のプレビュー状態を保持します。`restricted` またはアクセス条件は、必要なプラン、承認、特別な権限を示します。
-- `deprecated` は移行計画が必要な状態です。有効な `shutdown_at` に達すると、新規ルートの公開を制限します。
+- `deprecated` は移行計画が必要な状態です。有効な `shutdown_at`、または `shutdown_date` の保守的な境界に達すると、新規ルートの公開を制限します。
 - `retired` は、その公式モデルへの新しい有効ルートの公開を拒否します。
 - `redirected` は、上流が旧名を受け付けて別モデルで処理する状態です。利用不能とは自動判定しません。
 - `call_support=unsupported` は、カタログに表示しつつ、新しい有効ルートの公開を拒否します。
@@ -32,6 +43,8 @@ Provider の選択、モデル作成、Provider のモデル在庫で、プレ�
 通常のカタログ取り込みも出典のカタログ ID とモデル ID を保持します。出典のない過去のカタログ在庫には、現在のカタログとの正確な一致から得られるライフサイクル規則だけを適用するため、独立ホスティングへ変更しても旧公式モデルの終了制限を引き継ぎません。正確な一致では、撤回された制限も含め、現在のライフサイクル・対応情報で以前の通知フィールドを置き換えます。この応答上の処理は保存済みの情報、設定済みコスト、既存ルートを変更しません。
 
 明示された `reasoning_effort_options` は過去の取り込み在庫も含めて Chat リクエストの受付判定に使用します。Jev は Chat と Responses の両方で要求された強度の値を確認し、互換性のない Claude 候補で、別の候補が処理できる要求を中断しません。明示された互換エイリアスは引き続き受け付け、強度の宣言がない在庫は従来の動作を保持します。DeepSeek は `top_p` を受け付けます。思考モードでは 0.95–1.0 で有効となり、0.95 未満は 0.95 として扱い、非思考モードでは 1.0 に固定します。この条件は metadata に保持し、有効なリクエストを拒否する理由にはしません。
+
+Jev は Chat と Responses の候補について、明示された正の `max_output_tokens` も確認します。総コンテキストが十分でも、単一応答の出力上限を超える候補は除外します。上限が未指定または無効な場合は従来の受付動作を保持します。
 
 ## 公開前に上流コストを確認する
 
@@ -57,8 +70,9 @@ Token コストの全項目フォームを保存すると、表示された入�
 | `catalog_reviewed_at` | 確認済みの印。後の公開カタログが古い場合でも、この正確なモデル項目を保持します。上流が変わったら再確認します。 |
 | `availability`, `access_requirement` | `active`、`preview`、`restricted` と、必要なプランや承認。従量 API の提供からサブスクリプション対応を推測しません。 |
 | `lifecycle_status`, `lifecycle_source` | `active`、`deprecated`、`retired`、`redirected`。該当 Provider の公式告知を根拠にします。 |
-| `shutdown_at`, `replacement_model` | オフセット付き RFC 3339 の終了チェック時刻と正確な代替 ID。日付しか公開されていない場合は `shutdown_time_note` に不確実性を残し、公式の時刻を捏造しません。 |
-| `redirect_at`, `replacement_note` | 上流のリダイレクト予定と条件。リダイレクト日を呼び出し失敗と同一視しません。 |
+| `shutdown_at`, `shutdown_date`, `replacement_model` | 公式に時刻が公表されている場合のみ、オフセット付き RFC 3339 を使用します。それ以外は `shutdown_date`（`YYYY-MM-DD`）と不明なタイムゾーンを保持し、バックエンド/UI は上記の 36 時間規則を使用します。正確な代替 ID を記録します。 |
+| `redirect_at`, `redirect_date`, `replacement_note` | 上流のリダイレクト予定と条件。タイムスタンプまたは日付のみの精度を保持します。将来の日付は予定であり、完了済みのリダイレクトや呼び出し失敗とは扱いません。 |
+| `new_user_restriction_date`, `regional_lifecycle_status`, `regional_legacy_date`, `regional_eol_date`, `lifecycle_regions` | 新規ユーザー制限と地域別 Legacy/EOL を全体の提供終了から分離します。地域別フィールドは通知用で、無条件の公開拒否には使いません。 |
 | `call_support`, `support_note`, `call_support_scope` | 掲載のみの操作には `unsupported` を使用し、不足する契約や `text-only` などの範囲を説明します。省略はアカウント・結合テスト済みを意味しません。 |
 | `pricing_status`, `pricing_source`, `pricing_note` | 使用可能な参考価格は `reference`、管理者の設定が必要なら `unverified`、明示確認後は `configured`。出典と条件を保持します。 |
 | `catalog_price_reference` | `true` は入力済み価格が参考値であることを示します。`pricing_status=unverified` と併用すると、入力・出力価格が正でも新しい有効ルートの公開前に明示的なコスト確認が必要です。`configured` として保存すると、この制限が解除されます。 |

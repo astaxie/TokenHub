@@ -45,8 +45,7 @@ func catalogModelRetired(metadata map[string]string, now time.Time) bool {
 	if metadata["lifecycle_status"] != "deprecated" {
 		return false
 	}
-	shutdown, err := time.Parse(time.RFC3339, metadata["shutdown_at"])
-	return err == nil && !now.Before(shutdown)
+	return catalogShutdownReached(metadata, now)
 }
 
 func catalogModelPublicationError(metadata map[string]string, now time.Time) error {
@@ -62,6 +61,8 @@ func catalogModelPublicationError(metadata map[string]string, now time.Time) err
 var catalogAdvisoryMetadataKeys = []string{
 	"availability", "lifecycle_status", "shutdown_at", "replacement_model",
 	"lifecycle_source", "verified_at", "call_support", "support_note",
+	"shutdown_date", "redirect_date", "redirect_at", "new_user_restriction_date",
+	"lifecycle_note", "regional_lifecycle_status", "regional_legacy_date", "regional_eol_date", "lifecycle_regions",
 }
 
 type catalogAdvisoryIndex map[string]map[string]map[string]string
@@ -96,7 +97,7 @@ func (index catalogAdvisoryIndex) apply(provider Provider, model ProviderModel) 
 	legacy := sourceCatalogID == "" && unscopedCatalogInventory(model)
 	if !matched && (foreign || legacy) {
 		model.Metadata = cloneStringMap(model.Metadata)
-		for _, key := range []string{"availability", "lifecycle_status", "shutdown_at", "replacement_model", "lifecycle_source"} {
+		for _, key := range []string{"availability", "lifecycle_status", "shutdown_at", "shutdown_date", "redirect_date", "redirect_at", "replacement_model", "lifecycle_source", "lifecycle_note", "new_user_restriction_date", "regional_lifecycle_status", "regional_legacy_date", "regional_eol_date", "lifecycle_regions"} {
 			delete(model.Metadata, key)
 		}
 	}

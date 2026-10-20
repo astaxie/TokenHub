@@ -5,6 +5,224 @@
   "display_name": "xai",
   "models": [
     {
+      "id": "grok-voice-transcribe-1.0",
+      "name": "Grok Voice Transcribe 1.0",
+      "display_name": "Grok Voice Transcribe 1.0",
+      "family": "grok-voice",
+      "category": "grok",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/model-capabilities/audio/speech-to-text",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "redirected",
+        "pricing_status": "unverified",
+        "billing_unit": "audio_hour",
+        "usd_per_rest_audio_hour": "0.10",
+        "usd_per_streaming_audio_hour": "0.20",
+        "pricing_source": "https://docs.x.ai/developers/pricing",
+        "max_input_file_size_label": "500MB",
+        "pricing_note": "Native audio-hour billing differs for REST and streaming; not text-token pricing.",
+        "redirect_date": "2026-10-02",
+        "replacement_model": "grok-voice-transcribe-2.0",
+        "lifecycle_source": "https://docs.x.ai/developers/release-notes",
+        "lifecycle_note": "The old slug reached EOL on October 2 and requests are routed to Transcribe 2.0 at the same price.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: requires native speech transcription REST/streaming handling and audio-hour metering.",
+        "endpoints": "stt"
+      },
+      "endpoints": "stt"
+    },
+    {
+      "id": "grok-voice-transcribe-2.0",
+      "name": "Grok Voice Transcribe 2.0",
+      "display_name": "Grok Voice Transcribe 2.0",
+      "family": "grok-voice",
+      "category": "grok",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/model-capabilities/audio/speech-to-text",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "billing_unit": "audio_hour",
+        "usd_per_rest_audio_hour": "0.10",
+        "usd_per_streaming_audio_hour": "0.20",
+        "pricing_source": "https://docs.x.ai/developers/pricing",
+        "max_input_file_size_label": "500MB",
+        "pricing_note": "Native audio-hour billing differs for REST and streaming; not text-token pricing.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: requires native speech transcription REST/streaming handling and audio-hour metering.",
+        "endpoints": "stt"
+      },
+      "release_date": "2026-09-17",
+      "endpoints": "stt"
+    },
+    {
+      "id": "grok-voice-2.0",
+      "name": "Grok Voice 2.0",
+      "display_name": "Grok Voice 2.0",
+      "family": "grok-voice",
+      "category": "grok",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/models/speech-to-speech",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "deprecated",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.x.ai/developers/models/speech-to-speech",
+        "billing_unit": "audio_minute,text_input_event",
+        "usd_per_audio_minute": "0.08",
+        "usd_per_text_input_event": "0.004",
+        "availability_region": "us-east-1",
+        "text_input_event_definition": "Each client conversation.item.create event; function_call_output is excluded; input_audio/audio use the audio meter; response.create is not a text input.",
+        "audio_billing_note": "Default server_vad bills session duration; push-to-talk bills audio sent and received.",
+        "pricing_note": "Native USD per audio minute plus per billable text input event; no per-token rates.",
+        "reasoning_effort_options": "none,high",
+        "reasoning_effort_default": "high",
+        "reasoning_source": "https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech",
+        "api_note": "WebSocket /v1/realtime?model=...; server API key or client ephemeral token.",
+        "lifecycle_source": "https://docs.x.ai/developers/release-notes",
+        "deprecated_date": "2026-10-14",
+        "replacement_model": "grok-voice-3.0",
+        "lifecycle_note": "Deprecated; no shutdown date published. The API contract and price are unchanged for Voice 3.0.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: requires a realtime WebSocket session adapter and duration/event metering.",
+        "endpoints": "realtime"
+      },
+      "endpoints": "realtime"
+    },
+    {
+      "id": "grok-voice-latest",
+      "name": "Grok Voice Latest",
+      "display_name": "Grok Voice Latest",
+      "family": "grok-voice",
+      "category": "grok",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/models/speech-to-speech",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.x.ai/developers/models/speech-to-speech",
+        "billing_unit": "audio_minute,text_input_event",
+        "usd_per_audio_minute": "0.08",
+        "usd_per_text_input_event": "0.004",
+        "availability_region": "us-east-1",
+        "text_input_event_definition": "Each client conversation.item.create event; function_call_output is excluded; input_audio/audio use the audio meter; response.create is not a text input.",
+        "audio_billing_note": "Default server_vad bills session duration; push-to-talk bills audio sent and received.",
+        "pricing_note": "Native USD per audio minute plus per billable text input event; no per-token rates.",
+        "reasoning_effort_options": "none,high",
+        "reasoning_effort_default": "high",
+        "reasoning_source": "https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech",
+        "api_note": "WebSocket /v1/realtime?model=...; server API key or client ephemeral token.",
+        "lifecycle_source": "https://docs.x.ai/developers/release-notes",
+        "alias_target": "grok-voice-3.0",
+        "alias_updated_date": "2026-10-14",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: requires a realtime WebSocket session adapter and duration/event metering.",
+        "endpoints": "realtime"
+      },
+      "endpoints": "realtime"
+    },
+    {
+      "id": "grok-voice-3.0",
+      "name": "Grok Voice 3.0",
+      "display_name": "Grok Voice 3.0",
+      "family": "grok-voice",
+      "category": "grok",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.x.ai/developers/models/speech-to-speech",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.x.ai/developers/models/speech-to-speech",
+        "billing_unit": "audio_minute,text_input_event",
+        "usd_per_audio_minute": "0.08",
+        "usd_per_text_input_event": "0.004",
+        "availability_region": "us-east-1",
+        "text_input_event_definition": "Each client conversation.item.create event; function_call_output is excluded; input_audio/audio use the audio meter; response.create is not a text input.",
+        "audio_billing_note": "Default server_vad bills session duration; push-to-talk bills audio sent and received.",
+        "pricing_note": "Native USD per audio minute plus per billable text input event; no per-token rates.",
+        "reasoning_effort_options": "none,high",
+        "reasoning_effort_default": "high",
+        "reasoning_source": "https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech",
+        "api_note": "WebSocket /v1/realtime?model=...; server API key or client ephemeral token.",
+        "lifecycle_source": "https://docs.x.ai/developers/release-notes",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: requires a realtime WebSocket session adapter and duration/event metering.",
+        "endpoints": "realtime"
+      },
+      "release_date": "2026-10-14",
+      "endpoints": "realtime"
+    },
+    {
       "id": "grok-imagine-video-1.5-lite",
       "name": "Grok Imagine Video 1.5 Lite",
       "display_name": "Grok Imagine Video 1.5 Lite",
