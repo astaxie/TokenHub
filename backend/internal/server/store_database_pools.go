@@ -88,6 +88,11 @@ func sqliteConnectionDSN(dsn string, readOnly bool) (string, error) {
 	if readOnly {
 		query.Set("_busy_timeout", "1000")
 		query.Set("_query_only", "1")
+		if sqliteSupportsWAL(dsn) {
+			// Shared-cache table locks bypass WAL snapshot isolation. Disk
+			// readers need private caches to remain usable during writes.
+			query.Set("cache", "private")
+		}
 		// Read transactions must remain deferred even when the write DSN was
 		// configured to acquire its writer lock immediately.
 		query.Set("_txlock", "deferred")
