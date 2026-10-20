@@ -6,7 +6,7 @@ version: 0.1.0
 # Also the default image tag. Overlapping replicas need an image with
 # instance-scoped image-job recovery, first shipped in a release after 0.8.0:
 # bump this together with the backend release the chart should deploy.
-appVersion: "0.9.0"
+appVersion: "0.10.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/astaxie/TokenHub
 sources:
