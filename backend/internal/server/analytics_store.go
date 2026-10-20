@@ -101,10 +101,10 @@ func (s *GormStore) ValidateAnalyticsCredential(rawSecret string) (AnalyticsCred
 	return credential, nil
 }
 
-// QueryTokenCostPage reads rows and their commit checkpoint in one transaction. SQLite
-// pins both statements to one read transaction; PostgreSQL additionally uses
-// repeatable read because its default read-committed mode takes a new snapshot
-// for every statement.
+// QueryTokenCostPage reads rows and their commit checkpoint in one snapshot.
+// SQLite uses a read transaction or pins the sole private-memory connection;
+// PostgreSQL uses repeatable read because its default read-committed mode
+// takes a new snapshot for every statement.
 func (s *GormStore) QueryTokenCostPage(ctx context.Context, query TokenCostQuery) (TokenCostPage, error) {
 	var page TokenCostPage
 	readSnapshot := func(tx *gorm.DB) error {
@@ -130,16 +130,7 @@ func (s *GormStore) QueryTokenCostPage(ctx context.Context, query TokenCostQuery
 		}
 		return nil
 	}
-	db := s.analyticsDB.WithContext(ctx)
-	var err error
-	if s.dbDriver == "postgres" {
-		err = db.Transaction(readSnapshot, &sql.TxOptions{
-			Isolation: sql.LevelRepeatableRead,
-			ReadOnly:  true,
-		})
-	} else {
-		err = db.Transaction(readSnapshot)
-	}
+	err := s.withAnalyticsReadSnapshot(ctx, readSnapshot)
 	return page, err
 }
 

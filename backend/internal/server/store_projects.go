@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -82,7 +83,7 @@ func (s *GormStore) createProject(project Project, requireActiveTeam bool) (Proj
 
 func (s *GormStore) ListProjects() []Project {
 	var items []Project
-	_ = s.db.Order("created_at asc").Find(&items).Error
+	_ = s.criticalReadDatabase().Order("created_at asc").Find(&items).Error
 	for index := range items {
 		hydrateProject(&items[index])
 	}
@@ -201,7 +202,7 @@ func (s *GormStore) DeleteProject(id string) error {
 
 func (s *GormStore) GetProject(id string) (Project, bool) {
 	var project Project
-	if err := s.db.First(&project, "id = ?", id).Error; err != nil {
+	if err := s.criticalReadDatabase().First(&project, "id = ?", id).Error; err != nil {
 		return Project{}, false
 	}
 	hydrateProject(&project)
@@ -214,7 +215,7 @@ func (s *GormStore) loadProjectTeams(project *Project) error {
 		return nil
 	}
 	var links []ProjectTeam
-	if err := s.db.Where("project_id = ?", project.ID).Order("created_at asc, team_id asc").Find(&links).Error; err != nil {
+	if err := s.criticalReadDatabase().Where("project_id = ?", project.ID).Order("created_at asc, team_id asc").Find(&links).Error; err != nil {
 		return err
 	}
 	for index := range links {
@@ -236,7 +237,7 @@ func (s *GormStore) loadProjectTeamsFor(projects []Project) error {
 		projectIndex[projects[index].ID] = index
 	}
 	var links []ProjectTeam
-	if err := s.db.Where("project_id IN ?", projectIDs).Order("created_at asc, team_id asc").Find(&links).Error; err != nil {
+	if err := s.criticalReadDatabase().Where("project_id IN ?", projectIDs).Order("created_at asc, team_id asc").Find(&links).Error; err != nil {
 		return err
 	}
 	for _, link := range links {
@@ -252,10 +253,10 @@ func (s *GormStore) loadProjectTeamsFor(projects []Project) error {
 
 func (s *GormStore) ListProjectTeams(projectID string, offset int, limit int) ([]ProjectTeam, int64, error) {
 	var project Project
-	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
+	if err := s.criticalReadDatabase().First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, 0, notFound(err, "project_not_found", "Project not found")
 	}
-	query := s.db.Model(&ProjectTeam{}).Where("project_id = ?", projectID)
+	query := s.criticalReadDatabase().Model(&ProjectTeam{}).Where("project_id = ?", projectID)
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -501,13 +502,13 @@ func (s *GormStore) ListProjectKeys(projectID string) []APIKey {
 
 func (s *GormStore) ListAPIKeys() []APIKey {
 	var items []APIKey
-	_ = s.db.Order("created_at asc").Find(&items).Error
+	_ = s.criticalReadDatabase().Order("created_at asc").Find(&items).Error
 	return publicKeys(items)
 }
 
 func (s *GormStore) GetAPIKey(id string) (APIKey, bool) {
 	var key APIKey
-	if err := s.db.First(&key, "id = ?", id).Error; err != nil {
+	if err := s.criticalReadDatabase().First(&key, "id = ?", id).Error; err != nil {
 		return APIKey{}, false
 	}
 	hydrateAPIKey(&key)
@@ -730,7 +731,15 @@ func (s *GormStore) ValidateAPIKey(rawSecret string, clientIP string) (Project, 
 	// persisted column is throttled and may trail it by up to one window.
 	key.LastUsedAt = &now
 	if err := s.lastUsed.mark(lastUsedAPIKeyKey(key.ID), func() error {
-		return s.db.Model(&APIKey{}).Where("id = ?", key.ID).Update("last_used_at", now).Error
+		db := s.db
+		if s.readDB != nil {
+			// This display-only timestamp must not undo WAL read isolation when
+			// the serialized writer is occupied by audit or accounting work.
+			ctx, cancel := context.WithTimeout(db.Statement.Context, 100*time.Millisecond)
+			defer cancel()
+			db = db.WithContext(ctx)
+		}
+		return db.Model(&APIKey{}).Where("id = ?", key.ID).Update("last_used_at", now).Error
 	}); err != nil {
 		// last_used_at is display-only, so a failed write must not reject an
 		// otherwise valid key. The failed-at state suppresses repeated attempts

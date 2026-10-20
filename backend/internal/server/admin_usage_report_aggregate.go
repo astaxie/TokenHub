@@ -110,9 +110,13 @@ func (a *usageReportAggregate) addRequest(log UsageReportRequest) {
 }
 
 func (a *usageReportAggregate) breakdown() map[string]any {
+	return a.breakdownForVisibility(true)
+}
+
+func (a *usageReportAggregate) breakdownForVisibility(redactProviders bool) map[string]any {
 	result := map[string]any{}
 	for dimension, buckets := range a.dimensions {
-		if !isPlatformAdminRole(a.user.Role) && (dimension == "providers" || dimension == "provider_resources") {
+		if redactProviders && !isPlatformAdminRole(a.user.Role) && (dimension == "providers" || dimension == "provider_resources") {
 			continue
 		}
 		keys := make([]string, 0, len(buckets))

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -9,9 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"log"
 	"net"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -469,67 +466,6 @@ func resourcePrefix(kind string) string {
 	default:
 		return "res"
 	}
-}
-
-// GetDatabaseStatus returns the database type, Docker environment, and connection status.
-func (s *GormStore) GetDatabaseStatus() (map[string]interface{}, error) {
-	status := make(map[string]interface{})
-
-	// 1. Detect the database type.
-	dbType := "sqlite"
-	if s.db.Dialector.Name() == "postgres" {
-		dbType = "postgres"
-	}
-	status["database_type"] = dbType
-
-	// 2. Detect whether running in Docker.
-	isDocker := false
-	if _, err := os.Stat("/.dockerenv"); err == nil {
-		isDocker = true
-	}
-	status["is_docker"] = isDocker
-
-	// 3. Test the database connection.
-	sqlDB, err := s.db.DB()
-	if err != nil {
-		status["connection_ok"] = false
-		return status, nil
-	}
-
-	if err := sqlDB.Ping(); err != nil {
-		status["connection_ok"] = false
-		return status, nil
-	}
-	status["connection_ok"] = true
-
-	// 4. If PostgreSQL, retrieve the version information.
-	if dbType == "postgres" {
-		var version string
-		if err := s.db.Raw("SELECT version()").Scan(&version).Error; err == nil {
-			status["postgres_version"] = version
-		}
-	}
-
-	// 5. Get the redacted database URL.
-	if databaseURL := os.Getenv("TOKENHUB_DATABASE_URL"); databaseURL != "" {
-		status["database_url"] = redactDatabaseURL(databaseURL)
-	}
-
-	return status, nil
-}
-
-func (s *GormStore) Ping(ctx context.Context) error {
-	sqlDB, err := s.db.DB()
-	if err != nil {
-		return err
-	}
-	if err := sqlDB.PingContext(ctx); err != nil {
-		stats := sqlDB.Stats()
-		log.Printf("[tokenhub] database ping failed: in_use=%d idle=%d wait_count=%d wait_duration=%s error=%v",
-			stats.InUse, stats.Idle, stats.WaitCount, stats.WaitDuration, err)
-		return err
-	}
-	return nil
 }
 
 // SetGatewayMetrics attaches the metrics collectors. It is called once during server

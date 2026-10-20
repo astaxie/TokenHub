@@ -69,13 +69,13 @@ func (s *GormStore) ListResources(kind string) []AdminResource {
 // example, the startup lease context) while making query failures observable.
 func (s *GormStore) ListResourcesChecked(kind string) ([]AdminResource, error) {
 	var items []AdminResource
-	err := s.db.Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	err := s.criticalReadDatabase().Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
 	return items, err
 }
 
 func (s *GormStore) ListResourcesContext(ctx context.Context, kind string) ([]AdminResource, error) {
 	var items []AdminResource
-	err := s.db.WithContext(ctx).Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
+	err := s.criticalReadDatabase().WithContext(ctx).Where("kind = ?", kind).Order("created_at asc").Find(&items).Error
 	return items, err
 }
 
@@ -342,7 +342,7 @@ func (s *GormStore) CreateAdminUser(user AdminUser, password string) (AdminUser,
 
 func (s *GormStore) ListAdminUsers() []AdminUser {
 	var items []AdminUser
-	_ = s.db.Order("created_at asc").Find(&items).Error
+	_ = s.criticalReadDatabase().Order("created_at asc").Find(&items).Error
 	for i := range items {
 		items[i] = publicAdminUser(items[i])
 	}
@@ -568,7 +568,7 @@ func (s *GormStore) AuthenticateAdminUser(identity string, password string, ttl 
 
 	identity = strings.ToLower(strings.TrimSpace(identity))
 	var user AdminUser
-	if err := s.db.Where("LOWER(email) = ? OR LOWER(username) = ?", identity, identity).First(&user).Error; err != nil {
+	if err := s.criticalReadDatabase().Where("LOWER(email) = ? OR LOWER(username) = ?", identity, identity).First(&user).Error; err != nil {
 		return AdminUser{}, AdminSession{}, NewHTTPError(401, "invalid_credentials", "Invalid username or password")
 	}
 	if user.Status != StatusActive {
@@ -596,6 +596,9 @@ func (s *GormStore) AuthenticateAdminUser(identity string, password string, ttl 
 	user.UpdatedAt = now
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(&user).Error; err != nil {
+			return err
+		}
+		if err := deleteExpiredAdminSessions(tx, user.ID, now); err != nil {
 			return err
 		}
 		if err := tx.Create(&session).Error; err != nil {
@@ -633,6 +636,9 @@ func (s *GormStore) CreateAdminSession(userID string, ttl time.Duration) (AdminU
 		if err := tx.Save(&user).Error; err != nil {
 			return err
 		}
+		if err := deleteExpiredAdminSessions(tx, user.ID, now); err != nil {
+			return err
+		}
 		if err := tx.Create(&session).Error; err != nil {
 			return err
 		}
@@ -645,22 +651,32 @@ func (s *GormStore) CreateAdminSession(userID string, ttl time.Duration) (AdminU
 }
 
 func (s *GormStore) ValidateAdminSession(token string) (AdminUser, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// One statement observes the session and user together without waiting for
+	// the writer mutex. Compare the decoded time in Go so legacy SQLite rows
+	// with different timezone offsets retain the same expiry semantics.
+	var result struct {
+		AdminUser
+		SessionExpiresAt time.Time
+	}
+	err := s.criticalReadDatabase().Model(&AdminUser{}).
+		Select("admin_users.*, admin_sessions.expires_at AS session_expires_at").
+		Joins("JOIN admin_sessions ON admin_sessions.user_id = admin_users.id").
+		Where("admin_sessions.token = ? AND admin_users.status = ?", token, StatusActive).
+		Take(&result).Error
+	if err != nil || time.Now().UTC().After(result.SessionExpiresAt) {
+		return AdminUser{}, false
+	}
+	return publicAdminUser(result.AdminUser), true
+}
 
-	var session AdminSession
-	if err := s.db.First(&session, "token = ?", token).Error; err != nil {
-		return AdminUser{}, false
+// Cleanup follows the indexed user_id lookup during session creation rather
+// than making every invalid authentication wait for the serialized writer.
+func deleteExpiredAdminSessions(tx *gorm.DB, userID string, now time.Time) error {
+	expired := "expires_at <= ?"
+	if tx.Dialector.Name() == "sqlite" {
+		expired = "julianday(expires_at) <= julianday(?)"
 	}
-	if time.Now().UTC().After(session.ExpiresAt) {
-		_ = s.db.Delete(&session).Error
-		return AdminUser{}, false
-	}
-	var user AdminUser
-	if err := s.db.First(&user, "id = ? AND status = ?", session.UserID, StatusActive).Error; err != nil {
-		return AdminUser{}, false
-	}
-	return publicAdminUser(user), true
+	return tx.Where("user_id = ?", userID).Where(expired, now).Delete(&AdminSession{}).Error
 }
 
 func (s *GormStore) RevokeAdminSession(token string) {

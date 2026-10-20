@@ -176,6 +176,13 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		return nil, fmt.Errorf("unsupported database driver: %s", driver)
 	}
 
+	if driver == "sqlite" {
+		dsn, err = sqliteConnectionDSN(dsn, false)
+		if err != nil {
+			return nil, err
+		}
+		dialector = sqlite.Open(dsn)
+	}
 	db, err := gorm.Open(dialector, &gorm.Config{
 		TranslateError: true,
 		Logger: gormlogger.New(
@@ -196,6 +203,13 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		return nil, err
 	}
 
+	opened := false
+	defer func() {
+		if !opened {
+			_ = sqlDB.Close()
+		}
+	}()
+
 	// Configure the connection pool based on database type. PostgreSQL keeps a
 	// dedicated connection for the migration advisory lock, so migrations need
 	// at least one additional connection even when the runtime pool is set to 1.
@@ -211,8 +225,9 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		sqlDB.SetMaxIdleConns(maxIdleConns)
 		sqlDB.SetConnMaxLifetime(connMaxLifetime)
 	} else {
-		// SQLite maintains a single connection.
+		// Serialize writes; WAL readers use separate bounded pools.
 		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
 	}
 
 	// SQLite-specific configuration.
@@ -297,10 +312,29 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 	if postgresMaxOpenConns > 0 {
 		sqlDB.SetMaxOpenConns(postgresMaxOpenConns)
 	}
-	analyticsDB, err := openAnalyticsDatabase(driver, dsn, config)
+	readDB, err := openCriticalReadDatabase(driver, dsn)
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if !opened && readDB != nil {
+			if pool, err := readDB.DB(); err == nil {
+				_ = pool.Close()
+			}
+		}
+	}()
+	analyticsDB, err := openAnalyticsDatabase(driver, dsn, config, db)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if !opened && analyticsDB != db {
+			if pool, err := analyticsDB.DB(); err == nil {
+				_ = pool.Close()
+			}
+		}
+	}()
 
 	billingRedis, err := newRedisBillingCoordinator(context.Background(), config.BillingRedisURL, time.Duration(defaultInt(config.InFlightLeaseTTLSeconds, 300))*time.Second)
 	if err != nil {
@@ -309,6 +343,7 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 
 	store := &GormStore{
 		db:                           db,
+		readDB:                       readDB,
 		analyticsDB:                  analyticsDB,
 		mu:                           &sync.Mutex{},
 		leaseHeartbeats:              &sync.Map{},
@@ -334,6 +369,7 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 	store.billingPersistence = billingpersistence.NewStore(db, store.mu, config.SecretKey, store.recordScheduledBillingAudit)
 	store.billingRepository = store.billingPersistence
 	store.reconciliationPersistence = reconciliationpersistence.NewStore(db, store.mu, store.recordScheduledReconciliationAudit)
+	opened = true
 	return store, nil
 }
 
@@ -454,74 +490,20 @@ func backfillQuotaBucketAttribution(db *gorm.DB) error {
 		Update("attributed_user_id", gorm.Expr("CASE WHEN key_id LIKE 'user:%' THEN SUBSTR(key_id, 6) ELSE ? END", unattributedQuotaUserID)).Error
 }
 
-// Close releases the primary and analytics database pools owned by the store.
+// Close releases every database pool owned by the store.
 func (s *GormStore) Close() error {
 	var closeErr error
 	if s.heartbeatStop != nil {
 		s.heartbeatStop.Stop()
 	}
-	if s.db != nil {
-		if db, err := s.db.DB(); err != nil {
-			closeErr = errors.Join(closeErr, err)
-		} else {
-			closeErr = errors.Join(closeErr, db.Close())
-		}
-	}
-	if s.analyticsDB != nil {
-		if db, err := s.analyticsDB.DB(); err != nil {
+	for _, pool := range s.databasePools() {
+		if db, err := pool.db.DB(); err != nil {
 			closeErr = errors.Join(closeErr, err)
 		} else {
 			closeErr = errors.Join(closeErr, db.Close())
 		}
 	}
 	return closeErr
-}
-
-func openAnalyticsDatabase(driver string, dsn string, config Config) (*gorm.DB, error) {
-	var dialector gorm.Dialector
-	switch driver {
-	case "sqlite":
-		dialector = sqlite.Open(dsn)
-	case "postgres":
-		dialector = postgres.Open(dsn)
-	default:
-		return nil, fmt.Errorf("unsupported analytics database driver: %s", driver)
-	}
-	db, err := gorm.Open(dialector, &gorm.Config{
-		TranslateError: true,
-		Logger:         gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	if err != nil {
-		return nil, err
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, err
-	}
-	if driver == "sqlite" {
-		sqlDB.SetMaxOpenConns(1)
-		sqlDB.SetMaxIdleConns(1)
-		if err := db.Exec("PRAGMA busy_timeout = 1000").Error; err != nil {
-			return nil, err
-		}
-		if err := db.Exec("PRAGMA query_only = ON").Error; err != nil {
-			return nil, err
-		}
-	} else {
-		poolSize := maxInt(1, defaultInt(config.DBMaxOpenConns, 25))
-		if poolSize > 2 {
-			poolSize = 2
-		}
-		sqlDB.SetMaxOpenConns(poolSize)
-		sqlDB.SetMaxIdleConns(1)
-		sqlDB.SetConnMaxLifetime(time.Duration(defaultInt(config.DBConnMaxLifetimeMinutes, 30)) * time.Minute)
-	}
-	return db, nil
-}
-
-func sqliteSupportsWAL(dsn string) bool {
-	trimmed := strings.ToLower(strings.TrimSpace(dsn))
-	return trimmed != "" && trimmed != ":memory:" && !strings.Contains(trimmed, "mode=memory")
 }
 
 func ensureRequestLogCommitSequence(db *gorm.DB, driver string) error {
@@ -945,6 +927,12 @@ func (s *GormStore) WithContext(ctx context.Context) *GormStore {
 	}
 	contextual := *s
 	contextual.db = s.db.WithContext(ctx)
+	if s.readDB != nil {
+		contextual.readDB = s.readDB.WithContext(ctx)
+	}
+	if s.analyticsDB != nil {
+		contextual.analyticsDB = s.analyticsDB.WithContext(ctx)
+	}
 	if s.reconciliationPersistence != nil {
 		contextual.reconciliationPersistence = s.reconciliationPersistence.WithContext(ctx)
 	}
@@ -1033,7 +1021,7 @@ func (s *GormStore) withReadSnapshot(read func(*gorm.DB) error) error {
 			ReadOnly:  true,
 		})
 	}
-	return s.db.Transaction(read)
+	return s.criticalReadDatabase().Transaction(read)
 }
 
 func runSchemaMigrationLocked(ctx context.Context, sqlDB *sql.DB, driver string, migrate func() error) error {

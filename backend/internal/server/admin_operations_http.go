@@ -568,7 +568,12 @@ func (s *Server) handleAdminUsageBreakdown(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.usageBreakdownForUser(user))
+	breakdown, err := s.usageBreakdownForUser(r.Context(), user)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, breakdown)
 }
 
 func (s *Server) handleAdminUsageTimeseries(w http.ResponseWriter, r *http.Request) {
@@ -576,7 +581,12 @@ func (s *Server) handleAdminUsageTimeseries(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.usageTimeseriesForUser(user, 31)})
+	series, err := s.usageTimeseriesForUser(r.Context(), user, 31, time.Now())
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": series})
 }
 
 func (s *Server) handleAdminGenerateBilling(w http.ResponseWriter, r *http.Request) {
