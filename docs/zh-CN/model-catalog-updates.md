@@ -4,6 +4,16 @@ Language: [English](../model-catalog-updates.md) | 简体中文 | [日本語](..
 
 2026-10-10 的目录核查补充了当前上游模型，并记录访问条件、生命周期、调用兼容性和价格边界。目录收录用于发现候选模型，不代表已具备调用支持、账号已获授权、上游实时健康或生产环境已上线。
 
+## Magpie 订阅与账户预设（2026-10-24）
+
+Provider 目录现有 172 个条目。根据 [Magpie 固定版本的预设清单](https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go) 新增 12 个 API Key 入口：千帆个人与企业 Token Plan、华为云 MaaS Token Plan、火山方舟 Coding 与 Agent Plan、Qwen AI Token Plan、Kimi Code 国际版、腾讯企业 Token Plan 国际版、ClinePass、Ollama Cloud 账户模型、Command Code API 和 Nous Portal API。已有 StepFun 国际版 Step Plan 及其他区域套餐继续保留。
+
+添加密钥前请选择准确的套餐和区域。Qwen AI 与阿里云百炼使用不同主机和密钥。千帆、华为、腾讯和火山的版本化路径保持原样，不额外追加 `/v1`。文本请求使用 OpenAI-compatible 适配器；本次新增不代表支持套餐中的图片、视频或向量接口。Command Code Go 账户应使用订阅适配器，而不是 Provider API 预设。
+
+套餐种子只包含固定来源中的候选模型 ID，不能证明账户权限、上下文限制或价格。Kimi 国际版、Ollama Cloud、Command Code API 和 Nous API 初始候选列表为空，通过账户模型发现获取实际清单。独立的 Ollama Cloud 入口避免沿用已有本地模型参考库。新增种子不填写价格或未经验证的限制，发布前需配置当前成本。公共目录刷新会保留这些套餐地址及仅账户发现的条目。
+
+在 `tools/magpie-provider-presets.mjs` 中维护固定来源，依次运行 `node tools/sync-magpie-provider-presets.mjs` 和 `node tools/generate-builtin-provider-plugins.mjs`。目录附有来源提交和 MIT 署名。内置 OAuth/订阅适配器由 TokenHub 直接运行；Node 运行时要求见[部署说明](deployment.md)。
+
 ## 本次范围
 
 更新覆盖标准模型模板、官方 Provider 目录，以及生成的内置 Provider 插件目录。包括 OpenAI GPT-6 Sol/Luna 与新媒体型号、Claude 5.5 与 Fable 5.1、Gemini 3.8 与 Embedding 2、Qwen 3.8 与文本检索/图片/实时型号、DeepSeek V4.1 Flash、Grok 4.7 与 Imagine、MiMo V2.6、豆包 Seed 2.1、Mistral Large 4、Cohere Embed 5/Rerank 4、Voyage Rerank 3，以及核实后的 Kimi、GLM、MiniMax 和 StepFun 型号。同一模型可能出现在多个地域或订阅 Provider 中，因此 Provider 条目数与去重后的模板数不是同一口径。

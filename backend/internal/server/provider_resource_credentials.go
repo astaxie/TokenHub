@@ -39,6 +39,7 @@ func (s *GormStore) prepareProviderResourceForCreate(providerType string, resour
 	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
+	stripProviderResourceCredentialOptions(resource.Options)
 	if !s.providerResourceCredentialInputOptional(providerType, resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
 		return
 	}
@@ -53,6 +54,7 @@ func (s *GormStore) prepareProviderResourceForUpdate(providerType string, resour
 	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
+	stripProviderResourceCredentialOptions(resource.Options)
 	if !s.providerResourceCredentialInputOptional(providerType, resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
 		return
 	}
@@ -372,7 +374,9 @@ func openAIAccountAuthenticationPatch(creds *ProviderResourceCredentials) bool {
 	return strings.TrimSpace(creds.AccessToken) != "" ||
 		strings.TrimSpace(creds.RefreshToken) != "" ||
 		strings.TrimSpace(creds.IDToken) != "" ||
-		strings.TrimSpace(creds.ClientID) != ""
+		strings.TrimSpace(creds.ClientID) != "" ||
+		strings.TrimSpace(creds.ClientSecret) != "" ||
+		strings.TrimSpace(creds.SessionJSON) != ""
 }
 
 func openAIAccountAuthenticationEqual(left ProviderResourceCredentials, right ProviderResourceCredentials) bool {
@@ -384,7 +388,9 @@ func providerResourceAuthenticationEqual(left ProviderResourceCredentials, right
 		strings.TrimSpace(left.AccessToken) == strings.TrimSpace(right.AccessToken) &&
 		strings.TrimSpace(left.RefreshToken) == strings.TrimSpace(right.RefreshToken) &&
 		strings.TrimSpace(left.IDToken) == strings.TrimSpace(right.IDToken) &&
-		strings.TrimSpace(left.ClientID) == strings.TrimSpace(right.ClientID)
+		strings.TrimSpace(left.ClientID) == strings.TrimSpace(right.ClientID) &&
+		strings.TrimSpace(left.ClientSecret) == strings.TrimSpace(right.ClientSecret) &&
+		strings.TrimSpace(left.SessionJSON) == strings.TrimSpace(right.SessionJSON)
 }
 
 func mergeRefreshedProviderResourceCredentials(
@@ -392,11 +398,13 @@ func mergeRefreshedProviderResourceCredentials(
 	current ProviderResourceCredentials,
 	refreshed ProviderResourceCredentials,
 ) ProviderResourceCredentials {
+	current.SessionJSON = firstNonEmpty(refreshed.SessionJSON, current.SessionJSON)
 	current.AuthType = firstNonEmpty(refreshed.AuthType, current.AuthType)
 	current.AccessToken = firstNonEmpty(refreshed.AccessToken, current.AccessToken)
 	current.RefreshToken = firstNonEmpty(refreshed.RefreshToken, current.RefreshToken)
 	current.IDToken = firstNonEmpty(refreshed.IDToken, current.IDToken)
 	current.ClientID = firstNonEmpty(refreshed.ClientID, current.ClientID)
+	current.ClientSecret = firstNonEmpty(refreshed.ClientSecret, current.ClientSecret)
 	if current.Scopes == original.Scopes {
 		current.Scopes = firstNonEmpty(refreshed.Scopes, current.Scopes)
 	}
@@ -423,9 +431,11 @@ func mergeRefreshedProviderResourceCredentials(
 }
 
 func hasProviderResourceCredentialSecret(creds ProviderResourceCredentials) bool {
-	return strings.TrimSpace(creds.RefreshToken) != "" ||
+	return strings.TrimSpace(creds.SessionJSON) != "" ||
+		strings.TrimSpace(creds.RefreshToken) != "" ||
 		strings.TrimSpace(creds.IDToken) != "" ||
 		strings.TrimSpace(creds.ClientID) != "" ||
+		strings.TrimSpace(creds.ClientSecret) != "" ||
 		strings.TrimSpace(creds.Scopes) != "" ||
 		strings.TrimSpace(creds.TokenType) != "" ||
 		strings.TrimSpace(creds.ExpiresAt) != ""
@@ -433,10 +443,12 @@ func hasProviderResourceCredentialSecret(creds ProviderResourceCredentials) bool
 
 func (s *GormStore) encryptProviderResourceCredentialBlob(creds ProviderResourceCredentials) string {
 	secret := map[string]string{}
+	addNonEmpty(secret, "session_json", creds.SessionJSON)
 	addNonEmpty(secret, "auth_type", creds.AuthType)
 	addNonEmpty(secret, "refresh_token", creds.RefreshToken)
 	addNonEmpty(secret, "id_token", creds.IDToken)
 	addNonEmpty(secret, "client_id", creds.ClientID)
+	addNonEmpty(secret, "client_secret", creds.ClientSecret)
 	addNonEmpty(secret, "scopes", creds.Scopes)
 	addNonEmpty(secret, "token_type", creds.TokenType)
 	addNonEmpty(secret, "expires_at", creds.ExpiresAt)
@@ -456,19 +468,25 @@ func applyOpenAIAccountOptions(options map[string]string, creds ProviderResource
 	applyProviderAccountOptions(options, ProviderResourceOpenAISubscription, creds)
 }
 
-func applyProviderAccountOptions(options map[string]string, resourceType string, creds ProviderResourceCredentials) {
-	if options == nil {
-		return
-	}
+func stripProviderResourceCredentialOptions(options map[string]string) {
 	for _, key := range []string{
 		"access_token",
 		"refresh_token",
 		"id_token",
 		"api_key",
 		"credential_blob",
+		"session_json",
+		"client_secret",
 	} {
 		delete(options, key)
 	}
+}
+
+func applyProviderAccountOptions(options map[string]string, resourceType string, creds ProviderResourceCredentials) {
+	if options == nil {
+		return
+	}
+	stripProviderResourceCredentialOptions(options)
 	options["credential_source"] = firstNonEmpty(strings.TrimSpace(resourceType), providerAccountCredentialSourceFallback)
 	options["auth_type"] = firstNonEmpty(creds.AuthType, options["auth_type"], "oauth")
 	if strings.TrimSpace(creds.RefreshToken) != "" {
@@ -548,6 +566,8 @@ func (s *GormStore) redactProviderResourceSecrets(providerType string, resource 
 	resource.APIKey = ""
 	resource.CredentialBlob = ""
 	resource.Credentials = nil
+	resource.Options = cloneStringMap(resource.Options)
+	stripProviderResourceCredentialOptions(resource.Options)
 	resource.CredentialSummary = s.providerResourceCredentialSummary(providerType, *resource)
 }
 
@@ -558,6 +578,8 @@ func redactProviderResourceSecrets(resource *ProviderResource) {
 	resource.APIKey = ""
 	resource.CredentialBlob = ""
 	resource.Credentials = nil
+	resource.Options = cloneStringMap(resource.Options)
+	stripProviderResourceCredentialOptions(resource.Options)
 	resource.CredentialSummary = providerResourceCredentialSummary(*resource)
 }
 
@@ -743,11 +765,13 @@ func (s *GormStore) providerResourceCredentialsForRuntimeForProvider(providerTyp
 }
 
 func mergeProviderResourceCredentials(target *ProviderResourceCredentials, source ProviderResourceCredentials) {
+	target.SessionJSON = firstNonEmpty(source.SessionJSON, target.SessionJSON)
 	target.AuthType = firstNonEmpty(source.AuthType, target.AuthType)
 	target.AccessToken = firstNonEmpty(source.AccessToken, target.AccessToken)
 	target.RefreshToken = firstNonEmpty(source.RefreshToken, target.RefreshToken)
 	target.IDToken = firstNonEmpty(source.IDToken, target.IDToken)
 	target.ClientID = firstNonEmpty(source.ClientID, target.ClientID)
+	target.ClientSecret = firstNonEmpty(source.ClientSecret, target.ClientSecret)
 	target.Scopes = firstNonEmpty(source.Scopes, target.Scopes)
 	target.TokenType = firstNonEmpty(source.TokenType, target.TokenType)
 	target.ExpiresAt = firstNonEmpty(source.ExpiresAt, target.ExpiresAt)

@@ -4,6 +4,8 @@ Language: English | [简体中文](zh-CN/deployment.md) | [日本語](ja/deploym
 
 TokenHub is designed for private deployment with a Go backend, a Next.js admin console, and support for SQLite or PostgreSQL persistence.
 
+For subscription accounts, see [Subscription and Account Providers](subscription-providers.md) for Node and Claude CLI dependencies, remote OAuth callbacks, and same-instance session requirements.
+
 ## Database Selection
 
 TokenHub supports two database backends:
@@ -354,7 +356,7 @@ This runs the **production** build — the same standalone bundle a deployment r
 
 With `-d` the services detach from the launching shell and keep running after it exits — and after the terminal closes — but not across a reboot; use a real installation for that. Both modes write pid files, so `status` and `stop` also work on a foreground instance. `stop` verifies that the recorded pid still belongs to this instance before signalling it, so a recycled pid is never killed by mistake, and both ports are claimed before anything starts so the script cannot report success against an unrelated service already listening.
 
-Requires Go (the version in `backend/go.mod`), Node 22 or newer, npm and a C compiler, because the backend links SQLite through cgo.
+Requires Go (the version in `backend/go.mod`), Node 22.23.1 or newer (pinned in `.nvmrc`), npm and a C compiler, because the backend links SQLite through cgo. The bundled subscription adapters also use Node; Docker images and native Release packages already include it. Native services put the bundled Node on the backend process PATH. Running the backend binary separately requires a compatible `node` on PATH; no Magpie service or runtime npm installation is required.
 
 Verified on Linux. macOS lacks `setsid`, so the script falls back to walking the process tree when stopping; that path is implemented but untested on macOS.
 

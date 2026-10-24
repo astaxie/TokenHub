@@ -1,0 +1,125 @@
+import { randomUUID } from "node:crypto";
+import { failure, headerObject, MAX_BODY, toHeaders, validateTarget } from "./validation.mjs";
+
+// Every vendor fetch is executed by the parent's guarded HTTP transport. DNS,
+// redirects, proxy selection and connection limits remain Go responsibilities.
+export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 * 1024 } = {}) {
+  const pending = new Map();
+
+  async function once(input, init = {}) {
+    const context = scope.getStore();
+    if (!context) throw failure("invalid_request", "A subscription request context is required");
+    if (context.account?.saveError) throw context.account.saveError;
+    const request = new Request(input, { ...init, duplex: "half", redirect: "manual" });
+    validateTarget(context.provider, request.url);
+    const body = request.body ? Buffer.from(await request.arrayBuffer()) : Buffer.alloc(0);
+    if (body.length > MAX_BODY) throw failure("body_too_large", "Subscription request exceeds the size limit");
+    const signal = AbortSignal.any([request.signal, context.controller.signal]);
+    signal.throwIfAborted();
+    const requestID = randomUUID();
+    let settle;
+    const promise = new Promise((resolve, reject) => { settle = { resolve, reject }; });
+    const state = { ...settle, context, bytes: 0, controller: null, aborted: false };
+    const abort = () => {
+      if (state.aborted) return;
+      state.aborted = true;
+      const error = failure("request_cancelled", "Subscription request was cancelled", 499);
+      state.reject(error);
+      state.controller?.error(error);
+      pending.delete(requestID);
+      void emit({ id: context.id, event: "network.cancel", request_id: requestID });
+    };
+    state.dispose = () => signal.removeEventListener("abort", abort);
+    signal.addEventListener("abort", abort, { once: true });
+    pending.set(requestID, state);
+    await emit({ id: context.id, event: "network.request", request_id: requestID, resource_id: context.resourceID,
+      provider: context.provider, url: request.url, method: request.method, headers: headerObject(request.headers),
+      body: body.toString("base64") });
+    return promise;
+  }
+
+  async function fetch(input, init = {}) {
+    const original = new Request(input, { ...init, duplex: "half" });
+    let request = original;
+    // fetch follows redirects by default. Reimplement that here so each hop is
+    // revalidated and credentials never cross origins. The Go relay must not
+    // follow redirects itself.
+    for (let redirects = 0; redirects <= 5; redirects++) {
+      const copy = request.clone();
+      const response = await once(request);
+      if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+      const location = response.headers.get("location");
+      if (!location || original.redirect === "manual") return response;
+      if (original.redirect === "error" || redirects === 5) {
+        await response.body?.cancel();
+        throw failure("upstream_host_not_allowed", "Subscription upstream redirect was refused");
+      }
+      await response.body?.cancel();
+      const target = new URL(location, request.url);
+      validateTarget(scope.getStore().provider, target.href);
+      if (target.origin !== new URL(request.url).origin && ["authorization", "cookie", "x-api-key"].some((key) => request.headers.has(key))) {
+        throw failure("upstream_host_not_allowed", "Subscription credentials cannot follow a cross-origin redirect");
+      }
+      const useGet = response.status === 303 || ((response.status === 301 || response.status === 302) && request.method === "POST");
+      request = new Request(target, { method: useGet ? "GET" : request.method, headers: request.headers,
+        body: useGet || !copy.body ? undefined : await copy.arrayBuffer(), signal: request.signal, duplex: "half" });
+    }
+    throw failure("invalid_upstream", "Too many subscription redirects");
+  }
+
+  function receive(message) {
+    const state = pending.get(message.request_id);
+    if (!state) return;
+    const end = () => { state.dispose(); pending.delete(message.request_id); };
+    try {
+      if (message.operation === "network.response") {
+        if (state.controller) throw new Error("duplicate network response");
+        const headers = toHeaders(message.headers);
+        headers.delete("content-encoding");
+        headers.delete("content-length");
+        const empty = [101, 204, 205, 304].includes(message.status);
+        if (message.body !== undefined || empty) {
+          const bytes = Buffer.from(message.body ?? "", "base64");
+          if (bytes.length > MAX_BODY || bytes.length > maxResponseBytes) throw failure("body_too_large", "Subscription response exceeds the size limit");
+          state.resolve(new Response(empty ? null : bytes, { status: message.status, headers }));
+          end();
+          return;
+        }
+        const stream = new ReadableStream({
+          start(controller) { state.controller = controller; },
+          cancel() {
+            end();
+            return emit({ id: state.context.id, event: "network.cancel", request_id: message.request_id });
+          },
+        }, { highWaterMark: 65536, size: (chunk) => chunk.byteLength });
+        state.resolve(new Response(stream, { status: message.status, headers }));
+      } else if (message.operation === "network.chunk") {
+        const chunk = Buffer.from(message.data ?? "", "base64");
+        state.bytes += chunk.length;
+        // A fast JSON/text consumer can accumulate the whole response outside
+        // the queue, so bound total bytes independently of backpressure.
+        if (state.bytes > maxResponseBytes) {
+          throw failure("body_too_large", "Subscription response exceeds the total size limit");
+        }
+        // Keep a separate bound for a reader that falls behind the upstream.
+        if (chunk.length > 1024 * 1024 || (state.controller?.desiredSize ?? 0) < -MAX_BODY) {
+          throw failure("body_too_large", "Subscription response reader is too slow");
+        }
+        if (!state.controller) throw new Error("network response headers are missing");
+        state.controller.enqueue(chunk);
+      } else if (message.operation === "network.end") {
+        state.controller?.close();
+        end();
+      } else if (message.operation === "network.error") {
+        throw new Error("Subscription upstream network request failed");
+      }
+    } catch (error) {
+      state.reject(error);
+      try { state.controller?.error(error); } catch { /* The consumer already closed the stream. */ }
+      end();
+      void emit({ id: state.context.id, event: "network.cancel", request_id: message.request_id }).catch(() => {});
+    }
+  }
+
+  return { fetch, receive };
+}

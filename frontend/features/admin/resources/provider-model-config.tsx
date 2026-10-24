@@ -77,6 +77,9 @@ export function providerResourceFieldConfigs(provider?: Provider): FieldConfig[]
     { key: "name", label: "名称", required: true },
     { key: "resource_type", label: "账号类型", type: "select", optionsFromData: providerResourceTypeOptionsFromData, required: true },
     { key: "auth_type", label: "认证方式", type: "select", optionsFromData: providerResourceAuthTypeOptionsFromData, visible: accountResourceFieldVisible },
+    { key: "session_json", label: "订阅会话 JSON", type: "textarea", visible: accountResourceFieldVisible, help: "仅粘贴本人授权的完整会话 JSON；将加密保存，保存后不会再次显示。" },
+    { key: "client_id", label: "OAuth Client ID", visible: accountResourceFieldVisible },
+    { key: "client_secret", label: "OAuth 客户端密钥", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible },
     { key: "access_token", label: "访问 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "账号 OAuth access token 或 PAT；保存后不会再次显示。" },
     { key: "refresh_token", label: "刷新 Token", type: "password", autoComplete: "new-password", visible: accountResourceFieldVisible, help: "可选，保存到加密凭据中，用于后续自动刷新能力。" },
     { key: "id_token", label: "ID Token", type: "textarea", autoComplete: "off", visible: accountResourceFieldVisible, help: "可选。填写后会自动提取账号邮箱、账号 ID、组织 ID 和计划类型。" },
@@ -250,7 +253,7 @@ export async function generateProviderAccountOAuthURL(ctx: ApiContext, actions: 
 	throw new Error(tx("该 Provider 插件未声明账号授权动作。"));
 }
 
-export async function exchangeProviderAccountOAuthCode(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, payload: { session_id: string; state: string; code: string }) {
+export async function exchangeProviderAccountOAuthCode(ctx: ApiContext, actions: PluginActionDescriptor[], providerType: string, payload: { session_id: string; state: string; code: string; client_id?: string }) {
 	const exchangeAction = providerPluginActionForCapability(actions, providerType, "oauth.exchange");
 	if (exchangeAction) {
 		const actionPayload = providerPluginOAuthPayload(exchangeAction, { ...payload });
@@ -337,9 +340,11 @@ export async function runProviderCapabilityAction<T>(
   payload: Record<string, unknown>,
   fallbackLabel: string,
 ): Promise<T> {
+  const resourceType = action?.metadata?.provider_resource_type?.trim();
+  const actionPayload = resourceType && !("resource_type" in payload) ? { ...payload, resource_type: resourceType } : payload;
   const resp = await adminFetch(ctx, providerCapabilityActionPath(providerType, capability), {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(actionPayload),
   });
   if (!resp.ok) throw new Error(await readPluginActionError(resp, action, fallbackLabel));
   return unwrapPluginActionData<T>(await resp.json());
@@ -395,20 +400,21 @@ export function providerCreateAccountResourceFields() {
     .map((field) => field.key === "name" ? { ...field, label: "账号资源名称" } : field);
 }
 
-export function providerCreateAccountRuntimeFields() {
+export function providerCreateAccountRuntimeFields(requiresBaseURL = true) {
   const keys = new Set(["base_url", "group", "priority", "weight", "rate_limit_rpm", "token_limit_tpm", "max_concurrency", "system_prompt_transform_policy", "claude_code_attribution_policy", "status"]);
   return providerResourceFieldConfigs()
     .filter((field) => keys.has(field.key))
-    .map((field) => field.key === "base_url" ? { ...field, required: true } : field);
+    .map((field) => field.key === "base_url" ? { ...field, required: requiresBaseURL } : field);
 }
 
 export function providerCreateAccountManualTokenFields() {
-  const keys = new Set(["access_token", "refresh_token", "id_token", "account_id", "organization_id", "plan_type"]);
+  const keys = new Set(["session_json", "client_id", "client_secret", "access_token", "refresh_token", "id_token", "account_id", "organization_id", "plan_type"]);
   return providerResourceFieldConfigs().filter((field) => keys.has(field.key));
 }
 
 export function providerAccountTokenSummary(values: Record<string, string>) {
   const items: string[] = [];
+  if (values.session_json?.trim()) items.push("已回填订阅会话");
   if (values.access_token?.trim()) items.push("已回填访问 Token");
   if (values.refresh_token?.trim()) items.push("已回填刷新 Token");
   if (values.id_token?.trim()) items.push("已回填 ID Token");
@@ -466,6 +472,11 @@ export function providerResourceDefaults(provider: Provider, data?: AppData) {
 
 export function assertProviderAccountResourceReady(values: Record<string, string>) {
   if (isProviderAccountResourceType(values.resource_type)) {
+    if (values.session_json?.trim()) {
+      const session: unknown = JSON.parse(values.session_json);
+      if (!session || typeof session !== "object" || Array.isArray(session)) throw new Error(tx("订阅会话必须是 JSON 对象。"));
+      return;
+    }
     if (values.access_token?.trim() || values.refresh_token?.trim() || values.id_token?.trim()) return;
     throw new Error(tx("请先完成账号授权回填，或在高级选项中手动粘贴 Token。"));
   }

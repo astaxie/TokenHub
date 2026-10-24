@@ -72,7 +72,8 @@ function installProviderFixtures(api: MockAPI, state: string) {
   });
   if (accountRetry) {
     api.define("POST", "/api/admin/provider-catalog/ui-subscription", input => {
-      expect(input.body).toMatchObject({ access_token: "synthetic-account-retry-token", account_id: "ui-account-retry" });
+      expect(input.body).toMatchObject({ access_token: "synthetic-account-retry-token" });
+      expect(["", "ui-account-retry"]).toContain((input.body as Record<string, unknown>).account_id ?? "");
       return { json: { data: { ...subscription, models: [catalogModel] } } };
     });
     api.define("PATCH", "/api/admin/providers/prv_ui_created", input => {
@@ -141,6 +142,7 @@ for (const viewport of ["desktop", "mobile"] as const) {
     ]);
     expect(writes[2].body).toMatchObject({ name: "UI Retried Subscription", selected_models: [catalogModel.id] });
     expect(writes[3].body).toMatchObject({ provider_id: "prv_ui_created", name: "UI Retried Account" });
+    expect(api.calls.filter(call => call.path === "/api/admin/provider-catalog/ui-subscription" && call.method === "POST").at(-1)?.body).toMatchObject({ access_token: "synthetic-account-retry-token", account_id: "ui-account-retry" });
   });
 
   test(`provider-onboarding category filters ${viewport}`, async ({ page, api }, testInfo) => {

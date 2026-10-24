@@ -78,6 +78,9 @@ export function providerResourcePayload(values: Record<string, string>, data?: A
   const credentials = isAccountResource
     ? {
         ...(authType ? { auth_type: authType } : {}),
+        session_json: values.session_json,
+        client_id: values.client_id,
+        client_secret: values.client_secret,
         access_token: values.access_token,
         refresh_token: values.refresh_token,
         id_token: values.id_token,
@@ -117,7 +120,7 @@ export function providerResourceUpdatePayload(values: Record<string, string>, da
   const isAccountResource = providerResourceValuesAreAccount(values, data);
   if (isAccountResource && !values.access_token?.trim()) delete payload.api_key;
   if (!isAccountResource && !values.api_key?.trim()) delete payload.api_key;
-  if (isAccountResource && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
+  if (isAccountResource && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim() && !values.session_json?.trim() && !values.client_id?.trim() && !values.client_secret?.trim()) {
     delete payload.credentials;
   }
   return payload;
@@ -160,6 +163,9 @@ export function providerResourceToForm(item: ProviderResource, providerOptions?:
     name: item.name,
     resource_type: item.resource_type,
     auth_type: summary.auth_type || item.options?.auth_type || "",
+    session_json: "",
+    client_id: "",
+    client_secret: "",
     access_token: "",
     refresh_token: "",
     id_token: "",

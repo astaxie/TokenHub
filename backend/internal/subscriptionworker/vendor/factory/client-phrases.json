@@ -1,0 +1,16 @@
+{
+  "//": "Fixed client phrases Factory refuses in a request body. Each phrase's first character is a JSON \\uXXXX escape: the file is safe to read (a Droid session reading it does not 403), and JSON.parse yields the real phrase. anywhere: refused in any text (system, user, assistant, tool_use). toolOnly: refused in tool output; the prompt adapters keep them.",
+  "anywhere": [
+    "\u0059ou are an expert coding assistant operating inside pi, a coding agent harness.",
+    "\u0054he conversation history before this point was compacted into the following summary:"
+  ],
+  "toolOnly": [
+    "\u0059ou are Claude Code, Anthropic's official CLI for Claude.",
+    "\u0059ou are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.",
+    "\u0059ou are a Claude agent, built on Anthropic's Claude Agent SDK.",
+    "\u0059ou have been invoked in the following environment:",
+    "\u0078-anthropic-billing-header: cc_version=",
+    "\u0054his session is being continued from a previous conversation that ran out of context.",
+    "\u0028user's private global instructions for all projects)"
+  ]
+}

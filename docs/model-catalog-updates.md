@@ -4,6 +4,16 @@ Language: English | [简体中文](zh-CN/model-catalog-updates.md) | [日本語]
 
 The 2026-10-10 catalog review adds current upstream model offers and records access, retirement, compatibility, and pricing boundaries. Catalog inclusion lets administrators discover an offer; it does not establish call support, account entitlement, live health, or production deployment.
 
+## Magpie subscription and account presets (2026-10-24)
+
+The Provider catalog now has 172 entries. Twelve API-key presets were added from [Magpie's pinned preset inventory](https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go): Qianfan personal and enterprise Token Plans, Huawei Cloud MaaS Token Plan, Volcengine Coding and Agent Plans, Qwen AI Token Plan, Kimi Code Global, Tencent enterprise Token Plan Global, ClinePass, Ollama Cloud account models, Command Code API, and Nous Portal API. Existing StepFun Global Step Plan and other regional plans remain available.
+
+Select the exact plan and region before adding its key. Qwen AI and Alibaba Cloud Bailian use different hosts and keys. Versioned Qianfan, Huawei, Tencent, and Volcengine paths are preserved without appending `/v1`. Text requests use the OpenAI-compatible adapter; this addition does not claim the plans' image, video, or embedding operations. Command Code Go accounts use the subscription adapter instead of the Provider API preset.
+
+Plan seeds are candidate IDs from the pinned source. They do not prove account entitlement, context limits, or pricing. Kimi Global, Ollama Cloud, Command Code API, and Nous API begin with an empty candidate list and use account model discovery. The separate Ollama Cloud entry avoids copying the existing local-model reference library. All new seeds omit prices and unverified limits; configure current costs before publishing. Public catalog refreshes retain these plan endpoints and account-only entries.
+
+Maintain the pinned facts in `tools/magpie-provider-presets.mjs`, run `node tools/sync-magpie-provider-presets.mjs`, then `node tools/generate-builtin-provider-plugins.mjs`. The source commit and MIT attribution accompany the catalog. The bundled OAuth/subscription adapters run directly inside TokenHub; see [Deployment](deployment.md) for the Node runtime requirement.
+
 ## Review scope
 
 The update covers the standard model templates, official Provider catalogs, and generated built-in Provider plugin catalogs. It includes OpenAI GPT-6 Sol/Luna and newer media offers; Claude 5.5 and Fable 5.1; Gemini 3.8 and Embedding 2; Qwen 3.8, text retrieval, images, and realtime models; DeepSeek V4.1 Flash; Grok 4.7 and Imagine; MiMo V2.6; Doubao Seed 2.1; Mistral Large 4; Cohere Embed 5/Rerank 4; Voyage Rerank 3; and reviewed Kimi, GLM, MiniMax, and StepFun offers. A model can appear under several regions or subscription providers, so Provider entries and unique model templates are different counts.

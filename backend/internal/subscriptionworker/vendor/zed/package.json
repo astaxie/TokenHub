@@ -1,0 +1,11 @@
+{
+  "name": "@magpie-community/opencode-zed-auth",
+  "version": "0.1.11",
+  "description": "Sign in to a Zed subscription (Zed Pro, trial, student, business) from OpenCode or magpie",
+  "type": "module",
+  "main": "./index.mjs",
+  "files": ["index.mjs", "README.md"],
+  "keywords": ["opencode", "opencode-plugin", "magpie", "zed"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/magpie-community/plugins.git", "directory": "packages/zed" }
+}

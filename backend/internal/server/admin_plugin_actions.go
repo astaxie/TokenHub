@@ -91,6 +91,8 @@ func (s *Server) handleAdminProviderActionPost(w http.ResponseWriter, r *http.Re
 	}
 	if !providerActionAllowsSensitiveResult(descriptor) {
 		result = sanitizePluginActionResult(result)
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
 	}
 	s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "success", "")
 	writeJSON(w, http.StatusOK, result)
@@ -135,7 +137,7 @@ func (s *Server) handleAdminPluginBackgroundJobRunPost(w http.ResponseWriter, r 
 
 func providerAdapterCapabilityForActionCapability(actionCapability string) (AdapterCapability, bool) {
 	switch strings.TrimSpace(actionCapability) {
-	case "oauth.start", "oauth.exchange", "credentials.refresh":
+	case "oauth.methods", "oauth.start", "oauth.exchange", "oauth.cancel", "credentials.refresh":
 		return AdapterCapabilityOAuth, true
 	case "models.read", "models.preview":
 		return AdapterCapabilityModels, true
@@ -455,7 +457,8 @@ func sensitivePluginActionResultKey(key string) bool {
 	if normalized == "reauthorization_required" || normalized == providerResourceReauthorizationRequiredOption {
 		return false
 	}
-	return normalized == "access_token" ||
+	return normalized == "session_json" || normalized == "sessionjson" ||
+		normalized == "access_token" ||
 		normalized == "refresh_token" ||
 		normalized == "id_token" ||
 		strings.Contains(normalized, "secret") ||

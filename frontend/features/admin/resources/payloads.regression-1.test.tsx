@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { emptyData } from "../domain/catalog";
 import { notificationChannelConfig } from "./settings-config";
-import { defaultFormValues, readAdminError } from "./payloads";
+import { defaultFormValues, providerResourceUpdatePayload, readAdminError } from "./payloads";
 import { providerConfig } from "./provider-model-config";
 
 describe("Provider model catalog error localization", () => {
@@ -52,5 +52,25 @@ describe("Provider form defaults", () => {
 describe("Generic form defaults", () => {
   it("does not synthesize a legacy OpenAI-compatible type for notification channels", () => {
     expect(defaultFormValues(notificationChannelConfig(), emptyData()).type).toBe("");
+  });
+});
+
+describe("Provider account credential updates", () => {
+  it("preserves an OAuth client secret edit without replacing stored tokens", () => {
+    const payload = providerResourceUpdatePayload({ resource_type: "google_account", client_secret: "synthetic-client-secret" });
+    expect(payload.credentials).toMatchObject({ client_secret: "synthetic-client-secret" });
+    expect(payload).not.toHaveProperty("api_key");
+  });
+
+  it("preserves an OAuth client ID edit without replacing stored tokens", () => {
+    const payload = providerResourceUpdatePayload({ resource_type: "openai_subscription", client_id: "custom-client" });
+    expect(payload.credentials).toMatchObject({ client_id: "custom-client" });
+    expect(payload).not.toHaveProperty("api_key");
+  });
+
+  it("omits empty credentials when editing account metadata", () => {
+    const payload = providerResourceUpdatePayload({ resource_type: "openai_subscription", name: "Renamed account", client_id: " " });
+    expect(payload).not.toHaveProperty("credentials");
+    expect(payload).not.toHaveProperty("api_key");
   });
 });

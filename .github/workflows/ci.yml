@@ -41,6 +41,14 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
+      - name: Set up bundled subscription runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Test bundled subscription adapters
+        run: node --test internal/subscriptionworker/worker.test.mjs
+
       - name: Check formatting
         run: |
           set -euo pipefail

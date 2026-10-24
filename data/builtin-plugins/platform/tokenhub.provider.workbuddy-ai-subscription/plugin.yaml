@@ -1,0 +1,21 @@
+schema_version: 2
+id: "tokenhub.provider.workbuddy-ai-subscription"
+name: "WorkBuddy AI"
+version: 1.0.0
+summary: "Connect a WorkBuddy AI subscription account."
+description: "Connect an explicitly authorized WorkBuddy AI subscription account through TokenHub's isolated bundled runtime."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "workbuddy_ai_subscription"
+distribution:
+  license: Apache-2.0
+kinds: ["provider"]
+placement: []
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

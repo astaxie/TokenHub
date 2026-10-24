@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 release_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The backend launches bundled subscription adapters with this release's Node.
+export PATH="$release_dir/bin:$PATH"
 backend_pid=""
 frontend_pid=""
 

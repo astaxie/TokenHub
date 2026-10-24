@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.qwen-token-plan"
+name: "Qwen AI Token Plan"
+version: 1.0.0
+summary: "Connect TokenHub to Qwen AI Token Plan."
+description: "Connect TokenHub to Qwen AI Token Plan. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1"
+    catalog:
+      id: "qwen-token-plan"
+      name: "Qwen AI Token Plan"
+      display_name: "Qwen AI Token Plan"
+      type: "openai_compatible"
+      base_url: "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1"
+      doc_url: "https://platform.qianwenai.com/docs/token-plan/overview"
+      categories: []
+      models_count: 12
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

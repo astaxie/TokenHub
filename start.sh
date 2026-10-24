@@ -157,7 +157,19 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 GO_CMD="$(find_go)"
+require_command node
 require_command npm
+node - "$ROOT_DIR/.nvmrc" <<'NODE'
+const fs = require("node:fs");
+const required = fs.readFileSync(process.argv[2], "utf8").trim();
+const current = process.versions.node.split(".").map(Number);
+const minimum = required.split(".").map(Number);
+const difference = current.map((value, index) => value - minimum[index]).find(value => value !== 0) ?? 0;
+if (difference < 0) {
+  console.error(`Node.js ${required} or newer is required for the console and bundled subscription adapters.`);
+  process.exit(1);
+}
+NODE
 
 if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
   log "Frontend dependencies not found, running npm install"
