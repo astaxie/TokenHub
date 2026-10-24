@@ -373,11 +373,13 @@ type ProviderResource struct {
 }
 
 type ProviderResourceCredentials struct {
+	SessionJSON    string `json:"session_json,omitempty"`
 	AuthType       string `json:"auth_type,omitempty"`
 	AccessToken    string `json:"access_token,omitempty"`
 	RefreshToken   string `json:"refresh_token,omitempty"`
 	IDToken        string `json:"id_token,omitempty"`
 	ClientID       string `json:"client_id,omitempty"`
+	ClientSecret   string `json:"client_secret,omitempty"`
 	Scopes         string `json:"scopes,omitempty"`
 	TokenType      string `json:"token_type,omitempty"`
 	ExpiresAt      string `json:"expires_at,omitempty"`

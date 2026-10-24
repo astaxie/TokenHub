@@ -413,7 +413,7 @@ func TestProviderCatalogServiceReloadsTrackedLocalFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source != "local-provider-catalog" || len(summaries) != providerCatalogMinProviders+1 ||
+	if source != "local-provider-catalog" || len(summaries) != providerCatalogFixtureProviderCount()+1 ||
 		!providerCatalogContains(summaries, "fresh-provider") {
 		t.Fatalf("unexpected local catalog summary: source=%q entries=%+v", source, summaries)
 	}
@@ -892,11 +892,18 @@ func TestBootstrapSeedsProviderCatalogSnapshot(t *testing.T) {
 	}
 }
 
+// Keep synthetic catalogs complete relative to the shipped seed. Each fixture
+// provider still has five models, so tests do not depend on production names.
+func providerCatalogFixtureProviderCount() int {
+	providers, models, _ := providerCatalogStats(builtinProviderPluginCatalogSeedEntries())
+	return max(providerCatalogMinProviders, providers, (models+4)/5)
+}
+
 func writeProviderCatalogFixture(t *testing.T, catalogFile string) {
 	t.Helper()
 	providers := map[string]any{}
 	ids := []string{"openai", "anthropic", "google", "fresh-provider"}
-	for index := len(ids); index < providerCatalogMinProviders; index++ {
+	for index := len(ids); index < providerCatalogFixtureProviderCount(); index++ {
 		ids = append(ids, fmt.Sprintf("provider-%02d", index))
 	}
 	for _, id := range ids {

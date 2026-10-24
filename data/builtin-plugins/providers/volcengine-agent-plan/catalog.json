@@ -1,0 +1,425 @@
+{
+  "id": "volcengine-agent-plan",
+  "type": "openai_compatible",
+  "api": "https://ark.cn-beijing.volces.com/api/plan/v3",
+  "name": "Volcengine Ark Agent Plan",
+  "display_name": "Volcengine Ark Agent Plan",
+  "doc": "https://www.volcengine.com/docs/82379/1925114",
+  "metadata": {
+    "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+    "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+    "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+    "catalog_reviewed_at": "2026-10-24",
+    "pricing_status": "unverified",
+    "billing_mode": "subscription",
+    "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+    "model_discovery": "seed"
+  },
+  "models": [
+    {
+      "id": "ark-code-latest",
+      "name": "ark-code-latest",
+      "display_name": "ark-code-latest",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "doubao-seed-evolving",
+      "name": "doubao-seed-evolving",
+      "display_name": "doubao-seed-evolving",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "doubao-seed-2.1-pro",
+      "name": "doubao-seed-2.1-pro",
+      "display_name": "doubao-seed-2.1-pro",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "doubao-seed-2.1-lite",
+      "name": "doubao-seed-2.1-lite",
+      "display_name": "doubao-seed-2.1-lite",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "doubao-seed-2.1-turbo",
+      "name": "doubao-seed-2.1-turbo",
+      "display_name": "doubao-seed-2.1-turbo",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "doubao-seed-2.0-mini",
+      "name": "doubao-seed-2.0-mini",
+      "display_name": "doubao-seed-2.0-mini",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "minimax-m3",
+      "name": "minimax-m3",
+      "display_name": "minimax-m3",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.3",
+      "name": "glm-5.3",
+      "display_name": "glm-5.3",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.3-flash",
+      "name": "glm-5.3-flash",
+      "display_name": "glm-5.3-flash",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "deepseek-v4.1-flash",
+      "display_name": "deepseek-v4.1-flash",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "deepseek-v4-flash",
+      "display_name": "deepseek-v4-flash",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
+      "display_name": "deepseek-v4-pro",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "name": "kimi-k2.7-code",
+      "display_name": "kimi-k2.7-code",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "kimi-k2.8-preview",
+      "name": "kimi-k2.8-preview",
+      "display_name": "kimi-k2.8-preview",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "kimi-k3",
+      "name": "kimi-k3",
+      "display_name": "kimi-k3",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://www.volcengine.com/docs/82379/1925114",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    }
+  ]
+}

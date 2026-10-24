@@ -1,0 +1,130 @@
+# Subscription and account providers
+
+Language: English | [简体中文](zh-CN/subscription-providers.md) | [日本語](ja/subscription-providers.md)
+
+TokenHub integrates the six active built-in account providers and all 26 account-provider IDs from the pinned Magpie community inventory. Administrators connect each account as a provider resource, load its models, and route requests through TokenHub's existing authentication, authorization, and usage accounting. A Magpie service is not required.
+
+The account adapters and API-key presets are separate integration paths. A paid application subscription does not automatically grant an API plan, every listed model, or unlimited usage. This integration does not assert that a provider permits account sharing or automated access; use the account according to its applicable plan terms.
+
+## Runtime requirements
+
+- The community adapters require Node.js **22.23.1 or newer** on the backend host. The supported Docker image and native release bundle include Node; source deployments must provide it on the backend process's `PATH`. `start.sh` checks the version. No npm packages are installed at runtime.
+- Claude Code requires the genuine `claude` CLI on the backend process's `PATH`. TokenHub does not currently bundle or pin that CLI. Install it in the backend execution environment, including inside the container when using Docker, before connecting Claude accounts. A missing executable returns `claude_cli_unavailable`.
+- Go handles Codex, Copilot, ChatGPT API, Gemini CLI, and Antigravity integration. The other 26 adapters run as application-owned Node workers with bundled, fixed source files. They do not run a Magpie daemon or load arbitrary JavaScript plugins.
+
+See [Deployment](deployment.md) for the supported deployment paths.
+
+## Account-provider matrix
+
+The six native integrations use these TokenHub provider types. “Chat” means `/v1/chat/completions`; “Responses” means `/v1/responses`. Streaming and caller-defined tools follow the listed text protocol and upstream model support.
+
+| Provider | TokenHub provider type | Connection | Public text scope |
+| --- | --- | --- | --- |
+| Claude Code | `claude_subscription` | Import a setup token or account session | Chat through the genuine Claude Code CLI |
+| OpenAI Codex | `openai_codex` | Existing Codex OAuth or explicit account import | Responses and existing compatibility bridges |
+| GitHub Copilot | `github-copilot-subscription` | GitHub device code | Chat and Responses |
+| ChatGPT API | `chatgpt-subscription` | Sign in with ChatGPT, or explicit token import | Responses using a direct API token; separate from the Codex backend |
+| Gemini CLI | `gemini_cli_subscription` | Google browser OAuth with administrator-supplied desktop-client configuration | Chat through Code Assist |
+| Antigravity | `antigravity_subscription` | Google browser OAuth with administrator-supplied desktop-client configuration | Chat through Code Assist |
+
+All 26 community integrations expose **Chat**, including streaming and caller-defined tools where supported by the upstream model. Their internal Chat, Anthropic, Responses, or Gemini wire format does not add public Responses, embeddings, or media support. Every row also supports explicit session JSON import; this is the only connection path for Kimi Work.
+
+| Provider | Inventory ID | Available connection methods |
+| --- | --- | --- |
+| Cursor | `cursor` | Browser; API key |
+| Kiro | `kiro` | Browser with Google, GitHub, AWS Builder ID, or IAM Identity Center; `ksk_` API key |
+| Qoder | `qoder` | Browser/device flow; personal access token |
+| Qoder China | `qoder-cn` | Browser/device flow; personal access token; official Qoder enterprise VPC |
+| WorkBuddy | `workbuddy` | Browser |
+| WorkBuddy AI | `workbuddy-ai` | Browser |
+| Xiaomi MiMo | `mimo-app` | Xiaomi account browser/poll flow; seed models only |
+| ZCode | `zcode` | Z.ai, BigModel, or team browser flow; GLM Coding Plan API key with site selection |
+| Factory | `factory` | Device code; `fk-` API key |
+| Grok | `grok` | Device code |
+| Devin | `devin` | Browser |
+| Command Code Go | `commandcode-plan` | Browser; API key |
+| Zed | `zed` | Browser with loopback callback |
+| Kimi Work | `kimi-work` | Explicit session JSON import only |
+| MiniMax Coding Plan | `minimax-code` | Account device/browser flow |
+| MiniMax Coding Plan Global | `minimax-code-global` | Account device/browser flow |
+| Cline | `cline` | Browser/device flow; API key |
+| Trae China | `trae-cn` | Browser; experimental upstream adapter |
+| Trae Global | `trae-global` | Browser; experimental upstream adapter |
+| OpenDesign | `opendesign` | Account device flow; API key |
+| Nous Portal | `nous-portal` | Device code |
+| Raccoon | `raccoon` | Browser; manual callback/token flow |
+| AutoClaw | `autoclaw` | Google or z.ai via a local loopback landing page |
+| AutoClaw China | `autoclaw-cn` | Phone number and SMS code |
+| CodeArts | `codearts` | Huawei Cloud browser flow |
+| JoyCode | `joycode` | JD browser flow; `ptKey` with optional enterprise tenant |
+
+For community entries, replace `-` with `_` and append `_subscription` to obtain the provider type, or `_account` for the resource type. For example, `kimi-work` maps to `kimi_work_subscription` and `kimi_work_account`. The platform plugin ID is `tokenhub.provider.<inventory-id>-subscription`.
+
+## Connect an account
+
+1. Open the administrator provider editor and select the relevant account provider.
+2. Add an account resource, choose an available connection method, and follow the provider's browser, device-code, or token instructions. An explicit JSON import is available for existing sessions. TokenHub does not search the host's CLI credentials or desktop account databases.
+3. Complete the authorization or import, then **save the resource**. The editor temporarily receives the new credentials so it can populate the resource; completing authorization alone does not guarantee durable resource storage.
+4. Load the account's models, verify the desired model with the resource probe, and configure routing and prices before enabling application traffic. A probe can consume the account's allowance.
+
+Credentials belong in the resource's protected credential fields, including encrypted session JSON, not in provider Options, ordinary headers, logs, or source control. Pending authorization sessions are bound to the initiating administrator and provider, use random state, expire, and are consumed once. Most flows expire after ten minutes; the Claude setup-token handoff expires after five minutes. Cancel unused flows from the editor.
+
+For Gemini CLI and Antigravity, explicitly supply the **OAuth client ID and client secret** of a desktop application approved for the selected provider in the login prompts. These are account login fields, not environment variables; TokenHub does not ship shared Google OAuth client credentials. The client configuration is retained with the encrypted account credentials for refresh. An arbitrary Google OAuth desktop client may authenticate a Google user yet lack eligibility for the provider's Code Assist or Antigravity service. Obtain an approved configuration and confirm the account's upstream eligibility before use.
+
+For Kimi Work, import an object with `type: "oauth"`, `access`, `webToken`, and `uid`, with optional `deviceId`. Obtain those values explicitly from your own authorized account; TokenHub never reads the desktop database. Other session schemas remain provider-specific and must match the selected provider.
+
+For Claude Code, import a long-lived token obtained with `claude setup-token`, or a session JSON object containing `claudeAiOauth.accessToken` and, where available, refresh-token metadata. The `sonnet`, `opus`, `haiku`, and `fable` catalog entries are CLI aliases checked at request time, not a live entitlement list.
+
+### Remote browsers and callbacks
+
+Device-code flows can be completed from a browser on another machine. For a simple loopback GET callback, paste the complete callback URL into the editor when prompted; TokenHub relays it only to the exact listener owned by that pending authorization session, and the upstream adapter checks the callback path, state, and PKCE.
+
+Some upstream flows POST credentials or depend on local landing-page assets, so copying a URL is insufficient. AutoClaw's global Google/z.ai flow opens an HTTP loopback landing page on the backend host. Use a browser on that host, or a trusted tunnel that reaches that process's loopback listener. A container has its own loopback namespace; a normal reverse proxy to TokenHub does not expose these temporary listeners. Command Code also offers API-key login when its browser flow is unsuitable for a remote deployment.
+
+In a multi-instance deployment, keep an authorization flow's start, polling, exchange, and cancellation on the same TokenHub backend instance. Community authorization workers and callback listeners retain process-local state. Saved credentials are durable and shareable through the database, but pending authorization and active conversation processes cannot migrate between instances. Configure session affinity for these operations; a shared PostgreSQL database alone does not provide it.
+
+## Additional API-key presets
+
+The catalog adds the following 12 presets to the existing API-key providers. They use `openai_compatible` resources and their own plan/API keys, rather than the account-worker login above.
+
+| Catalog ID | Plan or API | Initial model source |
+| --- | --- | --- |
+| `baidu-qianfan-personal` | Baidu Qianfan Token Plan Personal | Pinned seed IDs |
+| `baidu-qianfan-team` | Baidu Qianfan Token Plan Enterprise | Pinned seed IDs |
+| `huawei-maas-token-plan` | Huawei Cloud MaaS Token Plan | Pinned seed IDs |
+| `volcengine-coding-plan` | Volcengine Ark Coding Plan | Pinned seed IDs |
+| `volcengine-agent-plan` | Volcengine Ark Agent Plan | Pinned seed IDs |
+| `qwen-token-plan` | Qwen AI Token Plan | Pinned seed IDs |
+| `kimi-code-global` | Kimi Code Global | Account model discovery |
+| `tencent-token-plan-enterprise-intl` | Tencent Cloud Token Plan Enterprise Global | Pinned seed IDs |
+| `clinepass` | ClinePass | Pinned seed IDs |
+| `ollama-cloud` | Ollama Cloud | Account model discovery |
+| `commandcode` | Command Code API | Account model discovery |
+| `nous` | Nous Portal API | Account model discovery |
+
+The four account-discovery presets begin without candidate models. The existing StepFun Global Step Plan preset remains `stepfun-ai`. Existing `ollama` catalog models are not treated as hosted Ollama Cloud entitlements. See [Model Catalog Updates](model-catalog-updates.md) for refresh behavior and provenance.
+
+## Credentials, isolation, and limits
+
+Saved account credentials use TokenHub's encrypted resource storage. Community workers are isolated by account and authenticated caller, with private home directories, working directories, and environments. Account gates and cluster leases serialize operations that can rotate tokens. Credential updates use compare-and-swap persistence; the worker must receive a successful durable-save acknowledgement before using rotated credentials. A concurrent administrator edit or persistence failure fails the operation instead of overwriting newer credentials.
+
+The bundled worker is trusted application code, not an arbitrary-code sandbox. Direct HTTP/HTTPS and subprocess creation are disabled; supported upstream fetches pass through the Go transport's destination and network protections. Provider-specific domain restrictions apply, including refusal of arbitrary Factory enterprise hostnames. Cursor uses the upstream HTTP/1 RunSSE fallback.
+
+Each relayed upstream response is capped at 64 MiB in total, including streaming responses, with a separate 32 MiB queued-data bound. Exceeding a limit cancels the upstream request. The pool holds at most 32 Node workers, each launched with a 256 MiB V8 old-space limit. This is not a process RSS limit; provision memory for the aggregate workers, native buffers, and the rest of TokenHub.
+
+Claude Code runs separately with an isolated home/configuration, disabled host file/shell tools, settings sources, hooks, skills, and browser integration. Only tools declared in the caller's request are exposed through a private local MCP connection. The genuine CLI performs its own upstream network requests outside the Go worker relay; apply host outbound policy for this process. Its executable is application-controlled, not a provider option. This isolation is not an OS sandbox.
+
+Claude allows one active request or parked tool call per account, with at most 16 runs per backend process. Tool results must return through the same authenticated tenant/API credential and backend process. Parked tool calls expire after five minutes, and a run lasts at most 30 minutes. Restarting or switching backend instances loses parked continuation state.
+
+A renewable account lease covers Claude credential reload, execution, parked tool rounds, credential persistence, and process cleanup across backend instances. Cleanup still attempts to save rotated credentials after cancellation or timeout. If a transient storage failure persists after three attempts, TokenHub retains the private temporary recovery directory and logs its path, without logging credential values. Recovery is manual: preserve that directory until the account credentials are durably restored. Concurrent administrator edits are never overwritten by a stale session.
+
+Model discovery may fall back to pinned seed IDs. Catalog metadata distinguishes `subscription-account-live`, `subscription-account-fallback`, and `subscription-account-empty`; fallback entitlement and pricing remain unverified. Raw upstream variants are retained as metadata, and only explicit reasoning-effort values become selectable effort options. A listed model does not establish account access, price, context size, or remaining quota. This release does not expose every upstream usage hook as an administrator quota view.
+
+Tests cover synthetic HTTP flows, protocol translation, streams, tool calls, encrypted credential rotation, cancellation, process isolation, and callback restrictions. **Real paid accounts, current plan allowances, and every upstream login flow have not been verified live.** Trae remains experimental, and upstream private interfaces can change independently of TokenHub. Existing Codex image support is unchanged; these additions do not promise new embeddings, image, audio, or video capabilities.
+
+## Pinned sources and licenses
+
+- [yetone/magpie](https://github.com/yetone/magpie), commit `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1`, supplies the reviewed built-in inventory, native protocol references, and API preset facts. Its MIT license is retained in `tools/licenses/magpie-LICENSE`. `backend/internal/server/SUBSCRIPTION_THIRD_PARTY_NOTICES.md` identifies native Copilot, ChatGPT, Claude, Gemini CLI, and Antigravity derivations; their platform packages and generated API preset packages include third-party notices.
+- [magpie-community/plugins](https://github.com/magpie-community/plugins), commit `c9a0215f31d401ca4249fac33d03e6b97e44ebbb`, supplies the statically bundled community adapters under MIT. `backend/internal/subscriptionworker/vendor/PROVENANCE.json` records package versions and SHA256 hashes; the upstream license is retained beside it.
+
+Vendored sources stay pinned and byte-identical to the provenance manifest. TokenHub adaptations live outside the vendor tree; no runtime update or package installation occurs.

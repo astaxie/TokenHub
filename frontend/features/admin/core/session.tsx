@@ -1,4 +1,4 @@
-import { type AdminUser, oauthBaseURLStorageKey, sessionStorageKey } from "./types";
+import { type AdminUser, type ProviderCatalogEntry, oauthBaseURLStorageKey, sessionStorageKey } from "./types";
 import { clearTransientAdminSession, readTransientAdminSession, saveTransientAdminSession, type StoredAdminSession } from "../domain/admin-session";
 import {
   parseOAuthLoginResult,
@@ -12,6 +12,14 @@ import { consumePasswordResetTokenFromURL } from "../domain/password-reset";
 export type SavedSession = StoredAdminSession<AdminUser>;
 
 export type ProviderAccountOAuthResult = {
+  catalog?: ProviderCatalogEntry;
+  catalog_error?: string;
+  catalog_unavailable?: boolean;
+  session_json?: string;
+  client_id?: string;
+  client_secret?: string;
+  status?: string;
+  poll_interval?: number;
   access_token?: string;
   refresh_token?: string;
   id_token?: string;
@@ -29,6 +37,9 @@ export type ProviderAccountOAuthResult = {
 };
 
 export type ProviderAccountOAuthGenerateResponse = {
+  flow?: string;
+  user_code?: string;
+  poll_interval?: number;
   auth_url: string;
   session_id: string;
   state: string;
@@ -77,6 +88,7 @@ export function parseProviderAccountOAuthResult(source: string, allowGenericToke
     result.refresh_token = firstParam(params, marked ? ["account_refresh_token", "refresh_token"] : ["account_refresh_token"]);
     result.id_token = firstParam(params, marked ? ["account_id_token", "id_token"] : ["account_id_token"]);
     result.session_id = firstParam(params, ["provider_account_oauth_session_id", "account_oauth_session_id", "session_id"]);
+    result.client_id = marked ? firstParam(params, ["client_id"]) : "";
     result.state = firstParam(params, ["provider_account_oauth_state", "account_oauth_state", "state"]);
     result.error = firstParam(params, marked ? ["provider_account_oauth_error", "oauth_error", "error"] : ["provider_account_oauth_error"]);
     result.account_email = firstParam(params, ["account_email", "email", "login", "username"]);

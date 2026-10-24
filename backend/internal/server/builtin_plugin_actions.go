@@ -11,6 +11,8 @@ import (
 )
 
 func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar) {
+	registerBuiltinSubscriptionActions(server, actions)
+	registerBuiltinSubscriptionWorkerActions(server, actions)
 	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.oauth.start",
@@ -689,7 +691,6 @@ func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar
 		return pluginmeta.ActionResult{Data: map[string]any{"credential_summary": providerAccountCredentialSummary(credentials)}}, nil
 	}))
 }
-
 func openAICodexImageCapabilityActionDescriptor() pluginmeta.ActionDescriptor {
 	return pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",

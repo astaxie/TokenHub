@@ -306,6 +306,9 @@ func (s *GormStore) SetProviderHealth(providerID string, healthy bool) (Provider
 }
 
 func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderResource, error) {
+	if err := validateProviderResourceSession(resource.Credentials); err != nil {
+		return ProviderResource{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -500,6 +503,9 @@ func updateExistingProviderResourceColumns(db *gorm.DB, resource *ProviderResour
 }
 
 func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error) {
+	if err := validateProviderResourceSession(patch.Credentials); err != nil {
+		return ProviderResource{}, err
+	}
 	var updated ProviderResource
 	err := s.withClusterLease(context.Background(), providerResourceMutationLeaseName(id), func(leaseCtx context.Context) error {
 		var updateErr error
@@ -719,6 +725,7 @@ func (s *GormStore) updateProviderResourceOptions(ctx context.Context, id string
 	for key, value := range options {
 		resource.Options[key] = value
 	}
+	stripProviderResourceCredentialOptions(resource.Options)
 	resource.UpdatedAt = time.Now().UTC()
 	if err := updateExistingProviderResourceColumns(db, &resource, "options", "updated_at"); err != nil {
 		return ProviderResource{}, err

@@ -1,3 +1,4 @@
+import { ProviderSubscriptionAuth, subscriptionCredentialIdentity, subscriptionCredentialValues, supportsSubscriptionAuthorization } from "./provider-subscription-auth";
 import { ModelCatalogNotices } from "./model-catalog-notices";
 import { preserveRetrievalCatalog } from "../domain/retrieval-settings";
 import { AlertCircle, Ban, Check, Copy, Send, Trash2 } from "lucide-react";
@@ -109,6 +110,7 @@ export function ProviderUpsertModal({
   const [accountProviderCatalog, setAccountProviderCatalog] = useState<ProviderCatalogEntry | null>(null);
   const [accountProviderCatalogLoading, setAccountProviderCatalogLoading] = useState(false);
   const [accountProviderCatalogError, setAccountProviderCatalogError] = useState("");
+  const authorizedCatalogCredentials = useRef("");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [modelQuery, setModelQuery] = useState("");
   const [modelLoading, setModelLoading] = useState(false);
@@ -142,6 +144,8 @@ export function ProviderUpsertModal({
     base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
     type: mode === "edit" ? provider?.type ?? "" : initialEntry?.type ?? "",
   }, { plugins, providerAdapters }));
+  const accountCredentialIdentity = subscriptionCredentialIdentity(values.type, catalogID, accountValues);
+  const subscriptionAccountWithoutPreview = supportsSubscriptionAuthorization(pluginActions, values.type) && !providerPluginActionForCapability(pluginActions, values.type, "models.preview");
   const [accountOAuthCallback, setAccountOAuthCallback] = useState("");
   const [accountOAuthStatus, setAccountOAuthStatus] = useState("");
   const [accountOAuthBusy, setAccountOAuthBusy] = useState(false);
@@ -307,9 +311,17 @@ export function ProviderUpsertModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the explicit catalog and connection keys are the request identity; form setters must not refetch.
   }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id, selectedCatalogDiscoveryRouteID, selectedCatalogIsAccountProvider, selectedCatalogUsesDiscoveryPreview]);
   useEffect(() => {
-    if (!usesAccountCatalog || mode === "edit") return;
+    if (!usesAccountCatalog || mode === "edit") { setAccountProviderCatalogLoading(false); return; }
+    if (authorizedCatalogCredentials.current === accountCredentialIdentity) { setAccountProviderCatalogLoading(false); return; }
+    if (authorizedCatalogCredentials.current) { authorizedCatalogCredentials.current = ""; setAccountProviderCatalog(null); setSelectedModels({}); }
     const resource = accountResources.find((item) => item.status === "active") ?? accountResources[0];
-    const hasPendingCredentials = Boolean(accountValues.access_token?.trim() && accountValues.account_id?.trim());
+    const hasPendingCredentials = Boolean(accountValues.access_token?.trim() || accountValues.session_json?.trim());
+    if (hasPendingCredentials && subscriptionAccountWithoutPreview) {
+      setAccountProviderCatalog(null); setAccountProviderCatalogLoading(false); setSelectedModels({});
+      setAccountProviderCatalogError(tx("请先保存账号，再加载可用模型。"));
+      return;
+    }
+    if (accountValues.session_json?.trim()) { setAccountProviderCatalogLoading(false); return; }
     if (!resource && !hasPendingCredentials) {
       setAccountProviderCatalog(null);
       setAccountProviderCatalogError(tx("完成账号授权后将从真实账号加载可用模型。"));
@@ -326,6 +338,8 @@ export function ProviderUpsertModal({
           method: "POST",
           body: JSON.stringify({
             auth_type: accountValues.auth_type || "oauth",
+            session_json: accountValues.session_json,
+            client_id: accountValues.client_id,
             access_token: accountValues.access_token,
             refresh_token: accountValues.refresh_token,
             id_token: accountValues.id_token,
@@ -365,6 +379,8 @@ export function ProviderUpsertModal({
     credentialMode,
     accountResources,
     usesAccountCatalog,
+    accountValues.session_json,
+    accountValues.client_id,
     accountValues.access_token,
     accountValues.account_id,
     accountValues.account_email,
@@ -376,9 +392,12 @@ export function ProviderUpsertModal({
     accountValues.refresh_token,
     accountValues.scopes,
     accountValues.token_type,
+    accountValues.resource_type,
     catalogID,
     catalogReloadKey,
     mode,
+    accountCredentialIdentity,
+    subscriptionAccountWithoutPreview,
   ]);
   useEffect(() => {
     if (mode !== "edit" || !editingAccountProvider || !editingAccountProviderCatalogEntry?.id || selectedAccountResources.length === 0) {
@@ -485,7 +504,7 @@ export function ProviderUpsertModal({
   const selectedEntry = usesAccountCatalog
     ? accountProviderCatalog ?? accountProviderCatalogOptions.find((entry) => entry.id === catalogID) ?? defaultAccountProviderCatalogEntry
     : detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
-  const accountRuntimeFields = useMemo(() => providerCreateAccountRuntimeFields(), []);
+  const accountRuntimeFields = useMemo(() => providerCreateAccountRuntimeFields(Boolean(selectedEntry?.base_url)), [selectedEntry?.base_url]);
   const accountManualTokenFields = useMemo(() => providerCreateAccountManualTokenFields(), []);
   const accountTokenSummary = useMemo(() => providerAccountTokenSummary(accountValues), [accountValues]);
   const accountResourceNameConflict = useMemo(() => {
@@ -545,6 +564,7 @@ export function ProviderUpsertModal({
 
   function updateAccountValue(key: string, value: string) {
     setAccountValues((current) => ({ ...current, [key]: value }));
+    if (key === "session_json") setAccountProviderCatalog(null);
     if (key === "name") {
       setError("");
       setAccountOAuthStatus("");
@@ -563,27 +583,23 @@ export function ProviderUpsertModal({
       await exchangeProviderAccountAuthorizationCode(result, message);
       return;
     }
-    if (!result.access_token && !result.refresh_token && !result.id_token) {
+    if (!result.access_token && !result.refresh_token && !result.id_token && !result.session_json) {
       setAccountOAuthStatus(tx("未在回调结果中识别到 Token。"));
       setError(tx("未在回调结果中识别到 Token。"));
       return;
     }
     const defaults = providerResourceDraftDefaults({ name: selectedEntry?.display_name || selectedEntry?.name || values.name, base_url: selectedEntry?.base_url || values.base_url, type: values.type || selectedEntry?.type }, { plugins, providerAdapters });
-    setAccountValues((current) => ({
-      ...current,
-      resource_type: current.resource_type || defaults.resource_type,
-      auth_type: current.auth_type || defaults.auth_type,
-      access_token: result.access_token || current.access_token || "",
-      refresh_token: result.refresh_token || current.refresh_token || "",
-      id_token: result.id_token || current.id_token || "",
-      account_email: result.account_email || current.account_email || "",
-      account_id: result.account_id || current.account_id || "",
-      organization_id: result.organization_id || current.organization_id || "",
-      plan_type: result.plan_type || current.plan_type || "",
-      token_type: result.token_type || current.token_type || "",
-      expires_at: result.expires_at || current.expires_at || "",
-      scopes: result.scopes || current.scopes || "",
-    }));
+    const nextAccountValues = {
+      ...accountValues,
+      resource_type: accountValues.resource_type || defaults.resource_type,
+      auth_type: accountValues.auth_type || defaults.auth_type,
+      ...subscriptionCredentialValues(result, supportsSubscriptionAuthorization(pluginActions, values.type)),
+    };
+    setAccountValues(nextAccountValues);
+    if (result.catalog || result.session_json || supportsSubscriptionAuthorization(pluginActions, values.type)) {
+      authorizedCatalogCredentials.current = subscriptionCredentialIdentity(values.type, catalogID, nextAccountValues);
+      setAccountProviderCatalog(result.catalog ?? null); setAccountProviderCatalogError(result.catalog ? "" : result.catalog_error || result.catalog_unavailable ? tx("账号已授权，模型目录暂时不可用。请保存账号后重试。") : tx("账号模型目录加载失败")); setAccountProviderCatalogLoading(false); setSelectedModels({});
+    }
     setAccountOAuthStatus(message);
     setError("");
   }
@@ -633,7 +649,7 @@ export function ProviderUpsertModal({
       const tokenInfo = await exchangeProviderAccountOAuthCode(api, pluginActions, values.type, {
         session_id: sessionID,
         state,
-        code: result.authorization_code,
+        code: result.authorization_code, client_id: result.client_id,
       });
       clearPendingProviderAccountOAuthSession();
       await applyProviderAccountOAuthResult(tokenInfo, message);
@@ -1207,6 +1223,7 @@ export function ProviderUpsertModal({
                           <small>{tx("账号资源名称需全局唯一，用于在资源池中区分账号。")}</small>
                         )}
                       </label>
+                      {supportsSubscriptionAuthorization(pluginActions, values.type) ? <ProviderSubscriptionAuth key={values.type} api={api} actions={pluginActions} providerType={values.type} disabled={accountResourceNameConflict} organizationID={accountValues.organization_id} onCredentials={(result) => applyProviderAccountOAuthResult(result, "")} /> : <>
                       <label className="field provider-account-auth-wide">
                         <span>{tx("账号 OAuth 授权")}</span>
                         <div className="field-action-row">
@@ -1241,7 +1258,7 @@ export function ProviderUpsertModal({
                           <span>{tx(accountTokenSummary.ready ? "已回填账号 Token" : "等待授权回填")}</span>
                           {accountTokenSummary.items.map((item) => <em key={item}>{tx(item)}</em>)}
                         </div>
-                      </div>
+                      </div></>}
                     </div>
                     {accountOAuthStatus ? <p className="provider-credential-note">{accountOAuthStatus}</p> : null}
                     <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={updateAccountValue} providerType={values.type} resourceType={accountValues.resource_type} slot="provider.resource.form.section" values={accountValues} />

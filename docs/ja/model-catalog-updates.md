@@ -4,6 +4,16 @@ Language: [English](../model-catalog-updates.md) | [简体中文](../zh-CN/model
 
 2026-10-10 のカタログ確認では、現在の上流モデルと、アクセス条件、提供終了、呼び出し互換性、料金の適用範囲を記録しました。カタログへの掲載は候補の発見を支援するものであり、呼び出し対応、アカウント権限、稼働状況、本番デプロイを保証しません。
 
+## Magpie のサブスクリプション・アカウントプリセット（2026-10-24）
+
+Provider カタログは 172 エントリーになりました。[固定版 Magpie のプリセット一覧](https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go) から 12 個の API キープリセットを追加しました。Qianfan 個人・企業 Token Plan、Huawei Cloud MaaS Token Plan、Volcengine Coding・Agent Plan、Qwen AI Token Plan、Kimi Code Global、Tencent 企業 Token Plan Global、ClinePass、Ollama Cloud アカウントモデル、Command Code API、Nous Portal API です。既存の StepFun Global Step Plan と他の地域プランは維持します。
+
+キーを追加する前に正しいプランと地域を選択してください。Qwen AI と Alibaba Cloud Bailian はホストとキーが異なります。Qianfan、Huawei、Tencent、Volcengine のバージョン付きパスは `/v1` を追加せずに保持します。テキスト要求は OpenAI-compatible アダプターを使用し、画像・動画・埋め込み操作の対応を意味しません。Command Code Go アカウントは Provider API プリセットではなく、サブスクリプションアダプターを使用します。
+
+プランの初期候補は固定ソースのモデル ID であり、アカウント権限、コンテキスト制限、価格の証明ではありません。Kimi Global、Ollama Cloud、Command Code API、Nous API の候補一覧は空から始め、アカウントのモデル検出を使用します。独立した Ollama Cloud エントリーは既存のローカルモデル参考一覧を流用しません。新規候補には価格や未確認の制限を記入せず、公開前に現在のコストを設定します。公開カタログの更新でも、これらのプラン URL とアカウント検出専用エントリーは保持されます。
+
+固定ソースは `tools/magpie-provider-presets.mjs` で管理し、`node tools/sync-magpie-provider-presets.mjs`、`node tools/generate-builtin-provider-plugins.mjs` の順に実行します。ソースコミットと MIT 帰属表示を添付しています。組み込み OAuth・サブスクリプションアダプターは TokenHub が直接実行します。Node の要件は[デプロイ](deployment.md)を参照してください。
+
 ## 対象範囲
 
 標準モデルテンプレート、公式 Provider カタログ、生成される組み込み Provider プラグインカタログを更新します。OpenAI GPT-6 Sol/Luna と新しいメディアモデル、Claude 5.5 と Fable 5.1、Gemini 3.8 と Embedding 2、Qwen 3.8 とテキスト検索・画像・リアルタイムモデル、DeepSeek V4.1 Flash、Grok 4.7 と Imagine、MiMo V2.6、Doubao Seed 2.1、Mistral Large 4、Cohere Embed 5/Rerank 4、Voyage Rerank 3、および確認した Kimi、GLM、MiniMax、StepFun モデルが対象です。同じモデルが地域別やサブスクリプション別の Provider に載るため、Provider エントリー数と一意のテンプレート数は異なります。

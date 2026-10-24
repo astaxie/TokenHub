@@ -1,0 +1,21 @@
+schema_version: 2
+id: "tokenhub.provider.chatgpt-subscription"
+name: "ChatGPT API"
+version: 1.0.0
+summary: "Connect the direct ChatGPT API with dynamic client authorization."
+description: "Connect the direct ChatGPT API with dynamic client authorization."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "chatgpt-subscription"
+distribution:
+  license: Apache-2.0
+kinds: ["provider"]
+placement: []
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

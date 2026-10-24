@@ -13,6 +13,7 @@ TokenHub 文档现在按企业 Token Governance 里的三种角色组织。默�
 
 - [整体架构](architecture.md)：部署拓扑、控制面和数据面、模型请求链路、持久化与安全边界。
 - [部署](deployment.md)：Docker Compose、环境变量、数据与反向代理配置。
+- [订阅与账户 Provider](subscription-providers.md)：32 个账户 Provider、12 个新增 API Key 预设、登录方式、部署要求与协议限制。
 - [数据库演进](database-evolution.md)：只前进迁移、采纳基线、维护命令与回退兼容性。
 - [PostgreSQL 设置指南](../postgresql-setup.md)：PostgreSQL 配置、运维和迁移。
 - [性能基准测试](performance-benchmarking.md)：可复现的网关对比、进程内分配基准和回退预算。

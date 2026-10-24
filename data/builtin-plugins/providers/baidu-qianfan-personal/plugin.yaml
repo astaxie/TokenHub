@@ -1,0 +1,36 @@
+schema_version: 2
+id: "tokenhub.provider-catalog.baidu-qianfan-personal"
+name: "Baidu Qianfan Token Plan Personal"
+version: 1.0.0
+summary: "Connect TokenHub to Baidu Qianfan Token Plan Personal."
+description: "Connect TokenHub to Baidu Qianfan Token Plan Personal. Connection behavior is provided by the host-managed openai_compatible adapter."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "openai_compatible"
+distribution:
+  license: Apache-2.0
+kinds:
+  - provider
+placement: []
+capabilities:
+  provider_types:
+    - "openai_compatible"
+  provider:
+    default_base_url: "https://qianfan.baidubce.com/v2/tokenplan/personal"
+    catalog:
+      id: "baidu-qianfan-personal"
+      name: "Baidu Qianfan Token Plan Personal"
+      display_name: "Baidu Qianfan Token Plan Personal"
+      type: "openai_compatible"
+      base_url: "https://qianfan.baidubce.com/v2/tokenplan/personal"
+      doc_url: "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6"
+      categories: []
+      models_count: 9
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

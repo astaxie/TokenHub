@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { magpieCommit, magpieProviderPresets } from "./magpie-provider-presets.mjs";
 
 const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(toolsDir, "..");
@@ -8,6 +9,8 @@ const catalogPath = path.join(repositoryRoot, "data", "provider-catalog.json");
 const outputRoot = path.join(repositoryRoot, "data", "builtin-plugins", "providers");
 const license = await readFile(path.join(repositoryRoot, "LICENSE"), "utf8");
 const catalog = JSON.parse(await readFile(catalogPath, "utf8"));
+const magpiePresetIDs = new Set(magpieProviderPresets.map((preset) => preset.id));
+const magpieLicense = await readFile(path.join(toolsDir, "licenses", "magpie-LICENSE"), "utf8");
 
 const nativePlugins = new Map([
   ["typesafe", { id: "tokenhub.provider.typesafe", adapter: "typesafe" }],
@@ -58,6 +61,10 @@ for (const [catalogID, value] of entries) {
   await writeFile(path.join(directory, "catalog.json"), `${JSON.stringify({ id: catalogID, ...value }, null, 2)}\n`, "utf8");
   await writeFile(path.join(directory, "README.md"), readme({ adapter, catalogID, name, pluginID }), "utf8");
   await writeFile(path.join(directory, "LICENSE"), license, "utf8");
+  if (magpiePresetIDs.has(catalogID)) {
+    await writeFile(path.join(directory, "THIRD_PARTY_NOTICES"),
+      `Preset facts adapted from https://github.com/yetone/magpie at ${magpieCommit}.\n\n${magpieLicense}`, "utf8");
+  }
 }
 
 process.stdout.write(`Generated ${entries.length} built-in Provider plugin packages in ${path.relative(repositoryRoot, outputRoot)}\n`);

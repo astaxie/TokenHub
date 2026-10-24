@@ -1,0 +1,19 @@
+{
+  "id": "nous",
+  "type": "openai_compatible",
+  "api": "https://inference-api.nousresearch.com/v1",
+  "name": "Nous Portal API",
+  "display_name": "Nous Portal API",
+  "doc": "https://portal.nousresearch.com",
+  "metadata": {
+    "upstream_source": "https://portal.nousresearch.com",
+    "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+    "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+    "catalog_reviewed_at": "2026-10-24",
+    "pricing_status": "unverified",
+    "billing_mode": "account",
+    "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+    "model_discovery": "account"
+  },
+  "models": []
+}

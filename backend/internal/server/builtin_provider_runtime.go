@@ -31,7 +31,7 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 	if deps.Store != nil {
 		codexSubscription.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
 	}
-	return builtinProviderRuntime{
+	runtime := builtinProviderRuntime{
 		adapters: map[string]any{
 			providerTypeSafe:         TypeSafeAdapter{Client: deps.Client},
 			ProviderMock:             MockAdapter{},
@@ -64,4 +64,7 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 			ProviderOpenAICodex: codexSubscription,
 		},
 	}
+	addBuiltinSubscriptionRuntime(runtime.adapters, deps)
+	addBuiltinSubscriptionWorkerRuntime(runtime.adapters, deps)
+	return runtime
 }

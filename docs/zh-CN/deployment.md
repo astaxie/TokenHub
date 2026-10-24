@@ -4,6 +4,8 @@ Language: [English](../deployment.md) | 简体中文 | [日本語](../ja/deploym
 
 TokenHub 面向私有化部署，由 Go 后端、Next.js 管理后台和 SQLite 持久化组成。
 
+使用订阅账户时，先参阅[订阅与账户 Provider](subscription-providers.md)，了解 Node 与 Claude CLI 依赖、远程 OAuth 回调和同实例会话要求。
+
 ## 数据库选择
 
 TokenHub 支持两种数据库后端：
@@ -354,7 +356,7 @@ docker inspect --format 'memory={{.HostConfig.Memory}} memory_swap={{.HostConfig
 
 加 `-d` 后服务会脱离启动它的 shell，在该 shell 退出、终端关闭后继续运行；但重启机器不会自动拉起，需要这种能力请使用正式的安装方式。两种模式都会写 pid 文件，因此 `status` 和 `stop` 对前台实例同样有效。`stop` 在发信号前会校验记录的 pid 仍属于本实例，因此不会误杀被系统复用了该号码的其它进程；启动前还会先占用两个端口，端口被占用时直接报错，不会把别的服务的响应误判成启动成功。
 
-需要 Go（版本见 `backend/go.mod`）、Node 22 或更高、npm 和 C 编译器，因为后端通过 cgo 链接 SQLite。
+需要 Go（版本见 `backend/go.mod`）、Node 22.23.1 或更高（版本固定在 `.nvmrc`）、npm 和 C 编译器，因为后端通过 cgo 链接 SQLite。内置订阅适配器也使用 Node；Docker 镜像和原生 Release 安装包已包含该运行时，原生服务会将随包 Node 加入后端进程的 PATH。单独运行后端二进制时，PATH 中需要有兼容的 `node`；无需启动 Magpie 服务或在运行时安装 npm 包。
 
 以上在 Linux 上验证过。macOS 没有 `setsid`，脚本会退化为遍历进程树来停止服务；该路径已实现但未在 macOS 上实测。
 

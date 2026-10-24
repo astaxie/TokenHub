@@ -703,6 +703,7 @@ func executeRoutedWithStore[T any](
 	// without invoking the callback, so a local counter would undercount them.
 	call func(context.Context, RouteSelection, bool, int) (T, Usage, error),
 ) (T, RouteSelection, Usage, []RouteAttempt, error) {
+	ctx = withSubscriptionCaller(ctx, routed.Call.Project.ID, routed.Call.Key.ID)
 	var zero T
 	var lastErr error = ErrProviderMissing
 	var cumulativeTokens int64

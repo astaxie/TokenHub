@@ -1,0 +1,21 @@
+schema_version: 2
+id: "tokenhub.provider.trae-global-subscription"
+name: "Trae Global"
+version: 1.0.0
+summary: "Connect a Trae Global subscription account."
+description: "Connect an explicitly authorized Trae Global subscription account through TokenHub's isolated bundled runtime."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "trae_global_subscription"
+distribution:
+  license: Apache-2.0
+kinds: ["provider"]
+placement: []
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

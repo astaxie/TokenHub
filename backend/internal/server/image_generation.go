@@ -573,6 +573,7 @@ func (s *Server) enqueueImageJob(work imageJobWork) error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	defer s.shutdownProviderRuntimes()
 	// The instance heartbeat stays published until every database worker has
 	// stopped: contract preflight must keep seeing this instance through the
 	// drain, on every exit path.

@@ -1,0 +1,19 @@
+{
+  "id": "kimi-code-global",
+  "type": "openai_compatible",
+  "api": "https://api.kimi.ai/coding/v1",
+  "name": "Kimi Code (Global)",
+  "display_name": "Kimi Code (Global)",
+  "doc": "https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html",
+  "metadata": {
+    "upstream_source": "https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html",
+    "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+    "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+    "catalog_reviewed_at": "2026-10-24",
+    "pricing_status": "unverified",
+    "billing_mode": "subscription",
+    "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+    "model_discovery": "account"
+  },
+  "models": []
+}

@@ -1,0 +1,155 @@
+{
+  "id": "huawei-maas-token-plan",
+  "type": "openai_compatible",
+  "api": "https://api.modelarts-maas.com/plan/v2",
+  "name": "Huawei Cloud MaaS Token Plan",
+  "display_name": "Huawei Cloud MaaS Token Plan",
+  "doc": "https://support.huaweicloud.com/Token-plan-maas/tokenplan-maas-0001.html",
+  "metadata": {
+    "upstream_source": "https://support.huaweicloud.com/Token-plan-maas/tokenplan-maas-0001.html",
+    "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+    "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+    "catalog_reviewed_at": "2026-10-24",
+    "pricing_status": "unverified",
+    "billing_mode": "subscription",
+    "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+    "model_discovery": "seed"
+  },
+  "models": [
+    {
+      "id": "glm-5.3",
+      "name": "glm-5.3",
+      "display_name": "glm-5.3",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://support.huaweicloud.com/Token-plan-maas/tokenplan-maas-0001.html",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.1",
+      "name": "glm-5.1",
+      "display_name": "glm-5.1",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://support.huaweicloud.com/Token-plan-maas/tokenplan-maas-0001.html",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "kimi-k2.6",
+      "name": "kimi-k2.6",
+      "display_name": "kimi-k2.6",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://support.huaweicloud.com/Token-plan-maas/tokenplan-maas-0001.html",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "deepseek-v4.1-flash",
+      "display_name": "deepseek-v4.1-flash",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://support.huaweicloud.com/Token-plan-maas/tokenplan-maas-0001.html",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "deepseek-v4-flash",
+      "display_name": "deepseek-v4-flash",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://support.huaweicloud.com/Token-plan-maas/tokenplan-maas-0001.html",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    }
+  ]
+}
