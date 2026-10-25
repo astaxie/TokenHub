@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -32,9 +34,17 @@ func (s *Server) runSubscriptionOAuthAction(ctx context.Context, definition buil
 	// consumed session and leave a later restored authorization active.
 	var result pluginmeta.ActionResult
 	err := s.store.RunClusterOperation(ctx, "subscription-oauth:"+definition.providerType+":"+strings.TrimSpace(input.SessionID), func(leaseCtx context.Context) error {
+		if err := leaseCtx.Err(); err != nil {
+			return err
+		}
 		var err error
 		result, err = operation(leaseCtx)
 		return err
 	})
+	// Cancellation may make database/sql roll back lease acquisition before its
+	// transaction finishes, reporting ErrTxDone instead of the caller's cause.
+	if errors.Is(err, sql.ErrTxDone) && ctx.Err() != nil {
+		return result, ctx.Err()
+	}
 	return result, err
 }

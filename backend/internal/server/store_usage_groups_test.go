@@ -204,8 +204,18 @@ func TestUsageQueriesStopAtCanceledContextAndReleaseReadPool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats := pool.Stats(); stats.InUse != 0 {
-		t.Fatalf("canceled usage queries retained %d read connections", stats.InUse)
+	// database/sql may win the cancellation rollback before GORM's deferred
+	// Rollback. ErrTxDone then precedes the asynchronous connection release.
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	poll := time.NewTicker(time.Millisecond)
+	defer poll.Stop()
+	for stats := pool.Stats(); stats.InUse != 0; stats = pool.Stats() {
+		select {
+		case <-deadline.C:
+			t.Fatalf("canceled usage queries retained read connections after rollback deadline: %+v", pool.Stats())
+		case <-poll.C:
+		}
 	}
 }
 
