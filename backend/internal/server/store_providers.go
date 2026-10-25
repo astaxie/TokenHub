@@ -527,6 +527,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 	if err := db.First(&resource, "id = ?", id).Error; err != nil {
 		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
 	}
+	retainCredentialReplacementSettings(&patch, resource)
 	before := resource
 	var beforeProvider Provider
 	if err := db.First(&beforeProvider, "id = ?", before.ProviderID).Error; err != nil {
@@ -645,6 +646,12 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 			"headers", "sensitive_headers", "options", "credential_blob", "updated_at",
 		); err != nil {
 			return err
+		}
+		if patch.Credentials != nil && patch.Credentials.Replace {
+			if err := tx.Model(&ProviderResourceObservation{}).Where("resource_id = ?", resource.ID).
+				Updates(map[string]any{"quota_snapshot": "", "quota_fetched_at": nil}).Error; err != nil {
+				return err
+			}
 		}
 		if len(changedImageCapabilityProfiles) == 0 {
 			return nil

@@ -1,4 +1,5 @@
 import { ProviderSubscriptionAuth, subscriptionCredentialIdentity, subscriptionCredentialValues, supportsSubscriptionAuthorization } from "./provider-subscription-auth";
+import { ProviderSubscriptionReauthorization } from "./provider-subscription-reauthorization";
 import { ModelCatalogNotices } from "./model-catalog-notices";
 import { preserveRetrievalCatalog } from "../domain/retrieval-settings";
 import { AlertCircle, Ban, Check, Copy, Send, Trash2 } from "lucide-react";
@@ -157,6 +158,7 @@ export function ProviderUpsertModal({
   const [accountQuotaBusyIDs, setAccountQuotaBusyIDs] = useState<Record<string, boolean>>({});
   const [accountQuotaErrors, setAccountQuotaErrors] = useState<Record<string, string>>({});
   const [accountQuotas, setAccountQuotas] = useState<Record<string, ProviderAccountQuota>>({});
+  const accountCredentialRevision = useRef(0);
   const [accountConfirmation, setAccountConfirmation] = useState<ProviderAccountConfirmation | null>(null);
   const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
   const [accountConfirmationError, setAccountConfirmationError] = useState("");
@@ -407,6 +409,7 @@ export function ProviderUpsertModal({
       return;
     }
     let cancelled = false;
+    const revision = accountCredentialRevision.current;
     setAccountCatalogLoading(true);
     setAccountCatalogErrors({});
     void Promise.all(selectedAccountResources.map(async (resource) => {
@@ -417,21 +420,21 @@ export function ProviderUpsertModal({
         );
         if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载账号模型目录")));
         const payload = (await resp.json()) as { data: ProviderCatalogEntry };
-        if (!cancelled) {
+        if (!cancelled && revision === accountCredentialRevision.current) {
           setAccountCatalogs((current) => ({ ...current, [resource.id]: payload.data }));
         }
       } catch (err) {
-        if (cancelled || isAuthExpiredError(err)) return;
+        if (cancelled || revision !== accountCredentialRevision.current || isAuthExpiredError(err)) return;
         const message = err instanceof Error ? err.message : tx("账号模型目录加载失败");
         setAccountCatalogErrors((current) => ({ ...current, [resource.id]: message }));
       }
     })).finally(() => {
-      if (!cancelled) setAccountCatalogLoading(false);
+      if (!cancelled && revision === accountCredentialRevision.current) setAccountCatalogLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [api, editingAccountProvider, editingAccountProviderCatalogEntry?.id, mode, selectedAccountResources]);
+  }, [api, catalogReloadKey, editingAccountProvider, editingAccountProviderCatalogEntry?.id, mode, selectedAccountResources]);
 
   useEffect(() => {
     if (mode === "create") {
@@ -463,7 +466,7 @@ export function ProviderUpsertModal({
     }
     const timer = window.setInterval(() => { for (const resource of richQuotaPanel.resources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- queryAccountQuota is an event command; resource selection owns the polling lifecycle.
-  }, [editTab, mode, richQuotaPanel.firstAction, richQuotaPanel.resources]);
+  }, [catalogReloadKey, editTab, mode, richQuotaPanel.firstAction, richQuotaPanel.resources]);
 
   const selectedAccountCatalog = useMemo(
     () => {
@@ -711,15 +714,18 @@ export function ProviderUpsertModal({
   }
 
   async function queryAccountQuota(resource: ProviderResource, force = false) {
+    const revision = accountCredentialRevision.current;
     setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: true }));
     setAccountQuotaErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
     try {
       const action = accountQuotaActionsByResourceID[resource.id];
       if (!action) throw new Error(tx("该插件动作尚未注册。"));
-      const quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: force }, tx("查询订阅额度"));
+      const quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: force || revision > 0 }, tx("查询订阅额度"));
+      if (revision !== accountCredentialRevision.current) return false;
       setAccountQuotas((current) => ({ ...current, [resource.id]: quota }));
       return true;
     } catch (err) {
+      if (revision !== accountCredentialRevision.current) return false;
       setAccountQuotas((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
       if (isAuthExpiredError(err)) return false;
       setAccountQuotaErrors((current) => ({
@@ -728,8 +734,17 @@ export function ProviderUpsertModal({
       }));
       return false;
     } finally {
-      setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: false }));
+      if (revision === accountCredentialRevision.current) setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: false }));
     }
+  }
+
+  async function subscriptionCredentialsSaved() {
+    accountCredentialRevision.current += 1;
+    setAccountCatalogs({}); setAccountCatalogErrors({});
+    setAccountQuotas({}); setAccountQuotaErrors({}); setAccountQuotaBusyIDs({});
+    setSelectedModels({});
+    setCatalogReloadKey((current) => current + 1);
+    await (onAccountsChanged ?? onSaved)();
   }
 
   function selectCredentialMode(nextMode: ProviderCredentialMode) {
@@ -1301,6 +1316,7 @@ export function ProviderUpsertModal({
             ) : null}
             {mode === "edit" && editTab === "connect" ? (
               <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} />
+                {editingAccountProvider && values.type === provider?.type ? <ProviderSubscriptionReauthorization key={`${values.type}:${selectedAccountID}`} api={api} actions={pluginActions} providerType={values.type} resource={selectedAccountID === "all" ? undefined : selectedAccountResources[0]} onSaved={subscriptionCredentialsSaved} /> : null}
                 {provider && !editingAccountProvider && !accountProviderTypesFromPlugins(plugins, providerAdapters).includes(provider.type) ? <ProviderAPIKeyPool api={api} provider={provider} resources={resources} onSaved={onAccountsChanged ?? onSaved} /> : null}</>
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (

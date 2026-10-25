@@ -247,7 +247,7 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 		}
 		resp, err := subscriptionHTTP(ctx, client, req)
 		if err != nil {
-			if attempt == 0 && providerErrorDisposition(err) == ProviderErrorAuthBroken {
+			if attempt == 0 && AsHTTPError(err).UpstreamStatus == http.StatusUnauthorized {
 				continue
 			}
 			return nil, err

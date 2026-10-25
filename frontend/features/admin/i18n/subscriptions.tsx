@@ -1,5 +1,14 @@
 export const subscriptionTranslations = {
   en: {
+  "更新订阅账号凭据": "Update subscription credentials",
+  "重新登录或导入会话，保存后替换所选账号的旧凭据；调度配置保持不变。": "Sign in again or import a session, then save to replace the selected account's credentials. Scheduling settings are preserved.",
+  "请在顶部账号列表中选择一个账号，再更新其凭据。": "Select one account from the list above before updating its credentials.",
+  "重新授权账号": "Reauthorize account",
+  "保存新账号凭据": "Save new account credentials",
+  "更新账号凭据失败": "Could not update account credentials",
+  "账号凭据已更新。": "Account credentials updated.",
+  "新凭据已准备好，请保存以完成更新。": "The new credentials are ready. Save them to complete the update.",
+  "账号凭据已保存，但页面刷新失败。请重新打开编辑器。": "The account credentials were saved, but the page could not refresh. Reopen the editor.",
   "主窗口使用率": "Primary window usage",
   "余额": "Balance",
   "套餐到期时间": "Plan expiration",
@@ -47,6 +56,15 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth Client ID"
 },
   ja: {
+  "更新订阅账号凭据": "サブスクリプションの認証情報を更新",
+  "重新登录或导入会话，保存后替换所选账号的旧凭据；调度配置保持不变。": "再ログインまたはセッションの取り込み後に保存すると、選択したアカウントの認証情報が置き換わります。スケジューリング設定は維持されます。",
+  "请在顶部账号列表中选择一个账号，再更新其凭据。": "認証情報を更新する前に、上部の一覧からアカウントを 1 つ選択してください。",
+  "重新授权账号": "アカウントを再認可",
+  "保存新账号凭据": "新しい認証情報を保存",
+  "更新账号凭据失败": "アカウントの認証情報を更新できませんでした",
+  "账号凭据已更新。": "アカウントの認証情報を更新しました。",
+  "新凭据已准备好，请保存以完成更新。": "新しい認証情報の準備ができました。保存して更新を完了してください。",
+  "账号凭据已保存，但页面刷新失败。请重新打开编辑器。": "アカウントの認証情報は保存されましたが、画面を更新できませんでした。エディターを開き直してください。",
   "主窗口使用率": "メイン期間の使用率",
   "余额": "残高",
   "套餐到期时间": "プランの有効期限",

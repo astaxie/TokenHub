@@ -38,20 +38,15 @@ func subscriptionHTTP(ctx context.Context, client *http.Client, req *http.Reques
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-	status := resp.StatusCode
-	disposition := ProviderErrorTransientSame
-	if status < 400 {
-		status = http.StatusBadGateway
-	} else if status == http.StatusUnauthorized {
-		disposition = ProviderErrorAuthBroken
-	} else if status == http.StatusForbidden {
-		disposition = ProviderErrorPolicy
-	} else if status == http.StatusTooManyRequests || status == http.StatusPaymentRequired {
-		disposition = ProviderErrorQuotaExhausted
-	} else if status < 500 {
-		disposition = ProviderErrorClient
+	message := fmt.Sprintf("Subscription upstream returned HTTP %d", resp.StatusCode)
+	if resp.StatusCode < http.StatusBadRequest {
+		failure := NewHTTPError(http.StatusBadGateway, "subscription_upstream_error", message)
+		failure.UpstreamStatus = resp.StatusCode
+		return nil, &ProviderInvocationError{Err: failure, Disposition: ProviderErrorTransientSame}
 	}
-	return nil, &ProviderInvocationError{Err: NewHTTPError(status, "subscription_upstream_error", fmt.Sprintf("Subscription upstream returned HTTP %d", resp.StatusCode)), Disposition: disposition}
+	// Keep standard route classification and parsed retry metadata without
+	// exposing provider bodies or copying private headers to the caller.
+	return nil, newProviderHTTPError(resp.StatusCode, resp.Header, []byte(message))
 }
 
 func subscriptionDecode(resp *http.Response, target any) error {
