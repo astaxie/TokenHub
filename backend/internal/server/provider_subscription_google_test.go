@@ -396,7 +396,9 @@ func TestGoogleSubscriptionToolContinuationKeepsIDsAndSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter.preparePayload("claude-live", payload)
+	if err := adapter.preparePayload("claude-live", payload); err != nil {
+		t.Fatal(err)
+	}
 	contents := payload["contents"].([]map[string]any)
 	callPart := contents[1]["parts"].([]map[string]any)[0]
 	resultPart := contents[2]["parts"].([]map[string]any)[0]

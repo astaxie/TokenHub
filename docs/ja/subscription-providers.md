@@ -69,7 +69,11 @@ TokenHub は、固定版 Magpie の有効な組み込みアカウント Provider
 
 認証情報は、暗号化セッション JSON を含むリソースの保護された認証フィールドに保存します。Provider Options、通常のヘッダー、ログ、ソース管理には置かないでください。進行中の認証セッションは開始した管理者と Provider に紐付き、ランダムな state と有効期限を持ち、一度だけ使用できます。多くのフローは 10 分、Claude setup-token の受け渡しは 5 分で失効します。不要なフローはエディターからキャンセルできます。
 
+`PATCH /api/admin/provider-resources/{id}` で既存アカウントを置き換えたり、セッション JSON と token を切り替えたりする場合は、`credentials.replace` を `true` にし、新しい `access_token` または完全な `session_json` を指定してください。認証情報全体が置き換わり、省略した古い token、OAuth クライアント設定、アカウントメタデータは削除されます。必要な新しいクライアント設定やアカウントメタデータも `credentials` に含めてください。このフラグのない通常の更新では、指定した項目のみを従来どおりマージします。新しい token もセッションもない置き換え要求は拒否されます。
+
 Gemini CLI と Antigravity では、選択した Provider が承認したデスクトップアプリの **OAuth client ID と client secret** をログインフォームに明示的に入力してください。環境変数ではなくアカウントのログイン項目です。TokenHub は共有の Google OAuth クライアント認証情報を同梱しません。クライアント設定は token 更新のためアカウント認証情報とともに暗号化して保存します。任意の Google OAuth デスクトップクライアントで Google ユーザーを認証できても、対象の Code Assist や Antigravity サービスの利用資格がない場合があります。承認された設定を取得し、アカウントの上流サービス利用資格を確認してから使用してください。
+
+Antigravity のツール引数は、対応する OpenAPI schema のサブセットへ変換されます。ローカル参照と nullable フィールドに対応し、再帰参照、外部参照、未解決の参照、過大な展開は推論前に HTTP 400 で拒否します。Gemini CLI の既存の JSON Schema 処理は維持されます。
 
 Kimi Work は `type: "oauth"`、`access`、`webToken`、`uid` を含むオブジェクトをインポートします。`deviceId` は任意です。値は権限のある自身のアカウントから明示的に取得してください。TokenHub はデスクトップのデータベースを読みません。他のセッション形式は Provider ごとに異なり、選択した Provider と一致する必要があります。
 

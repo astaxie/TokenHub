@@ -341,6 +341,10 @@ func (s *GormStore) mergeProviderAccountCredentials(providerType string, resourc
 		creds = *resource.Credentials
 	}
 	if patch != nil && patch.Credentials != nil {
+		if patch.Credentials.Replace {
+			creds = ProviderResourceCredentials{}
+			resetProviderAccountCredentials(resource)
+		}
 		mergeProviderResourceCredentials(&creds, *patch.Credentials)
 	}
 	if strings.TrimSpace(creds.AccessToken) == "" && resource.APIKey != "" && !strings.HasPrefix(resource.APIKey, "enc:v1:") {

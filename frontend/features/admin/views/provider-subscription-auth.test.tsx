@@ -144,6 +144,6 @@ describe("Subscription authorization concurrency", () => {
   it("replaces previous account secrets when a new subscription is authorized", () => {
     const original = { session_json: '{"access":"old-session"}', access_token: "old-access", refresh_token: "old-refresh", account_id: "old-account" };
     const replacement = { ...original, ...subscriptionCredentialValues({ access_token: "new-access" }, true) };
-    expect(replacement).toMatchObject({ session_json: "", access_token: "new-access", refresh_token: "", account_id: "" });
+    expect(replacement).toMatchObject({ replace_credentials: "true", session_json: "", access_token: "new-access", refresh_token: "", account_id: "" });
   });
 });

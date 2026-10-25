@@ -46,14 +46,18 @@ export function installIsolation(scope) {
     let url;
     try { url = new URL(value); } catch { throw failure("callback_not_allowed", "The callback URL is invalid"); }
     const address = url.hostname.replace(/^\[|\]$/g, "");
+    const listener = [...session.servers].map((server) => server.address()).find((bound) =>
+      bound && typeof bound === "object" && bound.port === Number(url.port) &&
+      ["127.0.0.1", "::1"].includes(bound.address) && (address === "localhost" || address === bound.address));
     if (url.protocol !== "http:" || url.username || url.password || url.hash || !["localhost", "127.0.0.1", "::1"].includes(address) ||
-      ![...session.servers].some((server) => server.address()?.port === Number(url.port))) {
+      !listener) {
       throw failure("callback_not_allowed", "The callback URL does not belong to this authorization session");
     }
     return new Promise((resolve, reject) => {
       // Only the exact listener owned by this pending session is reachable.
+      // Pin localhost to its actual bind address, without a second DNS lookup.
       // The vendor adapter still verifies its own state, path and PKCE code.
-      const request = localRequest(url, { method: "GET", timeout: 30000 }, (response) => {
+      const request = localRequest(url, { hostname: listener.address, method: "GET", timeout: 30000 }, (response) => {
         response.resume();
         response.on("end", () => resolve({ status: response.statusCode }));
       });

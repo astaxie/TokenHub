@@ -25,7 +25,7 @@ export function subscriptionCredentialIdentity(providerType: string, catalogID: 
 }
 
 export function subscriptionCredentialValues(result: ProviderAccountOAuthResult, replace = false) {
-  const values: Record<string, string> = {};
+  const values: Record<string, string> = replace ? { replace_credentials: "true" } : {};
   for (const key of subscriptionCredentialKeys) {
     if (result[key] || replace) values[key] = result[key] || "";
   }

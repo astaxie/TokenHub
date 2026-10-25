@@ -45,6 +45,9 @@ func validateProviderSessionJSON(value string) error {
 }
 
 func validateProviderResourceSession(credentials *ProviderResourceCredentials) error {
+	if credentials != nil && credentials.Replace && strings.TrimSpace(credentials.AccessToken) == "" && strings.TrimSpace(credentials.SessionJSON) == "" {
+		return NewHTTPError(400, "provider_credentials_required", "Replacing account credentials requires a new access token or session JSON")
+	}
 	if credentials == nil || strings.TrimSpace(credentials.SessionJSON) == "" {
 		return nil
 	}

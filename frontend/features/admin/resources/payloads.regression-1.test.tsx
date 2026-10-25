@@ -56,6 +56,16 @@ describe("Generic form defaults", () => {
 });
 
 describe("Provider account credential updates", () => {
+  it("sends explicit credential replacement without changing ordinary patches", () => {
+    const values = { resource_type: "claude_subscription_account", access_token: "synthetic-new-account" };
+    expect(providerResourceUpdatePayload(values).credentials).not.toHaveProperty("replace");
+    expect(providerResourceUpdatePayload({ ...values, replace_credentials: "true" }).credentials).toMatchObject({ replace: true, access_token: "synthetic-new-account" });
+  });
+
+  it("retains an empty replacement request so the backend can reject it", () => {
+    expect(providerResourceUpdatePayload({ resource_type: "claude_subscription_account", replace_credentials: "true" }).credentials).toMatchObject({ replace: true });
+  });
+
   it("preserves an OAuth client secret edit without replacing stored tokens", () => {
     const payload = providerResourceUpdatePayload({ resource_type: "google_account", client_secret: "synthetic-client-secret" });
     expect(payload.credentials).toMatchObject({ client_secret: "synthetic-client-secret" });

@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { failure, headerObject, MAX_BODY, toHeaders, validateTarget } from "./validation.mjs";
 
+// Only ordinary request metadata is safe across origins. Bundled adapters use
+// credential headers beyond Authorization (for example ptKey/X-Authorization),
+// so a denylist of known token names would silently miss future adapters.
+const CROSS_ORIGIN_SAFE_HEADERS = new Set([
+  "accept", "accept-encoding", "accept-language", "cache-control", "content-length", "content-type", "pragma", "user-agent",
+]);
+
 // Every vendor fetch is executed by the parent's guarded HTTP transport. DNS,
 // redirects, proxy selection and connection limits remain Go responsibilities.
 export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 * 1024 } = {}) {
@@ -57,11 +64,14 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
       await response.body?.cancel();
       const target = new URL(location, request.url);
       validateTarget(scope.getStore().provider, target.href);
-      if (target.origin !== new URL(request.url).origin && ["authorization", "cookie", "x-api-key"].some((key) => request.headers.has(key))) {
+      const useGet = response.status === 303 || ((response.status === 301 || response.status === 302) && request.method === "POST");
+      if (target.origin !== new URL(request.url).origin &&
+          ([...request.headers.keys()].some((key) => !CROSS_ORIGIN_SAFE_HEADERS.has(key)) || (!useGet && copy.body))) {
         throw failure("upstream_host_not_allowed", "Subscription credentials cannot follow a cross-origin redirect");
       }
-      const useGet = response.status === 303 || ((response.status === 301 || response.status === 302) && request.method === "POST");
-      request = new Request(target, { method: useGet ? "GET" : request.method, headers: request.headers,
+      const headers = new Headers(request.headers);
+      if (useGet) { headers.delete("content-type"); headers.delete("content-length"); }
+      request = new Request(target, { method: useGet ? "GET" : request.method, headers,
         body: useGet || !copy.body ? undefined : await copy.arrayBuffer(), signal: request.signal, duplex: "half" });
     }
     throw failure("invalid_upstream", "Too many subscription redirects");

@@ -8,6 +8,7 @@ func collectGoogleSubscriptionChat(reader io.Reader, model string) (any, Usage, 
 	events := newSSEDecoder(reader)
 	parts := []any{}
 	usage := map[string]any{}
+	measuredUsage := func() Usage { return geminiUsage(map[string]any{"usageMetadata": usage}) }
 	finish := ""
 	total := 0
 	for {
@@ -16,25 +17,22 @@ func collectGoogleSubscriptionChat(reader io.Reader, model string) (any, Usage, 
 			break
 		}
 		if err != nil {
-			return nil, Usage{}, err
+			return nil, measuredUsage(), err
 		}
 		total += len(event.Data)
 		if total > 32<<20 {
-			return nil, Usage{}, invalidProviderResponseError("Google subscription completion exceeds the response limit")
+			return nil, measuredUsage(), invalidProviderResponseError("Google subscription completion exceeds the response limit")
 		}
 		payload, err := decodeSSEData(event)
 		if err != nil {
-			return nil, Usage{}, err
+			return nil, measuredUsage(), err
 		}
 		if payload == nil {
 			continue
 		}
 		body, err := googleSubscriptionUnwrap(payload)
 		if err != nil {
-			return nil, Usage{}, err
-		}
-		if reason := geminiPromptBlockReason(body); reason != "" {
-			return nil, Usage{}, newProviderPolicyRefusal("Google subscription blocked the prompt")
+			return nil, measuredUsage(), err
 		}
 		if snapshot, ok := body["usageMetadata"].(map[string]any); ok {
 			for key, value := range snapshot {
@@ -42,6 +40,9 @@ func collectGoogleSubscriptionChat(reader io.Reader, model string) (any, Usage, 
 					usage[key] = value
 				}
 			}
+		}
+		if reason := geminiPromptBlockReason(body); reason != "" {
+			return nil, measuredUsage(), newProviderPolicyRefusal("Google subscription blocked the prompt")
 		}
 		candidates, _ := body["candidates"].([]any)
 		if len(candidates) == 0 {

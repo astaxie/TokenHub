@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import test from "node:test";
 import { validateAuth, validateTarget } from "./validation.mjs";
 import { createNetworkRelay } from "./network.mjs";
@@ -69,6 +70,48 @@ test("rejected redirect destinations cancel the original parent stream", async (
   assert.equal(events.at(-1).event, "network.cancel");
   assert.equal(events.at(-1).request_id, requestID);
   assert.equal(events.filter((event) => event.event === "network.request").length, 1);
+});
+
+test("cross-origin redirects reject every adapter credential header and replayed body", async () => {
+  async function redirected(init, status = 307, location = "https://joycode.jd.com/collect") {
+    const scope = new AsyncLocalStorage();
+    const events = [];
+    const relay = createNetworkRelay(scope, async (event) => {
+      events.push(event);
+      if (event.event !== "network.request") return;
+      const first = events.filter((item) => item.event === "network.request").length === 1;
+      queueMicrotask(() => relay.receive({ operation: "network.response", request_id: event.request_id,
+        status: first ? status : 200, headers: first ? { location: [location] } : {}, body: "" }));
+    });
+    const context = { id: "redirect-test", provider: "joycode", resourceID: "resource-test", controller: new AbortController() };
+    const result = scope.run(context, () => relay.fetch("https://api-ai.jd.com/request", init));
+    return { result, events };
+  }
+  for (const name of ["authorization", "cookie", "x-api-key", "ptKey", "X-Authorization", "X-Cloudide-Token", "x-ide-token",
+    "x-security-token", "X-Refresh-Token", "x-goog-api-key", "x-nous-refresh-token", "proxy-authorization", "x-future-account-key"]) {
+    const { result, events } = await redirected({ headers: { [name]: "synthetic-account-secret" } });
+    await assert.rejects(result, { code: "upstream_host_not_allowed" }, name);
+    assert.equal(events.filter((event) => event.event === "network.request").length, 1, name);
+  }
+  const replay = await redirected({ method: "POST", body: "refresh_token=synthetic-account-secret" });
+  await assert.rejects(replay.result, { code: "upstream_host_not_allowed" });
+  assert.equal(replay.events.filter((event) => event.event === "network.request").length, 1);
+
+  const unsigned = await redirected({ headers: { Accept: "application/json", "User-Agent": "synthetic-client" } });
+  assert.equal((await unsigned.result).status, 200);
+  assert.equal(unsigned.events.filter((event) => event.event === "network.request").length, 2);
+  const postToGet = await redirected({ method: "POST", body: "code=synthetic-code", headers: { "content-type": "text/plain", "content-length": "19" } }, 302);
+  assert.equal((await postToGet.result).status, 200);
+  const followed = postToGet.events.filter((event) => event.event === "network.request").at(-1);
+  assert.equal(followed.method, "GET");
+  assert.equal(followed.body, "");
+  assert.equal(followed.headers["content-type"], undefined);
+  assert.equal(followed.headers["content-length"], undefined);
+  const sameOrigin = await redirected({ method: "POST", body: "synthetic-payload", headers: { ptKey: "synthetic-account-ticket" } }, 307, "https://api-ai.jd.com/redirected");
+  assert.equal((await sameOrigin.result).status, 200);
+  const preserved = sameOrigin.events.filter((event) => event.event === "network.request").at(-1);
+  assert.deepEqual(preserved.headers.ptkey, ["synthetic-account-ticket"]);
+  assert.equal(Buffer.from(preserved.body, "base64").toString(), "synthetic-payload");
 });
 
 async function fixture(t, { network = () => ({ status: 404, body: "{}" }), rejectSave = false } = {}) {
@@ -314,6 +357,28 @@ test("callback relay rejects listeners outside the authorization session", async
   const result = await worker.call("auth.callback", { provider: "zed", session_id: start.result.session_id, url: "http://127.0.0.1:1/admin" });
   assert.equal(result.error.code, "callback_not_allowed");
   const cancelled = await worker.call("auth.cancel", { provider: "zed", session_id: start.result.session_id });
+  assert.equal(cancelled.result.state, "cancelled");
+});
+
+test("callback relay binds the listener address and accepts its localhost alias", async (t) => {
+  const worker = await fixture(t);
+  const start = await worker.call("auth.start", { provider: "zed", method_id: "0" });
+  assert.equal(start.event, "result");
+  const port = Number(new URL(start.result.url).searchParams.get("native_app_port"));
+  assert.ok(port > 0);
+  let foreignCalls = 0;
+  const foreign = createServer((_request, response) => { foreignCalls++; response.end("unowned listener"); });
+  await new Promise((resolve, reject) => { foreign.once("error", reject); foreign.listen(port, "::1", resolve); });
+  t.after(() => new Promise((resolve) => foreign.close(resolve)));
+  const fields = { provider: "zed", session_id: start.result.session_id };
+  const rejected = await worker.call("auth.callback", { ...fields, url: `http://[::1]:${port}/admin` });
+  assert.equal(rejected.error?.code, "callback_not_allowed");
+  assert.equal(foreignCalls, 0);
+  for (const host of ["127.0.0.1", "localhost"]) {
+    const owned = await worker.call("auth.callback", { ...fields, url: `http://${host}:${port}/missing-callback` });
+    assert.equal(owned.result?.status, 404, host);
+  }
+  const cancelled = await worker.call("auth.cancel", fields);
   assert.equal(cancelled.result.state, "cancelled");
 });
 

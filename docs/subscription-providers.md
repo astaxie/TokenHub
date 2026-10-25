@@ -69,7 +69,11 @@ For community entries, replace `-` with `_` and append `_subscription` to obtain
 
 Credentials belong in the resource's protected credential fields, including encrypted session JSON, not in provider Options, ordinary headers, logs, or source control. Pending authorization sessions are bound to the initiating administrator and provider, use random state, expire, and are consumed once. Most flows expire after ten minutes; the Claude setup-token handoff expires after five minutes. Cancel unused flows from the editor.
 
+When replacing an existing account or switching between a session JSON and a token through `PATCH /api/admin/provider-resources/{id}`, set `credentials.replace` to `true` and include a new `access_token` or complete `session_json`. This replaces the credential snapshot and clears omitted old tokens, OAuth client settings, and account metadata. Include any required new client configuration and account metadata in `credentials`; ordinary patches without this flag continue to merge only the supplied fields. Replacement with no new token or session is rejected.
+
 For Gemini CLI and Antigravity, explicitly supply the **OAuth client ID and client secret** of a desktop application approved for the selected provider in the login prompts. These are account login fields, not environment variables; TokenHub does not ship shared Google OAuth client credentials. The client configuration is retained with the encrypted account credentials for refresh. An arbitrary Google OAuth desktop client may authenticate a Google user yet lack eligibility for the provider's Code Assist or Antigravity service. Obtain an approved configuration and confirm the account's upstream eligibility before use.
+
+Antigravity tool parameters are projected to its supported OpenAPI schema subset. Local references and nullable fields are supported; recursive, external, unresolved, or excessively expanded schemas are rejected with HTTP 400 before inference. Gemini CLI retains its existing JSON Schema handling.
 
 For Kimi Work, import an object with `type: "oauth"`, `access`, `webToken`, and `uid`, with optional `deviceId`. Obtain those values explicitly from your own authorized account; TokenHub never reads the desktop database. Other session schemas remain provider-specific and must match the selected provider.
 

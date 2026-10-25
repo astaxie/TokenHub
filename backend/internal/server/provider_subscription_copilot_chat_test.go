@@ -80,6 +80,10 @@ func TestCopilotSubscriptionSelectsModelEndpointForChatAndStreaming(t *testing.T
 			if catalogs.Load() != 1 || calls.Load() != 2 {
 				t.Fatalf("endpoint cache behavior changed: catalogs=%d calls=%d", catalogs.Load(), calls.Load())
 			}
+			probe, err := adapter.Probe(context.Background(), provider, ProviderResource{ID: "account"}, ProviderProbeRequest{Model: "restricted-model", Prompt: "Hello"})
+			if err != nil || probe.OutputText != "hello" {
+				t.Fatalf("probe did not extract the converted model output: %q, %v", probe.OutputText, err)
+			}
 		})
 	}
 }

@@ -373,6 +373,7 @@ type ProviderResource struct {
 }
 
 type ProviderResourceCredentials struct {
+	Replace        bool   `json:"replace,omitempty"`
 	SessionJSON    string `json:"session_json,omitempty"`
 	AuthType       string `json:"auth_type,omitempty"`
 	AccessToken    string `json:"access_token,omitempty"`

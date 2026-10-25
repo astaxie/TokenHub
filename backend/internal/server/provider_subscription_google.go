@@ -217,7 +217,9 @@ func (a *GoogleSubscriptionAdapter) envelope(ctx context.Context, p Provider, cr
 	if err != nil {
 		return nil, err
 	}
-	a.preparePayload(model, payload)
+	if err := a.preparePayload(model, payload); err != nil {
+		return nil, err
+	}
 	body := map[string]any{"model": model, "project": project.ID, "request": payload}
 	if a.antigravity() {
 		body["userAgent"], body["requestType"], body["requestId"] = "antigravity", "agent", NewID("agent")

@@ -51,12 +51,8 @@ func (a *CopilotSubscriptionAdapter) Probe(ctx context.Context, provider Provide
 	text := ""
 	if useResponses {
 		text = codexResponseOutputText(response)
-	} else if choices, ok := response["choices"].([]any); ok && len(choices) > 0 {
-		if first, ok := choices[0].(map[string]any); ok {
-			if message, ok := first["message"].(map[string]any); ok {
-				text, _ = message["content"].(string)
-			}
-		}
+	} else {
+		text = choiceText(response)
 	}
 	return ProviderProbeResult{ResourceID: resource.ID, Model: model, OutputText: text, Usage: usage, LatencyMS: time.Since(started).Milliseconds(), Response: response}, nil
 }

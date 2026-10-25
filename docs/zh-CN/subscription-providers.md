@@ -69,7 +69,11 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 
 凭据应填写在资源的受保护凭据字段中，包括加密会话 JSON；不要放入 Provider Options、普通请求头、日志或源码仓库。待完成授权会话绑定发起管理员和 Provider，使用随机 state、有有效期且只能消费一次。大部分流程十分钟后过期；Claude setup-token 交接五分钟后过期。不再使用的授权流程可在编辑器中取消。
 
+通过 `PATCH /api/admin/provider-resources/{id}` 更换已有账户，或在会话 JSON 与 token 之间切换时，将 `credentials.replace` 设为 `true`，并提供新的 `access_token` 或完整 `session_json`。这会整体替换凭据，清除未提供的旧 token、OAuth 客户端配置及账户元数据。所需的新客户端配置和账户元数据也应放入 `credentials`；不带该标记的普通更新继续只合并已提供的字段。未提供新 token 或会话的替换请求会被拒绝。
+
 Gemini CLI 和 Antigravity 登录时，需要在登录表单中显式填写获所选 Provider 批准的桌面应用 **OAuth client ID 与 client secret**。它们是账户登录字段，不是环境变量；TokenHub 不内置共享 Google OAuth 客户端凭据。客户端配置随账户凭据加密保存，供 token 刷新使用。任意 Google OAuth 桌面客户端即使可以认证 Google 用户，也可能没有对应 Code Assist 或 Antigravity 服务的使用资格。使用前应取得获准的配置，并确认账户具备上游访问资格。
+
+Antigravity 工具参数会转换为其支持的 OpenAPI schema 子集，支持本地引用和可空字段；递归、外部、无法解析或展开过大的 schema 会在推理前返回 HTTP 400。Gemini CLI 保留现有的 JSON Schema 处理方式。
 
 Kimi Work 需要导入包含 `type: "oauth"`、`access`、`webToken`、`uid` 的对象，`deviceId` 可选。这些值应由管理员从本人有权使用的账户中显式获取；TokenHub 不读取桌面数据库。其他 Provider 的会话结构各不相同，必须与所选 Provider 匹配。
 

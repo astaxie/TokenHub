@@ -31,7 +31,12 @@ func googleSubscriptionSessionID(payload map[string]any) string {
 	return "-" + strconv.FormatUint(binary.BigEndian.Uint64(sum[:8])&0x7fffffffffffffff, 10)
 }
 
-func (a *GoogleSubscriptionAdapter) preparePayload(model string, payload map[string]any) {
+func (a *GoogleSubscriptionAdapter) preparePayload(model string, payload map[string]any) error {
+	if a.antigravity() {
+		if err := prepareAntigravitySubscriptionTools(model, payload); err != nil {
+			return err
+		}
+	}
 	contents, _ := payload["contents"].([]map[string]any)
 	for _, content := range contents {
 		parts, _ := content["parts"].([]map[string]any)
@@ -55,6 +60,7 @@ func (a *GoogleSubscriptionAdapter) preparePayload(model string, payload map[str
 			}
 		}
 	}
+	return nil
 }
 
 func googleSubscriptionToolID(call map[string]any) {

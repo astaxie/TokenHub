@@ -42,7 +42,7 @@ function install(api: MockAPI, device: boolean | "token") {
     return { status: 201, json: { provider: { id: "prv_ui", name: catalog.name, type: catalog.type, priority: 1, healthy: true, status: "active" }, imported_models: 1 } };
   });
   api.define("POST", "/api/admin/provider-resources", input => {
-    expect(input.body).toMatchObject({ provider_id: "prv_ui", resource_type: "ui_account", base_url: "", credentials: device === "token" ? { access_token: "synthetic-native-token", client_id: "synthetic-client", client_secret: "synthetic-client-secret" } : { session_json: '{"refresh":"synthetic-rotated"}' } });
+    expect(input.body).toMatchObject({ provider_id: "prv_ui", resource_type: "ui_account", base_url: "", credentials: { replace: true, ...(device === "token" ? { access_token: "synthetic-native-token", client_id: "synthetic-client", client_secret: "synthetic-client-secret" } : { session_json: '{"refresh":"synthetic-rotated"}' }) } });
     return { status: 201, json: { id: "rsrc_ui", provider_id: "prv_ui", resource_type: "ui_account", name: "Synthetic account", healthy: true, status: "active", priority: 1, weight: 100 } };
   });
 }

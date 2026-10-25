@@ -222,6 +222,7 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 		}
 		if stream {
 			resp.Body = newIdleTimeoutReadCloser(resp.Body, subscriptionIdleTimeout(a.StreamIdleTimeout), NewHTTPError(504, "subscription_stream_idle", "Subscription stream was idle for too long"))
+			resp.Body = newCopilotSubscriptionStream(resp.Body, provider, creds.AccessToken, session.Token, mediaChatStreamLimit(ctx))
 		}
 		return resp, nil
 	}

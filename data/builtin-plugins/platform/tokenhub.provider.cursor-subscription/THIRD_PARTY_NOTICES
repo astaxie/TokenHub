@@ -19,7 +19,7 @@ families are:
 | `backend/internal/server/provider_subscription_copilot*.go` | `internal/provider/copilot*.go`: GitHub device authorization, short-lived Copilot credentials, request headers, model discovery, and Chat/Responses routing |
 | `backend/internal/server/provider_subscription_chatgpt*.go` | `internal/provider/chatgpt_api.go`: Sign in with ChatGPT, dynamic client registration, direct API tokens, and Responses requests |
 | `backend/internal/server/provider_subscription_claude*.go` | `internal/claudecode/claudecode.go` and `internal/provider/claude*.go`: genuine Claude Code process protocol, account credential format, tool bridging, and model aliases |
-| `backend/internal/server/provider_subscription_google*.go` | `internal/provider/gemini_api.go` and `internal/provider/antigravity*.go`: Google OAuth, Code Assist envelopes, model discovery, and streaming |
+| `backend/internal/server/provider_subscription_google*.go` | `internal/provider/google.go`, `internal/provider/gemini_api.go`, `internal/provider/antigravity*.go`, and `internal/gateway/codeassist.go`: Google OAuth, Code Assist envelopes and tool schemas, model discovery, and streaming |
 | `tools/magpie-provider-presets.mjs` and its generated catalog packages | `internal/provider/presets.go`: API endpoint and seed-model inventory |
 
 These are TokenHub adaptations, not byte-identical vendored Go files. The existing
