@@ -278,6 +278,9 @@ func (a *GoogleSubscriptionAdapter) request(ctx context.Context, base, method st
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		if guarded := providerEgressFailure(err); guarded != nil {
+			return nil, guarded
+		}
 		return nil, NewHTTPError(502, "google_subscription_request_failed", "Google subscription request failed")
 	}
 	if err = checkProviderResponseForProvider(response, Provider{APIKey: creds.AccessToken}); err != nil {

@@ -38,6 +38,9 @@ func (a *GoogleSubscriptionAdapter) refresh(ctx context.Context, current Provide
 		if ctx.Err() != nil {
 			return current, ctx.Err()
 		}
+		if guarded := providerEgressFailure(err); guarded != nil {
+			return current, guarded
+		}
 		return current, NewHTTPError(502, "google_subscription_refresh_failed", "Google subscription credential refresh failed")
 	}
 	defer response.Body.Close()

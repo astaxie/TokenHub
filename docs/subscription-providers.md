@@ -80,7 +80,11 @@ For existing subscription accounts, open the provider editor, select one account
 
 Native Copilot and ChatGPT HTTP errors preserve the upstream status and valid `Retry-After` delay for routing; credential and model errors use the normal account and model failover behavior.
 
+Gemini CLI and Antigravity keep proxy authentication failures and connection timeouts classified as egress failures, so they do not penalize a valid account. GCP token refresh and model discovery keep temporary upstream failures and rate limits distinct from rejected credentials.
+
 For Gemini CLI and Antigravity, explicitly supply the **OAuth client ID and client secret** of a desktop application approved for the selected provider in the login prompts. These are account login fields, not environment variables; TokenHub does not ship shared Google OAuth client credentials. The client configuration is retained with the encrypted account credentials for refresh. An arbitrary Google OAuth desktop client may authenticate a Google user yet lack eligibility for the provider's Code Assist or Antigravity service. Obtain an approved configuration and confirm the account's upstream eligibility before use.
+
+If the Google account requires an explicit Cloud project, enter its project ID in the optional login prompt when connecting or reauthorizing. The selected project is stored with the new credentials; reauthorization does not copy the previous account’s project automatically.
 
 Antigravity tool parameters are projected to its supported OpenAPI schema subset. Local references and nullable fields are supported; recursive, external, unresolved, or excessively expanded schemas are rejected with HTTP 400 before inference. Gemini CLI retains its existing JSON Schema handling.
 
@@ -100,6 +104,8 @@ In a multi-instance deployment, keep an authorization flow's start, polling, exc
 
 Copilot supports `auto`, including plans whose regular model list is empty. The upstream chooser selects the model and protocol before inference; explicit Responses requests require a Responses-capable selection. For enterprise managed users, enter the approved `github_host` (`<tenant>.ghe.com`) during device authorization. The host is encrypted with the account and determines its authorization, session, and API destinations.
 
+Copilot model protocol and Auto caches are bound to the account credentials. Replacing credentials loads the new account’s routes; a discovery response still in flight for the previous account cannot overwrite them. Each inference request keeps the account used for its model selection.
+
 Gemini CLI reads account experiment flags and maps advertised model IDs to the account's wire IDs before inference. Providing a project does not bypass Code Assist eligibility/onboarding. Antigravity tool schemas also supply empty array-item schemas where required by the upstream API.
 
 For GCP AI, supply a Google desktop OAuth client ID/secret, a project ID or number, and a Vertex location (default `global`). Alternatively paste an `authorized_user` ADC JSON object containing `client_id`, `client_secret`, and `refresh_token` through its import method. TokenHub verifies project access, stores refreshable credentials, and discovers Gemini text models using Vertex. Service-account JSON, file paths, host gcloud profiles, and browser sessions are not imported. Enable Vertex AI and grant the user access to the chosen project. GCP Cloud Console promotional credit scraping is not included, so no fabricated remaining-credit value is shown.
@@ -111,6 +117,8 @@ QwenWork Enterprise asks for the enterprise domain during authorization. TokenHu
 The Provider editor’s advanced settings expose Grok X search (`x_search`), Factory Standard-only (`standard_only`), and Command Code zero data retention (`zdr`) as boolean options. Resource options override provider defaults. Factory Standard-only refuses inference with a retryable quota error when its Standard allowance is exhausted, enabling normal route fallback. Missing or malformed Standard usage also blocks inference until the allowance can be verified, even if extra usage credit is available. Provider support and plan eligibility still govern the effect of these options.
 
 Quota reads are available for community accounts except Nous Portal and GCP AI. Where the adapter supports it, a manual check-in action reports `claimed`, `done`, `inactive`, or `ineligible`; it does not schedule automatic claims. Qoder international may require native device identity that TokenHub does not collect. Model-specific and display-only allowance windows remain separate from account-wide exhaustion. Quota percentages stay unknown when the upstream reports only a balance or incomplete windows; monitoring shows `-`, while an explicit exhausted allowance remains `0%`, including after a manual refresh.
+
+An expired subscription reported by quota or check-in returns HTTP 409 with `provider_resource_reauthorization_required`, keeping the administrator signed in. Reauthorize that resource. Factory Standard-only also treats this state as a broken account credential and permits normal fallback to another eligible route.
 
 The coverage inventory includes all 35 account-provider IDs at the pinned revisions. Cloudflare Workers AI and OpenCode Zen Free are API/public services, and Kimi Desktop is an agent connector; they are not additional subscription-account providers. Account coverage does not imply full Magpie feature parity: host account scanning, agent switching, browser credit scraping, and new media-generation APIs are outside this integration.
 

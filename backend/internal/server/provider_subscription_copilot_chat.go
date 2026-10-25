@@ -12,7 +12,7 @@ type copilotSubscriptionModelRoutes struct {
 	endpoints map[string]string
 }
 
-func (a *CopilotSubscriptionAdapter) cacheModelRoutes(resourceID string, models []ProviderCatalogModel) {
+func (a *CopilotSubscriptionAdapter) cacheModelRoutes(key [32]byte, models []ProviderCatalogModel) {
 	routes := copilotSubscriptionModelRoutes{expiresAt: time.Now().Add(5 * time.Minute), endpoints: make(map[string]string, len(models))}
 	for _, model := range models {
 		supported := strings.Split(model.Metadata["supported_endpoints"], ",")
@@ -33,25 +33,30 @@ func (a *CopilotSubscriptionAdapter) cacheModelRoutes(resourceID string, models 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.modelRoutes == nil || len(a.modelRoutes) >= 256 {
-		a.modelRoutes = make(map[string]copilotSubscriptionModelRoutes)
+		a.modelRoutes = make(map[[32]byte]copilotSubscriptionModelRoutes)
 	}
-	a.modelRoutes[resourceID] = routes
+	a.modelRoutes[key] = routes
 }
 
 func (a *CopilotSubscriptionAdapter) modelEndpoint(ctx context.Context, provider Provider, model string) (string, error) {
 	if selected, ok := ctx.Value(copilotSubscriptionAutoKey{}).(copilotSubscriptionAutoSession); ok && selected.Model == model {
 		return selected.Endpoint, nil
 	}
+	ctx, creds, err := a.withCredentialSnapshot(ctx, provider)
+	if err != nil {
+		return "", err
+	}
 	resourceID := provider.Options["resource_id"]
+	key := copilotSubscriptionAccountKey(resourceID, creds)
 	a.mu.Lock()
-	cached, ok := a.modelRoutes[resourceID]
+	cached, ok := a.modelRoutes[key]
 	a.mu.Unlock()
 	if !ok || !cached.expiresAt.After(time.Now()) {
 		if _, _, err := a.ResourceModels(ctx, provider, ProviderResource{ID: resourceID}, ""); err != nil {
 			return "", err
 		}
 		a.mu.Lock()
-		cached = a.modelRoutes[resourceID]
+		cached = a.modelRoutes[key]
 		a.mu.Unlock()
 	}
 	return firstNonEmpty(cached.endpoints[model], "/chat/completions"), nil

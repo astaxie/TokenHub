@@ -42,7 +42,8 @@ function modelEntry(id, base = "") {
 async function json(response, message) {
   if (!response.ok) {
     await response.body?.cancel();
-    throw failure("invalid_credentials", message, response.status === 401 || response.status === 403 ? 401 : 502);
+    const rejected = [400, 401, 403].includes(response.status);
+    throw failure(rejected ? "invalid_credentials" : "invalid_upstream", message, response.status >= 400 ? response.status : 502);
   }
   try { return await response.json(); } catch { throw failure("invalid_upstream", "Google returned an invalid JSON response", 502); }
 }

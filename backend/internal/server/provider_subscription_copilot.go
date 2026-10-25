@@ -34,7 +34,7 @@ type CopilotSubscriptionAdapter struct {
 	DeviceTokenURL string
 	mu             sync.Mutex
 	sessions       map[[32]byte]copilotSubscriptionSession
-	modelRoutes    map[string]copilotSubscriptionModelRoutes
+	modelRoutes    map[[32]byte]copilotSubscriptionModelRoutes
 	inflight       map[[32]byte]chan struct{}
 	autoSessions   map[[32]byte]copilotSubscriptionAutoSession
 }
@@ -170,7 +170,7 @@ func applyCopilotSubscriptionHeaders(headers http.Header, cli bool) {
 }
 
 func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provider, path string, payload any, stream bool) (*http.Response, error) {
-	creds, err := subscriptionCredentials(ctx, provider, a.RefreshCredentials, false)
+	ctx, creds, err := a.withCredentialSnapshot(ctx, provider)
 	if err != nil {
 		return nil, err
 	}
@@ -392,6 +392,10 @@ func (a *CopilotSubscriptionAdapter) ResourceModels(ctx context.Context, provide
 		provider.Options = map[string]string{}
 	}
 	provider.Options["resource_id"] = resource.ID
+	ctx, creds, err := a.withCredentialSnapshot(ctx, provider)
+	if err != nil {
+		return ProviderCatalogEntry{}, 0, err
+	}
 	resp, err := a.request(ctx, provider, "/models", nil, false)
 	if err != nil {
 		return ProviderCatalogEntry{}, 0, err
@@ -448,6 +452,6 @@ func (a *CopilotSubscriptionAdapter) ResourceModels(ctx context.Context, provide
 			Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"supported_endpoints": strings.Join(endpoints, ","), "source": "github-copilot-live", "auto_fallback_priority": priority}})
 	}
 	models = append(models, ProviderCatalogModel{ID: "auto", Name: "auto", DisplayName: "Copilot Auto", Type: "chat", Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"source": "github-copilot-auto", "supported_endpoints": "/chat/completions"}})
-	a.cacheModelRoutes(resource.ID, models)
+	a.cacheModelRoutes(copilotSubscriptionAccountKey(resource.ID, creds), models)
 	return subscriptionCatalog(ProviderGitHubCopilotSubscription, "GitHub Copilot Subscription", copilotSubscriptionBaseURL, "github-copilot-live", "", models), resp.StatusCode, nil
 }

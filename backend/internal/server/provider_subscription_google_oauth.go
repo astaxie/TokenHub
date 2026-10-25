@@ -75,6 +75,9 @@ func (a *GoogleSubscriptionAdapter) ExchangeAuthorization(ctx context.Context, c
 		if callCtx.Err() != nil {
 			return ProviderResourceCredentials{}, callCtx.Err()
 		}
+		if guarded := providerEgressFailure(err); guarded != nil {
+			return ProviderResourceCredentials{}, guarded
+		}
 		return ProviderResourceCredentials{}, NewHTTPError(502, "subscription_oauth_exchange_failed", "Google OAuth code exchange failed")
 	}
 	defer response.Body.Close()
@@ -97,6 +100,9 @@ func (a *GoogleSubscriptionAdapter) oauthIdentity(ctx context.Context, credentia
 	if err != nil {
 		if ctx.Err() != nil {
 			return ProviderResourceCredentials{}, ctx.Err()
+		}
+		if guarded := providerEgressFailure(err); guarded != nil {
+			return ProviderResourceCredentials{}, guarded
 		}
 		return ProviderResourceCredentials{}, NewHTTPError(502, "subscription_identity_invalid", "Google account identity could not be verified")
 	}

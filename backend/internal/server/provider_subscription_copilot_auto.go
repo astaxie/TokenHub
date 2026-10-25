@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -54,14 +53,14 @@ func copilotSubscriptionPrompt(input any) string {
 }
 
 func (a *CopilotSubscriptionAdapter) resolveAuto(ctx context.Context, provider Provider, model, prompt string, refused map[string]bool) (context.Context, string, error) {
-	if model != "auto" {
-		return ctx, model, nil
-	}
-	credentials, err := subscriptionCredentials(ctx, provider, a.RefreshCredentials, false)
+	ctx, credentials, err := a.withCredentialSnapshot(ctx, provider)
 	if err != nil {
 		return ctx, model, err
 	}
-	key := sha256.Sum256([]byte(credentials.AccessToken + "\x00" + credentials.TokenType + "\x00" + credentials.SessionJSON))
+	if model != "auto" {
+		return ctx, model, nil
+	}
+	key := copilotSubscriptionAccountKey(provider.Options["resource_id"], credentials)
 	a.mu.Lock()
 	selected, cached := a.autoSessions[key]
 	a.mu.Unlock()

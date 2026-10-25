@@ -115,7 +115,7 @@ func normalizeSubscriptionQuota(raw []byte, now time.Time) (map[string]any, erro
 		return nil, NewHTTPError(502, "subscription_quota_invalid", "Subscription runtime returned invalid quota information")
 	}
 	if source.SignIn == "expired" {
-		return nil, NewHTTPError(401, "provider_resource_reauthorization_required", "Subscription account needs authorization again")
+		return nil, &ProviderInvocationError{Err: NewHTTPError(409, "provider_resource_reauthorization_required", "Subscription account needs authorization again"), Disposition: ProviderErrorAuthBroken}
 	}
 	if source.Error != "" {
 		return nil, NewHTTPError(502, "subscription_quota_failed", "The subscription provider could not read this account's quota")
@@ -179,7 +179,7 @@ func normalizeSubscriptionCheckin(raw []byte) (map[string]any, error) {
 		return nil, NewHTTPError(502, "subscription_checkin_invalid", "Subscription runtime returned an invalid check-in result")
 	}
 	if source.SignIn == "expired" {
-		return nil, NewHTTPError(401, "provider_resource_reauthorization_required", "Subscription account needs authorization again")
+		return nil, &ProviderInvocationError{Err: NewHTTPError(409, "provider_resource_reauthorization_required", "Subscription account needs authorization again"), Disposition: ProviderErrorAuthBroken}
 	}
 	switch source.Outcome {
 	case "claimed", "done", "inactive", "ineligible":

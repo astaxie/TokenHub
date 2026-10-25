@@ -48,7 +48,7 @@ func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinS
 		return pluginmeta.ActionResult{}, err
 	}
 	now := time.Now().UTC()
-	secret := subscriptionOAuthSecret{ActorID: invocation.Actor.ID, Verifier: verifier, Nonce: nonce, OrganizationID: strings.TrimSpace(request.OrganizationID), ExpiresAt: now.Add(15 * time.Minute)}
+	secret := subscriptionOAuthSecret{ActorID: invocation.Actor.ID, Verifier: verifier, Nonce: nonce, ExpiresAt: now.Add(15 * time.Minute)}
 	session := providerAccountOAuthSession{ID: NewID("subscription_oauth"), State: state, ClientID: "tokenhub:subscription:" + definition.providerType, RedirectURI: firstNonEmpty(strings.TrimSpace(request.RedirectURI), definition.redirectURI), CreatedAt: now}
 	var authURL string
 	result := map[string]any{"flow": "authorization_code", "session_id": session.ID, "state": state, "redirect_uri": session.RedirectURI, "expires_at": secret.ExpiresAt.Format(time.RFC3339)}
@@ -81,6 +81,7 @@ func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinS
 		hostID := "urn:uuid:" + host[:8] + "-" + host[8:12] + "-4" + host[13:16] + "-a" + host[17:20] + "-" + host[20:]
 		authURL, err = ChatGPTSubscriptionAuthorizeURL(session.RedirectURI, state, nonce, verifier, hostID)
 	default:
+		secret.OrganizationID = firstNonEmpty(strings.TrimSpace(request.Inputs["organization_id"]), strings.TrimSpace(request.OrganizationID))
 		secret.ClientID = strings.TrimSpace(firstNonEmpty(request.ClientID, request.Inputs["client_id"]))
 		secret.ClientSecret = strings.TrimSpace(firstNonEmpty(request.ClientSecret, request.Inputs["client_secret"]))
 		if !googleSubscriptionClientCredentialsValid(secret.ClientID, secret.ClientSecret) {

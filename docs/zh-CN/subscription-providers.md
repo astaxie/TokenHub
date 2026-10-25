@@ -80,7 +80,11 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 
 原生 Copilot 和 ChatGPT 的 HTTP 错误保留上游状态码及有效的 `Retry-After` 等待时间，供路由使用；凭据和模型错误沿用正常的账号与模型故障转移行为。
 
+Gemini CLI 和 Antigravity 将代理认证失败与连接超时保留为出口故障，不会惩罚有效账号。GCP 的 token 刷新和模型发现会区分临时上游故障、限流和凭据被拒绝。
+
 Gemini CLI 和 Antigravity 登录时，需要在登录表单中显式填写获所选 Provider 批准的桌面应用 **OAuth client ID 与 client secret**。它们是账户登录字段，不是环境变量；TokenHub 不内置共享 Google OAuth 客户端凭据。客户端配置随账户凭据加密保存，供 token 刷新使用。任意 Google OAuth 桌面客户端即使可以认证 Google 用户，也可能没有对应 Code Assist 或 Antigravity 服务的使用资格。使用前应取得获准的配置，并确认账户具备上游访问资格。
+
+Google 账号需要显式指定 Cloud 项目时，请在连接或重新授权的可选登录字段中填写项目 ID。所选项目随新凭据保存；重新授权不会自动复制旧账号的项目。
 
 Antigravity 工具参数会转换为其支持的 OpenAPI schema 子集，支持本地引用和可空字段；递归、外部、无法解析或展开过大的 schema 会在推理前返回 HTTP 400。Gemini CLI 保留现有的 JSON Schema 处理方式。
 
@@ -100,6 +104,8 @@ Claude Code 可在编辑器中启动官方 `claude auth login --claudeai` 浏览
 
 Copilot 支持 `auto`，包含常规模型列表为空的套餐。上游选择器会在推理前确定模型和协议；显式 Responses 请求要求选中的模型支持 Responses。企业托管用户可在设备授权时填写 `github_host`（`<tenant>.ghe.com`）；该域名随账户加密保存，并决定授权、会话交换和 API 的目的地。
 
+Copilot 的模型协议和 Auto 缓存绑定账号凭据。更换凭据会加载新账号的路由；旧账号尚未完成的模型发现响应不会覆盖新缓存。每次推理请求始终使用模型选择时的账号。
+
 Gemini CLI 读取账户实验标志，在推理前将展示的模型 ID 映射为账户实际使用的上游 ID。手动指定项目不会跳过 Code Assist 的资格校验和开通。Antigravity 工具 schema 同时补齐上游要求的空数组元素 schema。
 
 GCP AI 需要 Google 桌面 OAuth client ID/secret、项目 ID 或编号，以及 Vertex 区域（默认 `global`）。也可通过专用导入方式粘贴包含 `client_id`、`client_secret`、`refresh_token` 的 `authorized_user` ADC JSON。TokenHub 验证项目访问权限、保存可刷新的凭据，并从 Vertex 发现 Gemini 文本模型。不导入服务账号 JSON、文件路径、宿主机 gcloud 配置或浏览器会话。项目需启用 Vertex AI 并授予该用户访问权限。没有接入 GCP Cloud Console 优惠金页面抓取，因此不会显示虚构的剩余优惠金额。
@@ -111,6 +117,8 @@ QwenWork Enterprise 在授权时要求输入企业域名。TokenHub 将凭据、
 Provider 编辑器的高级设置提供 Grok X 搜索（`x_search`）、Factory 仅标准额度（`standard_only`）和 Command Code 零数据保留（`zdr`）布尔选项。资源选项覆盖 Provider 默认值。启用 Factory 仅标准额度后，标准额度耗尽时推理返回可重试的额度错误，进入现有路由回退流程。标准用量缺失或格式异常时，即使额外用量仍有余额，也会阻止推理，直到能够确认标准额度。选项的实际效果仍取决于上游支持和套餐资格。
 
 除 Nous Portal 和 GCP AI 外，社区账户均提供额度查询。适配器支持时，手动签到动作返回 `claimed`、`done`、`inactive` 或 `ineligible`；不会自动定时领取。Qoder 国际版可能要求原生设备身份，TokenHub 不采集此身份。特定模型的额度窗口和仅展示窗口不会与全账户额度耗尽混淆。 上游仅返回余额或不完整的窗口时，额度百分比保持未知，监控显示 `-`；明确耗尽的额度显示 `0%`，手动刷新后也保留这一区别。
+
+额度查询或签到报告订阅登录过期时，返回 HTTP 409 和 `provider_resource_reauthorization_required`，管理员保持登录，可重新授权该资源。Factory Standard-only 也会将此状态识别为账号凭据失效，允许正常回退到其他可用路由。
 
 固定版本清单共覆盖 35 个账户 Provider ID。Cloudflare Workers AI 和 OpenCode Zen Free 属于 API/公共服务，Kimi Desktop 是 agent 连接器，不属于额外的订阅账户 Provider。账号覆盖不等于复刻 Magpie 的全部功能：本机账号扫描、agent 切换、浏览器优惠金抓取及新增媒体生成接口不在此次集成范围内。
 

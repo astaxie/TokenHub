@@ -19,15 +19,15 @@ func TestGoogleSubscriptionActionsRequireAndProtectClientCredentials(t *testing.
 			server := New(store)
 			path := "/api/admin/provider-actions/" + definition.providerType + "/"
 			methods := doJSON(t, server.Handler(), http.MethodPost, path+"oauth.methods", map[string]any{"resource_type": definition.resourceType}, "dev_admin_token")
-			if methods.Code != http.StatusOK || !strings.Contains(methods.Body, `"key":"client_secret"`) || !strings.Contains(methods.Body, `"key":"client_id"`) {
+			if methods.Code != http.StatusOK || !strings.Contains(methods.Body, `"key":"client_secret"`) || !strings.Contains(methods.Body, `"key":"client_id"`) || !strings.Contains(methods.Body, `"key":"organization_id"`) {
 				t.Fatalf("Google OAuth client prompts are unavailable: %s", methods.Body)
 			}
 			missing := doJSON(t, server.Handler(), http.MethodPost, path+"oauth.start", map[string]any{"resource_type": definition.resourceType}, "dev_admin_token")
 			if missing.Code != http.StatusBadRequest || !strings.Contains(missing.Body, "google_subscription_oauth_client_required") {
 				t.Fatal("Google authorization accepted a missing OAuth client")
 			}
-			inputs := map[string]string{"client_id": "synthetic-action-client", "client_secret": "synthetic-action-client-secret"}
-			started := doJSON(t, server.Handler(), http.MethodPost, path+"oauth.start", map[string]any{"resource_type": definition.resourceType, "inputs": inputs, "organization_id": "synthetic-project"}, "dev_admin_token")
+			inputs := map[string]string{"client_id": "synthetic-action-client", "client_secret": "synthetic-action-client-secret", "organization_id": "synthetic-project"}
+			started := doJSON(t, server.Handler(), http.MethodPost, path+"oauth.start", map[string]any{"resource_type": definition.resourceType, "inputs": inputs}, "dev_admin_token")
 			if started.Code != http.StatusOK || strings.Contains(started.Body, inputs["client_secret"]) {
 				t.Fatalf("OAuth start leaked the client secret or failed: %s", started.Body)
 			}
@@ -71,7 +71,7 @@ func TestGoogleSubscriptionActionsRequireAndProtectClientCredentials(t *testing.
 			adapter.LoadURL = upstream.URL
 			delete(payload, "client_id")
 			exchanged := doJSON(t, server.Handler(), http.MethodPost, path+"oauth.exchange", payload, "dev_admin_token")
-			if exchanged.Code != http.StatusOK || !strings.Contains(exchanged.Body, `"client_secret":"`+inputs["client_secret"]+`"`) || !strings.Contains(exchanged.Body, `"access_token":"synthetic-access"`) {
+			if exchanged.Code != http.StatusOK || !strings.Contains(exchanged.Body, `"client_secret":"`+inputs["client_secret"]+`"`) || !strings.Contains(exchanged.Body, `"access_token":"synthetic-access"`) || !strings.Contains(exchanged.Body, `"organization_id":"synthetic-project"`) {
 				t.Fatalf("authorized exchange lost the reusable credentials: %s", exchanged.Body)
 			}
 			events, err := json.Marshal(store.ListAuditEvents())
