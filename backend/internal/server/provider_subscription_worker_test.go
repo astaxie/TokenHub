@@ -69,7 +69,11 @@ func TestSubscriptionWorkerConvertsEveryProtocol(t *testing.T) {
 						case "fetch":
 							fetched = command
 							data := subscriptionProtocolFixture(protocol, stream)
-							return []subscriptionWorkerEvent{{Event: "response", Status: 200, Headers: http.Header{"Content-Type": []string{"application/json"}}}, {Event: "chunk", Data: base64.StdEncoding.EncodeToString([]byte(data))}, {Event: "end"}}
+							contentType := "application/json"
+							if stream || protocol == "responses" {
+								contentType = "text/event-stream"
+							}
+							return []subscriptionWorkerEvent{{Event: "response", Status: 200, Headers: http.Header{"Content-Type": []string{contentType}}}, {Event: "chunk", Data: base64.StdEncoding.EncodeToString([]byte(data))}, {Event: "end"}}
 						}
 						return nil
 					}), nil

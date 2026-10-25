@@ -626,7 +626,7 @@ func (s *Server) streamPlaygroundResponses(
 	}
 	opened, err := streamAdapter.OpenResponses(ctx, route.Provider, route.ProviderModel, req, r.Header)
 	if err != nil {
-		return playgroundStreamResult{}, Usage{}, err
+		return playgroundStreamResult{}, subscriptionJSONFailureUsage(err), err
 	}
 	defer opened.Body.Close()
 	sink := newPlaygroundDeltaSink(events, requestID)

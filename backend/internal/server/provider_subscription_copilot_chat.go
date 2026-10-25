@@ -79,7 +79,7 @@ func (a *CopilotSubscriptionAdapter) streamChatResponses(ctx context.Context, pr
 	}
 	opened, err := a.OpenResponses(ctx, provider, model, upstream, nil)
 	if err != nil {
-		return Usage{}, err
+		return subscriptionJSONFailureUsage(err), err
 	}
 	defer opened.Body.Close()
 	sink := &codexChatStreamSink{encoder: newOpenAIChatStreamEncoder(w, request.Model, streamUsageRequested(request)), reverseNames: reverseNames, toolSlots: map[string]int{}}
@@ -93,7 +93,7 @@ func (a *CopilotSubscriptionAdapter) chatAnthropic(ctx context.Context, provider
 	}
 	opened, err := a.request(ctx, provider, "/v1/messages", body, false)
 	if err != nil {
-		return nil, Usage{}, err
+		return nil, subscriptionJSONFailureUsage(err), err
 	}
 	var response map[string]any
 	if err := subscriptionDecode(opened, &response); err != nil {
@@ -112,7 +112,7 @@ func (a *CopilotSubscriptionAdapter) streamChatAnthropic(ctx context.Context, pr
 	body["stream"] = true
 	opened, err := a.request(ctx, provider, "/v1/messages", body, true)
 	if err != nil {
-		return Usage{}, err
+		return subscriptionJSONFailureUsage(err), err
 	}
 	defer opened.Body.Close()
 	return streamAnthropicChatForProvider(opened.Body, newOpenAIChatStreamEncoder(w, request.Model, streamUsageRequested(request)), provider)

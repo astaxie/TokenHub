@@ -443,7 +443,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
 		}
 		if err != nil {
-			return nil, Usage{}, err
+			return nil, subscriptionJSONFailureUsage(err), err
 		}
 		defer opened.Body.Close()
 		w.Header().Set("content-type", "text/event-stream")

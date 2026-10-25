@@ -141,8 +141,8 @@ func (r *subscriptionWorkerJSONBody) Read(p []byte) (int, error) {
 		if len(data) > limit || len(bytes.TrimSpace(data)) > 0 && !json.Valid(data) {
 			return 0, invalidProviderResponseError("Subscription returned an invalid JSON response")
 		}
-		if probeProviderStreamEvent(string(data)).isError() {
-			data = redactProviderErrorSecrets(data, r.secrets.provider())
+		if _, err := subscriptionJSONError(data, r.secrets.provider()); err != nil {
+			return 0, err
 		}
 		r.reader = bytes.NewReader(data)
 	}

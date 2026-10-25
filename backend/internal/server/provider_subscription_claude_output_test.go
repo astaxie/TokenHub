@@ -44,3 +44,32 @@ func TestClaudeSubscriptionResultRetainsUsageWithoutDoubleCounting(t *testing.T)
 		})
 	}
 }
+
+func TestClaudeSubscriptionUsageSnapshotsAreScopedToMessage(t *testing.T) {
+	// Claude Code repeats the initial snapshot on each assistant content block;
+	// message_delta can then contain only the fields updated at message end.
+	const lines = `{"type":"stream_event","event":{"type":"message_start","message":{"id":"first","usage":{"input_tokens":10,"output_tokens":1,"cache_read_input_tokens":3,"cache_creation_input_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":5}}}}}
+{"type":"assistant","message":{"id":"first","content":[{"type":"text","text":"one"}],"usage":{"input_tokens":10,"output_tokens":1,"cache_read_input_tokens":3,"cache_creation_input_tokens":7}}}
+{"type":"assistant","message":{"id":"first","content":[{"type":"text","text":"two"}],"usage":{"input_tokens":10,"output_tokens":1,"cache_read_input_tokens":3,"cache_creation_input_tokens":7}}}
+{"type":"stream_event","event":{"type":"message_delta","usage":{"input_tokens":12,"output_tokens":4}}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"second","usage":{"input_tokens":6,"output_tokens":1,"cache_read_input_tokens":5}}}}
+{"type":"assistant","message":{"id":"second","content":[{"type":"text","text":"three"}],"usage":{"input_tokens":6,"output_tokens":1,"cache_read_input_tokens":5}}}
+{"type":"stream_event","event":{"type":"message_delta","usage":{"output_tokens":2}}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","is_error":false,"usage":{"input_tokens":18,"output_tokens":6,"cache_read_input_tokens":8,"cache_creation_input_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":5}}}
+`
+	run := &claudeSubscriptionRun{ctx: context.Background(), events: make(chan claudeSubscriptionEvent, 16)}
+	run.readOutput(strings.NewReader(lines))
+	var usage Usage
+	var text strings.Builder
+	for len(run.events) > 0 {
+		event := <-run.events
+		usage = claudeSubscriptionAddUsage(usage, event.Usage)
+		text.WriteString(event.Text)
+	}
+	want := Usage{PromptTokens: 33, CompletionTokens: 6, TotalTokens: 39, CachedInputTokens: 8, CacheWriteInputTokens: 7, CacheWrite5mInputTokens: 2, CacheWrite1hInputTokens: 5}
+	if !reflect.DeepEqual(usage, want) || text.String() != "onetwothree" {
+		t.Fatalf("message snapshots lost usage or text: usage=%+v text=%q", usage, text.String())
+	}
+}

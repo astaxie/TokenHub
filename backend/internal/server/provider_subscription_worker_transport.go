@@ -106,7 +106,7 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 				responseHeaders.Del("Content-Length")
 				responseHeaders.Del("Content-Encoding")
 				var body io.ReadCloser = &subscriptionWorkerBody{PipeReader: reader, cancel: cancel, done: done}
-				if t.stream && !failedStatus {
+				if t.stream && !failedStatus && !subscriptionJSONContentType(responseHeaders) {
 					body = newSubscriptionErrorStream(body, secrets.provider, 0)
 				} else if !failedStatus {
 					body = &subscriptionWorkerJSONBody{body: body, secrets: secrets}

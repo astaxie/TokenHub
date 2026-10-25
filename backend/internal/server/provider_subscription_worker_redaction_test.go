@@ -61,6 +61,9 @@ func TestSubscriptionWorkerRedactsCollectedErrors(t *testing.T) {
 	}, SaveSession: func(context.Context, string, string, string, string) error { return nil }}
 	provider := Provider{Type: a.Definition.providerType(), Options: map[string]string{"resource_id": "account"}}
 	output, _, err := a.Chat(context.Background(), provider, "test-model", ChatCompletionRequest{Model: "public", Messages: []ChatMessage{{Role: "user", Content: "hello"}}})
+	if err == nil {
+		t.Fatal("Embedded JSON error was accepted as a successful completion")
+	}
 	data, _ := json.Marshal(output)
 	if bytes.Contains(data, []byte("synthetic-secret")) || err != nil && strings.Contains(err.Error(), "synthetic-secret") {
 		t.Fatal("Collected response exposed the account credential")

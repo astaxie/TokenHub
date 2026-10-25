@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 )
 
@@ -27,6 +28,10 @@ func (a *SubscriptionWorkerAdapter) Chat(ctx context.Context, provider Provider,
 		result, usage, err = a.chat(leaseCtx, provider, model, request)
 		return err
 	})
+	var failure *subscriptionJSONFailure
+	if errors.As(err, &failure) {
+		usage = failure.usage
+	}
 	return result, usage, err
 }
 
@@ -37,6 +42,10 @@ func (a *SubscriptionWorkerAdapter) ChatStream(ctx context.Context, provider Pro
 		usage, err = a.chatStream(leaseCtx, provider, model, request, writer)
 		return err
 	})
+	var failure *subscriptionJSONFailure
+	if errors.As(err, &failure) {
+		usage = failure.usage
+	}
 	return usage, err
 }
 

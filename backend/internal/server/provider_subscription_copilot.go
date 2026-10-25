@@ -126,6 +126,9 @@ func (a *CopilotSubscriptionAdapter) exchangeSession(ctx context.Context, creds 
 	if err != nil {
 		return copilotSubscriptionSession{}, err
 	}
+	if err := checkCopilotSubscriptionJSON(resp, Provider{}, creds.AccessToken, ""); err != nil {
+		return copilotSubscriptionSession{}, err
+	}
 	var session copilotSubscriptionSession
 	if err := subscriptionDecode(resp, &session); err != nil {
 		return session, err
@@ -222,6 +225,13 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 		}
 		if stream {
 			resp.Body = newIdleTimeoutReadCloser(resp.Body, subscriptionIdleTimeout(a.StreamIdleTimeout), NewHTTPError(504, "subscription_stream_idle", "Subscription stream was idle for too long"))
+		}
+		if !stream || subscriptionJSONContentType(resp.Header) {
+			if err := checkCopilotSubscriptionJSON(resp, provider, creds.AccessToken, session.Token); err != nil {
+				return nil, err
+			}
+		}
+		if stream {
 			resp.Body = newCopilotSubscriptionStream(resp.Body, provider, creds.AccessToken, session.Token, mediaChatStreamLimit(ctx))
 		}
 		return resp, nil
@@ -289,7 +299,7 @@ func (a *CopilotSubscriptionAdapter) Chat(ctx context.Context, provider Provider
 	request.Model, request.Stream = model, false
 	resp, err := a.request(ctx, provider, "/chat/completions", request, false)
 	if err != nil {
-		return nil, Usage{}, err
+		return nil, subscriptionJSONFailureUsage(err), err
 	}
 	var body map[string]any
 	if err := subscriptionDecode(resp, &body); err != nil {
@@ -313,7 +323,7 @@ func (a *CopilotSubscriptionAdapter) ChatStream(ctx context.Context, provider Pr
 	request.Model, request.Stream = model, true
 	resp, err := a.request(ctx, provider, "/chat/completions", request, true)
 	if err != nil {
-		return Usage{}, err
+		return subscriptionJSONFailureUsage(err), err
 	}
 	defer resp.Body.Close()
 	return copyOpenAIStreamAndUsageWithLimit(w, resp.Body, provider, mediaChatStreamLimit(ctx))
@@ -323,7 +333,7 @@ func (a *CopilotSubscriptionAdapter) Responses(ctx context.Context, provider Pro
 	request.Model, request.Stream = model, false
 	resp, err := a.request(ctx, provider, "/responses", normalizedResponsesReasoning(request), false)
 	if err != nil {
-		return nil, Usage{}, err
+		return nil, subscriptionJSONFailureUsage(err), err
 	}
 	var body map[string]any
 	if err := subscriptionDecode(resp, &body); err != nil {

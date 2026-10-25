@@ -91,7 +91,7 @@ func (s *Server) streamCodexCompatibility(
 		if providerResourceModelUnsupportedError(err) {
 			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
 		}
-		return Usage{}, err
+		return subscriptionJSONFailureUsage(err), err
 	}
 	defer opened.Body.Close()
 
