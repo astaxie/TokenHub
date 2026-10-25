@@ -67,11 +67,8 @@ func (s *Server) executeBuiltinSubscriptionAction(ctx context.Context, definitio
 	if capability == "oauth.start" {
 		return s.startSubscriptionOAuth(ctx, definition, invocation)
 	}
-	if capability == "oauth.cancel" {
-		return s.cancelSubscriptionOAuth(definition, invocation)
-	}
-	if capability == "oauth.exchange" {
-		return s.exchangeSubscriptionOAuth(ctx, definition, invocation)
+	if capability == "oauth.cancel" || capability == "oauth.exchange" {
+		return s.runSubscriptionOAuthAction(ctx, definition, capability, invocation)
 	}
 	var payload struct {
 		ResourceID string `json:"resource_id"`

@@ -55,7 +55,7 @@ func (a *CopilotSubscriptionAdapter) modelEndpoint(ctx context.Context, provider
 }
 
 func (a *CopilotSubscriptionAdapter) chatResponses(ctx context.Context, provider Provider, model string, request ChatCompletionRequest) (any, Usage, error) {
-	upstream, err := chatToCodexResponsesRequest(request)
+	upstream, err := chatToSubscriptionResponsesRequest(request)
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -69,7 +69,7 @@ func (a *CopilotSubscriptionAdapter) chatResponses(ctx context.Context, provider
 }
 
 func (a *CopilotSubscriptionAdapter) streamChatResponses(ctx context.Context, provider Provider, model string, request ChatCompletionRequest, w io.Writer) (Usage, error) {
-	upstream, err := chatToCodexResponsesRequest(request)
+	upstream, err := chatToSubscriptionResponsesRequest(request)
 	if err != nil {
 		return Usage{}, err
 	}

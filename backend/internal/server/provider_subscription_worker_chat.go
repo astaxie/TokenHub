@@ -41,7 +41,7 @@ func (a *SubscriptionWorkerAdapter) chat(ctx context.Context, provider Provider,
 	if model.Protocol != "responses" {
 		return codec.Chat(ctx, proxy, model.ID, request)
 	}
-	converted, err := chatToCodexResponsesRequest(request)
+	converted, err := chatToSubscriptionResponsesRequest(request)
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -77,7 +77,7 @@ func (a *SubscriptionWorkerAdapter) chatStream(ctx context.Context, provider Pro
 			ChatStream(context.Context, Provider, string, ChatCompletionRequest, io.Writer) (Usage, error)
 		}).ChatStream(ctx, proxy, model.ID, request, writer)
 	}
-	converted, err := chatToCodexResponsesRequest(request)
+	converted, err := chatToSubscriptionResponsesRequest(request)
 	if err != nil {
 		return Usage{}, err
 	}

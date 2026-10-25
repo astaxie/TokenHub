@@ -202,7 +202,7 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 			req.Header.Set("Anthropic-Version", "2023-06-01")
 		}
 		req.Header.Set("X-Initiator", copilotSubscriptionInitiator(data))
-		if bytes.Contains(data, []byte(`"image_url"`)) || bytes.Contains(data, []byte(`"input_image"`)) {
+		if copilotSubscriptionHasImage(data) {
 			req.Header.Set("Copilot-Vision-Request", "true")
 		}
 		client := a.Client
@@ -238,6 +238,19 @@ func copilotSubscriptionInitiator(data []byte) string {
 		return "agent"
 	}
 	if len(body.Messages) > 0 && body.Messages[len(body.Messages)-1].Role == "user" {
+		if blocks, ok := body.Messages[len(body.Messages)-1].Content.([]any); ok && len(blocks) > 0 {
+			resultsOnly := true
+			for _, item := range blocks {
+				block, _ := item.(map[string]any)
+				if block["type"] != "tool_result" {
+					resultsOnly = false
+					break
+				}
+			}
+			if resultsOnly {
+				return "agent"
+			}
+		}
 		return "user"
 	}
 	var text string

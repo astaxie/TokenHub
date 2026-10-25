@@ -78,7 +78,7 @@ func TestSubscriptionWorkerConvertsEveryProtocol(t *testing.T) {
 					return ProviderResourceCredentials{SessionJSON: `{"type":"api","key":"test-secret"}`}, nil
 				}, SaveSession: func(context.Context, string, string, string, string) error { return nil }}
 				provider := Provider{Type: a.Definition.providerType(), Options: map[string]string{"resource_id": "account-1"}}
-				request := ChatCompletionRequest{Model: "public-model", Messages: []ChatMessage{{Role: "user", Content: "Hello"}}}
+				request := ChatCompletionRequest{Model: "public-model", Messages: []ChatMessage{{Role: "user", Content: "Hello"}}, MaxTokens: 17}
 				var result any
 				var usage Usage
 				var err error
@@ -105,6 +105,9 @@ func TestSubscriptionWorkerConvertsEveryProtocol(t *testing.T) {
 				body := fetched["body"].(map[string]any)
 				if protocol != "gemini" && body["model"] != "test-model" {
 					t.Fatalf("Wrong requested model: %#v", body)
+				}
+				if protocol == "responses" && body["max_output_tokens"] != float64(request.MaxTokens) {
+					t.Fatalf("Responses request lost the caller's output limit: %#v", body)
 				}
 				if stream && !bytes.Contains(encoded, []byte("[DONE]")) {
 					t.Fatalf("Stream missing completion marker: %s", encoded)

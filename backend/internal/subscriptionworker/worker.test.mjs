@@ -256,12 +256,14 @@ test("standard SDK loaders sign each model's native protocol with resource crede
     assert.equal(request.headers[anthropic ? "authorization" : "x-api-key"], undefined);
     assert.equal(request.headers.cookie, undefined);
     if (anthropic) assert.deepEqual(request.headers["anthropic-version"], ["2023-06-01"]);
+    if (responses) assert.equal(body.max_output_tokens, 17);
     return { status: 200, body: "{}" };
   } });
   const description = await worker.call("describe", { provider: "opendesign" });
   for (const model of ["glm-5.3-flash", "deepseek-v4-pro", description.result.models.find((item) => item.protocol === "chat").id]) {
     const result = await worker.call("fetch", { provider: "opendesign", model, auth: { type: "api", key: "synthetic-runtime-key" },
-      headers: { authorization: ["Bearer caller-secret"], "x-api-key": ["caller-secret"], cookie: ["caller-cookie"] }, body: { messages: [] } });
+      headers: { authorization: ["Bearer caller-secret"], "x-api-key": ["caller-secret"], cookie: ["caller-cookie"] },
+      body: model === "deepseek-v4-pro" ? { input: "hello", max_output_tokens: 17 } : { messages: [] } });
     assert.equal(result.event, "end", model);
   }
   assert.equal(worker.requests.length, 3);
