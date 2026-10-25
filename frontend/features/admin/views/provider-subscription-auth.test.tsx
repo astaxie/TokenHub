@@ -11,14 +11,15 @@ function actions(opaque = false): PluginActionDescriptor[] {
   }));
 }
 type Request = { capability: string; body: Record<string, unknown> };
-function setup(handle: (request: Request) => unknown | Promise<unknown>, opaque = false) {
+type Method = { id: string; label: string; type: string; prompts?: Array<{ key: string; label: string; type: string }> };
+function setup(handle: (request: Request) => unknown | Promise<unknown>, opaque = false, methodList: Method[] = [{ id: "login", label: "Synthetic login", type: "oauth" }]) {
   const requests: Request[] = [];
   vi.spyOn(window, "open").mockReturnValue(null);
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
     const request = { capability: url.split("/").at(-1)!, body: JSON.parse(String(init.body)) };
     requests.push(request);
     expect(request.body.resource_type).toBe("test_account");
-    const data = request.capability === "oauth.methods" ? { methods: [{ id: "login", label: "Synthetic login", type: "oauth" }] }
+    const data = request.capability === "oauth.methods" ? { methods: methodList }
       : request.capability === "oauth.cancel" ? { status: "cancelled" } : await handle(request);
     return new Response(JSON.stringify({ data }));
   }));
@@ -34,6 +35,18 @@ const session = { session_id: "synthetic-session", state: "server-state", auth_u
 afterEach(() => { vi.useRealTimers(); });
 
 describe("Subscription authorization", () => {
+  it("uses visible text inputs for non-secret prompts", async () => {
+    setup(({ capability }) => capability === "oauth.start" ? session : { access_token: "synthetic-token" }, false, [
+      { id: "login", label: "Synthetic login", type: "oauth", prompts: [
+        { key: "account", label: "Account name", type: "text" },
+        { key: "secret", label: "Account secret", type: "password" },
+      ] },
+    ]);
+    await start();
+    expect(screen.getByLabelText("Account name")).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("Account secret")).toHaveAttribute("type", "password");
+  });
+
   it("exchanges the callback state and dynamic OAuth client ID", async () => {
     const { onCredentials, requests } = setup(({ capability }) => capability === "oauth.start" ? session : { access_token: "synthetic-token", client_id: "dynamic-client" });
     await start();

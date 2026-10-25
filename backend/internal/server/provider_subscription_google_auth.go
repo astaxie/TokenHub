@@ -51,7 +51,7 @@ func (a *GoogleSubscriptionAdapter) refresh(ctx context.Context, current Provide
 		}
 		_ = json.Unmarshal(data, &failure)
 		if response.StatusCode == http.StatusUnauthorized || (response.StatusCode == http.StatusBadRequest && failure.Error == "invalid_grant") {
-			return current, NewHTTPError(409, "provider_resource_reauthorization_required", "Google subscription authorization expired. Import renewed credentials.")
+			return current, subscriptionCredentialError(NewHTTPError(409, "provider_resource_reauthorization_required", "Google subscription authorization expired. Import renewed credentials."))
 		}
 		return current, NewHTTPError(502, "google_subscription_refresh_failed", "Google subscription credential refresh failed")
 	}

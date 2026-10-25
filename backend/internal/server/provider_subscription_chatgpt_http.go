@@ -73,7 +73,24 @@ func subscriptionCredentials(ctx context.Context, provider Provider, refresh fun
 	if id == "" || refresh == nil {
 		return ProviderResourceCredentials{}, NewHTTPError(http.StatusBadRequest, "provider_resource_missing", "Subscription account resource is required")
 	}
-	return refresh(ctx, id, force)
+	credentials, err := refresh(ctx, id, force)
+	if err != nil {
+		return ProviderResourceCredentials{}, subscriptionCredentialError(err)
+	}
+	return credentials, nil
+}
+
+// Reauthorization is an account failure for routing, while the conflict status
+// remains visible to administrator actions. Keep both pieces of information by
+// wrapping the HTTP error instead of changing its public status.
+func subscriptionCredentialError(err error) error {
+	if err == nil || providerErrorDisposition(err) != "" {
+		return err
+	}
+	if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code == "provider_resource_reauthorization_required" {
+		return &ProviderInvocationError{Err: err, Disposition: ProviderErrorAuthBroken}
+	}
+	return err
 }
 
 func subscriptionCatalog(providerType, name, base, source, etag string, models []ProviderCatalogModel) ProviderCatalogEntry {

@@ -9,6 +9,27 @@ import (
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
+type pluginActionResourceGenerationKey struct{}
+
+func (s *Server) capturePluginActionResourceRevision(ctx context.Context, payload json.RawMessage) context.Context {
+	var request struct {
+		ResourceID string `json:"resource_id"`
+	}
+	if len(payload) == 0 || json.Unmarshal(payload, &request) != nil || strings.TrimSpace(request.ResourceID) == "" {
+		return ctx
+	}
+	resource, ok := s.store.GetProviderResource(strings.TrimSpace(request.ResourceID))
+	if !ok {
+		return ctx
+	}
+	return context.WithValue(ctx, pluginActionResourceGenerationKey{}, providerCredentialReplacementGeneration(resource.Options))
+}
+
+func pluginActionResourceGeneration(ctx context.Context) (int64, bool) {
+	generation, ok := ctx.Value(pluginActionResourceGenerationKey{}).(int64)
+	return generation, ok && generation >= 0
+}
+
 type providerPluginActionOptions struct {
 	ApplySideEffects     bool
 	PreserveActionErrors bool
@@ -37,7 +58,8 @@ func (s *Server) executeEncodedPluginAction(ctx context.Context, user AdminUser,
 	if err != nil {
 		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
 	}
-	result, err := s.executeRawPluginAction(ctx, user, pluginID, actionID, rawPayload)
+	actionCtx := s.capturePluginActionResourceRevision(ctx, rawPayload)
+	result, err := s.executeRawPluginAction(actionCtx, user, pluginID, actionID, rawPayload)
 	if err != nil {
 		if opts.PreserveActionErrors {
 			return pluginmeta.ActionResult{}, err
@@ -46,7 +68,7 @@ func (s *Server) executeEncodedPluginAction(ctx context.Context, user AdminUser,
 	}
 	if opts.ApplySideEffects {
 		if descriptor, ok := s.pluginActions.Describe(pluginID, actionID); ok {
-			result, err = s.applyPluginActionSideEffects(ctx, descriptor, rawPayload, result)
+			result, err = s.applyPluginActionSideEffects(actionCtx, descriptor, rawPayload, result)
 			if err != nil {
 				return pluginmeta.ActionResult{}, err
 			}

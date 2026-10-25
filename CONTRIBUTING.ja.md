@@ -17,7 +17,7 @@ TokenHub は、Go バックエンド、Next.js 管理コンソール、Node.js S
 
 ## ローカル開発
 
-ローカル開発には Go 1.26 と Node.js 20 以降が必要です。Docker と Docker Compose は、コンテナおよびデプロイの検証でのみ必要です。
+ローカル開発には Go 1.26 と Node.js 22.23.1 以降が必要です。Docker と Docker Compose は、コンテナおよびデプロイの検証でのみ必要です。
 
 リポジトリのルートからローカル開発スタック全体を起動します。
 

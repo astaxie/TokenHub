@@ -17,7 +17,7 @@ TokenHub 包含 Go 后端、Next.js 管理后台、Node.js SDK 冒烟测试、YA
 
 ## 本地开发
 
-本地开发需要 Go 1.26 和 Node.js 20 或更高版本。仅容器和部署检查需要 Docker 与 Docker Compose。
+本地开发需要 Go 1.26 和 Node.js 22.23.1 或更高版本。仅容器和部署检查需要 Docker 与 Docker Compose。
 
 在仓库根目录启动完整的本地开发环境：
 

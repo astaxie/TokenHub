@@ -12,6 +12,7 @@ const (
 	providerResourceReauthorizationRequiredOption = "oauth_reauthorization_required"
 	openAIAccountReauthorizationRequiredOption    = providerResourceReauthorizationRequiredOption
 	providerAccountCredentialSourceFallback       = "provider_account"
+	providerCredentialReplacementGenerationOption = "credential_replacement_generation"
 )
 
 var providerAccountProtectedOptions = []string{
@@ -33,6 +34,18 @@ var providerAccountProtectedOptions = []string{
 	codexResourceModelsETagOption,
 	codexResourceModelCatalogOption,
 	providerResourceReauthorizationRequiredOption,
+	providerCredentialReplacementGenerationOption,
+}
+
+func providerCredentialReplacementGeneration(options map[string]string) int64 {
+	if options == nil {
+		return 0
+	}
+	generation, err := strconv.ParseInt(strings.TrimSpace(options[providerCredentialReplacementGenerationOption]), 10, 64)
+	if err != nil || generation < 0 {
+		return 0
+	}
+	return generation
 }
 
 func (s *GormStore) prepareProviderResourceForCreate(providerType string, resource *ProviderResource) {

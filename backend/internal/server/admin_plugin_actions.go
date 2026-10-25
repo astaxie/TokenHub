@@ -31,14 +31,15 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, err)
 		return
 	}
-	result, err := s.executeRawPluginAction(r.Context(), user, pluginID, actionID, payload)
+	actionCtx := s.capturePluginActionResourceRevision(r.Context(), payload)
+	result, err := s.executeRawPluginAction(actionCtx, user, pluginID, actionID, payload)
 	if err != nil {
 		s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", "Plugin action failed")
 		writeError(w, r, pluginActionHTTPError(err))
 		return
 	}
 	if descriptor, ok := s.pluginActions.Describe(pluginID, actionID); ok {
-		result, err = s.applyPluginActionSideEffects(r.Context(), descriptor, payload, result)
+		result, err = s.applyPluginActionSideEffects(actionCtx, descriptor, payload, result)
 		if err != nil {
 			s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", "Plugin action failed")
 			writeError(w, r, err)
@@ -77,13 +78,14 @@ func (s *Server) handleAdminProviderActionPost(w http.ResponseWriter, r *http.Re
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_action_not_found", "Provider plugin action not found"))
 		return
 	}
-	result, err := s.executeRawPluginAction(r.Context(), user, descriptor.PluginID, descriptor.ActionID, payload)
+	actionCtx := s.capturePluginActionResourceRevision(r.Context(), payload)
+	result, err := s.executeRawPluginAction(actionCtx, user, descriptor.PluginID, descriptor.ActionID, payload)
 	if err != nil {
 		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", "Plugin action failed")
 		writeError(w, r, pluginActionHTTPError(err))
 		return
 	}
-	result, err = s.applyPluginActionSideEffects(r.Context(), descriptor, payload, result)
+	result, err = s.applyPluginActionSideEffects(actionCtx, descriptor, payload, result)
 	if err != nil {
 		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", "Plugin action failed")
 		writeError(w, r, err)
@@ -245,7 +247,7 @@ func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pl
 	}
 }
 
-func (s *Server) applyQuotaReadActionSideEffects(_ context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
+func (s *Server) applyQuotaReadActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
 	var request struct {
 		ResourceID string `json:"resource_id"`
 	}
@@ -277,7 +279,13 @@ func (s *Server) applyQuotaReadActionSideEffects(_ context.Context, descriptor p
 	if !ok {
 		return result, NewHTTPError(http.StatusBadGateway, "plugin_quota_read_invalid_result", "Quota read action returned an invalid quota snapshot")
 	}
-	if err := s.store.SaveProviderResourceQuota(resourceID, provider.Type, snapshot, fetchedAt); err != nil {
+	var saveErr error
+	if generation, ok := pluginActionResourceGeneration(ctx); ok {
+		saveErr = s.store.SaveProviderResourceQuotaIfCurrent(ctx, resourceID, provider.Type, snapshot, fetchedAt, generation)
+	} else {
+		saveErr = s.store.SaveProviderResourceQuota(resourceID, provider.Type, snapshot, fetchedAt)
+	}
+	if err := saveErr; err != nil {
 		return result, err
 	}
 	result.Data = normalized
@@ -581,6 +589,15 @@ func pluginActionHTTPError(err error) error {
 	}
 	httpErr := AsHTTPError(err)
 	if httpErr.Code != "internal_error" {
+		// The administrator session has already passed requireAdmin. A 401
+		// returned by a provider action describes the connected account, not the
+		// administrator, so do not make the console clear its valid session.
+		if httpErr.Status == http.StatusUnauthorized {
+			if httpErr.Code == "provider_resource_reauthorization_required" {
+				return NewHTTPError(http.StatusConflict, httpErr.Code, httpErr.Message)
+			}
+			return NewHTTPError(http.StatusBadGateway, httpErr.Code, httpErr.Message)
+		}
 		return httpErr
 	}
 	return NewHTTPError(http.StatusInternalServerError, "plugin_action_failed", "Plugin action failed")

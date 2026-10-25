@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -230,6 +232,23 @@ func (s *GormStore) GetProviderResourceObservation(resourceID string) (ProviderR
 }
 
 func (s *GormStore) SaveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
+	return s.saveProviderResourceQuota(resourceID, adapterType, snapshot, fetchedAt)
+}
+
+func (s *GormStore) SaveProviderResourceQuotaIfCurrent(ctx context.Context, resourceID string, adapterType string, snapshot string, fetchedAt time.Time, expectedGeneration int64) error {
+	return s.withClusterLease(ctx, providerResourceMutationLeaseName(resourceID), func(leaseCtx context.Context) error {
+		var resource ProviderResource
+		if err := s.db.WithContext(leaseCtx).First(&resource, "id = ?", strings.TrimSpace(resourceID)).Error; err != nil {
+			return notFound(err, "provider_resource_not_found", "Provider resource not found")
+		}
+		if providerCredentialReplacementGeneration(resource.Options) != expectedGeneration {
+			return NewHTTPError(http.StatusConflict, "provider_resource_changed", "Provider resource changed during the quota request")
+		}
+		return s.saveProviderResourceQuota(resourceID, adapterType, snapshot, fetchedAt)
+	})
+}
+
+func (s *GormStore) saveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
 	observation := ProviderResourceObservation{
 		ResourceID:     strings.TrimSpace(resourceID),
 		AdapterType:    strings.TrimSpace(adapterType),

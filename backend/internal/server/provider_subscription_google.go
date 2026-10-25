@@ -141,8 +141,10 @@ func (a *GoogleSubscriptionAdapter) credentials(ctx context.Context, p Provider,
 	}
 	if id != "" && a.RefreshCredentials != nil {
 		creds, err := a.RefreshCredentials(ctx, id, false)
+		err = subscriptionCredentialError(err)
 		if err == nil && (creds.AccessToken == "" || creds.ExpiresAt == "") && creds.RefreshToken != "" {
-			return a.RefreshCredentials(ctx, id, true)
+			refreshed, refreshErr := a.RefreshCredentials(ctx, id, true)
+			return refreshed, subscriptionCredentialError(refreshErr)
 		}
 		return creds, err
 	}

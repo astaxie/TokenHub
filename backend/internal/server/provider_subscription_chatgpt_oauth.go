@@ -74,7 +74,7 @@ func (a *ChatGPTSubscriptionAdapter) Refresh(ctx context.Context, current Provid
 	}
 	token, err := a.token(ctx, url.Values{"grant_type": {"refresh_token"}, "client_id": {current.ClientID}, "refresh_token": {current.RefreshToken}, "resource": {chatGPTSubscriptionBaseURL}})
 	if err != nil {
-		return current, err
+		return current, subscriptionCredentialError(err)
 	}
 	return chatGPTSubscriptionTokenCredentials(token, current)
 }

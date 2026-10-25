@@ -607,7 +607,7 @@ func TestAdminCodexImageCapabilityRequiresReauthorizationWithoutRoute(t *testing
 	}
 
 	response := doJSON(t, server.Handler(), http.MethodPost, "/api/admin/provider-resources/"+resource.ID+"/image-capability", map[string]bool{"enabled": true}, "")
-	if response.Code != http.StatusUnauthorized || !bytes.Contains([]byte(response.Body), []byte(`"code":"provider_resource_reauthorization_required"`)) {
+	if response.Code != http.StatusConflict || !bytes.Contains([]byte(response.Body), []byte(`"code":"provider_resource_reauthorization_required"`)) {
 		t.Fatalf("reauthorization failure: status=%d body=%s", response.Code, response.Body)
 	}
 	updated, _ := store.GetProviderResource(resource.ID)

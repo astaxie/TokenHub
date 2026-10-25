@@ -37,6 +37,7 @@ func (s *Server) executeProviderResourceModelsActionForCatalog(ctx context.Conte
 	if catalogProviderType = strings.TrimSpace(catalogProviderType); catalogProviderType != "" && provider.Type != catalogProviderType {
 		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusBadRequest, "provider_resource_catalog_mismatch", "Provider resource does not belong to this provider catalog")
 	}
+	expectedGeneration := providerCredentialReplacementGeneration(resource.Options)
 	result, handled, err := s.executeProviderCapabilityAction(ctx, user, provider.Type, AdapterCapabilityModels, "models.read", map[string]any{
 		"resource_id": resourceID,
 	}, providerPluginActionOptions{ResourceType: resource.ResourceType})
@@ -50,7 +51,7 @@ func (s *Server) executeProviderResourceModelsActionForCatalog(ctx context.Conte
 	if !ok {
 		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "provider_models_invalid_result", "Provider models action returned an invalid result")
 	}
-	if err := s.persistProviderResourceModels(resourceID, catalog.Models, time.Now().UTC()); err != nil {
+	if err := s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalog.Models, time.Now().UTC(), expectedGeneration); err != nil {
 		return ProviderCatalogEntry{}, true, err
 	}
 	return catalog, true, nil
