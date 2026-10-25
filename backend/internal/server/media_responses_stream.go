@@ -8,6 +8,9 @@ import (
 
 func consumeRoutedResponsesStream(call CallContext, provider Provider, body io.Reader, destination io.Writer) (map[string]any, string, Usage, error) {
 	if !modelHasMediaOutput(call.Model) {
+		if provider.Type == ProviderChatGPTSubscription {
+			return consumeSubscriptionResponsesStream(body, destination)
+		}
 		return consumeCodexResponsesStream(body, destination)
 	}
 	return consumeMediaResponsesStream(provider, body, destination)

@@ -70,7 +70,8 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 		}
 	}
 	command["headers"] = headers
-	ctx, cancel := context.WithCancel(req.Context())
+	secrets := &subscriptionWorkerSecrets{}
+	ctx, cancel := context.WithCancel(context.WithValue(req.Context(), subscriptionWorkerSecretsKey{}, secrets))
 	reader, writer := io.Pipe()
 	done := make(chan struct{})
 	go func() {
@@ -104,7 +105,13 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 				}
 				responseHeaders.Del("Content-Length")
 				responseHeaders.Del("Content-Encoding")
-				ready <- responseResult{response: &http.Response{StatusCode: event.Status, Status: strconv.Itoa(event.Status) + " " + http.StatusText(event.Status), Header: responseHeaders, Body: &subscriptionWorkerBody{PipeReader: reader, cancel: cancel, done: done}, Request: req}}
+				var body io.ReadCloser = &subscriptionWorkerBody{PipeReader: reader, cancel: cancel, done: done}
+				if t.stream && !failedStatus {
+					body = newSubscriptionErrorStream(body, secrets.provider, 0)
+				} else if !failedStatus {
+					body = &subscriptionWorkerJSONBody{body: body, secrets: secrets}
+				}
+				ready <- responseResult{response: &http.Response{StatusCode: event.Status, Status: strconv.Itoa(event.Status) + " " + http.StatusText(event.Status), Header: responseHeaders, Body: body, Request: req}}
 			case "chunk":
 				if !received {
 					return errors.New("subscription runtime returned data before headers")

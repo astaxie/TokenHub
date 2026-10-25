@@ -50,9 +50,9 @@ func (a *SubscriptionWorkerAdapter) chat(ctx context.Context, provider Provider,
 		return nil, Usage{}, err
 	}
 	defer response.Body.Close()
-	body, _, usage, err := consumeCodexResponsesStream(response.Body, nil)
+	body, _, usage, err := consumeSubscriptionResponsesStream(response.Body, nil)
 	if err != nil {
-		return nil, Usage{}, err
+		return nil, usage, err
 	}
 	result, err := codexResponsesToChat(body, request, usage)
 	return result, usage, err

@@ -64,17 +64,19 @@ func (r *claudeSubscriptionRun) readOutput(output io.Reader) {
 				return
 			}
 		case "result":
-			if failed, _ := item["is_error"].(bool); failed {
-				r.emit(claudeSubscriptionEvent{Err: NewHTTPError(502, "claude_subscription_failed", "Claude Code could not complete the subscription request")})
-				return
-			}
 			total, _ := item["usage"].(map[string]any)
 			remaining := anthropicUsageFromRawMap(total)
 			remaining.PromptTokens = max(0, remaining.PromptTokens-usageReported.PromptTokens)
 			remaining.CompletionTokens = max(0, remaining.CompletionTokens-usageReported.CompletionTokens)
 			remaining.CachedInputTokens = max(0, remaining.CachedInputTokens-usageReported.CachedInputTokens)
 			remaining.CacheWriteInputTokens = max(0, remaining.CacheWriteInputTokens-usageReported.CacheWriteInputTokens)
+			remaining.CacheWrite5mInputTokens = max(0, remaining.CacheWrite5mInputTokens-usageReported.CacheWrite5mInputTokens)
+			remaining.CacheWrite1hInputTokens = max(0, remaining.CacheWrite1hInputTokens-usageReported.CacheWrite1hInputTokens)
 			remaining.TotalTokens = remaining.PromptTokens + remaining.CompletionTokens
+			if failed, _ := item["is_error"].(bool); failed {
+				r.emit(claudeSubscriptionEvent{Usage: remaining, Err: NewHTTPError(502, "claude_subscription_failed", "Claude Code could not complete the subscription request")})
+				return
+			}
 			r.emit(claudeSubscriptionEvent{Done: true, Usage: remaining})
 			return
 		}

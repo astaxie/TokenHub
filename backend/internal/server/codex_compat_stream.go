@@ -298,6 +298,9 @@ func (d *codexResponsesStreamDecoder) consume(event serverSentEvent) (bool, erro
 		}
 		return true, nil
 	case "response.failed", "error":
+		if response, ok := payload["response"].(map[string]any); ok {
+			d.usage = usageFromMap(response)
+		}
 		return false, codexStreamEventError(payload)
 	default:
 		return false, nil

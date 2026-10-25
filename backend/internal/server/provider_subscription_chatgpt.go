@@ -82,6 +82,14 @@ func (a *ChatGPTSubscriptionAdapter) request(ctx context.Context, provider Provi
 		}
 		if body != nil {
 			resp.Body = newIdleTimeoutReadCloser(resp.Body, subscriptionIdleTimeout(a.StreamIdleTimeout), NewHTTPError(504, "subscription_stream_idle", "Subscription stream was idle for too long"))
+			redactionProvider := provider
+			redactionProvider.Headers = cloneStringMap(provider.Headers)
+			if redactionProvider.Headers == nil {
+				redactionProvider.Headers = make(map[string]string)
+			}
+			redactionProvider.Headers["TokenHub-Subscription-Access"] = credentials.AccessToken
+			redactionProvider.SensitiveHeaders = append(append([]string{}, provider.SensitiveHeaders...), "TokenHub-Subscription-Access")
+			resp.Body = newSubscriptionErrorStream(resp.Body, func() Provider { return redactionProvider }, 0)
 		}
 		return resp, nil
 	}
@@ -103,7 +111,7 @@ func (a *ChatGPTSubscriptionAdapter) Responses(ctx context.Context, provider Pro
 		return nil, Usage{}, err
 	}
 	defer resp.Body.Close()
-	body, text, usage, err := consumeCodexResponsesStream(resp.Body, nil)
+	body, text, usage, err := consumeSubscriptionResponsesStream(resp.Body, nil)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, usage, ctx.Err()

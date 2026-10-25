@@ -47,6 +47,7 @@ type subscriptionWorkerProcess struct {
 	callGate      chan struct{}
 	mu            sync.Mutex
 	pending       map[string]chan subscriptionWorkerEvent
+	secrets       map[string]*subscriptionWorkerSecrets
 	networks      map[string]context.CancelFunc
 	client        *http.Client
 	directory     string
@@ -190,6 +191,7 @@ func (p *subscriptionWorkerProcess) authSnapshot() string {
 func (p *subscriptionWorkerProcess) updateAuth(event subscriptionWorkerEvent) {
 	ack := map[string]any{"operation": "auth.ack", "update_id": event.UpdateID}
 	next := string(event.Auth)
+	p.invocationSecrets(event.ID).addAuth(next)
 	if len(next) > 512<<10 || !json.Valid(event.Auth) || strings.TrimSpace(next) == "null" {
 		ack["error"] = "invalid_credentials"
 	} else {
@@ -243,6 +245,7 @@ func (p *subscriptionWorkerProcess) network(event subscriptionWorkerEvent) {
 	for name, value := range event.Headers {
 		req.Header[name] = append([]string(nil), value...)
 	}
+	p.invocationSecrets(event.ID).addHeaders(req.Header)
 	resp, err := p.client.Do(req)
 	if err != nil {
 		failed()
@@ -283,16 +286,24 @@ func (p *subscriptionWorkerProcess) invoke(ctx context.Context, command map[stri
 	command["id"] = id
 	if auth := p.authSnapshot(); auth != "" {
 		command["auth"] = json.RawMessage(auth)
+		subscriptionWorkerSecretsFromContext(ctx).addAuth(auth)
 	}
 	ch := make(chan subscriptionWorkerEvent, 16)
 	p.mu.Lock()
 	p.pending[id] = ch
+	if secrets := subscriptionWorkerSecretsFromContext(ctx); secrets != nil {
+		if p.secrets == nil {
+			p.secrets = make(map[string]*subscriptionWorkerSecrets)
+		}
+		p.secrets[id] = secrets
+	}
 	p.operationCtx = ctx
 	p.lastUsed = time.Now()
 	p.mu.Unlock()
 	defer func() {
 		p.mu.Lock()
 		delete(p.pending, id)
+		delete(p.secrets, id)
 		p.operationCtx = nil
 		p.lastUsed = time.Now()
 		p.mu.Unlock()
