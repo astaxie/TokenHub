@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerConfig } from "../resources/provider-model-config";
-import { CrudView, providerChannelAccountDetail, providerMonitorSamples, providerQuotaReadAction } from "./crud-projects";
+import { CrudView, ProviderAccountQuota, providerChannelAccountDetail, providerMonitorSamples, providerQuotaReadAction } from "./crud-projects";
 import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent, providerAccountQuotaStatusLabel, providerAccountQuotaUsedPercent } from "./provider-account-ui";
 
 it("waits for Provider catalog data before enabling creation", async () => {
@@ -48,6 +48,28 @@ describe("providerQuotaReadAction", () => {
 });
 
 describe("provider account quota display helpers", () => {
+  it("distinguishes unknown allowance from zero remaining and checks all windows", () => {
+    expect(providerAccountQuotaRemainingPercent()).toBeUndefined();
+    expect(providerAccountQuotaRemainingPercent({ metrics: [{ label: "Balance", value: "100" }] })).toBeUndefined();
+    expect(providerAccountQuotaRemainingPercent({ primary_window: { reset_at: 1999999999 } })).toBeUndefined();
+    expect(providerAccountQuotaRemainingPercent({ remaining_percent: 0 })).toBe(0);
+    expect(providerAccountQuotaRemainingPercent({ primary_window: { used_percent: 0 } })).toBe(100);
+    expect(providerAccountQuotaRemainingPercent({ primary_window: { used_percent: 20 }, secondary_window: { used_percent: 80 } })).toBe(20);
+  });
+
+  it.each([undefined, 0])("preserves remaining allowance %s in the summary and account popover", async (remaining) => {
+    const quota = { plan_type: "Synthetic Pro", ...(remaining === undefined ? { metrics: [{ label: "Balance", value: "100" }] } : { remaining_percent: remaining }) };
+    const view = render(<ProviderAccountQuota
+      quota={{ supported: true, remaining_percent: remaining, successful_accounts: 1, failed_accounts: 0, limit_reached: remaining === 0, accounts: [{ resource_id: "account", resource_name: "Synthetic account", quota }] }}
+      refreshing={{}} resources={[]} onRefresh={vi.fn()}
+    />);
+    const label = remaining === undefined ? "-" : "0%";
+    expect(view.container.querySelector(".provider-account-quota strong")).toHaveTextContent(label);
+    await userEvent.setup().tab();
+    expect(screen.getByRole("tooltip")).toHaveTextContent(`Synthetic Pro · ${label} ·`);
+    expect(view.container).not.toHaveTextContent("100%");
+  });
+
   it("accepts generic plugin quota fields without OpenAI rate-limit windows", () => {
     const quota = {
       plan_type: "enterprise",

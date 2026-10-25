@@ -102,7 +102,7 @@ func TestProviderMonitoringUsesBackendProbeAndCachedQuota(t *testing.T) {
 	}
 	snapshot := first[0]
 	if snapshot.State != "healthy" || snapshot.ActiveProbe.Source != "active_probe" ||
-		snapshot.ActiveProbe.LatencyMS != 321 || snapshot.Quota.RemainingPercent != 75 ||
+		snapshot.ActiveProbe.LatencyMS != 321 || snapshot.Quota.RemainingPercent == nil || *snapshot.Quota.RemainingPercent != 75 ||
 		snapshot.Quota.SuccessfulAccounts != 1 {
 		t.Fatalf("monitoring did not preserve source semantics or quota: %+v", snapshot)
 	}
@@ -379,7 +379,7 @@ func TestProviderMonitoringQuotaUsesPluginActionSnapshot(t *testing.T) {
 	if actionCalls != 1 {
 		t.Fatalf("monitoring quota action calls = %d, want cached single call", actionCalls)
 	}
-	if first.Quota.RemainingPercent != 42.5 || first.Quota.PlanType != "plugin-team" ||
+	if first.Quota.RemainingPercent == nil || *first.Quota.RemainingPercent != 42.5 || first.Quota.PlanType != "plugin-team" ||
 		first.Quota.EarliestResetAt != 1999999999 || first.Quota.SuccessfulAccounts != 1 ||
 		len(first.Quota.Accounts) != 1 || first.Quota.Accounts[0].Quota["plan_type"] != "plugin-team" {
 		t.Fatalf("monitoring quota summary did not use plugin snapshot: %+v", first.Quota)

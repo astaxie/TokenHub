@@ -102,9 +102,9 @@ Cursor のチームアカウントは、インポートするセッション JSO
 
 QwenWork Enterprise は認証時に企業ドメインを求めます。認証情報、更新、推論は指定した正確なドメインに紐付き、Go トランスポートの DNS/IP 制限も適用します。token 更新後もアカウントごとのドメインを保持します。
 
-Provider エディターの詳細設定には Grok X 検索（`x_search`）、Factory Standard のみ（`standard_only`）、Command Code ゼロデータ保持（`zdr`）の真偽値設定があります。リソース設定は Provider の既定値を上書きします。Factory Standard のみを有効にして Standard 枠が尽きた場合、再試行可能な利用枠エラーを返して既存のルートフォールバックを利用します。効果は上流の対応とプラン資格に依存します。
+Provider エディターの詳細設定には Grok X 検索（`x_search`）、Factory Standard のみ（`standard_only`）、Command Code ゼロデータ保持（`zdr`）の真偽値設定があります。リソース設定は Provider の既定値を上書きします。Factory Standard のみを有効にして Standard 枠が尽きた場合、再試行可能な利用枠エラーを返して既存のルートフォールバックを利用します。Standard 使用量が欠落または不正な場合、追加使用の残高があっても、枠を確認できるまで推論を停止します。効果は上流の対応とプラン資格に依存します。
 
-Nous Portal と GCP AI を除くコミュニティアカウントで利用枠を照会できます。対応アダプターの手動チェックインは `claimed`、`done`、`inactive`、`ineligible` を返し、自動定期実行はしません。Qoder 国際版は TokenHub が収集しないネイティブのデバイス識別情報を要求する場合があります。モデル固有の枠や表示専用の枠は、アカウント全体の枯渇と区別します。
+Nous Portal と GCP AI を除くコミュニティアカウントで利用枠を照会できます。対応アダプターの手動チェックインは `claimed`、`done`、`inactive`、`ineligible` を返し、自動定期実行はしません。Qoder 国際版は TokenHub が収集しないネイティブのデバイス識別情報を要求する場合があります。モデル固有の枠や表示専用の枠は、アカウント全体の枯渇と区別します。 上流が残高または不完全なウィンドウだけを返した場合、利用枠の割合は不明のままとし、監視では `-` を表示します。明示的に枯渇した枠は `0%` と表示し、手動更新後もこの区別を保持します。
 
 固定版の一覧では全 35 件のアカウント Provider ID を網羅します。Cloudflare Workers AI と OpenCode Zen Free は API/公開サービス、Kimi Desktop は agent コネクターであり、追加のサブスクリプションアカウント Provider ではありません。アカウントの網羅は Magpie 全機能の複製を意味せず、ホストのアカウント検索、agent 切り替え、ブラウザー残高取得、新規メディア生成 API は対象外です。
 

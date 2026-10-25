@@ -137,11 +137,14 @@ export function providerAccountQuotaIsLimited(quota?: ProviderAccountQuota) {
 }
 
 export function providerAccountQuotaRemainingPercent(quota?: ProviderAccountQuota) {
-  if (!quota) return 100;
+  if (!quota) return undefined;
   if (Number.isFinite(quota.remaining_percent)) return clampQuotaPercent(quota.remaining_percent);
-  const used = quota.used_percent ?? providerAccountQuotaPrimaryWindow(quota)?.used_percent;
-  if (Number.isFinite(used)) return clampQuotaPercent(100 - Number(used));
-  return providerAccountQuotaIsLimited(quota) ? 0 : 100;
+  if (Number.isFinite(quota.used_percent)) return clampQuotaPercent(100 - Number(quota.used_percent));
+  const windows = [quota.primary_window, quota.secondary_window, quota.rate_limit?.primary_window, quota.rate_limit?.secondary_window, ...(quota.windows ?? [])];
+  const used = windows.map(window => window?.used_percent).filter((value): value is number => Number.isFinite(value));
+  const maximum = Math.max(0, ...used);
+  if (maximum === 0 && providerAccountQuotaIsLimited(quota)) return 0;
+  return used.length ? clampQuotaPercent(100 - maximum) : undefined;
 }
 
 export function providerAccountQuotaUsedPercent(quota?: ProviderAccountQuota) {

@@ -112,6 +112,10 @@ The parent must atomically persist the encrypted credential revision before
 sending `{"operation":"auth.ack","update_id":"..."}`. An `error` field rejects
 the update. Inference cannot use a rotated token before acknowledgement, and a
 failed save disables subsequent network calls for that worker account.
+An unchanged API key's metadata-only save can retry the exact pending snapshot
+before the next command, provided its incoming credential revision still matches.
+Other changes remain blocked; retrying metadata never authorizes an unsaved token
+rotation or overwrites a newer administrator credential revision.
 
 The parent serializes commands per resource and obtains each credential snapshot
 after acquiring that resource's gate. This prevents queued commands from restoring

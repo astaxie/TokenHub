@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { failure, headerObject, MAX_BODY, toHeaders, validateTarget } from "./validation.mjs";
+import { guardFactoryAllowance } from "./factory.mjs";
 
 // Only ordinary request metadata is safe across origins. Bundled adapters use
 // credential headers beyond Authorization (for example ptKey/X-Authorization),
@@ -55,7 +56,9 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
     for (let redirects = 0; redirects <= 5; redirects++) {
       const copy = request.clone();
       const response = await once(request);
-      if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+      // The allowance policy belongs to the original request even when its
+      // endpoint redirects to a canonical path before returning the payload.
+      if (![301, 302, 303, 307, 308].includes(response.status)) return guardFactoryAllowance(scope.getStore(), original, response);
       const location = response.headers.get("location");
       if (!location || original.redirect === "manual") return response;
       if (original.redirect === "error" || redirects === 5) {

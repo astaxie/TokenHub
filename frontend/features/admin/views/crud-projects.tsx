@@ -510,7 +510,7 @@ export function ProviderAccountQuota({
     const awaitingObservation = error === "quota_not_cached";
     return <span className={`provider-account-quota ${awaitingObservation ? "na" : "error"}`} title={awaitingObservation ? tx("待观测") : error}>{tx(awaitingObservation ? "待观测" : "查询失败")}</span>;
   }
-  const remaining = quota.remaining_percent ?? 100;
+  const remaining = quota.remaining_percent;
   const plan = quota.plan_type || "-";
   const limited = quota.limit_reached;
   return (
@@ -522,7 +522,7 @@ export function ProviderAccountQuota({
         onMouseEnter={(event) => showPopover(event.currentTarget)}
         type="button"
       >
-        <strong>{formatQuotaPercent(remaining)}%</strong>
+        <strong>{formatQuotaPercent(remaining)}</strong>
         <span>{plan} · {quotaSummaryResetLabel(quota.earliest_reset_at)}</span>
         <small>{accounts.length} {tx("个账号，显示最低余量")}</small>
       </button>
@@ -547,7 +547,7 @@ export function ProviderAccountQuota({
                   <strong title={accountLabel}>{accountLabel}</strong>
                   {accountQuota ? (
                     <span className={accountLimited ? "limited" : ""}>
-                      {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))}% · {quotaResetLabel(providerAccountQuotaPrimaryWindow(accountQuota))}
+                      {accountPlan} · {formatQuotaPercent(quotaRemainingPercent(accountQuota))} · {quotaResetLabel(providerAccountQuotaPrimaryWindow(accountQuota))}
                     </span>
                   ) : (
                     <span className={account.error_code === "quota_not_cached" ? undefined : "limited"} title={account.error_code}>
@@ -594,8 +594,8 @@ function quotaSummaryResetLabel(resetAt?: number) {
   return new Date(resetAt * 1000).toLocaleString(languageLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function formatQuotaPercent(value: number) {
-  return String(Math.round(value * 10) / 10);
+function formatQuotaPercent(value?: number) {
+  return value === undefined || !Number.isFinite(value) ? "-" : new Intl.NumberFormat(languageLocale(), { style: "percent", maximumFractionDigits: 1 }).format(value / 100);
 }
 
 function updateProviderQuotaSummary(summary: ProviderQuotaSummary, resource: ProviderResource, quota: ProviderAccountQuota): ProviderQuotaSummary {
@@ -613,8 +613,10 @@ function updateProviderQuotaSummaryError(summary: ProviderQuotaSummary, resource
 function recalculateProviderQuotaSummary(summary: ProviderQuotaSummary): ProviderQuotaSummary {
   const successful = (summary.accounts ?? []).filter((account) => account.quota);
   const limiting = successful.reduce<typeof successful[number] | undefined>((lowest, current) => {
+    const remaining = quotaRemainingPercent(current.quota!);
+    if (remaining === undefined) return lowest;
     if (!lowest) return current;
-    return quotaRemainingPercent(current.quota!) < quotaRemainingPercent(lowest.quota!) ? current : lowest;
+    return remaining < quotaRemainingPercent(lowest.quota!)! ? current : lowest;
   }, undefined);
   return {
     ...summary,
@@ -622,7 +624,7 @@ function recalculateProviderQuotaSummary(summary: ProviderQuotaSummary): Provide
     failed_accounts: (summary.accounts?.length ?? 0) - successful.length,
     remaining_percent: limiting?.quota ? quotaRemainingPercent(limiting.quota) : undefined,
     limit_reached: successful.some((account) => providerAccountQuotaIsLimited(account.quota)),
-    plan_type: limiting?.quota?.plan_type,
+    plan_type: limiting?.quota?.plan_type ?? successful.find(account => account.quota?.plan_type)?.quota?.plan_type,
   };
 }
 

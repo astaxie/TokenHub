@@ -30,7 +30,7 @@ type ProviderQuotaAccountSummary struct {
 
 type ProviderQuotaSummary struct {
 	Supported          bool                          `json:"supported"`
-	RemainingPercent   float64                       `json:"remaining_percent,omitempty"`
+	RemainingPercent   *float64                      `json:"remaining_percent,omitempty"`
 	LimitReached       bool                          `json:"limit_reached"`
 	PlanType           string                        `json:"plan_type,omitempty"`
 	EarliestResetAt    int64                         `json:"earliest_reset_at,omitempty"`
@@ -427,9 +427,10 @@ func providerMonitoringQuotaSnapshotFromJSON(data string) (ProviderAccountQuotaS
 }
 
 func mergeProviderQuotaSummary(summary *ProviderQuotaSummary, quota ProviderAccountQuotaSnapshot) {
-	remaining := providerQuotaRemainingPercent(quota)
-	if summary.SuccessfulAccounts == 1 || remaining < summary.RemainingPercent {
-		summary.RemainingPercent = remaining
+	if remaining, known := providerQuotaRemainingPercent(quota); known && (summary.RemainingPercent == nil || remaining < *summary.RemainingPercent) {
+		summary.RemainingPercent = &remaining
+		summary.PlanType = quotaString(quota["plan_type"])
+	} else if summary.RemainingPercent == nil && summary.PlanType == "" {
 		summary.PlanType = quotaString(quota["plan_type"])
 	}
 	if fetchedAt := quotaInt64(quota["fetched_at"]); fetchedAt > summary.FetchedAt {
@@ -447,18 +448,18 @@ func mergeProviderQuotaSummary(summary *ProviderQuotaSummary, quota ProviderAcco
 	}
 }
 
-func providerQuotaRemainingPercent(quota ProviderAccountQuotaSnapshot) float64 {
+func providerQuotaRemainingPercent(quota ProviderAccountQuotaSnapshot) (float64, bool) {
 	if remaining, ok := quotaFloat64(quota["remaining_percent"]); ok {
-		return math.Max(0, math.Min(100, remaining))
+		return math.Max(0, math.Min(100, remaining)), true
 	}
 	if used, ok := quotaFloat64(quota["used_percent"]); ok {
-		return math.Max(0, math.Min(100, 100-used))
+		return math.Max(0, math.Min(100, 100-used)), true
 	}
-	used := maxProviderQuotaUsedPercent(providerQuotaWindows(quota))
+	used, known := maxProviderQuotaUsedPercent(providerQuotaWindows(quota))
 	if used == 0 && providerQuotaLimitReached(quota) {
-		return 0
+		return 0, true
 	}
-	return math.Max(0, math.Min(100, 100-used))
+	return math.Max(0, math.Min(100, 100-used)), known
 }
 
 func providerQuotaLimitReached(quota ProviderAccountQuotaSnapshot) bool {
@@ -503,14 +504,16 @@ func providerQuotaWindows(quota ProviderAccountQuotaSnapshot) []map[string]any {
 	return windows
 }
 
-func maxProviderQuotaUsedPercent(windows []map[string]any) float64 {
+func maxProviderQuotaUsedPercent(windows []map[string]any) (float64, bool) {
 	used := 0.0
+	known := false
 	for _, window := range windows {
-		if value, ok := quotaFloat64(window["used_percent"]); ok && value > used {
-			used = value
+		if value, ok := quotaFloat64(window["used_percent"]); ok {
+			used = math.Max(used, value)
+			known = true
 		}
 	}
-	return used
+	return used, known
 }
 
 func quotaObject(value any) (map[string]any, bool) {

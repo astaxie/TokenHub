@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { describeMethod, describeOptions, loadProvider, modelProtocol, normalizeModels, providerIDs, safeMethods, validateOptions } from "./registry.mjs";
 import { enterpriseHost, failure, headerObject, MAX_BODY, publicError, toHeaders, validateAuth, validateTarget } from "./validation.mjs";
 
@@ -31,10 +32,16 @@ export function createHost({ scope, emit, relayCallback }) {
       await emit({ id: context.id, event: "auth.update", update_id: updateID, resource_id: account.resourceID, auth: next });
       await promise;
       account.auth = next;
+      account.saveError = null;
+      account.pendingSave = null;
       if (account.provider === "qwenwork-enterprise") account.enterpriseHost = context.enterpriseHost;
       account.loader = null;
     } catch (error) {
       account.saveError = error;
+      const { metadata: previousMetadata, ...previousIdentity } = account.auth ?? {};
+      const { metadata: nextMetadata, ...nextIdentity } = next;
+      account.pendingSave = { previous: account.auth, next, metadataOnly: previousIdentity.type === "api" &&
+        typeof previousIdentity.key === "string" && previousIdentity.key.trim() !== "" && isDeepStrictEqual(previousIdentity, nextIdentity) };
       throw error;
     } finally { clearTimeout(timer); }
   }
@@ -62,10 +69,21 @@ export function createHost({ scope, emit, relayCallback }) {
     const context = scope.getStore();
     context.account = account;
     context.options = validateOptions(account.hooks, command.options);
-    if (account.saveError) throw account.saveError;
+    let validated;
     if (command.auth !== undefined && command.auth !== null) {
       const incoming = typeof command.auth === "string" ? JSON.parse(command.auth) : command.auth;
-      const validated = validateAuth(command.provider, incoming);
+      validated = validateAuth(command.provider, incoming);
+    }
+    if (account.saveError) {
+      const pending = account.pendingSave;
+      // Retrying an unchanged API key's metadata is safe. Token rotations stay
+      // retained and blocked: another process may already have spent the token.
+      // Never replace newer administrator credentials with a pending snapshot.
+      if (!pending?.metadataOnly || !isDeepStrictEqual(validated ?? account.auth, pending.previous)) throw account.saveError;
+      await save(account, pending.next);
+      validated = account.auth;
+    }
+    if (validated) {
       if (command.provider === "qwenwork-enterprise") account.enterpriseHost = enterpriseHost(validated.enterpriseHost);
       if (JSON.stringify(validated) !== JSON.stringify(account.auth)) {
         account.auth = validated;

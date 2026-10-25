@@ -102,9 +102,9 @@ Cursor 团队账户可在导入的会话 JSON 中显式填写正整数 `teamId`�
 
 QwenWork Enterprise 在授权时要求输入企业域名。TokenHub 将凭据、后续刷新和推理绑定到该精确域名，Go 传输层继续执行 DNS/IP 限制。每个企业账户的域名在令牌轮换后仍保留。
 
-Provider 编辑器的高级设置提供 Grok X 搜索（`x_search`）、Factory 仅标准额度（`standard_only`）和 Command Code 零数据保留（`zdr`）布尔选项。资源选项覆盖 Provider 默认值。启用 Factory 仅标准额度后，标准额度耗尽时推理返回可重试的额度错误，进入现有路由回退流程。选项的实际效果仍取决于上游支持和套餐资格。
+Provider 编辑器的高级设置提供 Grok X 搜索（`x_search`）、Factory 仅标准额度（`standard_only`）和 Command Code 零数据保留（`zdr`）布尔选项。资源选项覆盖 Provider 默认值。启用 Factory 仅标准额度后，标准额度耗尽时推理返回可重试的额度错误，进入现有路由回退流程。标准用量缺失或格式异常时，即使额外用量仍有余额，也会阻止推理，直到能够确认标准额度。选项的实际效果仍取决于上游支持和套餐资格。
 
-除 Nous Portal 和 GCP AI 外，社区账户均提供额度查询。适配器支持时，手动签到动作返回 `claimed`、`done`、`inactive` 或 `ineligible`；不会自动定时领取。Qoder 国际版可能要求原生设备身份，TokenHub 不采集此身份。特定模型的额度窗口和仅展示窗口不会与全账户额度耗尽混淆。
+除 Nous Portal 和 GCP AI 外，社区账户均提供额度查询。适配器支持时，手动签到动作返回 `claimed`、`done`、`inactive` 或 `ineligible`；不会自动定时领取。Qoder 国际版可能要求原生设备身份，TokenHub 不采集此身份。特定模型的额度窗口和仅展示窗口不会与全账户额度耗尽混淆。 上游仅返回余额或不完整的窗口时，额度百分比保持未知，监控显示 `-`；明确耗尽的额度显示 `0%`，手动刷新后也保留这一区别。
 
 固定版本清单共覆盖 35 个账户 Provider ID。Cloudflare Workers AI 和 OpenCode Zen Free 属于 API/公共服务，Kimi Desktop 是 agent 连接器，不属于额外的订阅账户 Provider。账号覆盖不等于复刻 Magpie 的全部功能：本机账号扫描、agent 切换、浏览器优惠金抓取及新增媒体生成接口不在此次集成范围内。
 

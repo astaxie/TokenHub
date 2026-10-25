@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -115,6 +116,10 @@ func (a *ChatGPTSubscriptionAdapter) Responses(ctx context.Context, provider Pro
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, usage, ctx.Err()
+		}
+		var failure *HTTPError
+		if errors.As(err, &failure) {
+			return nil, usage, err
 		}
 		return nil, usage, NewHTTPError(502, "subscription_stream_failed", "ChatGPT API stream did not complete")
 	}

@@ -11,7 +11,7 @@ func TestWriteRuntimeContainsOnlyBundledAssets(t *testing.T) {
 	if err := WriteRuntime(directory); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"worker.mjs", "host.mjs", "cursor.mjs", "gcp-ai.mjs", "vendor/PROVENANCE.json", "vendor/LICENSE", "vendor/cursor/native-session.mjs", "vendor/factory/client-phrases.json"} {
+	for _, path := range []string{"worker.mjs", "host.mjs", "cursor.mjs", "gcp-ai.mjs", "factory.mjs", "vendor/PROVENANCE.json", "vendor/LICENSE", "vendor/cursor/native-session.mjs", "vendor/factory/client-phrases.json"} {
 		info, err := os.Stat(filepath.Join(directory, filepath.FromSlash(path)))
 		if err != nil {
 			t.Fatal(err)

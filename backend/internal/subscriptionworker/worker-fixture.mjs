@@ -43,7 +43,8 @@ export async function fixture(t, { network = () => ({ status: 404, body: "{}" })
         });
       } else if (event.event === "auth.update") {
         saves.push(event.auth);
-        send({ operation: "auth.ack", update_id: event.update_id, ...(rejectSave ? { error: "save_failed" } : {}) });
+        const rejected = typeof rejectSave === "function" ? rejectSave(event.auth, saves.length) : rejectSave;
+        send({ operation: "auth.ack", update_id: event.update_id, ...(rejected ? { error: "save_failed" } : {}) });
       } else if (event.event === "network.cancel") {
         cancellations.push(event.request_id);
       } else {
