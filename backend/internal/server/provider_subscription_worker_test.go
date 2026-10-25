@@ -270,6 +270,18 @@ func TestSubscriptionWorkerDescribesEveryBundledProvider(t *testing.T) {
 		if !bytes.Contains(result, []byte(`"provider":"`+definition.ID+`"`)) {
 			t.Fatalf("Provider %s missing metadata: %s", definition.ID, result)
 		}
+		var described struct {
+			Capabilities struct {
+				Usage   bool `json:"usage"`
+				Checkin bool `json:"checkin"`
+			} `json:"capabilities"`
+		}
+		if err := json.Unmarshal(result, &described); err != nil {
+			t.Fatal(err)
+		}
+		if described.Capabilities.Usage != subscriptionWorkerHasQuota(definition.ID) || described.Capabilities.Checkin != subscriptionWorkerHasCheckin(definition.ID) {
+			t.Fatalf("Provider %s management registration does not match its bundled hooks: %+v", definition.ID, described.Capabilities)
+		}
 	}
 }
 

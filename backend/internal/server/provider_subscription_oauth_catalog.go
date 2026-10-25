@@ -8,6 +8,7 @@ import (
 type subscriptionOAuthExchangeResult struct {
 	providerAccountOAuthTokenInfo
 	ClientSecret string                `json:"client_secret,omitempty"`
+	SessionJSON  string                `json:"session_json,omitempty"`
 	Status       string                `json:"status"`
 	Catalog      *ProviderCatalogEntry `json:"catalog,omitempty"`
 	CatalogError string                `json:"catalog_error,omitempty"`
@@ -51,7 +52,7 @@ func (s *Server) subscriptionOAuthExchangeCatalog(ctx context.Context, definitio
 		preview.RefreshCredentials = subscriptionPreviewCredentials(&credentials, adapter.refresh)
 		catalog, _, err = preview.ResourceModels(ctx, provider, resource, "")
 	}
-	result := subscriptionOAuthExchangeResult{Status: "complete", ClientSecret: credentials.ClientSecret, providerAccountOAuthTokenInfo: providerAccountOAuthTokenInfo{AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken, IDToken: credentials.IDToken, ClientID: credentials.ClientID, Scopes: credentials.Scopes, TokenType: credentials.TokenType, ExpiresAt: credentials.ExpiresAt, AccountEmail: credentials.Email, AccountID: credentials.AccountID, UserID: credentials.UserID, OrganizationID: credentials.OrganizationID, PlanType: credentials.PlanType}}
+	result := subscriptionOAuthExchangeResult{Status: "complete", ClientSecret: credentials.ClientSecret, SessionJSON: credentials.SessionJSON, providerAccountOAuthTokenInfo: providerAccountOAuthTokenInfo{AccessToken: credentials.AccessToken, RefreshToken: credentials.RefreshToken, IDToken: credentials.IDToken, ClientID: credentials.ClientID, Scopes: credentials.Scopes, TokenType: credentials.TokenType, ExpiresAt: credentials.ExpiresAt, AccountEmail: credentials.Email, AccountID: credentials.AccountID, UserID: credentials.UserID, OrganizationID: credentials.OrganizationID, PlanType: credentials.PlanType}}
 	if err != nil {
 		// Never echo provider errors, URLs, or credential values in this warning.
 		result.CatalogError = "subscription_models_unavailable"

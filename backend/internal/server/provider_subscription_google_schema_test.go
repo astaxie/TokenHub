@@ -19,6 +19,9 @@ func TestGoogleSubscriptionAntigravityToolSchemaCompatibility(t *testing.T) {
 				t.Fatal(err)
 			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if googleSubscriptionTestProject(w, r) {
+					return
+				}
 				var envelope map[string]any
 				if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
 					t.Fatal(err)
@@ -80,6 +83,14 @@ func TestGoogleSubscriptionToolModePreservesExplicitChoiceAndGeminiSchema(t *tes
 				t.Error("Gemini CLI lost its full JSON schema")
 			}
 		}
+	}
+}
+
+func TestGoogleSubscriptionAntigravityAddsMissingArrayItems(t *testing.T) {
+	got, err := antigravitySubscriptionSchema(map[string]any{"type": "object", "properties": map[string]any{"values": map[string]any{"type": "array"}}})
+	want := map[string]any{"type": "object", "properties": map[string]any{"values": map[string]any{"type": "array", "items": map[string]any{}}}}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("untyped array cannot reach Code Assist: %#v %v", got, err)
 	}
 }
 

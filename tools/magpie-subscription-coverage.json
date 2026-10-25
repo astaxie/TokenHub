@@ -1,0 +1,580 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-10-25",
+  "scope": "Native Magpie account providers plus every community subscription/account provider in the pinned registry. API presets and client-side agent connectors are classified separately.",
+  "sources": {
+    "magpie": {
+      "repository": "https://github.com/yetone/magpie",
+      "commit": "d580537201938b9f510070a213e09b46479e53ad",
+      "inventory_path": "internal/provider/provider.go",
+      "inventory_sha256": "8d6a73986729551b4b01bd1b7cb6de50dc9606aed7cfa7d593442cae2ad442c5",
+      "account_ids_declaration": "var accountIDs = []string{\"antigravity\", \"claude\", \"codex\", CommandCodePlanID, \"copilot\", \"cursor\", \"devin\", \"factory\", \"gemini\", \"grok\", \"kiro\", MiMoID, ChatGPTAPIID, \"qoder\", QoderCNID, \"workbuddy\", WorkBuddyAIID, \"zcode\", \"zed\"}",
+      "resolved_constants": {
+        "CommandCodePlanID": "commandcode-plan",
+        "MiMoID": "mimo-app",
+        "ChatGPTAPIID": "chatgpt-api",
+        "QoderCNID": "qoder-cn",
+        "WorkBuddyAIID": "workbuddy-ai"
+      },
+      "account_ids": [
+        "antigravity",
+        "claude",
+        "codex",
+        "commandcode-plan",
+        "copilot",
+        "cursor",
+        "devin",
+        "factory",
+        "gemini",
+        "grok",
+        "kiro",
+        "mimo-app",
+        "chatgpt-api",
+        "qoder",
+        "qoder-cn",
+        "workbuddy",
+        "workbuddy-ai",
+        "zcode",
+        "zed"
+      ],
+      "license_file": "tools/licenses/magpie-LICENSE"
+    },
+    "community": {
+      "repository": "https://github.com/magpie-community/plugins",
+      "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
+      "inventory_path": "registry.json",
+      "snapshot_file": "tools/fixtures/magpie-community-registry.json",
+      "inventory_sha256": "b058e27af874f81c6d10f35c9c99cd900e137138074a3ecf7930641806c76bb9",
+      "license_file": "backend/internal/subscriptionworker/vendor/LICENSE"
+    }
+  },
+  "providers": [
+    {
+      "upstream_id": "antigravity",
+      "source": "magpie",
+      "integration": "native",
+      "tokenhub": {
+        "provider_type": "antigravity_subscription",
+        "plugin_id": "tokenhub.provider.antigravity",
+        "resource_type": "antigravity_account",
+        "provider_constant": "providerAntigravitySubscription",
+        "constant_file": "backend/internal/server/provider_subscription_google.go",
+        "registration_file": "backend/internal/server/builtin_subscription_providers.go"
+      }
+    },
+    {
+      "upstream_id": "chatgpt-api",
+      "source": "magpie",
+      "integration": "native",
+      "tokenhub": {
+        "provider_type": "chatgpt-subscription",
+        "plugin_id": "tokenhub.provider.chatgpt-subscription",
+        "resource_type": "chatgpt_subscription",
+        "provider_constant": "ProviderChatGPTSubscription",
+        "constant_file": "backend/internal/server/provider_subscription_chatgpt.go",
+        "registration_file": "backend/internal/server/builtin_subscription_providers.go",
+        "resource_constant": "ProviderResourceChatGPTSubscription"
+      }
+    },
+    {
+      "upstream_id": "claude",
+      "source": "magpie",
+      "integration": "native",
+      "tokenhub": {
+        "provider_type": "claude_subscription",
+        "plugin_id": "tokenhub.provider.claude-subscription",
+        "resource_type": "claude_subscription_account",
+        "provider_constant": "providerClaudeSubscription",
+        "constant_file": "backend/internal/server/provider_subscription_claude.go",
+        "registration_file": "backend/internal/server/provider_subscription_claude_catalog.go",
+        "resource_constant": "providerResourceClaudeSubscription"
+      }
+    },
+    {
+      "upstream_id": "codex",
+      "source": "magpie",
+      "integration": "native",
+      "tokenhub": {
+        "provider_type": "openai_codex",
+        "plugin_id": "tokenhub.provider.openai-codex",
+        "resource_type": "openai_subscription",
+        "provider_constant": "ProviderOpenAICodex",
+        "constant_file": "backend/internal/server/types.go",
+        "registration_file": "backend/internal/server/builtin_provider_plugins.go",
+        "resource_constant": "ProviderResourceOpenAISubscription"
+      }
+    },
+    {
+      "upstream_id": "copilot",
+      "source": "magpie",
+      "integration": "native",
+      "tokenhub": {
+        "provider_type": "github-copilot-subscription",
+        "plugin_id": "tokenhub.provider.github-copilot-subscription",
+        "resource_type": "github_copilot_subscription",
+        "provider_constant": "ProviderGitHubCopilotSubscription",
+        "constant_file": "backend/internal/server/provider_subscription_copilot.go",
+        "registration_file": "backend/internal/server/builtin_subscription_providers.go",
+        "resource_constant": "ProviderResourceGitHubCopilotSubscription"
+      }
+    },
+    {
+      "upstream_id": "gemini",
+      "source": "magpie",
+      "integration": "native",
+      "tokenhub": {
+        "provider_type": "gemini_cli_subscription",
+        "plugin_id": "tokenhub.provider.gemini-cli",
+        "resource_type": "gemini_cli_account",
+        "provider_constant": "providerGeminiCLISubscription",
+        "constant_file": "backend/internal/server/provider_subscription_google.go",
+        "registration_file": "backend/internal/server/builtin_subscription_providers.go"
+      }
+    },
+    {
+      "upstream_id": "autoclaw",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-autoclaw-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "autoclaw_subscription",
+        "plugin_id": "tokenhub.provider.autoclaw-subscription",
+        "resource_type": "autoclaw_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "autoclaw-cn",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-autoclaw-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "autoclaw_cn_subscription",
+        "plugin_id": "tokenhub.provider.autoclaw-cn-subscription",
+        "resource_type": "autoclaw_cn_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "cline",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-cline-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "cline_subscription",
+        "plugin_id": "tokenhub.provider.cline-subscription",
+        "resource_type": "cline_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "codearts",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-codearts-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "codearts_subscription",
+        "plugin_id": "tokenhub.provider.codearts-subscription",
+        "resource_type": "codearts_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "commandcode-plan",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-commandcode-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "commandcode_plan_subscription",
+        "plugin_id": "tokenhub.provider.commandcode-plan-subscription",
+        "resource_type": "commandcode_plan_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "cursor",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-cursor-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "cursor_subscription",
+        "plugin_id": "tokenhub.provider.cursor-subscription",
+        "resource_type": "cursor_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      },
+      "credential_fields": {
+        "teamId": {
+          "type": "positive_safe_integer",
+          "optional": true,
+          "purpose": "Explicit team billing selection for inference, models and usage; does not read local CLI configuration."
+        }
+      }
+    },
+    {
+      "upstream_id": "devin",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-devin-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "devin_subscription",
+        "plugin_id": "tokenhub.provider.devin-subscription",
+        "resource_type": "devin_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "factory",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-factory-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "factory_subscription",
+        "plugin_id": "tokenhub.provider.factory-subscription",
+        "resource_type": "factory_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "gcp-ai",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-gcp-ai-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "gcp_ai_subscription",
+        "plugin_id": "tokenhub.provider.gcp-ai-subscription",
+        "resource_type": "gcp_ai_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "grok",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-grok-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "grok_subscription",
+        "plugin_id": "tokenhub.provider.grok-subscription",
+        "resource_type": "grok_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "joycode",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-joycode-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "joycode_subscription",
+        "plugin_id": "tokenhub.provider.joycode-subscription",
+        "resource_type": "joycode_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "kimi-work",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-kimi-work-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "kimi_work_subscription",
+        "plugin_id": "tokenhub.provider.kimi-work-subscription",
+        "resource_type": "kimi_work_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "kiro",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-kiro-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "kiro_subscription",
+        "plugin_id": "tokenhub.provider.kiro-subscription",
+        "resource_type": "kiro_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "mimo-app",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-mimo-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "mimo_app_subscription",
+        "plugin_id": "tokenhub.provider.mimo-app-subscription",
+        "resource_type": "mimo_app_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "minimax-code",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-minimax-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "minimax_code_subscription",
+        "plugin_id": "tokenhub.provider.minimax-code-subscription",
+        "resource_type": "minimax_code_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "minimax-code-global",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-minimax-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "minimax_code_global_subscription",
+        "plugin_id": "tokenhub.provider.minimax-code-global-subscription",
+        "resource_type": "minimax_code_global_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "nous-portal",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-nous-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "nous_portal_subscription",
+        "plugin_id": "tokenhub.provider.nous-portal-subscription",
+        "resource_type": "nous_portal_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "opendesign",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-opendesign-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "opendesign_subscription",
+        "plugin_id": "tokenhub.provider.opendesign-subscription",
+        "resource_type": "opendesign_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "qoder",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-qoder-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "qoder_subscription",
+        "plugin_id": "tokenhub.provider.qoder-subscription",
+        "resource_type": "qoder_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "qoder-cn",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-qoder-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "qoder_cn_subscription",
+        "plugin_id": "tokenhub.provider.qoder-cn-subscription",
+        "resource_type": "qoder_cn_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "qwenwork",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-qoder-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "qwenwork_subscription",
+        "plugin_id": "tokenhub.provider.qwenwork-subscription",
+        "resource_type": "qwenwork_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "qwenwork-enterprise",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-qoder-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "qwenwork_enterprise_subscription",
+        "plugin_id": "tokenhub.provider.qwenwork-enterprise-subscription",
+        "resource_type": "qwenwork_enterprise_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "raccoon",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-raccoon-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "raccoon_subscription",
+        "plugin_id": "tokenhub.provider.raccoon-subscription",
+        "resource_type": "raccoon_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "trae-cn",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-trae-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "trae_cn_subscription",
+        "plugin_id": "tokenhub.provider.trae-cn-subscription",
+        "resource_type": "trae_cn_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "trae-global",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-trae-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "trae_global_subscription",
+        "plugin_id": "tokenhub.provider.trae-global-subscription",
+        "resource_type": "trae_global_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "workbuddy",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-workbuddy-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "workbuddy_subscription",
+        "plugin_id": "tokenhub.provider.workbuddy-subscription",
+        "resource_type": "workbuddy_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "workbuddy-ai",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-workbuddy-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "workbuddy_ai_subscription",
+        "plugin_id": "tokenhub.provider.workbuddy-ai-subscription",
+        "resource_type": "workbuddy_ai_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "zcode",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-zcode-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "zcode_subscription",
+        "plugin_id": "tokenhub.provider.zcode-subscription",
+        "resource_type": "zcode_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    },
+    {
+      "upstream_id": "zed",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-zed-auth",
+      "integration": "worker",
+      "tokenhub": {
+        "provider_type": "zed_subscription",
+        "plugin_id": "tokenhub.provider.zed-subscription",
+        "resource_type": "zed_account",
+        "registry_file": "backend/internal/subscriptionworker/registry.mjs",
+        "registration_file": "backend/internal/server/provider_subscription_worker.go"
+      }
+    }
+  ],
+  "exclusions": [
+    {
+      "upstream_id": "cloudflare-workers-ai",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-cloudflare-workers-ai-auth",
+      "kind": "provider",
+      "reason_code": "api_only",
+      "reason": "API credentials and metered Workers AI service; not a subscription-account adapter."
+    },
+    {
+      "upstream_id": "opencode-zen-free",
+      "source": "community",
+      "upstream_package": "@magpie-community/opencode-zen-free-auth",
+      "kind": "provider",
+      "reason_code": "api_only",
+      "reason": "Public API credential and free-model discovery; not a subscription-account adapter."
+    },
+    {
+      "upstream_id": "kimi-desktop",
+      "source": "community",
+      "upstream_package": "@magpie-community/agent-kimi-desktop",
+      "kind": "agent",
+      "reason_code": "agent_connector",
+      "reason": "Configures Kimi desktop to consume Magpie models; it does not supply subscription inference. Kimi Work is covered separately."
+    }
+  ],
+  "limitations": [
+    {
+      "providers": [
+        "gcp-ai"
+      ],
+      "capability": "promotional_credit_balance",
+      "status": "not_exposed",
+      "reason": "The upstream browser-profile credit scraper is not run. OAuth and explicit authorized-user ADC support Vertex inference; no promotional balance is fabricated."
+    },
+    {
+      "providers": [
+        "claude"
+      ],
+      "capability": "runtime",
+      "status": "requires_installed_cli",
+      "reason": "Inference uses the genuine Claude Code CLI in an isolated account directory."
+    },
+    {
+      "providers": [
+        "cursor",
+        "kiro",
+        "workbuddy",
+        "workbuddy-ai",
+        "zcode",
+        "grok",
+        "devin",
+        "commandcode-plan",
+        "kimi-work",
+        "raccoon"
+      ],
+      "capability": "local_account_discovery",
+      "status": "explicit_credentials_required",
+      "reason": "Server adapters accept browser/device authorization or explicitly imported credential values. They do not scan the backend host for desktop or CLI accounts."
+    }
+  ]
+}

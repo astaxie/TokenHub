@@ -91,7 +91,13 @@ function token(body, old, started) {
   // An absent lifetime needs a stable renewal schedule, not expires=1. An
   // explicitly expired or malformed bound must never be replaced by that default.
   const expiries = []
-  if (body?.expires_in !== undefined) expiries.push(typeof body.expires_in === "number" ? started + body.expires_in * 1000 : NaN)
+  // A null or non-numeric expires_in beside a valid JWT exp is ignored, the
+  // exp decides, as Hermes's _remaining_ttl does (#328); with no valid exp it
+  // is still a malformed bound.
+  const expOK = typeof c.exp === "number" && Number.isFinite(c.exp * 1000)
+  if (body?.expires_in !== undefined && (typeof body.expires_in === "number" || !expOK)) {
+    expiries.push(typeof body.expires_in === "number" ? started + body.expires_in * 1000 : NaN)
+  }
   if (c.exp !== undefined) expiries.push(typeof c.exp === "number" ? c.exp * 1000 : NaN)
   let expires = started + FALLBACK_LIFETIME
   if (expiries.length) expires = expiries.every(Number.isFinite) ? Math.max(1, Math.min(...expiries)) : 1

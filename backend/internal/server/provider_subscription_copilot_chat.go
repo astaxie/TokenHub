@@ -39,6 +39,9 @@ func (a *CopilotSubscriptionAdapter) cacheModelRoutes(resourceID string, models 
 }
 
 func (a *CopilotSubscriptionAdapter) modelEndpoint(ctx context.Context, provider Provider, model string) (string, error) {
+	if selected, ok := ctx.Value(copilotSubscriptionAutoKey{}).(copilotSubscriptionAutoSession); ok && selected.Model == model {
+		return selected.Endpoint, nil
+	}
 	resourceID := provider.Options["resource_id"]
 	a.mu.Lock()
 	cached, ok := a.modelRoutes[resourceID]

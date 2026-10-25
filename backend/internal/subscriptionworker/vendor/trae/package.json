@@ -1,6 +1,6 @@
 {
   "name": "@magpie-community/opencode-trae-auth",
-  "version": "0.2.20",
+  "version": "0.2.22",
   "description": "OpenCode provider plugins for Trae: Trae CN (trae.cn) and Trae Global (trae.ai), free tier included, with Trae's own browser sign-in",
   "type": "module",
   "main": "./index.mjs",

@@ -38,6 +38,7 @@ type ClaudeSubscriptionAdapter struct {
 	mu             sync.Mutex
 	runs           map[string]*claudeSubscriptionRun
 	calls          map[string]*claudeSubscriptionRun
+	signIns        map[string]*claudeSubscriptionSignIn
 }
 
 type claudeSubscriptionEvent struct {
@@ -203,6 +204,7 @@ func claudeSubscriptionAddUsage(left, right Usage) Usage {
 }
 
 func (a *ClaudeSubscriptionAdapter) Close() {
+	a.closeSignIns()
 	a.mu.Lock()
 	runs := make([]*claudeSubscriptionRun, 0, len(a.runs))
 	for _, run := range a.runs {

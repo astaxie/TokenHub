@@ -117,6 +117,68 @@ function authFile() {
   return join(process.env.XDG_CONFIG_HOME || join(home, ".config"), "cursor", "auth.json")
 }
 
+// cliConfigFile is cursor-agent's cli-config.json, where it keeps the team
+// it signed in to (authInfo.activeTeamId); its directory found as the CLI
+// finds it, on every OS.
+function cliConfigFile() {
+  const dir = process.env.CURSOR_CONFIG_DIR?.trim()
+    || (process.env.XDG_CONFIG_HOME?.trim() ? join(process.env.XDG_CONFIG_HOME, "cursor") : join(homedir(), ".cursor"))
+  return join(dir, "cli-config.json")
+}
+
+// tokenSub is a JWT's subject (the auth id, "auth0|user_…"); "" when it
+// doesn't say.
+function tokenSub(tok) {
+  const parts = String(tok ?? "").split(".")
+  if (parts.length !== 3) return ""
+  try {
+    const sub = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"))?.sub
+    return typeof sub === "string" ? sub : ""
+  } catch {
+    return ""
+  }
+}
+
+const teamOf = (v) => (Number.isSafeInteger(v) && v > 0 ? v : undefined)
+
+// activeTeamId is the team a request is billed to, as cursor-agent sends it
+// (x-cursor-team-id): cli-config.json's authInfo.activeTeamId. Without it
+// Cursor takes the token's default team, which in an organization may be one
+// with on-demand spend turned off ("Team budget limit reached"). The config's
+// team is only taken for the account cursor-agent signed in to: a token
+// whose subject isn't its authInfo.authId, or a config with none, gets none.
+// Read again after 10 s; cursor-agent rewrites the file in place, so a read
+// that fails to parse keeps the last one, and only a missing file clears it.
+const TEAM_TTL = 10_000
+const teamRead = { at: 0, info: null }
+async function activeTeamId(tok) {
+  if (Date.now() - teamRead.at >= TEAM_TTL) {
+    try {
+      teamRead.info = JSON.parse(await readFile(cliConfigFile(), "utf8"))?.authInfo ?? null
+    } catch (e) {
+      if (e?.code === "ENOENT") teamRead.info = null
+    }
+    teamRead.at = Date.now()
+  }
+  const info = teamRead.info
+  if (!info) return undefined
+  if (!info.authId || info.authId !== tokenSub(tok)) return undefined
+  return teamOf(info.activeTeamId)
+}
+
+// teamHeader names that team in a request's headers, and teamBody in
+// GetFilteredUsageEvents' body; neither says anything when there is none.
+// GetHardLimit and GetCurrentPeriodUsage go out with "{}", as cursor-agent
+// sends them: the team rides in the header only.
+async function teamHeader(tok) {
+  const id = await activeTeamId(tok)
+  return id ? { "x-cursor-team-id": String(id) } : {}
+}
+async function teamBody(tok) {
+  const id = await activeTeamId(tok)
+  return id ? { teamId: id } : {}
+}
+
 // TOKEN_TTL is how long a token read from the Keychain is taken as it: a
 // sign-in reads it afresh, one made in cursor-agent is seen within it.
 // KEYCHAIN_DENIED is how long a read the user may have been asked about,
@@ -218,6 +280,7 @@ async function headersFor(tok) {
     "x-cursor-client-version": await clientVersion(),
     "x-cursor-client-type": "cli",
     "x-ghost-mode": "true",
+    ...await teamHeader(tok),
   }
 }
 
@@ -456,7 +519,7 @@ async function hardLimit(tok) {
   try {
     const res = await fetch(API + "/aiserver.v1.DashboardService/GetHardLimit", {
       method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json", "Connect-Protocol-Version": "1" },
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json", "Connect-Protocol-Version": "1", ...await teamHeader(tok) },
       body: "{}",
       signal: AbortSignal.timeout(15_000),
     })
@@ -481,7 +544,7 @@ async function usage(tok, ids) {
   const [res, hard] = await Promise.all([
     fetch(API + "/aiserver.v1.DashboardService/GetCurrentPeriodUsage", {
       method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json", "Connect-Protocol-Version": "1" },
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json", "Connect-Protocol-Version": "1", ...await teamHeader(tok) },
       body: "{}",
       signal: AbortSignal.timeout(15_000),
     }),
@@ -1515,7 +1578,7 @@ async function usageEvents(tok, conv, since, want, { poll = false, first = STEP_
       const res = await fetch(API + "/aiserver.v1.DashboardService/GetFilteredUsageEvents", {
         method: "POST",
         headers: await headersFor(tok),
-        body: JSON.stringify({ teamId: 0, startDate: String(since - 60_000), endDate: String(Date.now() + 60_000), page: 1, pageSize: 50 }),
+        body: JSON.stringify({ ...await teamBody(tok), startDate: String(since - 60_000), endDate: String(Date.now() + 60_000), page: 1, pageSize: 50 }),
         signal: abortFetch && signal ? AbortSignal.any([signal, AbortSignal.timeout(STEP_WAIT.ask)]) : AbortSignal.timeout(STEP_WAIT.ask),
       })
       if (res.status >= 400 && res.status < 500 && res.status !== 429) {
@@ -2149,6 +2212,7 @@ async function runNative({ tok, base, id, tools, conv, convID, signal, maxMode, 
       "x-cursor-client-type": "cli", // else Cursor adds a prompt of its own
       "x-ghost-mode": "true", // privacy mode: nothing kept for training
       "x-request-id": randomUUID(),
+      ...await teamHeader(tok),
       // none of Cursor's own tools, only the caller's
       "x-cursor-agent-allowed-tools": "mcp_tool_call,get_mcp_tools_tool_call",
     },
@@ -2237,6 +2301,7 @@ async function runOnce({ tok, base, id, tools, conv, convID, signal, maxMode, pa
       "x-cursor-client-type": "cli", // else Cursor adds a prompt of its own
       "x-ghost-mode": "true", // privacy mode: nothing kept for training
       "x-request-id": randomUUID(),
+      ...await teamHeader(tok),
       // none of Cursor's own tools, only the caller's
       "x-cursor-agent-allowed-tools": "mcp_tool_call,get_mcp_tools_tool_call",
     },
@@ -2887,4 +2952,4 @@ export async function CursorAuthPlugin() {
 }
 
 // for tests
-export const _internal = { keychain, keychainToken, nativeTransport, onDemandOf,resetH1: () => (h1Until = 0), onH1: () => Date.now() < h1Until, H2, H1, h2Blocked, open, openH1, openH2, STEP_WAIT, stepUsage, usageKey, ledger, owed, flights, misses, unreadable, catalog, usable, request, modelsOf, tokensOf, maxRequired, conversationID, usageOf, sessionOf, SESSION, errorResponse, kept, poolBase, conversation, buildRun, decode, exec, fields, pb, pbValue, pbAny, frame, frames, failure, toolsOf, expiry }
+export const _internal = { keychain, keychainToken, nativeTransport, onDemandOf,resetH1: () => (h1Until = 0), onH1: () => Date.now() < h1Until, resetTeam: () => { teamRead.at = 0; teamRead.info = null }, expireTeam: () => (teamRead.at = 0),H2, H1, h2Blocked, open, openH1, openH2, STEP_WAIT, stepUsage, usageKey, ledger, owed, flights, misses, unreadable, catalog, usable, request, modelsOf, tokensOf, maxRequired, conversationID, usageOf, sessionOf, SESSION, errorResponse, kept, poolBase, conversation, buildRun, decode, exec, fields, pb, pbValue, pbAny, frame, frames, failure, toolsOf, expiry }

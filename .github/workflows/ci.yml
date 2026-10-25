@@ -60,7 +60,7 @@ jobs:
 
       - name: Test bundled subscription adapters
         if: matrix.shard == 0
-        run: node --test internal/subscriptionworker/worker.test.mjs
+        run: node --test internal/subscriptionworker/*.test.mjs
 
       - name: Check formatting
         if: matrix.shard == 0

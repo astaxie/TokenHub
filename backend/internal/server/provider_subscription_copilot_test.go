@@ -162,7 +162,7 @@ func TestCopilotSubscriptionModelsAndSecretSafeErrors(t *testing.T) {
 	})
 	provider.Options = nil
 	catalog, _, err := a.ResourceModels(context.Background(), provider, ProviderResource{ID: "account"}, "")
-	if err != nil || len(catalog.Models) != 2 || catalog.Models[0].ContextWindow != 32000 || catalog.Models[1].Metadata["supported_endpoints"] != "/responses" {
+	if err != nil || len(catalog.Models) != 3 || catalog.Models[0].ContextWindow != 32000 || catalog.Models[1].Metadata["supported_endpoints"] != "/responses" || catalog.Models[2].ID != "auto" {
 		t.Fatalf("catalog=%+v err=%v", catalog, err)
 	}
 	provider.Options = map[string]string{"resource_id": "account"}

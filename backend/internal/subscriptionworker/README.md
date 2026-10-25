@@ -13,13 +13,15 @@ than in vendored source.
 
 ## Provider scope
 
-The static registry contains 26 account/subscription IDs:
+The static registry contains 29 account/subscription IDs:
 
 | Package | Provider IDs |
 | --- | --- |
 | Cursor | `cursor` |
 | Kiro | `kiro` |
 | Qoder | `qoder`, `qoder-cn` |
+| QwenWork | `qwenwork`, `qwenwork-enterprise` |
+| GCP AI | `gcp-ai` |
 | WorkBuddy | `workbuddy`, `workbuddy-ai` |
 | Xiaomi MiMo | `mimo-app` |
 | ZCode | `zcode` |
@@ -63,6 +65,7 @@ Supported operations:
 | `providers` | Returns the static `providers` array; no provider is required. |
 | `describe` | Returns methods, seed models, and capability flags without local discovery. |
 | `models` | Returns `{provider,models,fallback}`. Every model declares its native `protocol`. |
+| `checkin` | Runs the supported account check-in hook and returns its outcome. |
 | `usage` | Returns the upstream adapter's account allowance windows. |
 | `refresh` | Refreshes when supported and returns the current internal `auth`. |
 | `import` | Validates and durably saves the explicit `auth` object. |
@@ -142,9 +145,16 @@ entitlement. Paid-account calls have not been made by the automated test suite.
 From the repository root, run:
 
 ```sh
-node --test backend/internal/subscriptionworker/worker.test.mjs
+node --test backend/internal/subscriptionworker/*.test.mjs
 ```
 
 From `backend/`, run `go test ./internal/subscriptionworker`. Tests use synthetic
 credentials and parent-network fixtures, and verify provenance, offline startup,
 native protocols, credential persistence, cancellation, and resource isolation.
+
+GCP AI uses explicit desktop OAuth or authorized-user ADC JSON, with a selected
+project and location. It never invokes gcloud or scans ADC/browser profiles.
+QwenWork enterprise credentials are bound to the explicitly supplied exact domain.
+Declared boolean options (`x_search`, `standard_only`, `zdr`) travel with each
+command; provider defaults can be overridden on the account resource. Quota and
+check-in hooks are available through registered administrator actions.

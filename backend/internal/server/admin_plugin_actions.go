@@ -143,7 +143,7 @@ func providerAdapterCapabilityForActionCapability(actionCapability string) (Adap
 		return AdapterCapabilityModels, true
 	case "provider.probe.run", "probe.run":
 		return AdapterCapabilityProbe, true
-	case "quota.read", "quota.reset_credits.read", "quota.reset":
+	case "quota.read", "quota.reset_credits.read", "quota.reset", "checkin.run":
 		return AdapterCapabilityQuota, true
 	case "image.capability.configure":
 		return AdapterCapabilityImageGenerate, true

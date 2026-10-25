@@ -4,27 +4,39 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func registerBuiltinSubscriptionWorkerActions(server *Server, actions builtinActionRegistrar) {
 	for _, definition := range subscriptionWorkerDefinitions() {
-		for _, capability := range []string{"oauth.methods", "oauth.start", "oauth.exchange", "oauth.cancel", "models.read", "credentials.refresh", "probe.run", "provider.probe.run"} {
+		capabilities := []string{"oauth.methods", "oauth.start", "oauth.exchange", "oauth.cancel", "models.read", "credentials.refresh", "probe.run", "provider.probe.run"}
+		if subscriptionWorkerHasQuota(definition.ID) {
+			capabilities = append(capabilities, "quota.read")
+		}
+		if subscriptionWorkerHasCheckin(definition.ID) {
+			capabilities = append(capabilities, "checkin.run")
+		}
+		for _, capability := range capabilities {
 			kind := pluginmeta.ActionKindRead
 			if capability == "oauth.start" {
 				kind = pluginmeta.ActionKindExternalRedirect
 			}
-			if capability == "oauth.exchange" || capability == "oauth.cancel" || capability == "credentials.refresh" {
+			if capability == "oauth.exchange" || capability == "oauth.cancel" || capability == "credentials.refresh" || capability == "checkin.run" {
 				kind = pluginmeta.ActionKindMutate
 			}
 			if capability == "probe.run" || capability == "provider.probe.run" {
 				kind = pluginmeta.ActionKindTest
 			}
 			metadata := map[string]string{"provider_resource_type": definition.resourceType()}
-			properties := map[string]string{"resource_id": "string", "provider_id": "string", "model": "string", "prompt": "string"}
+			properties := map[string]string{"resource_id": "string", "provider_id": "string", "model": "string", "prompt": "string", "refresh": "boolean"}
 			required := []string{"resource_id"}
 			switch capability {
+			case "checkin.run":
+				properties = map[string]string{"resource_id": "string"}
+			case "quota.read":
+				properties = map[string]string{"resource_id": "string", "refresh": "boolean"}
 			case "oauth.methods":
 				required = nil
 				properties = nil
@@ -67,6 +79,7 @@ func (s *Server) executeSubscriptionWorkerAction(ctx context.Context, definition
 		ProviderID  string `json:"provider_id"`
 		Model       string `json:"model"`
 		Prompt      string `json:"prompt"`
+		Refresh     bool   `json:"refresh"`
 	}
 	if len(invocation.Payload) > 0 && json.Unmarshal(invocation.Payload, &input) != nil {
 		return pluginmeta.ActionResult{}, NewHTTPError(400, "invalid_plugin_action_payload", "Plugin action payload is invalid")
@@ -102,6 +115,15 @@ func (s *Server) executeSubscriptionWorkerAction(ctx context.Context, definition
 			return pluginmeta.ActionResult{}, NewHTTPError(400, "provider_resource_type_mismatch", "Resource does not belong to this subscription provider")
 		}
 		switch capability {
+		case "quota.read":
+			if !input.Refresh {
+				if cached, ok := s.cachedProviderMonitoringQuota(resource.ID, time.Minute); ok {
+					return pluginmeta.ActionResult{Data: cached}, nil
+				}
+			}
+			data, err = adapter.accountManagement(ctx, provider, resource, "usage")
+		case "checkin.run":
+			data, err = adapter.accountManagement(ctx, provider, resource, "checkin")
 		case "models.read":
 			data, err = s.queryProviderResourceModels(ctx, input.ResourceID)
 		case "probe.run":

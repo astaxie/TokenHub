@@ -1,8 +1,19 @@
 import { type AdminUIContribution } from "../core/types";
 import { activeLanguage, type AppLanguage } from "./runtime";
 import { adminUICopyTranslations as translations } from "./admin-ui-copy";
+import { subscriptionTranslations } from "./subscriptions";
 
 const builtinText: Record<string, (tx: (key: string) => string) => string> = {
+  "Subscription account quota": (tx) => tx("订阅账号额度"),
+  "Account allowance, balance, and reset windows reported by the subscription provider.": (tx) => tx("订阅上游返回的账号额度、余额和重置时间。"),
+  "Daily check-in": (tx) => tx("每日签到"),
+  "Subscription account options": (tx) => tx("订阅账号选项"),
+  "Enable X search": (tx) => tx("启用 X 搜索"),
+  "Allow Grok to search X during responses. The provider may charge additional credits.": (tx) => tx("允许 Grok 在回复时搜索 X，可能消耗额外积分。"),
+  "Use Standard allowance only": (tx) => tx("仅使用 Standard 额度"),
+  "Stop using this account when any Standard allowance window is exhausted. Extra usage will not keep the account in routing.": (tx) => tx("任一 Standard 额度窗口用尽后停止使用此账号，不使用额外付费额度继续请求。"),
+  "Zero Data Retention": (tx) => tx("零数据保留"),
+  "Use only upstreams that retain no prompts or replies. Requests may cost more and fail when no eligible upstream exists.": (tx) => tx("仅使用不保留提示词和回复的上游，费用可能更高；没有符合条件的上游时请求会失败。"),
   "Plugin Ecosystem": (tx) => tx("插件生态"),
   "Inspect the plugin registry, Admin UI contributions, gateway hooks, and plugin actions.": (tx) => tx("查看插件注册表、管理界面贡献、网关钩子和插件动作。"),
   "Registered plugins": (tx) => tx("已注册插件"),
@@ -40,8 +51,9 @@ const builtinPlugins = new Set([
 
 // Translate presentation metadata only; never rewrite identifiers or field values.
 export function localizeBuiltinContribution(contribution: AdminUIContribution, language: AppLanguage = activeLanguage): AdminUIContribution {
-  if (!builtinPlugins.has(contribution.plugin_id)) return contribution;
-  const tx = (key: string) => language === "zh-CN" ? key : translations[language][key] ?? key;
+  const subscription = contribution.plugin_id.startsWith("tokenhub.provider.") && contribution.plugin_id.endsWith("-subscription");
+  if (!builtinPlugins.has(contribution.plugin_id) && !subscription) return contribution;
+  const tx = (key: string) => language === "zh-CN" ? key : translations[language][key] ?? (subscriptionTranslations[language as "en" | "ja"] as Record<string, string> | undefined)?.[key] ?? key;
   const translate = (value: unknown) => typeof value === "string" ? (Object.hasOwn(builtinText, value) ? builtinText[value](tx) : value) : value;
   const schema = contribution.schema;
   return {

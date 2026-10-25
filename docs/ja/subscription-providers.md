@@ -2,7 +2,7 @@
 
 Language: [English](../subscription-providers.md) | [简体中文](../zh-CN/subscription-providers.md) | 日本語
 
-TokenHub は、固定版 Magpie の有効な組み込みアカウント Provider 6 件と、コミュニティ一覧に含まれる全 26 件のアカウント Provider ID を統合しています。管理者はアカウントを Provider リソースとして接続し、モデルを読み込み、既存の認証・認可・使用量計測を通じてリクエストをルーティングします。Magpie サービスの実行は不要です。
+TokenHub は、固定版 Magpie の有効な組み込みアカウント Provider 6 件と、コミュニティ一覧に含まれる全 29 件のアカウント Provider ID を統合しています。管理者はアカウントを Provider リソースとして接続し、モデルを読み込み、既存の認証・認可・使用量計測を通じてリクエストをルーティングします。Magpie サービスの実行は不要です。
 
 アカウントアダプターと API Key プリセットは異なる接続方式です。アプリの有料契約が、API プラン、すべてのモデル、無制限の利用を自動的に提供するわけではありません。この統合は、上流がアカウント共有や自動アクセスを許可することを示すものではありません。適用されるプランの条件に従って利用してください。
 
@@ -10,7 +10,7 @@ TokenHub は、固定版 Magpie の有効な組み込みアカウント Provider
 
 - コミュニティアダプターには、バックエンドホスト上の **Node.js 22.23.1 以降**が必要です。サポート対象の Docker イメージとネイティブ配布物には Node が含まれます。ソースから実行する場合はバックエンドプロセスの `PATH` に追加してください。`start.sh` がバージョンを確認します。実行時に npm パッケージをインストールしません。
 - Claude Code には、バックエンドプロセスの `PATH` 上の公式 `claude` CLI が必要です。TokenHub は現在、この CLI を同梱せず、バージョンも固定しません。アカウントを接続する前に、Docker の場合はコンテナー内を含むバックエンド実行環境にインストールしてください。実行ファイルがない場合は `claude_cli_unavailable` を返します。
-- Codex、Copilot、ChatGPT API、Gemini CLI、Antigravity は Go で統合しています。残りの 26 件は、固定ソースを同梱したアプリ管理の Node worker で実行します。Magpie デーモンや任意の JavaScript プラグインは実行しません。
+- Codex、Copilot、ChatGPT API、Gemini CLI、Antigravity は Go で統合しています。残りの 29 件は、固定ソースを同梱したアプリ管理の Node worker で実行します。Magpie デーモンや任意の JavaScript プラグインは実行しません。
 
 サポート対象の構成は[デプロイ](deployment.md)を参照してください。
 
@@ -20,14 +20,14 @@ TokenHub は、固定版 Magpie の有効な組み込みアカウント Provider
 
 | Provider | TokenHub Provider 型 | 接続方法 | 公開テキスト API の範囲 |
 | --- | --- | --- | --- |
-| Claude Code | `claude_subscription` | setup token またはアカウントセッションのインポート | 公式 Claude Code CLI 経由の Chat |
+| Claude Code | `claude_subscription` | ブラウザー OAuth、setup token、アカウントセッション | 公式 Claude Code CLI 経由の Chat |
 | OpenAI Codex | `openai_codex` | 既存の Codex OAuth または明示的なアカウントインポート | Responses と既存の互換変換 |
 | GitHub Copilot | `github-copilot-subscription` | GitHub デバイスコード | Chat と Responses |
 | ChatGPT API | `chatgpt-subscription` | Sign in with ChatGPT、または明示的な token インポート | 直接 API token を使う Responses。Codex バックエンドとは別経路 |
 | Gemini CLI | `gemini_cli_subscription` | 管理者がデスクトップクライアント設定を指定する Google ブラウザー OAuth | Code Assist 経由の Chat |
 | Antigravity | `antigravity_subscription` | 管理者がデスクトップクライアント設定を指定する Google ブラウザー OAuth | Code Assist 経由の Chat |
 
-コミュニティ統合の全 26 件は **Chat** を公開し、上流モデルが対応する場合はストリーミングと呼び出し元定義のツールを利用できます。内部の Chat、Anthropic、Responses、Gemini 形式は、公開 Responses、埋め込み、メディア API の追加を意味しません。全項目で明示的なセッション JSON インポートも利用できます。Kimi Work はインポートのみ対応します。
+コミュニティ統合の全 29 件は **Chat** を公開し、上流モデルが対応する場合はストリーミングと呼び出し元定義のツールを利用できます。内部の Chat、Anthropic、Responses、Gemini 形式は、公開 Responses、埋め込み、メディア API の追加を意味しません。全項目で明示的なセッション JSON インポートも利用できます。Kimi Work はインポートのみ対応します。
 
 | Provider | 一覧 ID | 利用できる接続方法 |
 | --- | --- | --- |
@@ -35,6 +35,9 @@ TokenHub は、固定版 Magpie の有効な組み込みアカウント Provider
 | Kiro | `kiro` | Google、GitHub、AWS Builder ID、IAM Identity Center のブラウザー認証、`ksk_` API Key |
 | Qoder | `qoder` | ブラウザー/デバイス認証、個人アクセストークン |
 | Qoder China | `qoder-cn` | ブラウザー/デバイス認証、個人アクセストークン、公式 Qoder 企業 VPC |
+| QwenWork | `qwenwork` | ブラウザー/デバイス認証 |
+| QwenWork Enterprise | `qwenwork-enterprise` | 企業ドメインを明示するブラウザー/デバイス認証 |
+| GCP AI | `gcp-ai` | Google デスクトップ OAuth、プロジェクトとリージョンを指定した authorized-user ADC JSON の明示的インポート |
 | WorkBuddy | `workbuddy` | ブラウザー |
 | WorkBuddy AI | `workbuddy-ai` | ブラウザー |
 | Xiaomi MiMo | `mimo-app` | Xiaomi アカウントのブラウザー/ポーリング認証。シードモデルのみ |
@@ -77,7 +80,7 @@ Antigravity のツール引数は、対応する OpenAPI schema のサブセッ�
 
 Kimi Work は `type: "oauth"`、`access`、`webToken`、`uid` を含むオブジェクトをインポートします。`deviceId` は任意です。値は権限のある自身のアカウントから明示的に取得してください。TokenHub はデスクトップのデータベースを読みません。他のセッション形式は Provider ごとに異なり、選択した Provider と一致する必要があります。
 
-Claude Code には `claude setup-token` で取得した長期 token、または `claudeAiOauth.accessToken` と利用可能な更新トークンのメタデータを含むセッション JSON をインポートします。カタログの `sonnet`、`opus`、`haiku`、`fable` はリクエスト時に CLI が確認する別名であり、利用権限のライブ一覧ではありません。
+Claude Code はエディターから公式の `claude auth login --claudeai` ブラウザーログインを開始し、ループバックコールバックまたは認証コードの貼り付けで完了できます。専用の設定ディレクトリを使い、そのログインの認証ファイルまたは対応する macOS キーチェーン項目だけを読みます。また、`claude setup-token` で取得した長期 token、または `claudeAiOauth.accessToken` と利用可能な更新トークンのメタデータを含むセッション JSON をインポートします。カタログの `sonnet`、`opus`、`haiku`、`fable` はリクエスト時に CLI が確認する別名であり、利用権限のライブ一覧ではありません。
 
 ### リモートブラウザーとコールバック
 
@@ -86,6 +89,25 @@ Claude Code には `claude setup-token` で取得した長期 token、または 
 一部の上流フローは認証情報の POST やローカルページのアセットに依存するため、URL のコピーだけでは完了しません。AutoClaw グローバル版の Google/z.ai フローは、バックエンドホスト上の HTTP ループバック開始ページを開きます。そのホストのブラウザー、または該当プロセスのループバックリスナーに到達する信頼できるトンネルを使用してください。コンテナーのループバックは独立しています。通常の TokenHub リバースプロキシは一時リスナーを公開しません。Command Code のブラウザー認証がリモート環境に適さない場合は API Key を利用できます。
 
 マルチインスタンス構成では、認証の開始、ポーリング、交換、キャンセルを同じ TokenHub バックエンドに送信してください。コミュニティ認証 worker とコールバックリスナーはプロセス内の状態を保持します。保存済み認証情報はデータベースで永続化・共有できますが、進行中の認証や会話プロセスはインスタンス間で移動できません。これらの操作にはセッションアフィニティを設定してください。PostgreSQL の共有だけでは実現できません。
+
+## アカウント設定と利用枠
+
+Copilot は通常のモデル一覧が空のプランでも `auto` を利用できます。上流の選択 API が推論前にモデルとプロトコルを決定し、明示的な Responses リクエストには Responses 対応モデルが必要です。企業管理ユーザーはデバイス認証で `github_host`（`<tenant>.ghe.com`）を指定できます。ホストはアカウントと暗号化保存され、認証、セッション交換、API の宛先を決定します。
+
+Gemini CLI はアカウントの実験フラグを読み、表示モデル ID を推論時の上流 ID に変換します。プロジェクトの指定は Code Assist の資格確認やオンボーディングを省略しません。Antigravity のツール schema では、上流が要求する配列要素の空 schema も補います。
+
+GCP AI には Google デスクトップ OAuth client ID/secret、プロジェクト ID または番号、Vertex リージョン（既定 `global`）を指定します。専用のインポート方法で `client_id`、`client_secret`、`refresh_token` を含む `authorized_user` ADC JSON を貼り付けることもできます。プロジェクトのアクセス権を確認し、更新可能な認証情報を保存して Vertex の Gemini テキストモデルを取得します。サービスアカウント JSON、ファイルパス、ホストの gcloud 設定、ブラウザーセッションは取り込みません。Vertex AI を有効にして利用者にプロジェクトのアクセス権を与えてください。GCP Cloud Console のプロモーション残高スクレイピングは含まず、架空の残高は表示しません。
+
+Cursor のチームアカウントは、インポートするセッション JSON に正の整数 `teamId` を明示できます。チームヘッダーと使用量照会は当該リソースに紐付き、ホストで選択中の Cursor チームは読みません。
+
+QwenWork Enterprise は認証時に企業ドメインを求めます。認証情報、更新、推論は指定した正確なドメインに紐付き、Go トランスポートの DNS/IP 制限も適用します。token 更新後もアカウントごとのドメインを保持します。
+
+Provider エディターの詳細設定には Grok X 検索（`x_search`）、Factory Standard のみ（`standard_only`）、Command Code ゼロデータ保持（`zdr`）の真偽値設定があります。リソース設定は Provider の既定値を上書きします。Factory Standard のみを有効にして Standard 枠が尽きた場合、再試行可能な利用枠エラーを返して既存のルートフォールバックを利用します。効果は上流の対応とプラン資格に依存します。
+
+Nous Portal と GCP AI を除くコミュニティアカウントで利用枠を照会できます。対応アダプターの手動チェックインは `claimed`、`done`、`inactive`、`ineligible` を返し、自動定期実行はしません。Qoder 国際版は TokenHub が収集しないネイティブのデバイス識別情報を要求する場合があります。モデル固有の枠や表示専用の枠は、アカウント全体の枯渇と区別します。
+
+固定版の一覧では全 35 件のアカウント Provider ID を網羅します。Cloudflare Workers AI と OpenCode Zen Free は API/公開サービス、Kimi Desktop は agent コネクターであり、追加のサブスクリプションアカウント Provider ではありません。アカウントの網羅は Magpie 全機能の複製を意味せず、ホストのアカウント検索、agent 切り替え、ブラウザー残高取得、新規メディア生成 API は対象外です。
+
 
 ## 追加 API Key プリセット
 
@@ -122,13 +144,17 @@ Claude はアカウントごとに実行中またはツール結果待ちのリ�
 
 更新可能なアカウントリースが、Claude の認証情報再読込、実行、ツール結果待ち、認証情報の保存、プロセス終了処理をインスタンス間で保護します。キャンセルやタイムアウト後も更新済み認証情報の保存を試みます。一時的なストレージ障害が 3 回の試行後も続く場合は、非公開の一時復旧ディレクトリを保持し、認証情報の値を含めずパスをログに記録します。復旧は手動です。認証情報を永続ストレージに復元するまでディレクトリを保持してください。古いセッションが管理者の同時編集を上書きすることはありません。
 
-モデル取得時に固定シード ID へフォールバックする場合があります。カタログの `subscription-account-live`、`subscription-account-fallback`、`subscription-account-empty` で区別し、フォールバックの利用権限と料金は未確認とします。上流の生の variant はメタデータに保持し、明示的な reasoning-effort 値だけを選択可能にします。掲載モデルはアクセス権、価格、コンテキストサイズ、残り利用枠を保証しません。この版では、すべての上流 usage hook を管理者の利用枠画面に公開していません。
+モデル取得時に固定シード ID へフォールバックする場合があります。カタログの `subscription-account-live`、`subscription-account-fallback`、`subscription-account-empty` で区別し、フォールバックの利用権限と料金は未確認とします。上流の生の variant はメタデータに保持し、明示的な reasoning-effort 値だけを選択可能にします。掲載モデルはアクセス権、価格、コンテキストサイズ、残り利用枠を保証しません。対応する worker の利用枠 hook は `quota.read`、チェックイン hook は `checkin.run` で公開します。特定モデルの利用枠だけではアカウント全体を枯渇と判定しません。
 
 テストは合成 HTTP フロー、プロトコル変換、ストリーム、ツール呼び出し、暗号化認証情報の更新、キャンセル、プロセス隔離、コールバック制限を対象としています。**実際の有料アカウント、現在の利用枠、すべての上流ログインフローはライブ検証していません。** Trae は実験段階で、上流の非公開インターフェースは TokenHub と独立して変わる場合があります。既存の Codex 画像生成は変更せず、今回の追加は新しい埋め込み、画像、音声、動画機能を保証しません。
 
 ## 固定ソースとライセンス
 
-- [yetone/magpie](https://github.com/yetone/magpie)、コミット `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1` を、確認済みの組み込み一覧、ネイティブプロトコル、API プリセット情報の参照元としています。MIT ライセンスは `tools/licenses/magpie-LICENSE` に保持します。`backend/internal/server/SUBSCRIPTION_THIRD_PARTY_NOTICES.md` に Copilot、ChatGPT、Claude、Gemini CLI、Antigravity のネイティブ実装の出典を示し、対応するプラットフォームパッケージと生成した API プリセットに第三者通知を含めます。
-- [magpie-community/plugins](https://github.com/magpie-community/plugins)、コミット `c9a0215f31d401ca4249fac33d03e6b97e44ebbb` のコミュニティアダプターを MIT で静的に同梱しています。`backend/internal/subscriptionworker/vendor/PROVENANCE.json` にパッケージ版と SHA256 を記録し、隣にライセンスを保持しています。
+- [yetone/magpie](https://github.com/yetone/magpie)、コミット `d580537201938b9f510070a213e09b46479e53ad` を、確認済みの組み込み一覧、ネイティブプロトコルの参照元としています。MIT ライセンスは `tools/licenses/magpie-LICENSE` に保持します。`backend/internal/server/SUBSCRIPTION_THIRD_PARTY_NOTICES.md` に Copilot、ChatGPT、Claude、Gemini CLI、Antigravity のネイティブ実装の出典を示し、対応するプラットフォームパッケージと生成した API プリセットに第三者通知を含めます。
+- [magpie-community/plugins](https://github.com/magpie-community/plugins)、コミット `5c9b7a413756c2b4f139290047085075c83eb3e8` のコミュニティアダプターを MIT で静的に同梱しています。`backend/internal/subscriptionworker/vendor/PROVENANCE.json` にパッケージ版と SHA256 を記録し、隣にライセンスを保持しています。
 
 Vendored ソースは固定され、出典マニフェストとバイト単位で一致します。TokenHub の適応コードは vendor 外に置き、実行時の更新やパッケージインストールは行いません。
+
+API プリセット情報は別途 `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1` に固定しています。
+
+再現可能なアカウント一覧と明示的な除外項目は [`tools/magpie-subscription-coverage.json`](../../tools/magpie-subscription-coverage.json) に記録し、同梱レジストリーとプラグインパッケージに照合します。

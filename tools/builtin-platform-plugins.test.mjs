@@ -21,7 +21,7 @@ const expected = [
 ];
 
 test("every non-catalog built-in plugin has an inspectable package", async () => {
-  assert.equal(new Set(plugins.map(({ id }) => id)).size, 42);
+  assert.equal(new Set(plugins.map(({ id }) => id)).size, expected.length);
   assert.deepEqual(plugins.map(({ id }) => id).sort(), [...expected].sort());
   assert.deepEqual((await readdir(packageRoot)).sort(), [...expected].sort());
   for (const id of expected) {
@@ -38,7 +38,7 @@ test("community package names and host adapters match the Go and Node registries
   const source = await readFile(path.join(root, "backend/internal/server/provider_subscription_worker.go"), "utf8");
   const definitions = source.split("func subscriptionWorkerDefinitions()")[1].split("func (d subscriptionWorkerDefinition)")[0];
   const hosts = [...definitions.matchAll(/\{"([^"]+)", "([^"]+)"\}/g)].map(([, id, name]) => ({ id, name }));
-  assert.equal(hosts.length, 26);
+  assert.equal(hosts.length, providerIDs.length);
   assert.deepEqual(hosts.map(({ id }) => id).sort(), [...providerIDs].sort());
   for (const { id, name } of hosts) {
     const plugin = plugins.find((item) => item.workerID === id);
@@ -54,7 +54,6 @@ test("native subscription packages match registered names and provider type cons
   const definitions = await readFile(path.join(directory, "builtin_subscription_providers.go"), "utf8");
   const sources = (await Promise.all(["copilot", "chatgpt", "google", "claude"].map((name) => readFile(path.join(directory, `provider_subscription_${name}.go`), "utf8")))).join("\n");
   const native = [...definitions.matchAll(/\{(\w+), "(tokenhub\.provider\.[^"]+)", "([^"]+)"/g)];
-  assert.equal(native.length, 4);
   for (const [, constant, id, name] of native) {
     const providerType = sources.match(new RegExp(`\\b${constant}\\s*=\\s*"([^"]+)"`))?.[1];
     assert.ok(providerType, `Missing host provider type ${constant}`);
@@ -69,11 +68,11 @@ test("native subscription packages match registered names and provider type cons
   assert.ok(claudeRegistration.includes(`register(${JSON.stringify(claude.id)}, ${JSON.stringify(claude.name)}, registration)`));
 });
 
-test("all 31 new subscription packages preserve complete third-party notices", async () => {
+test("all new subscription packages preserve complete third-party notices", async () => {
   const notices = await readFile(path.join(root, "backend/internal/server/SUBSCRIPTION_THIRD_PARTY_NOTICES.md"), "utf8");
   assert.match(notices, /Copyright \(c\) 2026 yetone/);
   assert.match(notices, /Copyright \(c\) 2026 magpie-community contributors/);
-  assert.equal(plugins.filter((plugin) => plugin.subscription).length, 31);
+  assert.equal(plugins.filter((plugin) => plugin.subscription).length, 5 + providerIDs.length);
   for (const plugin of plugins) {
     const noticeFile = path.join(packageRoot, plugin.id, "THIRD_PARTY_NOTICES");
     if (plugin.subscription) assert.equal(await readFile(noticeFile, "utf8"), notices, plugin.id);

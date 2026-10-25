@@ -23,16 +23,17 @@ import { ProviderOnboardingCatalog } from "./provider-onboarding-catalog";
 import { ProviderModelInventory } from "./provider-model-inventory";
 import { ProviderImageCapability } from "./provider-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
+import { ProviderQuotaUsage } from "./provider-quota-usage";
 import { ProviderInlineField, providerCreateWizardSteps, providerCredentialModeLabel } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
 import { ProviderAPIKeyPool } from "./provider-api-key-pool";
-import { ProviderPluginPanels, providerQuotaPanelDescription, providerQuotaPanelSelection } from "./provider-plugin-panels";
+import { ProviderPluginPanels, providerQuotaPanelDescription, providerQuotaPanelSelection, providerQuotaPanelTitle } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { isProviderAccountResourceForData, isProviderAccountResourceTypeForData } from "../domain/provider-resource-types";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, providerAccountQuotaIsLimited, providerAccountQuotaMetrics, providerAccountQuotaPrimaryWindow, providerAccountQuotaSecondaryWindow, providerAccountQuotaStatusLabel, ProviderAccountTokenRenewal, providerAccountQuotaUsedPercent, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaWindowResetLabel } from "./provider-account-ui";
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderQuotaWindowDetails, providerAccountQuotaIsLimited, providerAccountQuotaMetrics, providerAccountQuotaPrimaryWindow, providerAccountQuotaSecondaryWindow, providerAccountQuotaStatusLabel, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaWindowResetLabel } from "./provider-account-ui";
 type ProviderEditTab = "connect" | "models" | "advanced";
 type ProviderAccountConfirmation = { action: "enable" | "disable" | "delete"; resource: ProviderResource };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
@@ -1311,7 +1312,7 @@ export function ProviderUpsertModal({
             {mode === "edit" && editTab === "advanced" && richQuotaPanel.firstAction && richQuotaPanel.firstContribution && richQuotaPanel.resources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
-                  <h3>{richQuotaPanel.firstContribution.title || richQuotaPanel.firstAction.metadata?.panel_title?.trim() || tx("订阅额度")}</h3>
+                  <h3>{providerQuotaPanelTitle(richQuotaPanel.firstContribution) || richQuotaPanel.firstAction.metadata?.panel_title?.trim() || tx("订阅额度")}</h3>
                   <p>{providerQuotaPanelDescription(richQuotaPanel.firstContribution) || richQuotaPanel.firstAction.metadata?.panel_description?.trim() || tx("实时查询账号订阅用量和重置时间；每 10 分钟自动刷新，也可手动刷新。")}</p>
                 </div>
                 <div className="provider-quota-list">
@@ -1323,7 +1324,6 @@ export function ProviderUpsertModal({
                     const quotaStatus = providerAccountQuotaStatusLabel(quota);
                     const quotaLimited = providerAccountQuotaIsLimited(quota);
                     const imageCapability = imageCapabilityProfile ? resource.options?.[imageCapabilityProfile.capabilityOption] : undefined;
-                    const usagePercent = providerAccountQuotaUsedPercent(quota);
                     const metrics = providerAccountQuotaMetrics(quota);
                     return (
                       <article className="provider-quota-card" key={resource.id}>
@@ -1375,20 +1375,7 @@ export function ProviderUpsertModal({
                         {quota ? (
                           <>
                             <div className="provider-quota-summary">
-                              <div className="provider-quota-usage">
-                                <span>{tx("主窗口使用率")}</span>
-                                <strong>{quota ? `${formatQuotaPercent(usagePercent)}%` : "-"}</strong>
-                                <div
-                                  aria-label={tx("主窗口使用率")}
-                                  aria-valuemax={100}
-                                  aria-valuemin={0}
-                                  aria-valuenow={usagePercent}
-                                  className="provider-quota-progress"
-                                  role="progressbar"
-                                >
-                                  <span style={{ width: `${usagePercent}%` }} />
-                                </div>
-                              </div>
+                              <ProviderQuotaUsage quota={quota} />
                               <div className="provider-quota-highlights">
                                 <QuotaMetric label="套餐" value={quota.plan_type || resource.credential_summary?.plan_type || "-"} />
                                 {imageCapabilityProfile ? <QuotaMetric label="生图能力" value={formatImageGenerationCapability(imageCapability, imageCapabilityProfile.capabilitySupportedValue, imageCapabilityProfile.capabilityUnsupportedValue)} /> : null}
@@ -1409,7 +1396,7 @@ export function ProviderUpsertModal({
                                   <QuotaMetric label="次窗口重置" value={quotaWindowResetLabel(secondary)} />
                                 </div>
                               ) : null}
-                              <ProviderAccountDetails imageCapabilityProfile={imageCapabilityProfile} resource={resource} />
+                              <ProviderQuotaWindowDetails quota={quota} /><ProviderAccountDetails imageCapabilityProfile={imageCapabilityProfile} resource={resource} />
                             </details>
                           </>
                         ) : (

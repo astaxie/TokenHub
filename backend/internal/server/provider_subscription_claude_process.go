@@ -225,7 +225,7 @@ func (r *claudeSubscriptionRun) persist(ctx context.Context) error {
 	if r.originalSession == "" {
 		return nil
 	}
-	raw, err := os.ReadFile(filepath.Join(r.configDir, ".credentials.json"))
+	raw, err := readClaudeSubscriptionSession(r.configDir)
 	if err != nil {
 		return NewHTTPError(502, "claude_subscription_session_unavailable", "Claude Code did not retain account credentials")
 	}

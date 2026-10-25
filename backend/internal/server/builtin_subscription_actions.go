@@ -37,7 +37,7 @@ func registerBuiltinSubscriptionActions(server *Server, actions builtinActionReg
 				if definition.providerType == ProviderChatGPTSubscription {
 					metadata["oauth_callback_fields"] = "client_id"
 				}
-				schema = actionObjectSchema(nil, map[string]string{"redirect_uri": "string", "return_url": "string", "organization_id": "string", "method_id": "string", "inputs": "object", "client_id": "string", "client_secret": "string"})
+				schema = actionObjectSchema(nil, map[string]string{"redirect_uri": "string", "return_url": "string", "organization_id": "string", "method_id": "string", "inputs": "object", "client_id": "string", "client_secret": "string", "github_host": "string"})
 			case "oauth.methods":
 				schema = actionObjectSchema(nil, nil)
 			case "oauth.cancel":
@@ -62,6 +62,9 @@ func registerBuiltinSubscriptionActions(server *Server, actions builtinActionReg
 
 func (s *Server) executeBuiltinSubscriptionAction(ctx context.Context, definition builtinSubscriptionDefinition, capability string, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 	if capability == "oauth.methods" {
+		if definition.providerType == ProviderGitHubCopilotSubscription {
+			return pluginmeta.ActionResult{Data: map[string]any{"methods": []any{map[string]any{"id": "github_device", "label": "GitHub device authorization", "type": "oauth", "prompts": []any{map[string]any{"key": "github_host", "label": "GitHub host (blank for github.com, or enterprise.ghe.com)", "type": "text"}}}}}}, nil
+		}
 		return pluginmeta.ActionResult{Data: map[string]any{"methods": []any{map[string]any{"id": "oauth_client", "label": "Google OAuth client", "type": "oauth", "prompts": []any{map[string]any{"key": "client_id", "label": "Google OAuth client ID", "type": "text"}, map[string]any{"key": "client_secret", "label": "Google OAuth client secret", "type": "password"}}}}}}, nil
 	}
 	if capability == "oauth.start" {

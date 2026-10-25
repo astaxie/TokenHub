@@ -16,7 +16,15 @@ import (
 )
 
 func googleSubscriptionTestAdapter(server *httptest.Server, providerType string) *GoogleSubscriptionAdapter {
-	return &GoogleSubscriptionAdapter{ProviderType: providerType, Client: server.Client(), StreamClient: server.Client(), BaseURL: server.URL, LoadURL: server.URL, TokenURL: server.URL + "/token", OnboardPoll: time.Millisecond, StreamIdleTimeout: time.Second}
+	return &GoogleSubscriptionAdapter{ProviderType: providerType, Client: server.Client(), StreamClient: server.Client(), BaseURL: server.URL, LoadURL: server.URL, TokenURL: server.URL + "/token", OnboardPoll: time.Millisecond, StreamIdleTimeout: time.Second, accountState: &googleSubscriptionAccountState{}}
+}
+
+func googleSubscriptionTestProject(w http.ResponseWriter, r *http.Request) bool {
+	if r.URL.Path != "/v1internal:loadCodeAssist" {
+		return false
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cloudaicompanionProject": "project", "currentTier": map[string]any{"id": "standard-tier"}})
+	return true
 }
 
 func TestGoogleSubscriptionChatUsesOAuthProjectAndEnvelope(t *testing.T) {
@@ -83,6 +91,9 @@ func TestGoogleSubscriptionStreamConvertsToolsUsageAndRejectsTruncation(t *testi
 	for _, finish := range []bool{true, false} {
 		t.Run(fmt.Sprint(finish), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if googleSubscriptionTestProject(w, r) {
+					return
+				}
 				if r.URL.Path != "/v1internal:streamGenerateContent" || r.URL.Query().Get("alt") != "sse" {
 					t.Errorf("unexpected path: %s", r.URL.String())
 				}
@@ -122,6 +133,9 @@ func TestGoogleSubscriptionStreamHonorsCancellationAndIdleTimeout(t *testing.T) 
 		t.Run(fmt.Sprint(cancelRequest), func(t *testing.T) {
 			opened := make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if googleSubscriptionTestProject(w, r) {
+					return
+				}
 				w.Header().Set("Content-Type", "text/event-stream")
 				w.WriteHeader(200)
 				w.(http.Flusher).Flush()
@@ -261,6 +275,13 @@ func TestGoogleSubscriptionLiveModelsFilterDisabledAndDeduplicate(t *testing.T) 
 	for _, providerType := range []string{providerGeminiCLISubscription, providerAntigravitySubscription} {
 		t.Run(providerType, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if googleSubscriptionTestProject(w, r) {
+					return
+				}
+				if r.URL.Path == "/v1internal:listExperiments" {
+					writeJSON(w, 200, map[string]any{"flags": []any{}})
+					return
+				}
 				var body map[string]any
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Error(err)
@@ -286,7 +307,11 @@ func TestGoogleSubscriptionLiveModelsFilterDisabledAndDeduplicate(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(catalog.Models) != 1 || catalog.ModelsCount != 1 || catalog.Type != providerType {
+			wantModels := 1
+			if providerType == providerGeminiCLISubscription {
+				wantModels = 5
+			}
+			if len(catalog.Models) != wantModels || catalog.ModelsCount != wantModels || catalog.Type != providerType {
 				t.Fatalf("unexpected catalog: %+v", catalog)
 			}
 			if providerType == providerAntigravitySubscription && (catalog.Models[0].ContextWindow != 250000 || catalog.Models[0].MaxOutputTokens != 32000 || catalog.Models[0].Category != "claude") {
@@ -353,6 +378,10 @@ func TestGoogleSubscriptionAntigravityFreeTierAndEntitlementFallback(t *testing.
 		t.Run(tier, func(t *testing.T) {
 			var requests atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1internal:loadCodeAssist" {
+					writeJSON(w, 200, map[string]any{"currentTier": map[string]any{"id": tier}})
+					return
+				}
 				requests.Add(1)
 				var body map[string]any
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

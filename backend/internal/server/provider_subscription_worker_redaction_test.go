@@ -194,3 +194,16 @@ func TestSubscriptionWorkerPreservesSuccessfulJSONBytes(t *testing.T) {
 		t.Fatalf("Successful JSON changed: %q, %v", output, err)
 	}
 }
+
+func TestSubscriptionWorkerDistinguishesProtocolVersionFromShortCredentials(t *testing.T) {
+	secrets := &subscriptionWorkerSecrets{}
+	secrets.addHeaders(http.Header{"Connect-Protocol-Version": {"1"}})
+	if values := providerErrorSecretValues(secrets.provider()); len(values) != 0 {
+		t.Fatalf("fixed protocol version was treated as a credential: %v", values)
+	}
+	secrets.addHeaders(http.Header{"X-Synthetic-Token": {"1"}})
+	redacted := redactProviderErrorSecrets([]byte(`{"message":"token 1"}`), secrets.provider())
+	if strings.Contains(string(redacted), "1") {
+		t.Fatal("short credentials were excluded from redaction")
+	}
+}

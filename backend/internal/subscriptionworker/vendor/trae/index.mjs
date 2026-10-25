@@ -826,9 +826,16 @@ const ownClient = {
   paths: () => clientStoragePaths(process.platform, homedir(), process.env),
 }
 
+// CLIENT_PROFILES are the folder names a Trae CN client profile is kept
+// under: the IDE's own, and TRAE SOLO CN's, which is a client of the same
+// realm and signs in its own account. A profile started with its own
+// --user-data-dir is found only if it is one of these; there is no list of
+// them to read, and nothing is guessed from a folder's contents.
+const CLIENT_PROFILES = ["Trae CN", "TRAE SOLO CN", "trae-cn"]
+
 function clientStoragePaths(platform, home, env) {
   const file = (root, name) => join(root, name, "User", "globalStorage", "storage.json")
-  if (platform === "darwin") return [file(join(home, "Library", "Application Support"), "Trae CN")]
+  if (platform === "darwin") return CLIENT_PROFILES.filter((n) => n !== "trae-cn").map((n) => file(join(home, "Library", "Application Support"), n))
   if (platform === "win32") {
     // the two roots are often the same folder: APPDATA and the home's own
     // AppData\Roaming. They are compared as one system spells them, so a
@@ -840,19 +847,28 @@ function clientStoragePaths(platform, home, env) {
       if (roots.some((was) => spell(was) === spell(r))) continue
       roots.push(r)
     }
-    return roots.flatMap((r) => ["Trae CN", "trae-cn"].map((n) => file(r, n)))
+    return roots.flatMap((r) => CLIENT_PROFILES.map((n) => file(r, n)))
   }
-  if (platform === "linux") return ["trae-cn", "Trae CN"].map((n) => file(env.XDG_CONFIG_HOME || join(home, ".config"), n))
+  if (platform === "linux") return CLIENT_PROFILES.map((n) => file(env.XDG_CONFIG_HOME || join(home, ".config"), n))
   return []
 }
 
-// clientDevice is the device id of this machine's Trae CN client when the
-// client is signed in as uid, else undefined. It only reads: nothing of
-// the client's is written, kept or sent but that id, and the client's own
-// token is read past, never used. A file it can't read or make out, or one
-// with no single device, names no device, and the account keeps its own.
-// Never an id made up or changed: an account the client isn't signed in
-// as never gets the client's id.
+// clientDevice is the device id of a Trae CN client profile on this machine
+// that is signed in as uid, else undefined. It only reads: nothing of the
+// client's is written, kept or sent but that id, and the client's own token
+// is read past, never used. Never an id made up or changed: an account no
+// profile is signed in as never gets a client's id.
+//
+// A machine can hold more than one profile — Trae CN and TRAE SOLO CN each
+// write one, and a client started with its own --user-data-dir writes
+// another — and each profile's storage.json names the account it is signed
+// in as, with that account's device. So every profile is read and the one
+// signed in as uid answers with its device, which is what lets two accounts
+// each check in on a real client's device. A profile that isn't signed in
+// as uid, that can't be read or made out, or that names no single device
+// is passed over rather than ending the search: before, the first profile
+// read decided for all of them, so a second account's own profile was never
+// seen (and one unreadable file hid every profile after it).
 async function clientDevice(uid) {
   if (!uid) return undefined
   for (const p of ownClient.paths()) {
@@ -862,14 +878,19 @@ async function clientDevice(uid) {
     } catch {
       continue // not installed here
     }
+    let doc
     try {
-      const doc = JSON.parse(text)
-      const ids = Object.keys(doc ?? {}).filter((k) => k.startsWith(DC_KEY)).map((k) => k.slice(DC_KEY.length))
-      if (ids.length !== 1 || !/^\d{8,20}$/.test(ids[0])) return undefined
-      const who = clientAuth(doc[AUTH_KEY])?.userId
-      return who != null && String(who) === String(uid) ? ids[0] : undefined
+      doc = JSON.parse(text)
     } catch {
-      return undefined
+      continue // not a file we can make out: the next profile may be
+    }
+    try {
+      const ids = Object.keys(doc ?? {}).filter((k) => k.startsWith(DC_KEY)).map((k) => k.slice(DC_KEY.length))
+      if (ids.length !== 1 || !/^\d{8,20}$/.test(ids[0])) continue
+      const who = clientAuth(doc[AUTH_KEY])?.userId
+      if (who != null && String(who) === String(uid)) return ids[0]
+    } catch {
+      continue // a sign-in that doesn't decode: the next profile may be
     }
   }
   return undefined
@@ -2874,41 +2895,90 @@ const makePlugin = (site) => async ({ client }) => {
     return new Response(text, { status: res.status, headers })
   }
 
-  // checkin asks Trae CN's own pages as magpie's check-in host does, with
-  // the same account, device and renewal as any own page. Trae Global has
-  // no such page.
+  // checkinStatus reads the check-in's status page: its body, or an outcome
+  // to give back as it is (a turned-away sign-in, Trae's own error, a reply
+  // that isn't one). checkin reads it before the claim, and again after it.
+  const checkinStatus = async (getAuth, a0) => {
+    const res = await ownRequest(getAuth, a0, site.hosts.auth + site.checkin.status.path, "POST", "{}")
+    const text = await res.text()
+    let body
+    try { body = JSON.parse(text) } catch {}
+    if (!body || typeof body !== "object" || Array.isArray(body)) return { outcome: { outcome: "failed", message: `check-in status: unreadable reply ${text.trim().slice(0, 120) || "(empty)"}` } }
+    const e = errorOf(body)
+    if (res.status === 401 || lapsedCode(e.code, site)) return { outcome: { outcome: "failed", message: e.message || `${a0.name || a0.uid}: Trae's sign-in has expired` } }
+    if (res.status !== 200 || (e.code && String(e.code) !== "0")) return { outcome: { outcome: "failed", message: e.message || statusLine(res.status) } }
+    return { body }
+  }
+
   const checkin = async (getAuth) => {
     if (!site.checkin) return { outcome: "inactive", message: `${site.realm} has no daily check-in` }
     const a0 = fromAuth(await getAuth(), site)
     if (!a0) return { outcome: "failed", message: "not signed in" }
-    const base = site.hosts.auth + site.checkin.status.path
-    const status = await ownRequest(getAuth, a0, base, "POST", "{}")
-    const statusText = await status.text()
-    let body
-    try { body = JSON.parse(statusText) } catch {}
-    if (!body || typeof body !== "object" || Array.isArray(body)) return { outcome: "failed", message: `check-in status: unreadable reply ${statusText.trim().slice(0, 120) || "(empty)"}` }
-    const e = errorOf(body)
-    if (status.status === 401 || lapsedCode(e.code, site)) return { outcome: "failed", message: e.message || `${a0.name || a0.uid}: Trae's sign-in has expired` }
-    if (status.status !== 200 || (e.code && String(e.code) !== "0")) return { outcome: "failed", message: e.message || statusLine(status.status) }
-    if (body?.checked_in) return { outcome: "done", ...(Number(body.credits) > 0 ? { credit: Number(body.credits) } : {}) }
-    if (!body?.enable) return { outcome: "inactive" }
+    const first = await checkinStatus(getAuth, a0)
+    if (first.outcome) return first.outcome
+    const body = first.body
+    if (body.checked_in) return { outcome: "done", ...(Number(body.credits) > 0 ? { credit: Number(body.credits) } : {}) }
+    if (!body.enable) return { outcome: "inactive" }
     const claim = await ownRequest(getAuth, a0, site.hosts.auth + site.checkin.claim.path, "POST", "{}")
     const claimText = await claim.text()
     let answer
     try { answer = JSON.parse(claimText) } catch {}
     const ce = errorOf(answer)
     if (claim.status === 401 || lapsedCode(ce.code, site)) return { outcome: "failed", message: ce.message || `${a0.name || a0.uid}: Trae's sign-in has expired` }
+    // 9095: this device is in for today, whoever took it — the day's answer
     if (String(ce.code) === "9095") return { outcome: "ineligible", message: ce.message || "this device has checked in today" }
-    if (String(ce.code) === "9074") return { outcome: "ineligible", message: `${ce.message} — check in in the Trae CN app` }
+    // 9074: Trae did not take this claim for this account's device. Its own
+    // words say the pool is busy, which measurements do not bear out: the
+    // same account, token and headers were taken on a 16-digit id where a
+    // 19-digit one got 9074 (plugins#194), and on 2026-10-23 the same
+    // account and headers were taken on a device id Trae had never seen
+    // while this account's own id answered 9074. So the message says what
+    // Trae said and that the device is what it refused, rather than
+    // sending people to check in in Trae CN's app, which is not where the
+    // problem is. No device id is made up or rotated to get round this:
+    // the account keeps its own until a client of its own is here to sign
+    // it in. Nothing is said of signing one in: it is the one thing seen
+    // to change a 9074, but it hasn't been tried on a real account, and
+    // on a claim that already rode a client's device it is what the user
+    // did — the advice would only send them back to do it again.
+    if (String(ce.code) === "9074") return { outcome: "ineligible", message: `${ce.message} (9074) — Trae CN did not take this check-in for this account's device` }
     if (claim.status !== 200 || (ce.code && String(ce.code) !== "0")) return { outcome: "failed", message: ce.message || statusLine(claim.status) }
     if (!answer || typeof answer !== "object" || Array.isArray(answer)) return { outcome: "failed", message: `check-in claim: unreadable reply ${claimText.trim().slice(0, 120) || "(empty)"}` }
-    // a claim may answer extra_credits with no credits beside it, and either
-    // may be absent: Number(undefined) is NaN, and NaN + n is NaN, which
-    // reads as no credit at all
+    // a claim's own code 0 is not proof the day is in: Trae answers it for
+    // a claim that registered nothing, which cli2api works around by asking
+    // the status again (internal/providers/trae/checkin.go). So success is
+    // what the status page says after the claim, and one that didn't land
+    // is never reported as claimed.
+    //
+    // Nor is it a `failed`. magpie retries a failed check-in with backoff
+    // for the rest of the day, up to every 30 minutes, and each retry is
+    // another claim: a claim answered code 0 while the status still says
+    // the day is out is the very case that would multiply, since code 0
+    // for a claim that registered nothing is this plugin's own premise —
+    // an account that claimed once a day would claim many times. A status
+    // that lags a claim that did land reads as not in once, which is a
+    // false failure and a second claim. So once a claim has been sent,
+    // what the read-back says is the day's answer and nothing is claimed
+    // again: `ineligible`, as a 9095 is. A read-back that itself comes to
+    // nothing — the network, an answer that isn't one — is the same: the
+    // claim was made, and whether the day is in is not known, so it is
+    // read again on the next press rather than claimed again.
+    const noMore = (o) => (o.outcome === "failed" ? { outcome: "ineligible", message: `${o.message} — nothing is claimed again today` } : o)
+    const back = await checkinStatus(getAuth, a0)
+    if (back.outcome) return noMore(back.outcome)
+    if (!back.body.checked_in) return { outcome: "ineligible", message: `${site.realm}: the claim answered success, but the day's check-in is not in — nothing is claimed again today` }
+    // The credit is the day's credits, never credits plus extra_credits.
+    // Trae CN's real claim answers {"code":0,"message":"success"}, with no
+    // credit at all (plugins#194), so the status's credits stand in. Its
+    // status carries extra_credits beside credits, at the same 100 on a
+    // real account (yetone/magpie#808: credits 100, extra_credits 100),
+    // while the account gets 100: adding the two showed 200 (zhujiu on
+    // magpie's Discord, 10-25). A claim that names its own credit is
+    // taken first; one naming extra_credits alone is that (#260). Either
+    // may be absent, and Number(undefined) is NaN, which reads as none.
     const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
-    const credit = n(answer.credits) + n(answer.extra_credits)
-    const fallback = n(body.credits) + n(body.extra_credits)
-    return { outcome: "claimed", ...(credit > 0 ? { credit } : fallback > 0 ? { credit: fallback } : {}) }
+    const credit = n(answer.credits) || n(answer.extra_credits) || n(back.body.credits)
+    return { outcome: "claimed", ...(credit > 0 ? { credit } : {}) }
   }
 
   const usage = async (getAuth) => {

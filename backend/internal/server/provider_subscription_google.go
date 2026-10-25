@@ -61,10 +61,11 @@ type GoogleSubscriptionAdapter struct {
 	UserInfoURL        string
 	OnboardPoll        time.Duration
 	RefreshCredentials func(context.Context, string, bool) (ProviderResourceCredentials, error)
+	accountState       *googleSubscriptionAccountState
 }
 
 func newGoogleSubscriptionAdapter(providerType string, deps builtinProviderRuntimeDependencies) *GoogleSubscriptionAdapter {
-	a := &GoogleSubscriptionAdapter{ProviderType: providerType, Client: deps.Client, StreamClient: deps.StreamClient, StreamIdleTimeout: deps.StreamIdleTimeout}
+	a := &GoogleSubscriptionAdapter{ProviderType: providerType, Client: deps.Client, StreamClient: deps.StreamClient, StreamIdleTimeout: deps.StreamIdleTimeout, accountState: &googleSubscriptionAccountState{}}
 	if deps.Store != nil {
 		a.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
 	}
@@ -158,6 +159,7 @@ func (a *GoogleSubscriptionAdapter) credentials(ctx context.Context, p Provider,
 }
 
 func (a *GoogleSubscriptionAdapter) Chat(ctx context.Context, p Provider, model string, req ChatCompletionRequest) (any, Usage, error) {
+	ctx = context.WithValue(ctx, googleSubscriptionModelKey{}, model)
 	payload, err := buildGeminiRequest(model, req)
 	if err != nil {
 		return nil, Usage{}, err
@@ -181,6 +183,7 @@ func (a *GoogleSubscriptionAdapter) Chat(ctx context.Context, p Provider, model 
 }
 
 func (a *GoogleSubscriptionAdapter) ChatStream(ctx context.Context, p Provider, model string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
+	ctx = context.WithValue(ctx, googleSubscriptionModelKey{}, model)
 	payload, err := buildGeminiRequest(model, req)
 	if err != nil {
 		return Usage{}, err
@@ -226,6 +229,13 @@ func (a *GoogleSubscriptionAdapter) envelope(ctx context.Context, p Provider, cr
 		payload["sessionId"] = googleSubscriptionSessionID(payload)
 	} else {
 		body["user_prompt_id"] = NewID("prompt")
+		if geminiSubscriptionMappedModel(model) {
+			flags, err := a.flags(ctx, p, creds, project.ID)
+			if err != nil {
+				return nil, err
+			}
+			body["model"] = flags.wire(model)
+		}
 	}
 	return body, nil
 }
@@ -256,6 +266,9 @@ func (a *GoogleSubscriptionAdapter) request(ctx context.Context, base, method st
 	req.Header.Set("Content-Type", "application/json")
 	body, _ := payload.(map[string]any)
 	model, _ := body["model"].(string)
+	if original, ok := ctx.Value(googleSubscriptionModelKey{}).(string); ok && strings.HasPrefix(method, "streamGenerateContent") {
+		model = original
+	}
 	req.Header.Set("User-Agent", a.userAgent(model))
 	if a.Client == nil {
 		return nil, NewHTTPError(503, "google_subscription_client_unavailable", "Google subscription HTTP client is unavailable")

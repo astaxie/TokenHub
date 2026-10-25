@@ -103,9 +103,29 @@ type googleSubscriptionTier struct {
 }
 
 func (a *GoogleSubscriptionAdapter) project(ctx context.Context, p Provider, creds ProviderResourceCredentials) (googleSubscriptionProject, error) {
-	if project := strings.TrimSpace(creds.OrganizationID); project != "" {
-		return googleSubscriptionProject{ID: project, Tier: creds.PlanType}, nil
+	key := a.accountCacheKey(p, creds, creds.OrganizationID)
+	if a.accountState != nil {
+		a.accountState.mu.Lock()
+		cached, ok := a.accountState.projects[key]
+		a.accountState.mu.Unlock()
+		if ok && time.Since(cached.at) < time.Hour {
+			return cached.value, nil
+		}
 	}
+	project, err := a.loadProject(ctx, p, creds)
+	if err == nil && a.accountState != nil {
+		a.accountState.mu.Lock()
+		if a.accountState.projects == nil || len(a.accountState.projects) >= 256 {
+			a.accountState.projects = make(map[[32]byte]googleSubscriptionCachedProject)
+		}
+		a.accountState.projects[key] = googleSubscriptionCachedProject{value: project, at: time.Now()}
+		a.accountState.mu.Unlock()
+	}
+	return project, err
+}
+
+func (a *GoogleSubscriptionAdapter) loadProject(ctx context.Context, p Provider, creds ProviderResourceCredentials) (googleSubscriptionProject, error) {
+	wanted := strings.TrimSpace(creds.OrganizationID)
 	base := firstNonEmpty(a.LoadURL, googleSubscriptionProdURL)
 	// A configured upstream applies to bootstrap too; production defaults keep
 	// Antigravity's production bootstrap separate from its daily inference host.
@@ -119,13 +139,21 @@ func (a *GoogleSubscriptionAdapter) project(ctx context.Context, p Provider, cre
 	if a.antigravity() {
 		metadata = map[string]any{"ideType": "ANTIGRAVITY"}
 	}
+	loadRequest := map[string]any{"metadata": metadata}
+	if !a.antigravity() && wanted != "" {
+		metadata["duetProject"] = wanted
+		loadRequest["cloudaicompanionProject"] = wanted
+	}
 	var loaded struct {
 		Project      googleSubscriptionProjectID `json:"cloudaicompanionProject"`
 		CurrentTier  *googleSubscriptionTier     `json:"currentTier"`
 		PaidTier     *googleSubscriptionTier     `json:"paidTier"`
 		AllowedTiers []googleSubscriptionTier    `json:"allowedTiers"`
 	}
-	if err := a.call(ctx, base, "loadCodeAssist", creds, map[string]any{"metadata": metadata}, &loaded); err != nil {
+	if err := a.call(ctx, base, "loadCodeAssist", creds, loadRequest, &loaded); err != nil {
+		if a.antigravity() && wanted != "" && ctx.Err() == nil {
+			return googleSubscriptionProject{ID: wanted}, nil
+		}
 		return googleSubscriptionProject{}, err
 	}
 	project := googleSubscriptionProject{ID: string(loaded.Project)}
@@ -135,11 +163,17 @@ func (a *GoogleSubscriptionAdapter) project(ctx context.Context, p Provider, cre
 	if loaded.PaidTier != nil {
 		project.PaidTier = loaded.PaidTier.ID
 	}
-	if project.ID != "" {
+	if a.antigravity() {
+		project.ID = firstNonEmpty(wanted, project.ID)
+		if project.ID != "" {
+			return project, nil
+		}
+	} else if loaded.CurrentTier != nil {
+		project.ID = firstNonEmpty(project.ID, wanted)
+		if project.ID == "" {
+			return project, googleSubscriptionProjectRequired()
+		}
 		return project, nil
-	}
-	if !a.antigravity() && loaded.CurrentTier != nil {
-		return project, googleSubscriptionProjectRequired()
 	}
 	tier := googleSubscriptionTier{ID: "legacy-tier", UserProjectRequired: true}
 	for i, candidate := range loaded.AllowedTiers {
@@ -150,10 +184,13 @@ func (a *GoogleSubscriptionAdapter) project(ctx context.Context, p Provider, cre
 			break
 		}
 	}
-	if !a.antigravity() && tier.UserProjectRequired {
+	if !a.antigravity() && tier.UserProjectRequired && wanted == "" {
 		return project, googleSubscriptionProjectRequired()
 	}
 	request := map[string]any{"tierId": tier.ID, "metadata": metadata}
+	if !a.antigravity() && tier.ID != "free-tier" {
+		request["cloudaicompanionProject"] = wanted
+	}
 	onboardBase := base
 	if a.antigravity() {
 		if tier.ID == "" || tier.ID == "legacy-tier" {
@@ -182,6 +219,9 @@ func (a *GoogleSubscriptionAdapter) project(ctx context.Context, p Provider, cre
 		}
 		if operation.Done {
 			project.ID = string(operation.Response.Project)
+			if !a.antigravity() {
+				project.ID = firstNonEmpty(project.ID, wanted)
+			}
 			project.Tier = tier.ID
 			if project.ID == "" {
 				return project, googleSubscriptionProjectRequired()

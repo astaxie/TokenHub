@@ -19,6 +19,9 @@ func TestGoogleSubscriptionPreservesUsageWhenInferenceStreamFails(t *testing.T) 
 	} {
 		t.Run(ending, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if googleSubscriptionTestProject(w, r) {
+					return
+				}
 				w.Header().Set("Content-Type", "text/event-stream")
 				_, _ = fmt.Fprint(w, "data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"partial\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"candidatesTokenCount\":2,\"totalTokenCount\":6}}}\n\n")
 				_, _ = fmt.Fprintf(w, "data: %s\n\n", ending)

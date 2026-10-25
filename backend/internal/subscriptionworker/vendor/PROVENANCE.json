@@ -1,19 +1,19 @@
 {
   "repository": "https://github.com/magpie-community/plugins",
-  "commit": "c9a0215f31d401ca4249fac33d03e6b97e44ebbb",
+  "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
   "license": "MIT",
   "files": [
     {
       "path": "vendor/autoclaw/README.md",
-      "sha256": "1bb4e8920df25ec265fcca3519877776688a30b630c46cfe45dc26eb1441f946"
+      "sha256": "1d2c6d670794b42d2d5a4fa574b5888d6f0ffc58d52ff4d5fb52ece10f48e296"
     },
     {
       "path": "vendor/autoclaw/index.mjs",
-      "sha256": "d2affc48eea4773c5d3b3616eaeaa546f40c54c571b63768360af3c584f04d62"
+      "sha256": "74bc69fe66bce164c888dfe05c010debc88255eab7772b4197c459c368f80cc1"
     },
     {
       "path": "vendor/autoclaw/package.json",
-      "sha256": "138eed156b564f7a15941724bdb5279a0b72e1212245b1ecccacd6830c5a0d0f"
+      "sha256": "211bff2faa5ef7a4e2e9abfc0bd2c5c047ab7228f9497239ceef70eb351aa624"
     },
     {
       "path": "vendor/cline/README.md",
@@ -53,19 +53,19 @@
     },
     {
       "path": "vendor/cursor/README.md",
-      "sha256": "959800ccdc3ded1c9af6d845efec03e5066d5bf3c77d121af0a93f4ecbb74d05"
+      "sha256": "2278c0560c1c0dd3a4e391b43a00c36f7531ab04073682a3472ee054259af0e2"
     },
     {
       "path": "vendor/cursor/index.mjs",
-      "sha256": "9b16b15d054096dd559fa4afe2adf3e1dfe607a4fd160b0417d147b20d0d2e2c"
+      "sha256": "220d41df124a1686959abfb877948f28c952c5ea271731b37a73603f5926152a"
     },
     {
       "path": "vendor/cursor/native-session.mjs",
-      "sha256": "9f45c42a9993fb64e8987ff61ca80f28d4edfee896c3dc1671f9b51bd29547b8"
+      "sha256": "0fb04b22ea9e22000e1f5c6fdf47e0d98e51bfb614955d2cfa1f93d670d54ee4"
     },
     {
       "path": "vendor/cursor/package.json",
-      "sha256": "9d25cddc3156cac07c048d09cdccc326ef6e56d2ce7c8d053e4ba80dc0edecfc"
+      "sha256": "6311c4fd08943a028a61cc8a2a3509ade29d7a67e651cdb3a543f6da121c87c5"
     },
     {
       "path": "vendor/devin/README.md",
@@ -129,11 +129,11 @@
     },
     {
       "path": "vendor/kimi-work/index.mjs",
-      "sha256": "265a934583981359b06f6498e988e79f0a0fd134abf7a705142eccafa364d6cb"
+      "sha256": "6d6fd1539569b6b19affb045d9fed13b12c05ab0c35d70731db8729549b662cc"
     },
     {
       "path": "vendor/kimi-work/package.json",
-      "sha256": "5207de51d1b7f1c5ead0d4266648f0367779812b2132b18a9bdbba33206610de"
+      "sha256": "2d64d0c9d8afd210b86a319ce79c1b8bf7240644b0638e60c42a4379a870df5f"
     },
     {
       "path": "vendor/kiro/README.md",
@@ -181,11 +181,11 @@
     },
     {
       "path": "vendor/nous/oauth.mjs",
-      "sha256": "47d46e3b740465fb675de08d5b83995b91e147c17601480bce017e70c89f2381"
+      "sha256": "9dacc487c6cbf457978b95eeb4fb04517729d22a214115321e70ad43b8550d46"
     },
     {
       "path": "vendor/nous/package.json",
-      "sha256": "ad4b0da94d59495909b8e71af31867a02d15d27ddc0ce5b912778cefafbcc1d4"
+      "sha256": "0865643bb77fcd71caecdfe2219a6dee986151fe0e280471a7d824dfc0ab13ce"
     },
     {
       "path": "vendor/opendesign/README.md",
@@ -205,15 +205,15 @@
     },
     {
       "path": "vendor/qoder/README.md",
-      "sha256": "1269b809b46cc183db9b6f7f8d0aa7225173bc444d3ac6632576af7433f36d79"
+      "sha256": "ff343d75a3ed491dac2c8c60a8b297182f6322b4b6bb201456f54c452732ba2f"
     },
     {
       "path": "vendor/qoder/index.mjs",
-      "sha256": "d7a3af4be9a23946a210b0c0c91edcc768cc4b2eb20e216705a01593bc078595"
+      "sha256": "79e0e01be9ac6412924e1b710baeb614aef42af40a17a27e9f6e660d9aea2b6c"
     },
     {
       "path": "vendor/qoder/package.json",
-      "sha256": "d92c43bbdb559d08200548bcfaede674c8de26d1170d0d8d79e7e3859a855c83"
+      "sha256": "105a8cdabb564f5af49cf5cefe68b52c039816291e1b8981851c1795e09fbd01"
     },
     {
       "path": "vendor/raccoon/README.md",
@@ -229,39 +229,39 @@
     },
     {
       "path": "vendor/trae/README.md",
-      "sha256": "4709d45914cdc64175251306c45520d8e58d1bfdfeb17e98ebd79ed805930e5e"
+      "sha256": "b5185d00ef3bab73ad4587292321fd935cade39d8f53b393385834f6ad5ee369"
     },
     {
       "path": "vendor/trae/index.mjs",
-      "sha256": "fb328f78af200df1bae99ce4a0299c1f0bec9e7fdf833d762ce27a83f332d2c0"
+      "sha256": "f8811d4db3830a46b86d2e6b935ff6688ffd6ac01d925d491b4358c6750bd08e"
     },
     {
       "path": "vendor/trae/package.json",
-      "sha256": "29b8543ba994f9f47f16d1fb9b92f6b7493e4da53820f3df4db23dba03c1a26f"
+      "sha256": "3703f2b43fe08fb8847e55b940780d652314e0f5038ee2bbc00c63c6ee4ea5bd"
     },
     {
       "path": "vendor/workbuddy/README.md",
-      "sha256": "d66a180232b784dd3742e7b2ec45ded8d5096d7ed91890b9e459ebc32411b550"
+      "sha256": "063c2342badf16251f641ca60c745b1978cf51652aefbc2054f31a7b11c60330"
     },
     {
       "path": "vendor/workbuddy/index.mjs",
-      "sha256": "c25a2176ef8b9d491e83716642dddfadf1d9b5a41b365f7fe6b1ecc97a06c511"
+      "sha256": "b48247d241fa22e42e39413b5fbfe69a5d84304b2ed1587278e6100478a214fc"
     },
     {
       "path": "vendor/workbuddy/package.json",
-      "sha256": "672e8c7707c5329296300e7bf4ce15de5d036694a5c8af98a2c61a12c153d430"
+      "sha256": "c255eca1edc2d321060831f69521690a293533d30c7bc3a6aba898a81d126fcb"
     },
     {
       "path": "vendor/zcode/README.md",
-      "sha256": "61eab336ccb7919378ab811917a2eefe625b2fa3047f87fd6828ac7903adf787"
+      "sha256": "559d1a018565ca3164ea6093c5ca8bb257ee9a8ee51784ddd8de5ba0c4e1960d"
     },
     {
       "path": "vendor/zcode/index.mjs",
-      "sha256": "0ab711704d434558cf813c317f42442c7a0b1ce7dc78bb64ca2cb68939e960c7"
+      "sha256": "06b90862d085b1e532684a908006b906a6ac5d7a4a899af537c4ac1a7b00dc65"
     },
     {
       "path": "vendor/zcode/package.json",
-      "sha256": "c1da101c199e86676afea8d49a041a4747c8f13eb2f302fa3825695af4088359"
+      "sha256": "d357ea318d5881b59654254b9cab8a208900b15a07422080118336f6136eabe7"
     },
     {
       "path": "vendor/zcode/prompt.mjs",

@@ -6,6 +6,7 @@ import type { ImageCapabilityProfile } from "../domain/provider-image-capability
 import { languageLocale, tx } from "../i18n/runtime";
 
 export { ProviderAccountTokenRenewal } from "./provider-account-token-renewal";
+export { ProviderQuotaWindowDetails } from "./provider-quota-window-details";
 
 export type ProviderAccountOAuthAction = "copy" | "open";
 
@@ -123,6 +124,7 @@ export function providerAccountQuotaSecondaryWindow(quota?: ProviderAccountQuota
 export function providerAccountQuotaStatusLabel(quota?: ProviderAccountQuota) {
   if (!quota) return "不可用";
   const explicit = quota.status_label?.trim();
+  if (explicit === "Quota reported") return "已读取额度";
   if (explicit) return explicit;
   if (providerAccountQuotaIsLimited(quota)) return "已达上限";
   if (quota.allowed ?? quota.rate_limit?.allowed) return "可用";
@@ -152,8 +154,8 @@ export function providerAccountQuotaUsedPercent(quota?: ProviderAccountQuota) {
 export function providerAccountQuotaMetrics(quota?: ProviderAccountQuota): ProviderQuotaMetric[] {
   return (quota?.metrics ?? [])
     .map((metric) => ({
-      label: metric.label?.trim() ?? "",
-      value: metric.value?.trim() ?? "",
+      label: metric.label === "Balance" ? tx("余额") : metric.label === "Plan expires" ? tx("套餐到期时间") : metric.label?.trim() ?? "",
+      value: metric.label === "Plan expires" ? formatProviderAccountDate(metric.value) : metric.value?.trim() ?? "",
       tone: metric.tone,
     }))
     .filter((metric) => metric.label && metric.value);

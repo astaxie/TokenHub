@@ -253,7 +253,7 @@ func TestSubscriptionCopilotDevicePollingIsBoundedAndSingleUse(t *testing.T) {
 	if err != nil || result.Data.(subscriptionOAuthExchangeResult).AccessToken != "github-access" {
 		t.Fatalf("device exchange failed: %v", err)
 	}
-	if catalog := result.Data.(subscriptionOAuthExchangeResult).Catalog; catalog == nil || len(catalog.Models) != 1 || catalog.Models[0].ID != "copilot-live" {
+	if catalog := result.Data.(subscriptionOAuthExchangeResult).Catalog; catalog == nil || len(catalog.Models) != 2 || catalog.Models[0].ID != "copilot-live" || catalog.Models[1].ID != "auto" {
 		t.Fatal("device exchange did not return the live account model catalog")
 	}
 	if _, err := exchange(); AsHTTPError(err).Code != "invalid_oauth_state" {

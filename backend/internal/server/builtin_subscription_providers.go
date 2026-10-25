@@ -62,7 +62,7 @@ func registerBuiltinSubscriptionProviders(register func(string, string, builtinP
 func builtinSubscriptionActionCapabilities(providerType string) []builtinProviderPluginCapability {
 	var actions []builtinProviderPluginCapability
 	for _, capability := range []string{"credentials.refresh", "models.read", "oauth.cancel", "oauth.exchange", "oauth.start", "probe.run", "provider.probe.run"} {
-		if capability == "oauth.start" && (providerType == providerGeminiCLISubscription || providerType == providerAntigravitySubscription) {
+		if capability == "oauth.start" && (providerType == ProviderGitHubCopilotSubscription || providerType == providerGeminiCLISubscription || providerType == providerAntigravitySubscription) {
 			actions = append(actions, builtinProviderPluginCapability{id: providerType + ".oauth.methods", capability: "oauth.methods", subject: providerType})
 		}
 		actions = append(actions, builtinProviderPluginCapability{id: providerType + "." + capability, capability: capability, subject: providerType})

@@ -77,6 +77,42 @@ after a renewal takes a mark off (`renewed`).
 Chats are chat completions (`@ai-sdk/openai-compatible`) at `<API>/chat/completions`.
 They are streamed only; WorkBuddy refuses a chat that isn't.
 
+**On WorkBuddy (China), the Claude models are served on Anthropic's Messages
+API** instead: `@ai-sdk/anthropic` at `<endpoint>/v1/messages` (streamed only
+as well). `claude-opus-5.5`, `claude-sonnet-5.5`, `claude-opus-5` and
+`claude-opus-4.8-1m` answered there when each model of `/v3/config`'s `cli`
+agent was asked on 2026-10-24; `glm-5.3` and `deepseek-v4.1-flash` answered
+500, `gpt-5.5` and `kimi-k3-1` 400, so every other model stays on chat.
+WorkBuddy AI has no such route (`/v1/messages` is `404 Route Not Found` there
+for every model), so all its models stay on chat, a Claude one too.
+
+A Messages request goes as the agent sent it: no default system message, no
+`max_completion_tokens`/`developer` rewrites, no tool reshaping, and nothing
+moved for a refused system prompt — Claude Code's own prompt is taken as it
+is, billing line and all, where a chat answers 11128 to it. One thing is
+left out: a `thinking` block with no `signature`. A conversation that began
+on chat (or on another provider) carries such blocks, and once a signed one
+from this route sits beside them WorkBuddy refuses the whole request, 11159
+"Invalid `signature` in `thinking` block … bound to a different
+conversation", on every try. Signed blocks go back as they came. It carries
+WorkBuddy's headers as a chat does, the same conversation and turn ids
+included: a tool result in a `user` message of `tool_result` blocks answers
+the step before it, as a `role: "tool"` message does in a chat.
+
+The point of the route is effort. A chat carries `reasoning_effort` alone,
+and WorkBuddy's chat endpoint answers at about the same length whatever it
+says: asked the same question four times each (2026-10-24,
+`claude-opus-5.5`), the median answer was 3884 output tokens at `low`, 5144
+at `max` and 5715 at a value that isn't a level at all. Messages carries
+`output_config.effort`, and `max` is honored there: a median of 30850
+against 5748 at `low`, same model and question, four runs each. A Claude
+model on Messages therefore lists `max` in its levels even where
+`/v3/config` stops at `xhigh`.
+
+`/v1/messages/count_tokens` **is not served** (404). magpie treats a 404 on
+count_tokens as "no counter" (`unsupportedCount`) and answers with its own
+estimate.
+
 Each chat carries WorkBuddy's headers:
 - `Authorization`, `X-User-Id`, `X-Domain`, `X-Product: SaaS`, `X-IDE-Type: WorkBuddy`;
 - `User-Agent: WorkBuddy/5.5.6`. Without it, WorkBuddy answers error 10085;

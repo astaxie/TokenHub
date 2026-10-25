@@ -17,8 +17,9 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
     const context = scope.getStore();
     if (!context) throw failure("invalid_request", "A subscription request context is required");
     if (context.account?.saveError) throw context.account.saveError;
-    const request = new Request(input, { ...init, duplex: "half", redirect: "manual" });
-    validateTarget(context.provider, request.url);
+    let request = new Request(input, { ...init, duplex: "half", redirect: "manual" });
+    if (context.account?.hooks?.["network.request"]) request = await context.account.hooks["network.request"](request, context.operation);
+    validateTarget(context.provider, request.url, context.enterpriseHost);
     const body = request.body ? Buffer.from(await request.arrayBuffer()) : Buffer.alloc(0);
     if (body.length > MAX_BODY) throw failure("body_too_large", "Subscription request exceeds the size limit");
     const signal = AbortSignal.any([request.signal, context.controller.signal]);
@@ -63,7 +64,7 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
       }
       await response.body?.cancel();
       const target = new URL(location, request.url);
-      validateTarget(scope.getStore().provider, target.href);
+      validateTarget(scope.getStore().provider, target.href, scope.getStore().enterpriseHost);
       const useGet = response.status === 303 || ((response.status === 301 || response.status === 302) && request.method === "POST");
       if (target.origin !== new URL(request.url).origin &&
           ([...request.headers.keys()].some((key) => !CROSS_ORIGIN_SAFE_HEADERS.has(key)) || (!useGet && copy.body))) {

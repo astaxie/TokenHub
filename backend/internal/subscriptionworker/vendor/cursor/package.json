@@ -1,6 +1,6 @@
 {
   "name": "@magpie-community/opencode-cursor-auth",
-  "version": "0.2.21",
+  "version": "0.2.23",
   "description": "Cursor subscriptions (Pro, Pro+, Ultra, Teams) in OpenCode and magpie, through the API cursor-agent talks to",
   "type": "module",
   "main": "./index.mjs",

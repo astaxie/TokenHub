@@ -5,6 +5,8 @@ const DOMAINS = {
   kiro: ["kiro.dev", "amazonaws.com", "awsapps.com"],
   qoder: ["qoder.sh", "qoder.com"],
   "qoder-cn": ["qoder.com.cn", "qoder.cn"],
+  qwenwork: ["qwenwork.cn"],
+  "gcp-ai": ["accounts.google.com", "googleapis.com"],
   workbuddy: ["copilot.tencent.com"],
   "workbuddy-ai": ["workbuddy.ai"],
   "mimo-app": ["xiaomi.com", "xiaomimimo.com"],
@@ -38,12 +40,35 @@ export function failure(code, message, status = 400) {
   return Object.assign(new Error(message), { code, status });
 }
 
-export function validateTarget(provider, value) {
+// Enterprise endpoints are explicitly chosen by the administrator, then bound
+// to one account/session. The parent still resolves and rejects private IPs.
+export function enterpriseHost(value) {
+  const input = typeof value === "string" ? value.trim().toLowerCase() : "";
+  let host = input;
+  if (input.includes("://")) {
+    let url;
+    try { url = new URL(input); } catch { throw failure("invalid_credentials", "A public enterprise HTTPS domain is required"); }
+    if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash ||
+        !["", "/"].includes(url.pathname) || input.replace(/\/$/, "") !== "https://" + url.hostname) {
+      throw failure("invalid_credentials", "A public enterprise HTTPS domain is required");
+    }
+    host = url.hostname;
+  }
+  if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(host) ||
+      /(?:^|\.)(?:localhost|local|internal)$/.test(host) || isIP(host)) {
+    throw failure("invalid_credentials", "A public enterprise HTTPS domain is required");
+  }
+  return host;
+}
+
+export function validateTarget(provider, value, boundHost) {
   let url;
   try { url = new URL(value); } catch { throw failure("invalid_upstream", "Invalid subscription upstream URL"); }
   const host = url.hostname.toLowerCase();
   if (url.protocol !== "https:" || url.username || url.password || url.hash || (url.port && url.port !== "443") ||
-      isIP(host.replace(/^\[|\]$/g, "")) || !DOMAINS[provider]?.some((domain) => host === domain || host.endsWith("." + domain))) {
+      isIP(host.replace(/^\[|\]$/g, "")) || !(provider === "qwenwork-enterprise"
+        ? boundHost && host === enterpriseHost(boundHost)
+        : DOMAINS[provider]?.some((domain) => host === domain || host.endsWith("." + domain)))) {
     throw failure("upstream_host_not_allowed", "Subscription credentials cannot be sent to this host");
   }
   return url;
@@ -53,11 +78,25 @@ const FILE_KEYS = /^(?:path|file|filePath|home|directory|cwd|command|executable|
 const HOST_KEYS = /(?:base(?:Url|Host)?|api(?:Url)?|server|endpoint|host|issuer|domain)$/i;
 const BAD_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
-export function validateAuth(provider, value) {
+export function validateAuth(provider, value, boundHost) {
   if (!value || typeof value !== "object" || Array.isArray(value) || !["api", "oauth"].includes(value.type)) {
     throw failure("invalid_credentials", "Import an OAuth session object or an API key object");
   }
   if (Buffer.byteLength(JSON.stringify(value)) > MAX_AUTH) throw failure("credentials_too_large", "Subscription credentials exceed the size limit");
+  if ((provider === "cursor" && value.refresh === "cursor-agent") ||
+      (provider === "commandcode-plan" && value.metadata?.cli)) {
+    throw failure("local_credentials_not_supported", "Import credential values; local account discovery is not accepted");
+  }
+  if (provider === "cursor" && value.teamId !== undefined && (!Number.isSafeInteger(value.teamId) || value.teamId <= 0)) {
+    throw failure("invalid_credentials", "Cursor teamId must be a positive safe integer");
+  }
+  if (provider === "qwenwork-enterprise") {
+    const importedHost = enterpriseHost(value.enterpriseHost);
+    if (boundHost && importedHost !== enterpriseHost(boundHost)) {
+      throw failure("upstream_host_not_allowed", "Credential rotation cannot change the enterprise domain");
+    }
+    boundHost = importedHost;
+  }
   function walk(node, depth = 0) {
     if (depth > 20) throw failure("invalid_credentials", "Subscription credentials are too deeply nested");
     if (!node || typeof node !== "object") return;
@@ -67,8 +106,8 @@ export function validateAuth(provider, value) {
       }
       if (typeof item === "string") {
         if (HOST_KEYS.test(key) && item) {
-          if (/^https?:\/\//i.test(item)) validateTarget(provider, item);
-          else if (/[.]/.test(item) && !/[\s{}]/.test(item)) validateTarget(provider, "https://" + item);
+          if (/^https?:\/\//i.test(item)) validateTarget(provider, item, boundHost);
+          else if (/[.]/.test(item) && !/[\s{}]/.test(item)) validateTarget(provider, "https://" + item, boundHost);
         }
         if (/^[\[{]/.test(item.trim())) {
           try { walk(JSON.parse(item), depth + 1); } catch (error) { if (error.code) throw error; }

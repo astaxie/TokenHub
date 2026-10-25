@@ -8,6 +8,8 @@ accounts exist only on their own:
 |---|---|---|---|
 | `qoder` | qoder.com (international) | Google, GitHub or email | `QoderAuthPlugin` |
 | `qoder-cn` | qoder.cn ([Qoder CN](#qoder-cn)) | Alibaba Cloud or phone number | `QoderCNAuthPlugin` |
+| `qwenwork` | gateway.qwenwork.cn ([QwenWork](#qwenwork-千问办公)) | phone number or email | `QwenWorkAuthPlugin` |
+| `qwenwork-enterprise` | the enterprise's own domain ([QwenWork](#qwenwork-千问办公)) | email OTP or enterprise SSO | `QwenWorkEnterpriseAuthPlugin` |
 
 What follows is about `qoder`. Qoder CN works the same way on its own
 hosts; [its section](#qoder-cn) says what differs.
@@ -142,6 +144,13 @@ itself.
   the agent or magpie can try again. A call whose JSON is whole when the
   stream ends without its close is still the call; a tag in code or prose
   stays text.
+- A call written in Anthropic's or Qwen's tags with no `<tool_call>`
+  around it (since 0.2.36, #323), `<function_calls>` around one or more
+  `<invoke name="…"><parameter name="k">v</parameter></invoke>`, or
+  `<function=name><parameter=k>v</parameter></function>`, is a call too,
+  but only for a tool the request declared; for any other, or in
+  backticks or a code fence, it stays text. A parameter's value is JSON
+  unless the tool's schema says string, in these and in `<tool_call>`.
 
 **Errors**
 
@@ -254,6 +263,39 @@ paths, client id and protocol are the public ones:
 
 The hosts and reply shapes come from a real VPC account's report
 (yetone/magpie#312). This plugin has not been tried with a VPC account.
+
+## QwenWork (千问办公)
+
+`QwenWork` and `QwenWork 企业版` serve Alibaba's own QwenWork (qwenwork.cn)
+on this same protocol, with the desktop client's client id, an RSA key the
+Qoder one's equal, its own `qwork` scene, and the device token as the chat
+token. The public cloud's sign-in is the desktop app's device flow, with
+`redirect_uri=qwenwork-cn://`; usage reads the sign-in's account-context.
+A personal account's quota there has `total` and `used` null, only
+`remaining`, so the card shows what is left as its balance, with each pool
+(daily, monthly, long-term) from `/api/v1/adapter/user/wallets`, as
+QwenWork's own client reads them; no share used is made up. An account
+with a total keeps its used / total window, and a biz account (or the
+enterprise flagship) never asks for the wallets.
+There is no PAT and no daily check-in on it: the `pat: false` and
+`checkin: false` site fields turn both off, so Qoder's device identity is
+never sent there.
+
+The enterprise flagship (企业旗舰版, a VPC / private deployment) serves
+web/openapi/api on the enterprise's **own single domain**, and its device
+flow sends **no `redirect_uri`** (`/device/selectAccounts` refuses one).
+Its sign-in asks for that domain — the host the admin console lives on,
+like `your-company.vpc.qwenwork.cn`; `QWENWORK_ENT_DOMAIN` presets it so
+the sign-in asks nothing. Every call — chat, models, refresh, usage —
+routes to that host, and the account is named `<email|uid> (<domain>)`.
+The login page expires in 5 minutes; a member signing in by email OTP
+must have their email bound to their account in the admin console, or the
+page answers 用户不存在.
+
+The flagship deploys no model-catalog service (`/algo/api/v2/model/list`
+answers 503 there), so its list falls back to the public cloud's qwork
+models shipped in this package: flash, pro and qwen3.8-max-preview. A 503
+falls back; any other error doesn't.
 
 ## Daily check-in
 
@@ -386,6 +428,13 @@ The host's recheck/cache behavior is tracked in
 [magpie#2696](https://github.com/yetone/magpie/issues/2696). Verify a new
 claim against the vendor record; a successful activity query alone is not
 proof that credits arrived.
+
+## protocol
+
+`export const protocol = { makePlugin, deviceSignIn, openapi, siteOf }` is
+the plugin factory and its pieces, for another service on this same
+protocol (QwenWork ships here; a future one can too). Its shape is not a
+stable API — it changes as the packages on it need.
 
 ## Not here
 

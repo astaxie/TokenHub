@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
+import { fixture } from "./worker-fixture.mjs";
 import { validateAuth, validateTarget } from "./validation.mjs";
 import { createNetworkRelay } from "./network.mjs";
 
@@ -114,80 +112,11 @@ test("cross-origin redirects reject every adapter credential header and replayed
   assert.equal(Buffer.from(preserved.body, "base64").toString(), "synthetic-payload");
 });
 
-async function fixture(t, { network = () => ({ status: 404, body: "{}" }), rejectSave = false } = {}) {
-  const privateHome = await mkdtemp(join(tmpdir(), "tokenhub-worker-test-"));
-  const child = spawn(process.execPath, [join(directory, "worker.mjs")], {
-    cwd: privateHome, env: { HOME: privateHome, USERPROFILE: privateHome, XDG_CONFIG_HOME: privateHome }, stdio: ["pipe", "pipe", "pipe"],
-  });
-  const calls = new Map();
-  const requests = [];
-  const cancellations = [];
-  const saves = [];
-  let serial = 0;
-  let buffer = "";
-  let stderr = "";
-  child.stderr.on("data", (data) => { stderr += data; });
-  const send = (value) => child.stdin.write(JSON.stringify(value) + "\n");
-  child.stdout.on("data", (data) => {
-    buffer += data;
-    for (;;) {
-      const end = buffer.indexOf("\n");
-      if (end < 0) break;
-      const event = JSON.parse(buffer.slice(0, end));
-      buffer = buffer.slice(end + 1);
-      if (event.event === "network.request") {
-        requests.push(event);
-        void Promise.resolve(network(event)).then((response) => {
-          if (!response) return;
-          const headers = response.headers ?? { "content-type": ["application/json"] };
-          send({ operation: "network.response", request_id: event.request_id, status: response.status, headers });
-          for (const chunk of response.chunks ?? [response.body ?? ""]) send({ operation: "network.chunk", request_id: event.request_id, data: Buffer.from(chunk).toString("base64") });
-          send({ operation: "network.end", request_id: event.request_id });
-        }).catch((error) => {
-          calls.get(event.id)?.reject(error);
-          send({ operation: "network.error", request_id: event.request_id });
-        });
-      } else if (event.event === "auth.update") {
-        saves.push(event.auth);
-        send({ operation: "auth.ack", update_id: event.update_id, ...(rejectSave ? { error: "save_failed" } : {}) });
-      } else if (event.event === "network.cancel") {
-        cancellations.push(event.request_id);
-      } else {
-        const pending = calls.get(event.id);
-        if (!pending) continue;
-        pending.events.push(event);
-        if (["result", "end", "error"].includes(event.event)) {
-          calls.delete(event.id);
-          clearTimeout(pending.timer);
-          pending.resolve({ ...event, events: pending.events });
-        }
-      }
-    }
-  });
-  child.on("exit", () => {
-    for (const call of calls.values()) call.reject(new Error("Worker exited unexpectedly: " + stderr));
-  });
-  t.after(async () => {
-    child.stdin.end();
-    if (child.exitCode === null) await once(child, "exit");
-    await rm(privateHome, { recursive: true, force: true });
-    assert.equal(stderr, "", "worker must not log credentials or vendor diagnostics");
-  });
-  function call(operation, fields = {}) {
-    return new Promise((resolve, reject) => {
-      const id = fields.id ?? String(++serial);
-      const timer = setTimeout(() => reject(new Error("Worker command timed out: " + operation)), 10000);
-      calls.set(id, { resolve, reject, events: [], timer });
-      send({ id, operation, resource_id: "resource-test", provider: "grok", ...fields });
-    });
-  }
-  return { call, requests, saves, cancellations, send };
-}
 
 test("all bundled subscription providers initialize without discovery or network", async (t) => {
   const worker = await fixture(t);
   const listed = await worker.call("providers");
-  assert.equal(listed.result.providers.length, 26);
+  assert.equal(listed.result.providers.length, 29);
   for (const provider of listed.result.providers) {
     const result = await worker.call("describe", { provider });
     assert.equal(result.event, "result", provider);
@@ -399,7 +328,7 @@ test("local authorization landing pages are marked only for owned listeners", as
 
 test("vendored source remains byte-identical to its pinned provenance manifest", async () => {
   const provenance = JSON.parse(await readFile(join(directory, "vendor/PROVENANCE.json")));
-  assert.equal(provenance.commit, "c9a0215f31d401ca4249fac33d03e6b97e44ebbb");
+  assert.equal(provenance.commit, "5c9b7a413756c2b4f139290047085075c83eb3e8");
   for (const file of provenance.files) {
     const body = await readFile(join(directory, file.path));
     assert.equal(createHash("sha256").update(body).digest("hex"), file.sha256, file.path);

@@ -2,8 +2,8 @@ schema_version: 2
 id: "tokenhub.provider.claude-subscription"
 name: "Claude Code Subscription"
 version: 1.0.0
-summary: "Use the genuine Claude Code CLI with an imported subscription account."
-description: "Use the genuine Claude Code CLI with an imported subscription account."
+summary: "Connect a Claude subscription through genuine Claude Code browser login or account import."
+description: "Connect a Claude subscription through genuine Claude Code browser login or account import."
 category: provider_integration
 tokenhub:
   plugin_api: v2

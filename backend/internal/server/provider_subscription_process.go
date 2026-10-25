@@ -284,6 +284,9 @@ func (p *subscriptionWorkerProcess) invoke(ctx context.Context, command map[stri
 	defer func() { <-p.callGate }()
 	id := NewID("subscription")
 	command["id"] = id
+	if options, ok := ctx.Value(subscriptionWorkerOptionsKey{}).(map[string]bool); ok {
+		command["options"] = options
+	}
 	if auth := p.authSnapshot(); auth != "" {
 		command["auth"] = json.RawMessage(auth)
 		subscriptionWorkerSecretsFromContext(ctx).addAuth(auth)

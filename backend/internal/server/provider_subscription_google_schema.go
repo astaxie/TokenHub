@@ -246,6 +246,9 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 					out["type"] = "array"
 				}
 			}
+			if out["type"] == "array" && out["items"] == nil {
+				out["items"] = map[string]any{}
+			}
 			if req, ok := out["required"].([]any); ok {
 				// required names only the properties there are
 				props, _ := out["properties"].(map[string]any)

@@ -7,7 +7,7 @@ supplement TokenHub's own license and do not change upstream license terms.
 
 Repository: https://github.com/yetone/magpie
 
-Pinned commit: `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1`
+Pinned commit: `d580537201938b9f510070a213e09b46479e53ad`
 
 TokenHub adapts protocol and authentication implementations from this MIT-licensed
 project into its own provider interfaces, encrypted credential store, HTTP
@@ -20,7 +20,7 @@ families are:
 | `backend/internal/server/provider_subscription_chatgpt*.go` | `internal/provider/chatgpt_api.go`: Sign in with ChatGPT, dynamic client registration, direct API tokens, and Responses requests |
 | `backend/internal/server/provider_subscription_claude*.go` | `internal/claudecode/claudecode.go` and `internal/provider/claude*.go`: genuine Claude Code process protocol, account credential format, tool bridging, and model aliases |
 | `backend/internal/server/provider_subscription_google*.go` | `internal/provider/google.go`, `internal/provider/gemini_api.go`, `internal/provider/antigravity*.go`, and `internal/gateway/codeassist.go`: Google OAuth, Code Assist envelopes and tool schemas, model discovery, and streaming |
-| `tools/magpie-provider-presets.mjs` and its generated catalog packages | `internal/provider/presets.go`: API endpoint and seed-model inventory |
+| `tools/magpie-provider-presets.mjs` and its generated catalog packages | `internal/provider/presets.go` at `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1`: separately pinned API endpoint and seed-model inventory |
 
 These are TokenHub adaptations, not byte-identical vendored Go files. The existing
 OpenAI Codex integration is retained separately. The native adapters do not run
@@ -54,7 +54,7 @@ SOFTWARE.
 
 Repository: https://github.com/magpie-community/plugins
 
-Pinned commit: `c9a0215f31d401ca4249fac33d03e6b97e44ebbb`
+Pinned commit: `5c9b7a413756c2b4f139290047085075c83eb3e8`
 
 `backend/internal/subscriptionworker/vendor/` contains byte-identical pinned
 community adapter sources and their dependencies within that repository.
@@ -64,7 +64,13 @@ hashes. TokenHub's runtime adaptations are outside the vendor directory.
 The selected inventory is Cursor, Kiro, Qoder (global and China), WorkBuddy,
 WorkBuddy AI, MiMo, ZCode, Factory, Grok, Devin, Command Code Go, Zed, Kimi Work,
 MiniMax Code (China and global), Cline, Trae (China and global), OpenDesign,
-Nous Portal, Raccoon, AutoClaw (global and China), CodeArts, and JoyCode.
+Nous Portal, Raccoon, AutoClaw (global and China), CodeArts, JoyCode, QwenWork
+(public and enterprise), and GCP AI.
+
+QwenWork shares the pinned Qoder module. `backend/internal/subscriptionworker/gcp-ai.mjs`
+is a TokenHub adaptation of the GCP AI Vertex protocol and model discovery; it uses
+explicit OAuth/ADC credentials instead of host gcloud accounts or browser profiles.
+It is not a byte-identical vendored file.
 
 MIT License
 

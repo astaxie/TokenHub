@@ -25,12 +25,14 @@ over Anthropic's Messages API. Provider id: `zcode`.
     agent's system prompt at the end of the third (a fourth block is
     refused, #343), the day in a `<system-reminder>` turn before the agent's
     turns, and the sign-in's device id in `metadata.user_id`. GLM Coding
-    Plan and team requests go as the agent sent them. One it still turns
-    away (a 405, the block page or code 3012) comes back with what to do
-    about it, as magpie's built-in said: "ZCode's Start Plan still turned
-    this request away, though magpie sends it as the ZCode app does; …
-    Use an account with a GLM Coding Plan, or add another provider to this
-    group".
+    Plan and team requests go as the agent sent them. zcode.z.ai also
+    answers 405 code 3012 to every request of an account its risk control
+    blocked, ZCode's own app's included (plugins#348). That answer comes
+    back as ZCode's words, then "ZCode's risk control blocked this account
+    for unusual activity (code 3012); …", which magpie reads as the account
+    restricted: it rests, and the group's other providers are used. Only
+    ZCode support lifts such a block. A block page from ZCode's edge
+    firewall says this network's address was blocked instead.
   - The Start Plan's token can't be refreshed. When it runs out, sign in
     again.
 - **ZCode: a team's GLM Coding Plan**
@@ -42,6 +44,10 @@ over Anthropic's Messages API. Provider id: `zcode`.
   - It is kept as an account of its own, named `<email> (team)`, beside
     the account's own plan, so both can be used.
   - With no seat on a team's plan, it says so and signs in to nothing.
+  - The same ZCode session also reads the person's gift plans. Their
+    `<model>-Trial` entries and gift buckets appear beside the team's
+    models and allowance. Plain models spend the team plan; trial entries
+    spend the personal gift, with no fallback to the team on refusal.
 - **ZCode app's sign-in**
   - Uses the account the ZCode app on this computer is signed in to. For
     every request it reads ZCode's own credentials (`~/.zcode/v2`), so it
@@ -77,7 +83,11 @@ the ZCode app's sign-in (`refresh` then holds `"source": "zcode"`).
 ## How requests are routed
 
 Before each request, the plugin checks which plan the account is on, and
-asks again every 10 minutes:
+asks again every 10 minutes, and with every read of the usage card, so a
+plan bought, a gift claimed or a plan lapsed reaches the requests when the
+card shows it. A key whose plan list once reads no plan after reading one
+is asked again after a minute, and a Start Plan refusal on such a key reads
+the plans again on the next request:
 
 - If the key's account has a GLM Coding Plan
   (`/api/biz/subscription/list`), its requests go to that plan. A model

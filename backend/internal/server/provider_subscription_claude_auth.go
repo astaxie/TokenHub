@@ -18,13 +18,14 @@ type claudeSubscriptionImportSecret struct {
 func registerBuiltinClaudeSubscriptionAuthorization(server *Server, actions builtinActionRegistrar) {
 	for _, capability := range []string{"oauth.cancel", "oauth.exchange", "oauth.methods", "oauth.start"} {
 		metadata := map[string]string{"provider_resource_type": providerResourceClaudeSubscription}
-		properties := map[string]string{"session_id": "string", "state": "string", "mode": "string", "session_json": "string", "key": "string", "inputs": "object", "method_id": "string"}
+		properties := map[string]string{"session_id": "string", "state": "string", "mode": "string", "session_json": "string", "key": "string", "inputs": "object", "method_id": "string", "code": "string", "callback_url": "string"}
 		kind := pluginmeta.ActionKindMutate
 		if capability == "oauth.methods" {
 			kind = pluginmeta.ActionKindRead
 			properties = nil
 		}
 		if capability == "oauth.start" {
+			kind = pluginmeta.ActionKindExternalRedirect
 			metadata["subscription_auth"] = "true"
 			metadata["subscription_session_json"] = "true"
 		}
@@ -32,35 +33,52 @@ func registerBuiltinClaudeSubscriptionAuthorization(server *Server, actions buil
 			metadata["result_secret_policy"] = "provider_account_credentials"
 		}
 		descriptor := pluginmeta.ActionDescriptor{PluginID: "tokenhub.provider.claude-subscription", ActionID: providerClaudeSubscription + "." + capability, Kind: kind, Title: "Claude Code " + capability, Capability: capability, Subject: providerClaudeSubscription, InputSchema: actionObjectSchema(nil, properties), OutputSchema: actionObjectSchema(nil, nil), Metadata: metadata}
-		mustRegisterPluginAction(actions, descriptor, pluginmeta.ActionHandlerFunc(func(_ context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
-			return server.executeClaudeSubscriptionAuthorization(capability, invocation)
+		mustRegisterPluginAction(actions, descriptor, pluginmeta.ActionHandlerFunc(func(ctx context.Context, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+			return server.executeClaudeSubscriptionAuthorization(ctx, capability, invocation)
 		}))
 	}
 }
 
-func (s *Server) executeClaudeSubscriptionAuthorization(capability string, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
+func (s *Server) executeClaudeSubscriptionAuthorization(ctx context.Context, capability string, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 	if strings.TrimSpace(invocation.Actor.ID) == "" {
 		return pluginmeta.ActionResult{}, NewHTTPError(403, "subscription_actor_required", "An authenticated administrator is required")
 	}
 	if capability == "oauth.methods" {
-		return pluginmeta.ActionResult{Data: map[string]any{"methods": []any{map[string]any{"id": "token", "label": "Claude Code setup token", "type": "api", "prompts": []any{map[string]any{"key": "key", "label": "Claude Code subscription token", "type": "password"}}}}}}, nil
-	}
-	definition := builtinSubscriptionDefinition{providerType: providerClaudeSubscription}
-	if capability == "oauth.cancel" {
-		return s.cancelSubscriptionOAuth(definition, invocation)
+		return pluginmeta.ActionResult{Data: map[string]any{"methods": []any{map[string]any{"id": "browser", "label": "Sign in with Claude Code (browser or pasted code)", "type": "oauth"}, map[string]any{"id": "token", "label": "Claude Code setup token", "type": "api", "prompts": []any{map[string]any{"key": "key", "label": "Claude Code subscription token", "type": "password"}}}}}}, nil
 	}
 	var input struct {
+		MethodID    string            `json:"method_id"`
 		SessionID   string            `json:"session_id"`
 		State       string            `json:"state"`
 		Mode        string            `json:"mode"`
 		SessionJSON string            `json:"session_json"`
 		Key         string            `json:"key"`
 		Inputs      map[string]string `json:"inputs"`
+		Code        string            `json:"code"`
+		CallbackURL string            `json:"callback_url"`
 	}
 	if json.Unmarshal(invocation.Payload, &input) != nil {
 		return pluginmeta.ActionResult{}, NewHTTPError(400, "invalid_plugin_action_payload", "Plugin action payload is invalid")
 	}
+	if (capability == "oauth.start" && input.MethodID == "browser") || strings.HasPrefix(input.SessionID, "claude_login_") {
+		adapter, ok := resolveTypedAdapter[*ClaudeSubscriptionAdapter](s.adapterRegistry, providerClaudeSubscription)
+		if !ok {
+			return pluginmeta.ActionResult{}, NewHTTPError(503, "provider_adapter_missing", "Claude Code adapter is unavailable")
+		}
+		if capability == "oauth.start" {
+			data, err := adapter.startSignIn(ctx, invocation.Actor.ID)
+			return pluginmeta.ActionResult{Data: data}, err
+		}
+		data, err := adapter.continueSignIn(ctx, invocation.Actor.ID, input.SessionID, input.State, firstNonEmpty(input.CallbackURL, input.Code), capability == "oauth.cancel")
+		return pluginmeta.ActionResult{Data: data}, err
+	}
+	if capability == "oauth.cancel" {
+		return s.cancelSubscriptionOAuth(builtinSubscriptionDefinition{providerType: providerClaudeSubscription}, invocation)
+	}
 	if capability == "oauth.start" {
+		if input.MethodID != "" && input.MethodID != "token" {
+			return pluginmeta.ActionResult{}, NewHTTPError(400, "method_not_supported", "Claude Code login method is not supported")
+		}
 		token := strings.TrimSpace(firstNonEmpty(input.Key, input.Inputs["key"]))
 		if token == "" || len(token) > 16<<10 {
 			return pluginmeta.ActionResult{}, NewHTTPError(400, "claude_subscription_credentials_required", "Import a Claude Code subscription token or account session")

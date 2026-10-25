@@ -153,7 +153,10 @@ as prior usage. Stateless Runs otherwise keep the dashboard accounting above.
 `X-Magpie-Cursor-Continuity` identifies `same-run` or `stateless`, with the fallback
 reason where available. A missing native batch count can retry stateless once
 before any output is exposed or native result submitted; progressive output is
-kept and its later errors are surfaced.
+kept and its later errors are surfaced. A step's declared tool batch waits 30
+seconds from Cursor's latest call, count, text or heartbeat, so one long call
+written under heartbeats is not cut off; the failure says how many of the
+declared calls came.
 
 The existing request builder and model selection remain in use, including the
 legacy `thinking=false` mapping for explicit `none`/`off`. Retention adds no

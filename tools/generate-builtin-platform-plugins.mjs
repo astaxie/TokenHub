@@ -21,9 +21,10 @@ export const plugins = [
   nativeSubscription("chatgpt-subscription", "ChatGPT API", "chatgpt-subscription", "Connect the direct ChatGPT API with dynamic client authorization."),
   nativeSubscription("gemini-cli", "Gemini CLI", "gemini_cli_subscription", "Connect a Google account to Gemini CLI Code Assist."),
   nativeSubscription("antigravity", "Antigravity", "antigravity_subscription", "Connect a Google account to the Antigravity subscription API."),
-  nativeSubscription("claude-subscription", "Claude Code Subscription", "claude_subscription", "Use the genuine Claude Code CLI with an imported subscription account.", "claude"),
+  nativeSubscription("claude-subscription", "Claude Code Subscription", "claude_subscription", "Connect a Claude subscription through genuine Claude Code browser login or account import.", "claude"),
   ...[
     ["cursor", "Cursor"], ["kiro", "Kiro"], ["qoder", "Qoder"], ["qoder-cn", "Qoder China"],
+    ["qwenwork", "QwenWork"], ["qwenwork-enterprise", "QwenWork Enterprise"], ["gcp-ai", "GCP AI"],
     ["workbuddy", "WorkBuddy"], ["workbuddy-ai", "WorkBuddy AI"], ["mimo-app", "MiMo"], ["zcode", "ZCode"],
     ["factory", "Factory"], ["grok", "Grok"], ["devin", "Devin"], ["commandcode-plan", "Command Code"], ["zed", "Zed"],
     ["kimi-work", "Kimi Work"], ["minimax-code", "MiniMax Coding Plan"], ["minimax-code-global", "MiniMax Coding Plan Global"],
@@ -108,7 +109,7 @@ permissions:
 function readme(plugin) {
   if (plugin.subscription === "claude") return `# Claude Code Subscription
 
-Runs the genuine Claude Code CLI with an imported account token or \`claudeAiOauth\` session JSON. The CLI must be installed on the backend host. Account directories are private, built-in tools and inherited settings are disabled, and caller tools are exposed through a strict local MCP bridge.
+Runs the genuine Claude Code CLI with browser authorization, an imported account token or \`claudeAiOauth\` session JSON. The CLI must be installed on the backend host. Account directories are private, built-in tools and inherited settings are disabled, and caller tools are exposed through a strict local MCP bridge.
 
 Tool continuations are bound to the authenticated project, API key, account, model, and conversation. Each account supports one active conversation; unanswered tool calls expire after five minutes. CLI model aliases are listed locally; account entitlement is checked when the CLI invokes a model. Session rotations are encrypted back into the account resource.
 `;

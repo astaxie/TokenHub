@@ -4,6 +4,8 @@ import { failure } from "./validation.mjs";
 const REGISTRY = {
   cursor: ["cursor", "CursorAuthPlugin"], kiro: ["kiro", "KiroAuthPlugin"],
   qoder: ["qoder", "QoderAuthPlugin"], "qoder-cn": ["qoder", "QoderCNAuthPlugin"],
+  qwenwork: ["qoder", "QwenWorkAuthPlugin"], "qwenwork-enterprise": ["qoder", "QwenWorkEnterpriseAuthPlugin"],
+  "gcp-ai": ["gcp-ai", "createGCPProvider"],
   workbuddy: ["workbuddy", "WorkBuddyAuthPlugin"], "workbuddy-ai": ["workbuddy", "WorkBuddyAIAuthPlugin"],
   "mimo-app": ["mimo", "MimoAuthPlugin"], zcode: ["zcode", "ZCodeAuthPlugin"],
   factory: ["factory", "FactoryAuthPlugin"], grok: ["grok", "GrokAuthPlugin"],
@@ -21,6 +23,8 @@ export const providerIDs = Object.freeze(Object.keys(REGISTRY));
 
 export async function loadProvider(id, context, getAuth) {
   if (!Object.hasOwn(REGISTRY, id)) throw failure("provider_not_supported", "Subscription provider is not supported");
+  if (id === "cursor") return (await import("./cursor.mjs")).createCursorProvider(context, getAuth);
+  if (id === "gcp-ai") return (await import("./gcp-ai.mjs")).createGCPProvider(context);
   if (id === "grok") return (await import("./grok.mjs")).createGrokProvider(context);
   const [directory, name] = REGISTRY[id];
   const module = await import(`./vendor/${directory}/index.mjs`);
@@ -47,6 +51,20 @@ export function describeMethod(method) {
   return { method_id: method.method_id, type: method.type, label: method.label ?? method.type,
     ...(method.keyless ? { keyless: true } : {}),
     prompts: (method.prompts ?? []).map(({ type, key, message, placeholder, options }) => ({ type, key, message, placeholder, options })) };
+}
+
+export function describeOptions(hooks) {
+  return (hooks.auth?.options ?? []).filter((option) => typeof option.key === "string" && /^[a-z][a-z0-9_]*$/.test(option.key))
+    .map(({ key, label, description, confirm }) => ({ key, label, description, ...(confirm ? { confirm } : {}) }));
+}
+
+export function validateOptions(hooks, options = {}) {
+  const keys = new Set(describeOptions(hooks).map((option) => option.key));
+  if (!options || typeof options !== "object" || Array.isArray(options) ||
+      Object.entries(options).some(([key, value]) => !keys.has(key) || typeof value !== "boolean")) {
+    throw failure("invalid_request", "Subscription options must use declared boolean settings");
+  }
+  return { ...options };
 }
 
 export function normalizeModels(id, config, models = config.models ?? {}) {

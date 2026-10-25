@@ -16,7 +16,6 @@ const (
 	ProviderGitHubCopilotSubscription         = "github-copilot-subscription"
 	ProviderResourceGitHubCopilotSubscription = "github_copilot_subscription"
 	copilotSubscriptionBaseURL                = "https://api.githubcopilot.com"
-	copilotSubscriptionTokenURL               = "https://api.github.com/copilot_internal/v2/token"
 )
 
 // CopilotSubscriptionAdapter keeps GitHub credentials in the existing encrypted
@@ -37,6 +36,7 @@ type CopilotSubscriptionAdapter struct {
 	sessions       map[[32]byte]copilotSubscriptionSession
 	modelRoutes    map[string]copilotSubscriptionModelRoutes
 	inflight       map[[32]byte]chan struct{}
+	autoSessions   map[[32]byte]copilotSubscriptionAutoSession
 }
 
 type copilotSubscriptionSession struct {
@@ -53,7 +53,11 @@ func copilotSubscriptionHost(host string) bool {
 }
 
 func (a *CopilotSubscriptionAdapter) session(ctx context.Context, creds ProviderResourceCredentials, force bool) (copilotSubscriptionSession, error) {
-	key := sha256.Sum256([]byte(creds.TokenType + "\x00" + creds.AccessToken))
+	host, err := copilotSubscriptionCredentialHost(creds)
+	if err != nil {
+		return copilotSubscriptionSession{}, err
+	}
+	key := sha256.Sum256([]byte(host + "\x00" + creds.TokenType + "\x00" + creds.AccessToken))
 	for {
 		a.mu.Lock()
 		if !force {
@@ -111,9 +115,13 @@ func (a *CopilotSubscriptionAdapter) exchangeSession(ctx context.Context, creds 
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	cli := creds.TokenType == "copilot_cli"
-	endpoint := firstNonEmpty(a.TokenURL, copilotSubscriptionTokenURL)
+	host, err := copilotSubscriptionCredentialHost(creds)
+	if err != nil {
+		return copilotSubscriptionSession{}, err
+	}
+	endpoint := firstNonEmpty(a.TokenURL, copilotSubscriptionOrigin(host, "api")+"/copilot_internal/v2/token")
 	if cli {
-		endpoint = firstNonEmpty(a.CLIUserURL, "https://api.github.com/copilot_internal/user")
+		endpoint = firstNonEmpty(a.CLIUserURL, copilotSubscriptionOrigin(host, "api")+"/copilot_internal/user")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -139,7 +147,8 @@ func (a *CopilotSubscriptionAdapter) exchangeSession(ctx context.Context, creds 
 	if strings.TrimSpace(session.Token) == "" || session.ExpiresAt <= time.Now().Unix() {
 		return session, NewHTTPError(502, "copilot_session_invalid", "GitHub did not return a usable Copilot session")
 	}
-	if _, err := subscriptionEndpoint(session.Endpoints.API, copilotSubscriptionBaseURL, "", copilotSubscriptionHost); err != nil {
+	session.Endpoints.API = firstNonEmpty(session.Endpoints.API, copilotSubscriptionOrigin(host, "copilot-api"))
+	if _, err := subscriptionEndpoint(session.Endpoints.API, copilotSubscriptionBaseURL, "", func(candidate string) bool { return copilotSubscriptionAPIHost(host, candidate) }); err != nil {
 		return session, err
 	}
 	return session, nil
@@ -161,11 +170,17 @@ func applyCopilotSubscriptionHeaders(headers http.Header, cli bool) {
 }
 
 func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provider, path string, payload any, stream bool) (*http.Response, error) {
-	if _, err := subscriptionEndpoint(provider.BaseURL, copilotSubscriptionBaseURL, "", copilotSubscriptionHost); err != nil {
-		return nil, err
-	}
 	creds, err := subscriptionCredentials(ctx, provider, a.RefreshCredentials, false)
 	if err != nil {
+		return nil, err
+	}
+	host, err := copilotSubscriptionCredentialHost(creds)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := subscriptionEndpoint(provider.BaseURL, copilotSubscriptionBaseURL, "", func(candidate string) bool {
+		return copilotSubscriptionHost(candidate) || copilotSubscriptionAPIHost(host, candidate)
+	}); err != nil {
 		return nil, err
 	}
 	var data []byte
@@ -181,7 +196,7 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 			return nil, err
 		}
 		base := firstNonEmpty(session.Endpoints.API, provider.BaseURL, copilotSubscriptionBaseURL)
-		endpoint, err := subscriptionEndpoint(base, copilotSubscriptionBaseURL, path, copilotSubscriptionHost)
+		endpoint, err := subscriptionEndpoint(base, copilotSubscriptionBaseURL, path, func(candidate string) bool { return copilotSubscriptionAPIHost(host, candidate) })
 		if err != nil {
 			return nil, err
 		}
@@ -200,6 +215,20 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		applyCopilotSubscriptionHeaders(req.Header, session.CLI)
+		if path == "/auto" {
+			req.Header.Set("X-GitHub-Api-Version", "2026-08-01")
+		} else if path == "/models/session" {
+			req.Header.Set("X-GitHub-Api-Version", "2025-10-01")
+		}
+		if selected, ok := ctx.Value(copilotSubscriptionAutoKey{}).(copilotSubscriptionAutoSession); ok && selected.Token != "" {
+			req.Header.Set("Copilot-Session-Token", selected.Token)
+			provider.Headers = cloneStringMap(provider.Headers)
+			if provider.Headers == nil {
+				provider.Headers = make(map[string]string)
+			}
+			provider.Headers["TokenHub-Copilot-Auto"] = selected.Token
+			provider.SensitiveHeaders = append(append([]string{}, provider.SensitiveHeaders...), "TokenHub-Copilot-Auto")
+		}
 		req.Header.Set("Openai-Intent", "conversation-panel")
 		if path == "/v1/messages" {
 			req.Header.Set("Anthropic-Version", "2023-06-01")
@@ -284,7 +313,7 @@ func subscriptionIdleTimeout(timeout time.Duration) time.Duration {
 	return timeout
 }
 
-func (a *CopilotSubscriptionAdapter) Chat(ctx context.Context, provider Provider, model string, request ChatCompletionRequest) (any, Usage, error) {
+func (a *CopilotSubscriptionAdapter) chatOnce(ctx context.Context, provider Provider, model string, request ChatCompletionRequest) (any, Usage, error) {
 	endpoint, err := a.modelEndpoint(ctx, provider, model)
 	if err != nil {
 		return nil, Usage{}, err
@@ -308,7 +337,7 @@ func (a *CopilotSubscriptionAdapter) Chat(ctx context.Context, provider Provider
 	return body, usageFromMap(body), nil
 }
 
-func (a *CopilotSubscriptionAdapter) ChatStream(ctx context.Context, provider Provider, model string, request ChatCompletionRequest, w io.Writer) (Usage, error) {
+func (a *CopilotSubscriptionAdapter) chatStreamOnce(ctx context.Context, provider Provider, model string, request ChatCompletionRequest, w io.Writer) (Usage, error) {
 	endpoint, err := a.modelEndpoint(ctx, provider, model)
 	if err != nil {
 		return Usage{}, err
@@ -329,7 +358,10 @@ func (a *CopilotSubscriptionAdapter) ChatStream(ctx context.Context, provider Pr
 	return copyOpenAIStreamAndUsageWithLimit(w, resp.Body, provider, mediaChatStreamLimit(ctx))
 }
 
-func (a *CopilotSubscriptionAdapter) Responses(ctx context.Context, provider Provider, model string, request ResponsesRequest) (any, Usage, error) {
+func (a *CopilotSubscriptionAdapter) responsesOnce(ctx context.Context, provider Provider, model string, request ResponsesRequest) (any, Usage, error) {
+	if selected, ok := ctx.Value(copilotSubscriptionAutoKey{}).(copilotSubscriptionAutoSession); ok && !selected.SupportsResponses {
+		return nil, Usage{}, unsupportedCapabilityError("The Copilot Auto selection uses chat completions; use the Chat endpoint for this account")
+	}
 	request.Model, request.Stream = model, false
 	resp, err := a.request(ctx, provider, "/responses", normalizedResponsesReasoning(request), false)
 	if err != nil {
@@ -342,7 +374,10 @@ func (a *CopilotSubscriptionAdapter) Responses(ctx context.Context, provider Pro
 	return body, usageFromMap(body), nil
 }
 
-func (a *CopilotSubscriptionAdapter) OpenResponses(ctx context.Context, provider Provider, model string, request ResponsesRequest, _ http.Header) (*http.Response, error) {
+func (a *CopilotSubscriptionAdapter) openResponsesOnce(ctx context.Context, provider Provider, model string, request ResponsesRequest) (*http.Response, error) {
+	if selected, ok := ctx.Value(copilotSubscriptionAutoKey{}).(copilotSubscriptionAutoSession); ok && !selected.SupportsResponses {
+		return nil, unsupportedCapabilityError("The Copilot Auto selection uses chat completions; use the Chat endpoint for this account")
+	}
 	request.Model, request.Stream = model, true
 	return a.request(ctx, provider, "/responses", normalizedResponsesReasoning(request), true)
 }
@@ -363,9 +398,21 @@ func (a *CopilotSubscriptionAdapter) ResourceModels(ctx context.Context, provide
 	}
 	var payload struct {
 		Data []struct {
-			ID           string   `json:"id"`
-			Name         string   `json:"name"`
-			Endpoints    []string `json:"supported_endpoints"`
+			ID        string   `json:"id"`
+			Name      string   `json:"name"`
+			Endpoints []string `json:"supported_endpoints"`
+			Picker    *bool    `json:"model_picker_enabled"`
+			Category  string   `json:"model_picker_category"`
+			Vendor    string   `json:"vendor"`
+			Fallback  bool     `json:"is_chat_fallback"`
+			Default   bool     `json:"is_chat_default"`
+			Billing   *struct {
+				Premium bool `json:"is_premium"`
+			} `json:"billing"`
+			Policy *struct {
+				State string `json:"state"`
+				Terms string `json:"terms"`
+			} `json:"policy"`
 			Capabilities struct {
 				Type   string `json:"type"`
 				Limits struct {
@@ -380,16 +427,27 @@ func (a *CopilotSubscriptionAdapter) ResourceModels(ctx context.Context, provide
 	}
 	models := make([]ProviderCatalogModel, 0, len(payload.Data))
 	for _, remote := range payload.Data {
-		if remote.ID == "" || remote.Capabilities.Type != "" && remote.Capabilities.Type != "chat" {
+		if remote.ID == "" || remote.ID == "auto" || copilotInternalModel.MatchString(remote.ID) || remote.Capabilities.Type != "" && remote.Capabilities.Type != "chat" || remote.Vendor == "Experimental" || remote.Picker != nil && !*remote.Picker && remote.Category == "" || remote.Policy != nil && remote.Policy.State != "enabled" {
 			continue
 		}
 		endpoints := remote.Endpoints
 		if len(endpoints) == 0 {
 			endpoints = []string{"/chat/completions"}
 		}
+		priority := "4"
+		if remote.Fallback {
+			priority = "0"
+		} else if remote.Default {
+			priority = "1"
+		} else if remote.ID == "gpt-4.1" {
+			priority = "2"
+		} else if remote.Billing != nil && !remote.Billing.Premium {
+			priority = "3"
+		}
 		models = append(models, ProviderCatalogModel{ID: remote.ID, Name: remote.ID, DisplayName: firstNonEmpty(remote.Name, remote.ID), Type: "chat", ContextWindow: remote.Capabilities.Limits.Context,
-			Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"supported_endpoints": strings.Join(endpoints, ","), "source": "github-copilot-live"}})
+			Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"supported_endpoints": strings.Join(endpoints, ","), "source": "github-copilot-live", "auto_fallback_priority": priority}})
 	}
+	models = append(models, ProviderCatalogModel{ID: "auto", Name: "auto", DisplayName: "Copilot Auto", Type: "chat", Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"source": "github-copilot-auto", "supported_endpoints": "/chat/completions"}})
 	a.cacheModelRoutes(resource.ID, models)
 	return subscriptionCatalog(ProviderGitHubCopilotSubscription, "GitHub Copilot Subscription", copilotSubscriptionBaseURL, "github-copilot-live", "", models), resp.StatusCode, nil
 }

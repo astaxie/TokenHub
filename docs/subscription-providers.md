@@ -2,7 +2,7 @@
 
 Language: English | [简体中文](zh-CN/subscription-providers.md) | [日本語](ja/subscription-providers.md)
 
-TokenHub integrates the six active built-in account providers and all 26 account-provider IDs from the pinned Magpie community inventory. Administrators connect each account as a provider resource, load its models, and route requests through TokenHub's existing authentication, authorization, and usage accounting. A Magpie service is not required.
+TokenHub integrates the six active built-in account providers and all 29 account-provider IDs from the pinned Magpie community inventory. Administrators connect each account as a provider resource, load its models, and route requests through TokenHub's existing authentication, authorization, and usage accounting. A Magpie service is not required.
 
 The account adapters and API-key presets are separate integration paths. A paid application subscription does not automatically grant an API plan, every listed model, or unlimited usage. This integration does not assert that a provider permits account sharing or automated access; use the account according to its applicable plan terms.
 
@@ -10,7 +10,7 @@ The account adapters and API-key presets are separate integration paths. A paid 
 
 - The community adapters require Node.js **22.23.1 or newer** on the backend host. The supported Docker image and native release bundle include Node; source deployments must provide it on the backend process's `PATH`. `start.sh` checks the version. No npm packages are installed at runtime.
 - Claude Code requires the genuine `claude` CLI on the backend process's `PATH`. TokenHub does not currently bundle or pin that CLI. Install it in the backend execution environment, including inside the container when using Docker, before connecting Claude accounts. A missing executable returns `claude_cli_unavailable`.
-- Go handles Codex, Copilot, ChatGPT API, Gemini CLI, and Antigravity integration. The other 26 adapters run as application-owned Node workers with bundled, fixed source files. They do not run a Magpie daemon or load arbitrary JavaScript plugins.
+- Go handles Codex, Copilot, ChatGPT API, Gemini CLI, and Antigravity integration. The other 29 adapters run as application-owned Node workers with bundled, fixed source files. They do not run a Magpie daemon or load arbitrary JavaScript plugins.
 
 See [Deployment](deployment.md) for the supported deployment paths.
 
@@ -20,14 +20,14 @@ The six native integrations use these TokenHub provider types. “Chat” means 
 
 | Provider | TokenHub provider type | Connection | Public text scope |
 | --- | --- | --- | --- |
-| Claude Code | `claude_subscription` | Import a setup token or account session | Chat through the genuine Claude Code CLI |
+| Claude Code | `claude_subscription` | Browser OAuth, setup token, or account session | Chat through the genuine Claude Code CLI |
 | OpenAI Codex | `openai_codex` | Existing Codex OAuth or explicit account import | Responses and existing compatibility bridges |
 | GitHub Copilot | `github-copilot-subscription` | GitHub device code | Chat and Responses |
 | ChatGPT API | `chatgpt-subscription` | Sign in with ChatGPT, or explicit token import | Responses using a direct API token; separate from the Codex backend |
 | Gemini CLI | `gemini_cli_subscription` | Google browser OAuth with administrator-supplied desktop-client configuration | Chat through Code Assist |
 | Antigravity | `antigravity_subscription` | Google browser OAuth with administrator-supplied desktop-client configuration | Chat through Code Assist |
 
-All 26 community integrations expose **Chat**, including streaming and caller-defined tools where supported by the upstream model. Their internal Chat, Anthropic, Responses, or Gemini wire format does not add public Responses, embeddings, or media support. Every row also supports explicit session JSON import; this is the only connection path for Kimi Work.
+All 29 community integrations expose **Chat**, including streaming and caller-defined tools where supported by the upstream model. Their internal Chat, Anthropic, Responses, or Gemini wire format does not add public Responses, embeddings, or media support. Every row also supports explicit session JSON import; this is the only connection path for Kimi Work.
 
 | Provider | Inventory ID | Available connection methods |
 | --- | --- | --- |
@@ -35,6 +35,9 @@ All 26 community integrations expose **Chat**, including streaming and caller-de
 | Kiro | `kiro` | Browser with Google, GitHub, AWS Builder ID, or IAM Identity Center; `ksk_` API key |
 | Qoder | `qoder` | Browser/device flow; personal access token |
 | Qoder China | `qoder-cn` | Browser/device flow; personal access token; official Qoder enterprise VPC |
+| QwenWork | `qwenwork` | Browser/device flow |
+| QwenWork Enterprise | `qwenwork-enterprise` | Browser/device flow with the explicit enterprise domain |
+| GCP AI | `gcp-ai` | Google desktop OAuth; explicit authorized-user ADC JSON import with project and location |
 | WorkBuddy | `workbuddy` | Browser |
 | WorkBuddy AI | `workbuddy-ai` | Browser |
 | Xiaomi MiMo | `mimo-app` | Xiaomi account browser/poll flow; seed models only |
@@ -77,7 +80,7 @@ Antigravity tool parameters are projected to its supported OpenAPI schema subset
 
 For Kimi Work, import an object with `type: "oauth"`, `access`, `webToken`, and `uid`, with optional `deviceId`. Obtain those values explicitly from your own authorized account; TokenHub never reads the desktop database. Other session schemas remain provider-specific and must match the selected provider.
 
-For Claude Code, import a long-lived token obtained with `claude setup-token`, or a session JSON object containing `claudeAiOauth.accessToken` and, where available, refresh-token metadata. The `sonnet`, `opus`, `haiku`, and `fable` catalog entries are CLI aliases checked at request time, not a live entitlement list.
+For Claude Code, start browser login in the editor using the genuine `claude auth login --claudeai` flow. Complete its loopback callback or paste the authorization code. TokenHub uses a private configuration directory and reads only that login's credential file or scoped macOS keychain entry. You can also import a long-lived token obtained with `claude setup-token`, or a session JSON object containing `claudeAiOauth.accessToken` and, where available, refresh-token metadata. The `sonnet`, `opus`, `haiku`, and `fable` catalog entries are CLI aliases checked at request time, not a live entitlement list.
 
 ### Remote browsers and callbacks
 
@@ -86,6 +89,25 @@ Device-code flows can be completed from a browser on another machine. For a simp
 Some upstream flows POST credentials or depend on local landing-page assets, so copying a URL is insufficient. AutoClaw's global Google/z.ai flow opens an HTTP loopback landing page on the backend host. Use a browser on that host, or a trusted tunnel that reaches that process's loopback listener. A container has its own loopback namespace; a normal reverse proxy to TokenHub does not expose these temporary listeners. Command Code also offers API-key login when its browser flow is unsuitable for a remote deployment.
 
 In a multi-instance deployment, keep an authorization flow's start, polling, exchange, and cancellation on the same TokenHub backend instance. Community authorization workers and callback listeners retain process-local state. Saved credentials are durable and shareable through the database, but pending authorization and active conversation processes cannot migrate between instances. Configure session affinity for these operations; a shared PostgreSQL database alone does not provide it.
+
+## Account options and allowance
+
+Copilot supports `auto`, including plans whose regular model list is empty. The upstream chooser selects the model and protocol before inference; explicit Responses requests require a Responses-capable selection. For enterprise managed users, enter the approved `github_host` (`<tenant>.ghe.com`) during device authorization. The host is encrypted with the account and determines its authorization, session, and API destinations.
+
+Gemini CLI reads account experiment flags and maps advertised model IDs to the account's wire IDs before inference. Providing a project does not bypass Code Assist eligibility/onboarding. Antigravity tool schemas also supply empty array-item schemas where required by the upstream API.
+
+For GCP AI, supply a Google desktop OAuth client ID/secret, a project ID or number, and a Vertex location (default `global`). Alternatively paste an `authorized_user` ADC JSON object containing `client_id`, `client_secret`, and `refresh_token` through its import method. TokenHub verifies project access, stores refreshable credentials, and discovers Gemini text models using Vertex. Service-account JSON, file paths, host gcloud profiles, and browser sessions are not imported. Enable Vertex AI and grant the user access to the chosen project. GCP Cloud Console promotional credit scraping is not included, so no fabricated remaining-credit value is shown.
+
+Cursor team accounts can include an explicit positive numeric `teamId` in their imported session JSON. Team headers and usage queries remain bound to that resource; TokenHub does not read the host's selected Cursor team.
+
+QwenWork Enterprise asks for the enterprise domain during authorization. TokenHub binds credentials and subsequent refresh/inference to that exact domain; the shared Go transport still applies DNS/IP restrictions. Each enterprise account retains its own domain across rotations.
+
+The Provider editor’s advanced settings expose Grok X search (`x_search`), Factory Standard-only (`standard_only`), and Command Code zero data retention (`zdr`) as boolean options. Resource options override provider defaults. Factory Standard-only refuses inference with a retryable quota error when its Standard allowance is exhausted, enabling normal route fallback. Provider support and plan eligibility still govern the effect of these options.
+
+Quota reads are available for community accounts except Nous Portal and GCP AI. Where the adapter supports it, a manual check-in action reports `claimed`, `done`, `inactive`, or `ineligible`; it does not schedule automatic claims. Qoder international may require native device identity that TokenHub does not collect. Model-specific and display-only allowance windows remain separate from account-wide exhaustion.
+
+The coverage inventory includes all 35 account-provider IDs at the pinned revisions. Cloudflare Workers AI and OpenCode Zen Free are API/public services, and Kimi Desktop is an agent connector; they are not additional subscription-account providers. Account coverage does not imply full Magpie feature parity: host account scanning, agent switching, browser credit scraping, and new media-generation APIs are outside this integration.
+
 
 ## Additional API-key presets
 
@@ -122,13 +144,17 @@ Claude allows one active request or parked tool call per account, with at most 1
 
 A renewable account lease covers Claude credential reload, execution, parked tool rounds, credential persistence, and process cleanup across backend instances. Cleanup still attempts to save rotated credentials after cancellation or timeout. If a transient storage failure persists after three attempts, TokenHub retains the private temporary recovery directory and logs its path, without logging credential values. Recovery is manual: preserve that directory until the account credentials are durably restored. Concurrent administrator edits are never overwritten by a stale session.
 
-Model discovery may fall back to pinned seed IDs. Catalog metadata distinguishes `subscription-account-live`, `subscription-account-fallback`, and `subscription-account-empty`; fallback entitlement and pricing remain unverified. Raw upstream variants are retained as metadata, and only explicit reasoning-effort values become selectable effort options. A listed model does not establish account access, price, context size, or remaining quota. This release does not expose every upstream usage hook as an administrator quota view.
+Model discovery may fall back to pinned seed IDs. Catalog metadata distinguishes `subscription-account-live`, `subscription-account-fallback`, and `subscription-account-empty`; fallback entitlement and pricing remain unverified. Raw upstream variants are retained as metadata, and only explicit reasoning-effort values become selectable effort options. A listed model does not establish account access, price, context size, or remaining quota. Supported worker allowance hooks are exposed through `quota.read`; check-in hooks use `checkin.run`. Model-specific allowance windows do not exhaust the entire account.
 
 Tests cover synthetic HTTP flows, protocol translation, streams, tool calls, encrypted credential rotation, cancellation, process isolation, and callback restrictions. **Real paid accounts, current plan allowances, and every upstream login flow have not been verified live.** Trae remains experimental, and upstream private interfaces can change independently of TokenHub. Existing Codex image support is unchanged; these additions do not promise new embeddings, image, audio, or video capabilities.
 
 ## Pinned sources and licenses
 
-- [yetone/magpie](https://github.com/yetone/magpie), commit `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1`, supplies the reviewed built-in inventory, native protocol references, and API preset facts. Its MIT license is retained in `tools/licenses/magpie-LICENSE`. `backend/internal/server/SUBSCRIPTION_THIRD_PARTY_NOTICES.md` identifies native Copilot, ChatGPT, Claude, Gemini CLI, and Antigravity derivations; their platform packages and generated API preset packages include third-party notices.
-- [magpie-community/plugins](https://github.com/magpie-community/plugins), commit `c9a0215f31d401ca4249fac33d03e6b97e44ebbb`, supplies the statically bundled community adapters under MIT. `backend/internal/subscriptionworker/vendor/PROVENANCE.json` records package versions and SHA256 hashes; the upstream license is retained beside it.
+- [yetone/magpie](https://github.com/yetone/magpie), commit `d580537201938b9f510070a213e09b46479e53ad`, supplies the reviewed built-in inventory, native protocol references. Its MIT license is retained in `tools/licenses/magpie-LICENSE`. `backend/internal/server/SUBSCRIPTION_THIRD_PARTY_NOTICES.md` identifies native Copilot, ChatGPT, Claude, Gemini CLI, and Antigravity derivations; their platform packages and generated API preset packages include third-party notices.
+- [magpie-community/plugins](https://github.com/magpie-community/plugins), commit `5c9b7a413756c2b4f139290047085075c83eb3e8`, supplies the statically bundled community adapters under MIT. `backend/internal/subscriptionworker/vendor/PROVENANCE.json` records package versions and SHA256 hashes; the upstream license is retained beside it.
 
 Vendored sources stay pinned and byte-identical to the provenance manifest. TokenHub adaptations live outside the vendor tree; no runtime update or package installation occurs.
+
+API preset facts remain separately pinned to `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1`.
+
+The reproducible account inventory and explicit exclusions are recorded in [`tools/magpie-subscription-coverage.json`](../tools/magpie-subscription-coverage.json) and checked against the bundled registry and plugin packages.

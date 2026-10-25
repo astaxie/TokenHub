@@ -43,6 +43,7 @@ func (r *claudeSubscriptionRun) cleanup() {
 		}
 	}
 	if r.root != "" {
+		clearClaudeSubscriptionSession(r.configDir)
 		_ = os.RemoveAll(r.root)
 	}
 }

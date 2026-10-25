@@ -30,6 +30,9 @@ func (a *SubscriptionWorkerAdapter) chat(ctx context.Context, provider Provider,
 		return nil, Usage{}, err
 	}
 	defer release()
+	if err := a.checkStandardAllowance(ctx, process, id); err != nil {
+		return nil, Usage{}, err
+	}
 	model, err := a.workerModel(ctx, process, id, modelID)
 	if err != nil {
 		return nil, Usage{}, err
@@ -64,6 +67,9 @@ func (a *SubscriptionWorkerAdapter) chatStream(ctx context.Context, provider Pro
 		return Usage{}, err
 	}
 	defer release()
+	if err := a.checkStandardAllowance(ctx, process, id); err != nil {
+		return Usage{}, err
+	}
 	model, err := a.workerModel(ctx, process, id, modelID)
 	if err != nil {
 		return Usage{}, err

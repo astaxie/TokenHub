@@ -88,8 +88,8 @@ func (a *GoogleSubscriptionAdapter) models(ctx context.Context, p Provider, cred
 			models = append(models, entry)
 		}
 	} else {
-		// Quota buckets are live backend model IDs. Preserve those IDs rather than
-		// guessing aliases from a different version of the Gemini CLI model picker.
+		// Quotas gate preview access; the account experiments determine the CLI's
+		// advertised model names and how those aliases map to backend IDs.
 		var result struct {
 			Buckets []struct {
 				ModelID string `json:"modelId"`
@@ -98,17 +98,17 @@ func (a *GoogleSubscriptionAdapter) models(ctx context.Context, p Provider, cred
 		if err = a.call(ctx, a.inferenceBase(p), "retrieveUserQuota", creds, map[string]any{"project": project.ID}, &result); err != nil {
 			return ProviderCatalogEntry{}, err
 		}
-		seen := map[string]bool{}
+		preview := false
 		for _, bucket := range result.Buckets {
-			id := strings.TrimSpace(bucket.ModelID)
-			if id == "" || seen[id] || strings.HasSuffix(id, "_vertex") {
-				continue
+			if strings.Contains(bucket.ModelID, "-preview") {
+				preview = true
 			}
-			seen[id] = true
-			entry := googleSubscriptionModel(id, id)
-			entry.InputModalities = append(entry.InputModalities, "image")
-			models = append(models, entry)
 		}
+		flags, err := a.flags(ctx, p, creds, project.ID)
+		if err != nil {
+			return ProviderCatalogEntry{}, err
+		}
+		models = flags.models(preview)
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 	categories, counts := catalogCategorySummary(models)

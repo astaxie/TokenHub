@@ -26,6 +26,10 @@ func TestSubscriptionGoogleExchangeIncludesLiveCatalog(t *testing.T) {
 					_, _ = fmt.Fprint(w, `{"access_token":"google-access","refresh_token":"google-refresh","expires_in":3600}`)
 				case "/userinfo":
 					_, _ = fmt.Fprint(w, `{"id":"google-account","email":"synthetic@example.test","verified_email":true}`)
+				case "/v1internal:loadCodeAssist":
+					_, _ = fmt.Fprint(w, `{"currentTier":{"id":"standard-tier"}}`)
+				case "/v1internal:listExperiments":
+					_, _ = fmt.Fprint(w, `{"flags":[]}`)
 				case "/v1internal:retrieveUserQuota", "/v1internal:fetchAvailableModels":
 					modelRequests.Add(1)
 					if r.Header.Get("Authorization") != "Bearer google-access" {
@@ -44,6 +48,7 @@ func TestSubscriptionGoogleExchangeIncludesLiveCatalog(t *testing.T) {
 			defer upstream.Close()
 			adapter, _ := resolveTypedAdapter[*GoogleSubscriptionAdapter](server.adapterRegistry, providerType)
 			adapter.TokenURL, adapter.UserInfoURL, adapter.BaseURL, adapter.Client = upstream.URL+"/token", upstream.URL+"/userinfo", upstream.URL, upstream.Client()
+			adapter.LoadURL = upstream.URL
 			started, err := subscriptionActionFixture(t, server, providerType, "oauth.start", "administrator", map[string]any{"organization_id": "synthetic-project", "inputs": map[string]string{"client_id": "synthetic-google-client", "client_secret": "synthetic-google-secret"}})
 			if err != nil {
 				t.Fatal(err)
@@ -57,7 +62,11 @@ func TestSubscriptionGoogleExchangeIncludesLiveCatalog(t *testing.T) {
 			if data.AccessToken != "google-access" || data.RefreshToken != "google-refresh" || data.ClientID != "synthetic-google-client" || data.ClientSecret != "synthetic-google-secret" || data.OrganizationID != "synthetic-project" || data.CatalogError != "" || data.Status != "complete" {
 				t.Fatal("exchange did not preserve authorized account credentials")
 			}
-			if data.Catalog == nil || len(data.Catalog.Models) != 1 || data.Catalog.Models[0].ID != "gemini-live" || modelRequests.Load() != 1 {
+			wantModels, wantFirstModel := 1, "gemini-live"
+			if providerType == providerGeminiCLISubscription {
+				wantModels, wantFirstModel = 5, "gemini-2.5-flash"
+			}
+			if data.Catalog == nil || len(data.Catalog.Models) != wantModels || data.Catalog.Models[0].ID != wantFirstModel || modelRequests.Load() != 1 {
 				t.Fatal("exchange did not include the live account model catalog")
 			}
 			encoded, err := json.Marshal(data)
@@ -78,6 +87,9 @@ func TestSubscriptionCatalogFailurePreservesRotatedCredentials(t *testing.T) {
 			server := New(NewMemoryStore())
 			var refreshes, modelRequests atomic.Int32
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if googleSubscriptionTestProject(w, r) {
+					return
+				}
 				if r.URL.Path == "/token" {
 					refreshes.Add(1)
 					if err := r.ParseForm(); err != nil || r.Form.Get("refresh_token") != "original-refresh" {
@@ -108,6 +120,7 @@ func TestSubscriptionCatalogFailurePreservesRotatedCredentials(t *testing.T) {
 			} else {
 				adapter, _ := resolveTypedAdapter[*GoogleSubscriptionAdapter](server.adapterRegistry, providerType)
 				adapter.BaseURL, adapter.TokenURL, adapter.Client = upstream.URL, upstream.URL+"/token", upstream.Client()
+				adapter.LoadURL = upstream.URL
 				credentials.ClientID, credentials.ClientSecret = "synthetic-google-client", "synthetic-google-secret"
 			}
 			var definition builtinSubscriptionDefinition

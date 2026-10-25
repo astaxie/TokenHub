@@ -1,0 +1,33 @@
+.provider-checkin-card .provider-quota-card-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.provider-checkin-card .provider-quota-account {
+  flex: 1 1 180px;
+}
+
+.provider-checkin-card .provider-quota-card-actions {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.provider-checkin-card select {
+  max-width: 100%;
+  width: 100%;
+}
+
+.provider-checkin-card > .plugin-action-runner {
+  margin-top: 12px;
+}
+
+.provider-quota-windows {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+}
+
+.provider-quota-windows small {
+  overflow-wrap: anywhere;
+  color: var(--muted-strong);
+  font-size: 11px;
+  line-height: 1.5;
+}

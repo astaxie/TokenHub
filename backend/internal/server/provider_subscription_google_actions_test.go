@@ -68,6 +68,7 @@ func TestGoogleSubscriptionActionsRequireAndProtectClientCredentials(t *testing.
 			defer upstream.Close()
 			adapter, _ := resolveTypedAdapter[*GoogleSubscriptionAdapter](server.adapterRegistry, definition.providerType)
 			adapter.Client, adapter.TokenURL, adapter.UserInfoURL, adapter.BaseURL = upstream.Client(), upstream.URL+"/token", upstream.URL+"/userinfo", upstream.URL
+			adapter.LoadURL = upstream.URL
 			delete(payload, "client_id")
 			exchanged := doJSON(t, server.Handler(), http.MethodPost, path+"oauth.exchange", payload, "dev_admin_token")
 			if exchanged.Code != http.StatusOK || !strings.Contains(exchanged.Body, `"client_secret":"`+inputs["client_secret"]+`"`) || !strings.Contains(exchanged.Body, `"access_token":"synthetic-access"`) {

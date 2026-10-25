@@ -16,6 +16,7 @@ type subscriptionWorkerDefinition struct{ ID, Name string }
 func subscriptionWorkerDefinitions() []subscriptionWorkerDefinition {
 	return []subscriptionWorkerDefinition{
 		{"cursor", "Cursor"}, {"kiro", "Kiro"}, {"qoder", "Qoder"}, {"qoder-cn", "Qoder China"},
+		{"qwenwork", "QwenWork"}, {"qwenwork-enterprise", "QwenWork Enterprise"}, {"gcp-ai", "GCP AI"},
 		{"workbuddy", "WorkBuddy"}, {"workbuddy-ai", "WorkBuddy AI"}, {"mimo-app", "MiMo"}, {"zcode", "ZCode"},
 		{"factory", "Factory"}, {"grok", "Grok"}, {"devin", "Devin"}, {"commandcode-plan", "Command Code"}, {"zed", "Zed"},
 		{"kimi-work", "Kimi Work"}, {"minimax-code", "MiniMax Coding Plan"}, {"minimax-code-global", "MiniMax Coding Plan Global"},
@@ -24,6 +25,19 @@ func subscriptionWorkerDefinitions() []subscriptionWorkerDefinition {
 		{"codearts", "CodeArts"}, {"joycode", "JoyCode"},
 	}
 }
+func subscriptionWorkerHasQuota(id string) bool {
+	return id != "nous-portal" && id != "gcp-ai"
+}
+
+func subscriptionWorkerHasCheckin(id string) bool {
+	switch id {
+	case "qoder", "qoder-cn", "minimax-code", "minimax-code-global", "trae-cn", "trae-global", "raccoon", "autoclaw", "autoclaw-cn", "codearts":
+		return true
+	default:
+		return false
+	}
+}
+
 func (d subscriptionWorkerDefinition) providerType() string {
 	return strings.ReplaceAll(d.ID, "-", "_") + "_subscription"
 }
@@ -72,6 +86,13 @@ func registerBuiltinSubscriptionWorkerProviders(register func(string, string, bu
 			capabilities:  []AdapterCapability{AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityModels, AdapterCapabilityProbe, AdapterCapabilityOAuth},
 			resourceTypes: []pluginmeta.ManifestProviderResourceType{{Type: definition.resourceType(), DisplayName: definition.Name + " Account", AuthModes: []string{"oauth"}, Default: true, Defaults: map[string]string{"auth_type": "oauth", "max_concurrency": "3"}}},
 			catalogEntry:  &pluginProviderCatalogEntry{ID: definition.ID, Name: definition.Name, DisplayName: definition.Name, Type: definition.providerType(), DocURL: "https://github.com/yetone/magpie", Source: "subscription-account-live", Categories: []string{"custom"}, ModelsAccountRequiredErrorCode: "subscription_account_required", ModelsAccountRequiredErrorMessage: "Connect a subscription account before loading its models"},
+		}
+		if subscriptionWorkerHasQuota(definition.ID) {
+			registration.capabilities = append(registration.capabilities, AdapterCapabilityQuota)
+			registration.managementActions = append(registration.managementActions, builtinProviderPluginCapability{id: definition.providerType() + ".quota.read", capability: "quota.read", subject: definition.providerType()})
+		}
+		if subscriptionWorkerHasCheckin(definition.ID) {
+			registration.managementActions = append(registration.managementActions, builtinProviderPluginCapability{id: definition.providerType() + ".checkin.run", capability: "checkin.run", subject: definition.providerType()})
 		}
 		for _, capability := range []string{"oauth.methods", "oauth.cancel", "models.read", "oauth.start", "oauth.exchange", "credentials.refresh", "probe.run", "provider.probe.run"} {
 			registration.managementActions = append(registration.managementActions, builtinProviderPluginCapability{id: definition.providerType() + "." + capability, capability: capability, subject: definition.providerType()})

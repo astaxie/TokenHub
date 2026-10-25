@@ -29,8 +29,14 @@ const CHANNEL = "AutoClaw4";
 const CLIENT_VERSION = "1.18.1";
 const CN_CHANNEL = "AutoClaw26";
 const CN_CLIENT_VERSION = "2.1.0";
-const PLATFORM_TM = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "win" : "linux";
-const USER_AGENT = `AutoClaw/${CLIENT_VERSION} (${PLATFORM_TM}-${process.arch})`;
+const PLATFORM = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "win" : "linux";
+/** X-Tm: the official Linux client sends "linux-x64"; the overseas gateway
+ * answers the bare "linux" with 403 {"message":"forbidden"} (#367). */
+function platformTm(platform = process.platform) {
+  return platform === "darwin" ? "mac" : platform === "win32" ? "win" : "linux-x64";
+}
+const PLATFORM_TM = platformTm();
+const USER_AGENT = `AutoClaw/${CLIENT_VERSION} (${PLATFORM}-${process.arch})`;
 
 const GLOBAL_HOST = "https://autoglm-api.autoglm.ai";
 const CN_HOST = "https://autoglm-api.zhipuai.cn";
@@ -619,7 +625,7 @@ function managedHeaders(token, model) {
   const rid = randomHex(16);
   const headers = new Headers(bizHeaders());
   headers.set("Accept", "application/json");
-  headers.set("User-Agent", `AutoClaw/${CN_CLIENT_VERSION} (${PLATFORM_TM}-${process.arch})`);
+  headers.set("User-Agent", `AutoClaw/${CN_CLIENT_VERSION} (${PLATFORM}-${process.arch})`);
   headers.set("X-Channel", CN_CHANNEL);
   headers.set("X-Version", CN_CLIENT_VERSION);
   headers.set("X-Trace-Id", rid);
@@ -816,13 +822,13 @@ function makeAutoclawPlugin({ providerId, providerName, homeHost, loginMethod })
               }]
             : [];
 
+          // 积分是纯余额，没有总量也没有已用量：只放在 balance 里。做成
+          // used: 0 的窗口，卡片会给它配上「剩余 100%」（#376）。细分钱包
+          // 一并写进 balance。
+          const parts = named.map((w) => `${w.name} ${Math.round(w.balance)}`);
           return {
-            balance: `${Math.round(total)} 积分`,
-            windows: [
-              { name: "积分余额", used: 0, display: `${Math.round(total)} 积分`, aside: true },
-              ...signinWindow,
-              ...named.map((w) => ({ name: w.name, used: 0, display: `${Math.round(w.balance)}`, aside: true })),
-            ],
+            balance: `${Math.round(total)} 积分${parts.length ? `（${parts.join(" · ")}）` : ""}`,
+            windows: signinWindow,
           };
         } catch (e) {
           if (e?.banned) return { error: e.message, signIn: "kept", windows: [] };
@@ -1342,7 +1348,7 @@ export const AutoclawCnAuthPlugin = makeAutoclawPlugin({
 export const _internal = {
   quotaRefusal, accountRefusal, bannedSaid,
   makePluginForTest: makeAutoclawPlugin,
-  md5Hex, jwtClaim, tokenFields, codeValue, bizHeaders, bareToken, newDeviceId,
+  platformTm, md5Hex, jwtClaim, tokenFields, codeValue, bizHeaders, bareToken, newDeviceId,
   dailySignin, signinStatus, maybeSignin, signinAccountKey, signinConfig, checkinOutcome, refreshTokens,
   fetchUserProfile, accountDeviceId, accountDisplayName, startLocalOAuth,
   FLAGGED, unflagged, unflag, autoclawRewriteBody, explained, OFFICIAL_SYSTEM_PROMPT, REFUSED_HINT,

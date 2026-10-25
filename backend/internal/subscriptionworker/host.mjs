@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { describeMethod, loadProvider, modelProtocol, normalizeModels, providerIDs, safeMethods } from "./registry.mjs";
-import { failure, headerObject, MAX_BODY, publicError, toHeaders, validateAuth, validateTarget } from "./validation.mjs";
+import { describeMethod, describeOptions, loadProvider, modelProtocol, normalizeModels, providerIDs, safeMethods, validateOptions } from "./registry.mjs";
+import { enterpriseHost, failure, headerObject, MAX_BODY, publicError, toHeaders, validateAuth, validateTarget } from "./validation.mjs";
 
 export function createHost({ scope, emit, relayCallback }) {
   const accounts = new Map();
@@ -17,8 +17,8 @@ export function createHost({ scope, emit, relayCallback }) {
   }
 
   async function save(account, auth) {
-    const next = validateAuth(account.provider, auth);
     const context = scope.getStore();
+    const next = validateAuth(account.provider, auth, context.enterpriseHost);
     const updateID = randomUUID();
     const promise = new Promise((resolve, reject) => acknowledgements.set(updateID, { resolve, reject }));
     const timer = setTimeout(() => {
@@ -31,6 +31,7 @@ export function createHost({ scope, emit, relayCallback }) {
       await emit({ id: context.id, event: "auth.update", update_id: updateID, resource_id: account.resourceID, auth: next });
       await promise;
       account.auth = next;
+      if (account.provider === "qwenwork-enterprise") account.enterpriseHost = context.enterpriseHost;
       account.loader = null;
     } catch (error) {
       account.saveError = error;
@@ -50,7 +51,7 @@ export function createHost({ scope, emit, relayCallback }) {
         await save(account, body);
         return { data: true };
       } } };
-      account.hooks = await loadProvider(command.provider, { client, magpie: { option: () => false } }, () => account.auth);
+      account.hooks = await loadProvider(command.provider, { client, magpie: { option: (provider, key) => provider === account.provider && scope.getStore()?.options?.[key] === true } }, () => account.auth);
       const config = {};
       await account.hooks.config?.(config);
       account.config = config.provider?.[command.provider];
@@ -58,16 +59,20 @@ export function createHost({ scope, emit, relayCallback }) {
       account.models = normalizeModels(command.provider, account.config);
       accounts.set(key, account);
     }
-    scope.getStore().account = account;
+    const context = scope.getStore();
+    context.account = account;
+    context.options = validateOptions(account.hooks, command.options);
     if (account.saveError) throw account.saveError;
     if (command.auth !== undefined && command.auth !== null) {
       const incoming = typeof command.auth === "string" ? JSON.parse(command.auth) : command.auth;
       const validated = validateAuth(command.provider, incoming);
+      if (command.provider === "qwenwork-enterprise") account.enterpriseHost = enterpriseHost(validated.enterpriseHost);
       if (JSON.stringify(validated) !== JSON.stringify(account.auth)) {
         account.auth = validated;
         account.loader = null;
       }
     }
+    context.enterpriseHost = account.enterpriseHost;
     return account;
   }
 
@@ -119,7 +124,7 @@ export function createHost({ scope, emit, relayCallback }) {
     const path = protocol === "chat" ? "/chat/completions" : protocol === "anthropic" ? "/messages" : protocol === "responses" ? "/responses" :
       `/models/${encodeURIComponent(model.api.id)}:${command.stream === false ? "generateContent" : "streamGenerateContent?alt=sse"}`;
     const url = base + path;
-    validateTarget(account.provider, url);
+    validateTarget(account.provider, url, scope.getStore().enterpriseHost);
     let body = command.body;
     if (typeof body === "string") {
       try { body = JSON.parse(body); } catch { throw failure("invalid_request", "Subscription requests must contain JSON"); }
@@ -201,7 +206,8 @@ export function createHost({ scope, emit, relayCallback }) {
     const session = { id: randomUUID(), provider: account.provider, resourceID: account.resourceID, state: "pending", servers: new Set(),
       controller: new AbortController(), auth: null, error: null, authorization: null, started: false };
     sessions.set(session.id, session);
-    const context = { ...scope.getStore(), session, controller: session.controller };
+    const context = { ...scope.getStore(), session, controller: session.controller,
+      ...(account.provider === "qwenwork-enterprise" ? { enterpriseHost: enterpriseHost(inputs.domain) } : {}) };
     session.context = context;
     session.timer = setTimeout(() => { session.state = "expired"; endSession(session); sessions.delete(session.id); }, 15 * 60 * 1000);
     session.timer.unref();
@@ -236,7 +242,7 @@ export function createHost({ scope, emit, relayCallback }) {
     if (session.controller.signal.aborted) return;
     if (result?.type !== "success") throw new Error("Subscription authorization failed");
     const { type: ignoredType, provider: ignoredProvider, ...rest } = result;
-    const auth = validateAuth(account.provider, { ...rest, type: "key" in rest || key ? "api" : "oauth", ...(key && !rest.key ? { key } : {}) });
+    const auth = validateAuth(account.provider, { ...rest, type: "key" in rest || key ? "api" : "oauth", ...(key && !rest.key ? { key } : {}) }, session.context.enterpriseHost);
     await scope.run(session.context, () => save(account, auth));
     session.auth = auth;
     session.state = "complete";
@@ -247,13 +253,18 @@ export function createHost({ scope, emit, relayCallback }) {
     if (command.operation === "providers") return { providers: providerIDs };
     const account = await accountFor(command);
     if (command.operation === "describe") return { provider: account.provider, name: account.config.name,
-      methods: safeMethods(account.hooks).map(describeMethod), refresh_lead_ms: account.hooks.auth?.refreshLead ?? null,
+      methods: safeMethods(account.hooks).map(describeMethod), options: describeOptions(account.hooks), refresh_lead_ms: account.hooks.auth?.refreshLead ?? null,
       models: Object.values(account.models).map((model) => ({ ...model, protocol: modelProtocol(model) })),
-      capabilities: { models: !!account.hooks.provider?.models, usage: !!account.hooks.auth?.usage, refresh: !!account.hooks.auth?.refresh } };
+      capabilities: { models: !!account.hooks.provider?.models, usage: !!account.hooks.auth?.usage, refresh: !!account.hooks.auth?.refresh, checkin: !!account.hooks.auth?.checkin } };
     if (command.operation === "import") { await save(account, validateAuth(command.provider, command.auth)); return { state: "complete", auth: account.auth }; }
     if (command.operation === "models") return models(account);
     if (command.operation === "refresh") { await fresh(account, true); return { auth: account.auth }; }
     if (command.operation === "usage") { await fresh(account); return account.hooks.auth?.usage ? account.hooks.auth.usage(async () => runtimeAuth(account), { id: account.provider, models: account.models }) : { windows: [] }; }
+    if (command.operation === "checkin") {
+      if (!account.hooks.auth?.checkin) throw failure("operation_not_supported", "This subscription provider does not support check-in");
+      await fresh(account);
+      return account.hooks.auth.checkin(async () => runtimeAuth(account));
+    }
     if (command.operation === "fetch") { await fetchModel(account, command); return undefined; }
     if (command.operation === "auth.start") return startAuth(account, command);
     if (command.operation === "auth.status") {
@@ -280,7 +291,7 @@ export function createHost({ scope, emit, relayCallback }) {
     const controller = new AbortController();
     active.set(command.id, controller);
     try {
-      const result = await scope.run({ id: command.id, resourceID: command.resource_id || "catalog", provider: command.provider, controller }, () => operation(command));
+      const result = await scope.run({ id: command.id, operation: command.operation, resourceID: command.resource_id || "catalog", provider: command.provider, controller }, () => operation(command));
       if (command.operation !== "fetch") await emit({ id: command.id, event: "result", result });
     } catch (error) { await emit({ id: command.id, event: "error", error: publicError(error) }); }
     finally { active.delete(command.id); }

@@ -16,6 +16,7 @@ type subscriptionOAuthSecret struct {
 	OrganizationID string    `json:"organization_id,omitempty"`
 	ClientID       string    `json:"client_id,omitempty"`
 	ClientSecret   string    `json:"client_secret,omitempty"`
+	GitHubHost     string    `json:"github_host,omitempty"`
 	DeviceCode     string    `json:"device_code,omitempty"`
 	Interval       int       `json:"interval,omitempty"`
 	NextPollAt     time.Time `json:"next_poll_at,omitempty"`
@@ -28,6 +29,7 @@ func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinS
 		OrganizationID string            `json:"organization_id"`
 		ClientID       string            `json:"client_id"`
 		ClientSecret   string            `json:"client_secret"`
+		GitHubHost     string            `json:"github_host"`
 		Inputs         map[string]string `json:"inputs"`
 	}
 	if len(invocation.Payload) > 0 && json.Unmarshal(invocation.Payload, &request) != nil {
@@ -56,7 +58,11 @@ func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinS
 		if !ok {
 			return pluginmeta.ActionResult{}, NewHTTPError(503, "provider_adapter_missing", "Copilot adapter is unavailable")
 		}
-		authorization, err := adapter.StartDeviceAuthorization(ctx)
+		secret.GitHubHost, err = normalizeCopilotSubscriptionHost(firstNonEmpty(request.GitHubHost, request.Inputs["github_host"]))
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		authorization, err := adapter.StartDeviceAuthorizationAt(ctx, secret.GitHubHost)
 		if err != nil {
 			return pluginmeta.ActionResult{}, err
 		}
@@ -158,7 +164,7 @@ func (s *Server) exchangeSubscriptionOAuth(ctx context.Context, definition built
 			return pluginmeta.ActionResult{}, NewHTTPError(503, "provider_adapter_missing", "Copilot adapter is unavailable")
 		}
 		var status string
-		credentials, status, err = adapter.PollDeviceAuthorization(ctx, secret.DeviceCode)
+		credentials, status, err = adapter.PollDeviceAuthorizationAt(ctx, secret.DeviceCode, secret.GitHubHost)
 		if err == nil && (status == "pending" || status == "slow_down") {
 			if status == "slow_down" {
 				secret.Interval += 5

@@ -68,6 +68,9 @@ const SITES = {
     platform: "workbuddy",
     ai: false,
     models: CN_MODELS,
+    // it serves the Claude models on Anthropic's Messages API too (see
+    // nativeOf)
+    messages: true,
   },
   "workbuddy-ai": {
     id: "workbuddy-ai",
@@ -102,6 +105,33 @@ const NPM = "@ai-sdk/openai-compatible"
 const hex = () => randomBytes(16).toString("hex")
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const api = (site) => site.endpoint + "/v2"
+
+// MESSAGES is the API SDK package for Anthropic's Messages shape, which
+// WorkBuddy serves the Claude models on, beside its chat completions:
+// <endpoint>/v1/messages. Those models are Anthropic's own, and their
+// thinking is asked for the way Anthropic asks it (thinking.type adaptive
+// with output_config.effort), which the chat endpoint has no field for: a
+// chat carries reasoning_effort alone, and WorkBuddy's chat endpoint gives
+// the same answer at every level, so an agent that picked max got no more
+// than one that picked low. See nativeOf.
+const NPM_MESSAGES = "@ai-sdk/anthropic"
+const apiMessages = (site) => site.endpoint + "/v1"
+
+// nativeOf is whether site serves model on Messages rather than chat: a
+// Claude model, on a site that serves Messages at all (site.messages).
+// Measured 2026-10-24 on WorkBuddy's China build, each model of
+// /v3/config's cli agent asked on /v1/messages: claude-opus-5.5,
+// claude-sonnet-5.5, claude-opus-5 and claude-opus-4.8-1m answered in
+// Anthropic's stream; glm-5.3 and deepseek-v4.1-flash answered 500, gpt-5.5
+// and kimi-k3-1 400. An account may still be refused a Claude model it has
+// no entitlement for (11158), which is the account's, not the endpoint's.
+// WorkBuddy AI (www.workbuddy.ai) has no such route: /v1/messages,
+// /v2/messages and /v1/messages?beta=true are all "404 Route Not Found"
+// there, whatever the model, so its models stay on chat, a Claude one too
+// should it list one.
+function nativeOf(site, model) {
+  return site?.messages === true && /^claude-/i.test(String(model ?? ""))
+}
 
 // ---- WorkBuddy's API ------------------------------------------------------
 
@@ -370,11 +400,32 @@ function signatureOf(content) {
 // words. A client that sends a tool result's images in a user message (pi's
 // "Attached image(s) from tool result:") puts that message right after the
 // result, and a turn keyed on it would be a turn of its own on every step.
+//
+// Anthropic's Messages shape says the same another way: a tool's result is a
+// tool_result block in a user message, after an assistant message of
+// tool_use blocks. Such a user message answers too, whatever text sits
+// beside the results (Claude Code puts a reminder there, a user's words typed
+// mid-task go there as well), and so does one right after it, as a chat's
+// does after role "tool". Messages that are neither the user's nor the
+// assistant's (Claude Code's role "system" ones, which carry a turn's
+// effort, its environment and its token count between the steps) stand
+// between them without changing which message answers.
 function answeredBefore(msgs, i) {
-  const prev = msgs[i - 1]
+  if (hasBlock(msgs[i], "tool_result")) return true
+  let j = i - 1
+  while (j >= 0 && msgs[j]?.role === "system") j--
+  const prev = msgs[j]
   if (prev === null || typeof prev !== "object") return false
   if (prev.role === "tool") return true
-  return prev.role === "assistant" && Array.isArray(prev.tool_calls) && prev.tool_calls.length > 0
+  if (prev.role === "user" && hasBlock(prev, "tool_result")) return true
+  if (prev.role !== "assistant") return false
+  if (Array.isArray(prev.tool_calls) && prev.tool_calls.length > 0) return true
+  return hasBlock(prev, "tool_use")
+}
+
+// hasBlock is whether message m's content holds a block of type.
+function hasBlock(m, type) {
+  return Array.isArray(m?.content) && m.content.some((p) => p?.type === type)
 }
 
 // turnKey names the user send a chat answers: the body's last user message
@@ -408,6 +459,100 @@ function conversationKey(chat, session) {
     if (sig) return `first:${sig}`
   }
   return ""
+}
+
+// isMessages says whether a request is an Anthropic Messages one, which
+// site serves the Claude models natively: its URL ends at /messages or at
+// the counting endpoint beside it (/v1/messages/count_tokens, which the
+// chat route's rewrites would otherwise turn into a chat), or (a body is
+// all there is to go on) its system is Anthropic's blocks rather than a
+// chat's string, and its tools carry input_schema where a chat's carry a
+// function's parameters. A chat's own tools can look either way, so the URL
+// decides when there is one.
+function isMessages(url, body) {
+  const path = (() => {
+    try {
+      return new URL(String(url ?? "")).pathname
+    } catch {
+      return ""
+    }
+  })()
+  if (path) return /\/messages(\/count_tokens)?$/.test(path)
+  const b = chatOf(body)
+  if (!b) return false
+  if (Array.isArray(b.system)) return true
+  const tools = Array.isArray(b.tools) ? b.tools : []
+  return tools.some((t) => t && typeof t === "object" && "input_schema" in t && !t.function)
+}
+
+// withoutUnsigned is a Messages body without the thinking blocks that carry
+// no signature, or whose signature WorkBuddy doesn't take.
+//
+// A conversation that began elsewhere — on WorkBuddy's chat route, whose
+// thinking comes back unsigned, or on any other provider — and goes on here
+// carries such blocks in its history, and WorkBuddy refuses the whole request
+// for one of them when another assistant message holds a signed block:
+// 11159 "Invalid `signature` in `thinking` block. The block is bound to a
+// different conversation" (or the same wrapped in 11133). Seen 2026-10-24 in
+// real Claude Code sessions moved onto this route mid-way: every request of
+// two of them refused, each attempt alike, until the session ended. Replayed
+// the same day, with a real account (20+ runs each):
+//
+//   unsigned thinking alone, no signed block anywhere ....... 200
+//   one unsigned-only assistant message + a signed one ...... 11159
+//   that message with the unsigned block taken out .......... 200
+//   unsigned and signed blocks in the SAME message .......... 200
+//   thinking.block_binding.prefix_mismatch_behavior=drop_block ... 11159
+//
+// So what binds a signed block is the history it sits in, and a message that
+// is thinking alone can't be part of it; whether that thinking is signed
+// makes no difference (a signed block alone is accepted too). The signature
+// itself isn't checked for where it came from: a block keeping a signature
+// of an unrelated turn, of another model (sonnet-5.5's on opus-5.5), or
+// another account's answers 200, while a truncated or altered one is 11159.
+// What WorkBuddy checks is that it reads as a signature.
+//
+// A block with no signature can't be verified by the model anyway, so
+// nothing it could use is lost. A message whose only block that was gets an
+// empty text block: measured the same day, that history still answers 200
+// with a signed turn after it (three runs), where the unsigned block itself
+// answers 11159 (three runs), and Anthropic's API refuses an empty text
+// block — 200 here means WorkBuddy takes it. The signed blocks, this
+// route's own, go back as they came, as Anthropic asks. A body without
+// unsigned thinking is body itself, byte for byte.
+function withoutUnsigned(body) {
+  const b = chatOf(body)
+  const msgs = b?.messages
+  if (!Array.isArray(msgs)) return body
+  let changed = false
+  for (const m of msgs) {
+    if (m?.role !== "assistant" || !Array.isArray(m.content)) continue
+    const kept = m.content.filter((p) => !(p?.type === "thinking" && !p.signature))
+    if (kept.length === m.content.length) continue
+    changed = true
+    m.content = kept.length ? kept : [{ type: "text", text: "" }]
+  }
+  return changed ? JSON.stringify(b) : body
+}
+
+// withoutSignedThinking is a Messages body without any thinking block at
+// all, for a refusal saying a signature is not one WorkBuddy made (see the
+// retry in the loader). An assistant message left with nothing gets an
+// empty text block, as withoutUnsigned leaves it. null for a body with no
+// thinking block to drop: the retry would send the same request again.
+function withoutSignedThinking(body) {
+  const b = chatOf(body)
+  const msgs = b?.messages
+  if (!Array.isArray(msgs)) return null
+  let dropped = 0
+  for (const m of msgs) {
+    if (m?.role !== "assistant" || !Array.isArray(m.content)) continue
+    const kept = m.content.filter((p) => p?.type !== "thinking")
+    if (kept.length === m.content.length) continue
+    dropped += m.content.length - kept.length
+    m.content = kept.length ? kept : [{ type: "text", text: "" }]
+  }
+  return dropped ? JSON.stringify(b) : null
 }
 
 // chatOf is a chat's body as the object it is, null for one that isn't: a
@@ -894,6 +1039,41 @@ function objectRoot(ps, root = ps, depth = 0) {
   return true
 }
 
+// Kimi (kimi-k3.1-pro) answers 400 "Invalid request parameters" to a oneOf
+// that has no type, at the root of a $ref's target or deeper, even when every
+// branch is an object (congee949, #378: dsh's REA tools, on workbuddy and
+// workbuddy-ai alike; a "type": "object" beside it is taken). typeUnions gives
+// such a oneOf type "object" when each branch is typed object itself or
+// through a chain of local $refs, and changes nothing else: a union of other
+// or mixed types, an anyOf, or a $ref that is missing, external or circular
+// is left as it came. It reports whether it changed anything.
+function typeUnions(s, root = s, depth = 0) {
+  if (!s || typeof s !== "object" || Array.isArray(s) || depth > 64) return false
+  let changed = false
+  if (!("type" in s) && Array.isArray(s.oneOf) && s.oneOf.length && s.oneOf.every((b) => objectBranch(root, b))) {
+    s.type = "object"
+    changed = true
+  }
+  for (const k of SUB_ONE) if (typeUnions(s[k], root, depth + 1)) changed = true
+  for (const k of SUB_LIST) for (const v of Array.isArray(s[k]) ? s[k] : []) if (typeUnions(v, root, depth + 1)) changed = true
+  for (const k of SUB_MAP) {
+    const m = s[k]
+    if (!m || typeof m !== "object" || Array.isArray(m)) continue
+    for (const v of Object.values(m)) if (typeUnions(v, root, depth + 1)) changed = true
+  }
+  return changed
+}
+
+// objectBranch says whether b is typed object, itself or where its local
+// $refs lead; a $ref seen before on the way is a cycle, and not.
+function objectBranch(root, b, seen = []) {
+  if (!b || typeof b !== "object" || Array.isArray(b)) return false
+  if ("type" in b) return b.type === "object"
+  if (typeof b.$ref !== "string" || seen.includes(b.$ref) || seen.length > 16) return false
+  const t = localRef(root, b)
+  return t !== b && objectBranch(root, t, [...seen, b.$ref])
+}
+
 // fitTools mends b's function tools in place: their parameters (fitSchema,
 // fitShape, objectRoot) and names. It reports whether it changed anything,
 // and the names it gave, each to the name the client knows (ours), so that the
@@ -927,6 +1107,7 @@ function fitTools(b) {
     }
     if (fitSchema(fn.parameters)) changed = true
     if (fitShape(fn.parameters)) changed = true
+    if (typeUnions(fn.parameters)) changed = true
     if (objectRoot(fn.parameters)) changed = true
   }
   if (theirs.size && Array.isArray(b.messages)) {
@@ -1417,9 +1598,11 @@ const compact = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/
 // usageOf is the account's credits, from its resource summary: the plan's
 // credits used against what the cycle grants, as magpie's built-in said —
 // the count itself too (amount of limit, in credits), for magpie to say it
-// as used or left beside the share (magpie#659).
+// as used or left beside the share (magpie#659). The free plan is said as a
+// plan: "Free" alone beside the account read as the model being free, and
+// routing as preferring it for that (#337).
 function usageOf(sum, plan) {
-  const out = { plan: plan || (sum?.IsPaidUser ? "Pro" : "Free"), windows: [] }
+  const out = { plan: plan || (sum?.IsPaidUser ? "Pro" : "Free plan"), windows: [] }
   let total = 0, used = 0
   for (const p of sum?.Packages ?? []) {
     total += capacity(p?.CycleTotalCapacity)
@@ -1543,11 +1726,16 @@ function variants(efforts) {
   return Object.fromEntries((efforts ?? []).map((e) => [e, { reasoningEffort: e }]))
 }
 
+// configModels is the site's own list as a provider's models, each on the
+// API it is served on: a Claude model on Messages, the rest on chat.
 function configModels(site) {
   return Object.fromEntries(site.models.map(([id, name, context, efforts]) => [id, {
     name,
     limit: { context, output: 0 },
     tool_call: true,
+    // OpenCode (and magpie's host) read a config model's package and URL
+    // from provider: { npm, api }, not api
+    ...(nativeOf(site, id) ? { provider: { npm: NPM_MESSAGES, api: apiMessages(site) } } : {}),
     ...(efforts ? { reasoning: true, variants: variants(efforts) } : {}),
   }]))
 }
@@ -1557,7 +1745,7 @@ function modelOf(site, provider, m) {
     id: m.id,
     providerID: provider.id,
     name: m.name,
-    api: { id: m.id, url: api(site), npm: NPM },
+    api: { id: m.id, url: nativeOf(site, m.id) ? apiMessages(site) : api(site), npm: nativeOf(site, m.id) ? NPM_MESSAGES : NPM },
     status: "active",
     headers: {},
     options: {},
@@ -1656,9 +1844,20 @@ function priceOf(d, promotions, now = Date.now()) {
 // and a default reasoning.effort. Those take low, high and max (each
 // reasoned under a real account, on four of them) and their own default.
 const EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"]
-function effortsOf(d) {
+function effortsOf(d, site, id) {
   const said = d.reasoning?.supportedEfforts
-  if (Array.isArray(said) && said.length) return said
+  if (Array.isArray(said) && said.length) {
+    // A Claude model on Messages takes max though the config's list stops
+    // at xhigh: measured 2026-10-24, output_config.effort "max" answered
+    // 200 on each Claude model, and on claude-opus-5.5 with more thinking
+    // than xhigh (11248 thinking tokens against 1999, one run each). How
+    // much more a level gives varies by model and run; what matters here
+    // is that a client picking max reaches the server as max, not xhigh.
+    // On chat max means nothing more (see NPM_MESSAGES), so a model there
+    // keeps what the config says.
+    if (nativeOf(site, id) && !said.includes("max")) return [...said, "max"]
+    return said
+  }
   if (d.supportsReasoning !== true) return []
   const own = d.reasoning?.effort
   const set = new Set(["low", "high", "max", ...(typeof own === "string" && EFFORT_ORDER.includes(own) ? [own] : [])])
@@ -1687,7 +1886,7 @@ async function liveModels(site, a) {
         m.output = d.maxOutputTokens
         m.images = d.supportsImages === true && !textOnly(site, id)
         Object.assign(m, priceOf(d, cfg.modelPromotions))
-        const es = effortsOf(d)
+        const es = effortsOf(d, site, id)
         if (es.length) {
           const canOff = d.reasoning?.canDisableThinking
           m.efforts = [...(!d.onlyReasoning && (canOff == null || canOff) ? ["none"] : []), ...es]
@@ -1793,7 +1992,10 @@ function makePlugin(site) {
         const auth = await getAuth()
         if (auth?.type !== "oauth") return {}
         return {
-          baseURL: api(site),
+          // no baseURL: a model's own api.url says where it is served —
+          // <endpoint>/v2 for a chat, <endpoint>/v1 for a Claude model on
+          // Messages. A provider-wide base would put /messages under /v2.
+          baseURL: "",
           apiKey: "",
           async fetch(input, init) {
             const stored = await getAuth()
@@ -1808,9 +2010,25 @@ function makePlugin(site) {
             sign(site, a, headers)
             let body = init?.body
             if (body === undefined && req) body = await req.clone().text()
-            body = withSystem(body)
-            const fit = fitted(body)
-            body = normalizeToolChoice(fit.body)
+            // An Anthropic request goes as the agent sent it: WorkBuddy
+            // serves these models on Messages itself, and the rewrites
+            // below (a default system message, the chat endpoint's
+            // max_tokens spelling, tool shapes, the move of a refused
+            // system prompt) exist for the chat endpoint alone. Claude
+            // Code's own system prompt is taken there as it is — measured
+            // 2026-10-24: the billing line, the "official CLI" line,
+            // Codex's and DeepSeek Harness's openings all answer on
+            // /v1/messages, where a chat is refused 11128.
+            const native = isMessages(req ? req.url : String(input), body)
+            let names = {}
+            if (!native) {
+              body = withSystem(body)
+              const fit = fitted(body)
+              body = normalizeToolChoice(fit.body)
+              names = fit.names
+            } else {
+              body = withoutUnsigned(body)
+            }
             attend(headers, body, session)
             const post = (b) =>
               fetch(req ? req.url : input, { ...init, method: init?.method ?? req?.method, headers, body: b }).catch((e) => unanswered(site, a, b, e, init?.signal))
@@ -1855,12 +2073,27 @@ function makePlugin(site) {
             const model = chatOf(body)?.model
             // a system prompt WorkBuddy refused before goes as the user's
             // words at once (see systemAsUser)
-            const sysKey = systemKey(body)
+            const sysKey = native ? "" : systemKey(body)
             if (sysKey && refusedSystems.has(sysKey)) body = systemAsUser(body) ?? body
-            const shaped = (b) => (endsAfterTools.has(model) ? replyAfterTools(b) ?? b : b)
+            const shaped = (b) => (!native && endsAfterTools.has(model) ? replyAfterTools(b) ?? b : b)
             let res = await send(shaped(body))
-            if (res.status === 400) {
-              let text = await res.text()
+            // a signature WorkBuddy's own signing didn't make — a session
+            // moved here from another provider keeps its thinking blocks,
+            // and a truncated or altered one reads the same way — is 11159
+            // too, and none of them can be told apart from a good one
+            // before sending. The request goes once more without them.
+            // Measured 2026-10-24: another vendor's signature answers 11159
+            // on its own, drop_block notwithstanding; without the block the
+            // same history answers 200. Only when the history holds a
+            // signature that isn't this route's own, so a session on this
+            // route never sends twice.
+            if (native && res.status >= 400) {
+              const text = await res.text()
+              const again = BAD_SIGNATURE.test(text) ? withoutSignedThinking(body) : null
+              if (again) res = await send(again)
+              else res = new Response(text, { status: res.status, statusText: res.statusText, headers: res.headers })
+            }
+            if (res.status === 400 && !native) {              let text = await res.text()
               const moved = REFUSED.test(text) && sysKey && !refusedSystems.has(sysKey) ? systemAsUser(body) : null
               if (moved) {
                 refusedSystems.add(sysKey)
@@ -1879,7 +2112,7 @@ function makePlugin(site) {
             }
             if (ours.has(res)) return res
             // renewed here: a mark the account had comes off
-            return res.status >= 400 ? explained(res) : kept(await renamed(res, fit.names), renewed ? "renewed" : "kept")
+            return res.status >= 400 ? explained(res) : kept(native ? res : await renamed(res, names), renewed ? "renewed" : "kept")
           },
         }
       },
@@ -1969,6 +2202,13 @@ const REFUSED_HINT =
   "WorkBuddy refused words in this client's prompt (most often its system prompt); use it from Hermes, OpenCode or Pi, or add another provider to this group"
 const REFUSED = /unapproved channel|illegal api invocation/i
 
+// BAD_SIGNATURE is WorkBuddy's refusal of a thinking block whose signature it
+// didn't make: internal code 11159, "Invalid `signature` in `thinking` block.
+// The block is bound to a different conversation", else 11133 wrapping
+// "thinking_signature_invalid: replay the original thinking block and
+// signature unchanged".
+const BAD_SIGNATURE = /thinking_signature_invalid|invalid\s+`?signature`?\s+in\s+`?thinking|block is bound to a different conversation|"internal_code"\s*:\s*"?11159/i
+
 // RESTRICTED_HINT is what the user can do about WorkBuddy's 403 code 11140
 // "request illegal", whose displayMsg says "Your account has been restricted
 // due to unusual activity" (magpie #1849): the account is out until WorkBuddy
@@ -2017,10 +2257,15 @@ async function explained(res) {
     v = JSON.parse(text)
   } catch {}
   const at = v?.error && typeof v.error === "object" ? v.error : v && typeof v === "object" ? v : null
-  const code = at?.data?.code ?? at?.code ?? v?.code ?? v?.data?.code
+  // the Messages route words its code two more ways (seen 2026-10-24):
+  // {"error": {"code": "400001", "internal_code": "11159", …}}, and
+  // {"code": 11102, "error": "11158:…"}, the code that says what happened
+  // first in a string error, where the outer one only says it failed
+  const inner = at?.internal_code ?? (typeof v?.error === "string" ? v.error.match(/^(\d{5}):/)?.[1] : undefined)
+  const codes = [inner, at?.data?.code, at?.code, v?.code, v?.data?.code].filter((c) => c != null).map(Number)
   const isRefused = REFUSED.test(text)
-  const isRestricted = !isRefused && (Number(code) === RESTRICTED_CODE || RESTRICTED_TEXT.test(text))
-  const isExhausted = !isRestricted && (code === 14018 || Number(code) === 14018 || EXHAUSTED_TEXT.test(text))
+  const isRestricted = !isRefused && (codes.includes(RESTRICTED_CODE) || RESTRICTED_TEXT.test(text))
+  const isExhausted = !isRestricted && (codes.includes(14018) || EXHAUSTED_TEXT.test(text))
   if (!isRefused && !isRestricted && !isExhausted) return again(text)
 
   let msg = text.trim()
@@ -2046,4 +2291,4 @@ export const WorkBuddyAuthPlugin = makePlugin(SITES.workbuddy)
 export const WorkBuddyAIAuthPlugin = makePlugin(SITES["workbuddy-ai"])
 
 // for tests
-export const _internal = { systemAsUser, systemKey, DEFAULT_SYSTEM, EDGE_READS, fitShape, replyAfterTools, AFTER_TOOLS_REFUSED, enterpriseUsageOf, notDesktop, textOnly, runsOutOf, packagesOf, endOf, enterpriseHeaders, enterpriseOf, liveModels, browserSignIn, withSystem, normalizeToolChoice, fitTools, fitted, renamed, unflagged, usageOf, desktopHeld, explained, REFUSED_HINT, RESTRICTED_HINT, EXHAUSTED_HINT, freeCredits, creditsOf, priceOf, fresh, SITES, renewing, renewed, SESSION, attend, turnKey, conversationKey, signatureOf }
+export const _internal = { typeUnions, systemAsUser, systemKey, DEFAULT_SYSTEM, EDGE_READS, fitShape, replyAfterTools, AFTER_TOOLS_REFUSED, enterpriseUsageOf, notDesktop, textOnly, runsOutOf, packagesOf, endOf, enterpriseHeaders, enterpriseOf, liveModels, browserSignIn, withSystem, normalizeToolChoice, fitTools, fitted, renamed, unflagged, usageOf, desktopHeld, explained, REFUSED_HINT, RESTRICTED_HINT, EXHAUSTED_HINT, freeCredits, creditsOf, priceOf, fresh, SITES, renewing, renewed, SESSION, attend, turnKey, conversationKey, signatureOf, isMessages, withoutUnsigned, withoutSignedThinking, answeredBefore, nativeOf, modelOf, configModels, API_MESSAGES: NPM_MESSAGES, API_CHAT: NPM }

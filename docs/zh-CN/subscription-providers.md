@@ -2,7 +2,7 @@
 
 Language: [English](../subscription-providers.md) | 简体中文 | [日本語](../ja/subscription-providers.md)
 
-TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Provider，以及社区清单中的全部 26 个账户 Provider ID。管理员将每个账户连接为 Provider 资源，加载模型，再通过 TokenHub 现有的认证、授权和用量计量链路路由请求。不需要运行 Magpie 服务。
+TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Provider，以及社区清单中的全部 29 个账户 Provider ID。管理员将每个账户连接为 Provider 资源，加载模型，再通过 TokenHub 现有的认证、授权和用量计量链路路由请求。不需要运行 Magpie 服务。
 
 账户适配器与 API Key 预设是不同的接入路径。购买应用订阅不代表自动获得 API 套餐、所有模型或无限用量。本集成不代表上游允许账户共享或自动化访问；账户使用应遵循对应套餐条款。
 
@@ -10,7 +10,7 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 
 - 社区适配器要求后端主机安装 **Node.js 22.23.1 或更新版本**。受支持的 Docker 镜像和原生发行包已包含 Node；源码部署需要将 Node 加入后端进程的 `PATH`。`start.sh` 会检查版本。运行时不安装 npm 包。
 - Claude Code 要求后端进程的 `PATH` 中存在官方 `claude` CLI。TokenHub 当前不打包或固定其版本。连接 Claude 账户前，需要在后端执行环境中安装；Docker 部署时应安装在容器内。缺少可执行文件时返回 `claude_cli_unavailable`。
-- Codex、Copilot、ChatGPT API、Gemini CLI 和 Antigravity 由 Go 代码接入。其余 26 个适配器使用应用管理的 Node worker，源码固定并随应用打包；不运行 Magpie 守护进程，不加载任意 JavaScript 插件。
+- Codex、Copilot、ChatGPT API、Gemini CLI 和 Antigravity 由 Go 代码接入。其余 29 个适配器使用应用管理的 Node worker，源码固定并随应用打包；不运行 Magpie 守护进程，不加载任意 JavaScript 插件。
 
 受支持的部署方式见[部署文档](deployment.md)。
 
@@ -20,14 +20,14 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 
 | Provider | TokenHub Provider 类型 | 连接方式 | 对外文本接口范围 |
 | --- | --- | --- | --- |
-| Claude Code | `claude_subscription` | 导入 setup token 或账户会话 | 通过官方 Claude Code CLI 提供 Chat |
+| Claude Code | `claude_subscription` | 浏览器 OAuth、setup token 或账户会话 | 通过官方 Claude Code CLI 提供 Chat |
 | OpenAI Codex | `openai_codex` | 现有 Codex OAuth 或显式账户导入 | Responses 及现有兼容转换 |
 | GitHub Copilot | `github-copilot-subscription` | GitHub 设备码 | Chat 和 Responses |
 | ChatGPT API | `chatgpt-subscription` | Sign in with ChatGPT，或显式导入 token | 使用直接 API token 的 Responses；独立于 Codex 后端 |
 | Gemini CLI | `gemini_cli_subscription` | 管理员提供桌面客户端配置的 Google 浏览器 OAuth | 通过 Code Assist 提供 Chat |
 | Antigravity | `antigravity_subscription` | 管理员提供桌面客户端配置的 Google 浏览器 OAuth | 通过 Code Assist 提供 Chat |
 
-全部 26 个社区集成对外提供 **Chat**，在上游模型支持时包含流式输出和调用方定义的工具。内部采用 Chat、Anthropic、Responses 或 Gemini 协议，不代表对外增加 Responses、Embedding 或媒体接口。下表每项还支持显式会话 JSON 导入；Kimi Work 仅支持此方式。
+全部 29 个社区集成对外提供 **Chat**，在上游模型支持时包含流式输出和调用方定义的工具。内部采用 Chat、Anthropic、Responses 或 Gemini 协议，不代表对外增加 Responses、Embedding 或媒体接口。下表每项还支持显式会话 JSON 导入；Kimi Work 仅支持此方式。
 
 | Provider | 清单 ID | 可用连接方式 |
 | --- | --- | --- |
@@ -35,6 +35,9 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 | Kiro | `kiro` | Google、GitHub、AWS Builder ID 或 IAM Identity Center 浏览器登录；`ksk_` API Key |
 | Qoder | `qoder` | 浏览器/设备授权；个人访问令牌 |
 | Qoder China | `qoder-cn` | 浏览器/设备授权；个人访问令牌；官方 Qoder 企业 VPC |
+| QwenWork | `qwenwork` | 浏览器/设备授权 |
+| QwenWork Enterprise | `qwenwork-enterprise` | 显式指定企业域名的浏览器/设备授权 |
+| GCP AI | `gcp-ai` | Google 桌面 OAuth；显式导入 authorized-user ADC JSON 并指定项目和区域 |
 | WorkBuddy | `workbuddy` | 浏览器 |
 | WorkBuddy AI | `workbuddy-ai` | 浏览器 |
 | Xiaomi MiMo | `mimo-app` | 小米账户浏览器/轮询授权；仅种子模型 |
@@ -77,7 +80,7 @@ Antigravity 工具参数会转换为其支持的 OpenAPI schema 子集，支持�
 
 Kimi Work 需要导入包含 `type: "oauth"`、`access`、`webToken`、`uid` 的对象，`deviceId` 可选。这些值应由管理员从本人有权使用的账户中显式获取；TokenHub 不读取桌面数据库。其他 Provider 的会话结构各不相同，必须与所选 Provider 匹配。
 
-Claude Code 可导入 `claude setup-token` 生成的长期 token，或包含 `claudeAiOauth.accessToken` 及可用刷新令牌元数据的会话 JSON。目录中的 `sonnet`、`opus`、`haiku`、`fable` 是请求时由 CLI 校验的别名，不是账户实时可用模型清单。
+Claude Code 可在编辑器中启动官方 `claude auth login --claudeai` 浏览器登录，完成本地回调或粘贴授权码。TokenHub 使用独立配置目录，只读取此次登录的凭据文件或对应的 macOS 钥匙串条目。也可导入 `claude setup-token` 生成的长期 token，或包含 `claudeAiOauth.accessToken` 及可用刷新令牌元数据的会话 JSON。目录中的 `sonnet`、`opus`、`haiku`、`fable` 是请求时由 CLI 校验的别名，不是账户实时可用模型清单。
 
 ### 远程浏览器与回调
 
@@ -86,6 +89,25 @@ Claude Code 可导入 `claude setup-token` 生成的长期 token，或包含 `cl
 部分上游流程通过 POST 发送凭据，或依赖本地落地页资源，单独复制 URL 无法替代。AutoClaw 国际版的 Google/z.ai 流程会打开后端主机上的 HTTP 回环地址落地页，需要在该主机浏览器操作，或使用能到达该进程回环监听器的可信隧道。容器有独立回环网络；普通 TokenHub 反向代理不会暴露这些临时监听器。Command Code 的浏览器流程不适合远程部署时，也可选择 API Key 登录。
 
 多实例部署时，同一次授权的启动、轮询、交换与取消必须落到同一 TokenHub 后端实例。社区授权 worker 与回调监听器保留进程内状态。已保存凭据可以通过数据库持久化和共享，但待完成授权及活动对话进程不能跨实例迁移。应为这些操作配置会话保持；仅共享 PostgreSQL 数据库并不能满足要求。
+
+## 账户选项和额度
+
+Copilot 支持 `auto`，包含常规模型列表为空的套餐。上游选择器会在推理前确定模型和协议；显式 Responses 请求要求选中的模型支持 Responses。企业托管用户可在设备授权时填写 `github_host`（`<tenant>.ghe.com`）；该域名随账户加密保存，并决定授权、会话交换和 API 的目的地。
+
+Gemini CLI 读取账户实验标志，在推理前将展示的模型 ID 映射为账户实际使用的上游 ID。手动指定项目不会跳过 Code Assist 的资格校验和开通。Antigravity 工具 schema 同时补齐上游要求的空数组元素 schema。
+
+GCP AI 需要 Google 桌面 OAuth client ID/secret、项目 ID 或编号，以及 Vertex 区域（默认 `global`）。也可通过专用导入方式粘贴包含 `client_id`、`client_secret`、`refresh_token` 的 `authorized_user` ADC JSON。TokenHub 验证项目访问权限、保存可刷新的凭据，并从 Vertex 发现 Gemini 文本模型。不导入服务账号 JSON、文件路径、宿主机 gcloud 配置或浏览器会话。项目需启用 Vertex AI 并授予该用户访问权限。没有接入 GCP Cloud Console 优惠金页面抓取，因此不会显示虚构的剩余优惠金额。
+
+Cursor 团队账户可在导入的会话 JSON 中显式填写正整数 `teamId`。团队请求头与用量查询绑定该资源，TokenHub 不读取宿主机当前选择的 Cursor 团队。
+
+QwenWork Enterprise 在授权时要求输入企业域名。TokenHub 将凭据、后续刷新和推理绑定到该精确域名，Go 传输层继续执行 DNS/IP 限制。每个企业账户的域名在令牌轮换后仍保留。
+
+Provider 编辑器的高级设置提供 Grok X 搜索（`x_search`）、Factory 仅标准额度（`standard_only`）和 Command Code 零数据保留（`zdr`）布尔选项。资源选项覆盖 Provider 默认值。启用 Factory 仅标准额度后，标准额度耗尽时推理返回可重试的额度错误，进入现有路由回退流程。选项的实际效果仍取决于上游支持和套餐资格。
+
+除 Nous Portal 和 GCP AI 外，社区账户均提供额度查询。适配器支持时，手动签到动作返回 `claimed`、`done`、`inactive` 或 `ineligible`；不会自动定时领取。Qoder 国际版可能要求原生设备身份，TokenHub 不采集此身份。特定模型的额度窗口和仅展示窗口不会与全账户额度耗尽混淆。
+
+固定版本清单共覆盖 35 个账户 Provider ID。Cloudflare Workers AI 和 OpenCode Zen Free 属于 API/公共服务，Kimi Desktop 是 agent 连接器，不属于额外的订阅账户 Provider。账号覆盖不等于复刻 Magpie 的全部功能：本机账号扫描、agent 切换、浏览器优惠金抓取及新增媒体生成接口不在此次集成范围内。
+
 
 ## 新增 API Key 预设
 
@@ -122,13 +144,17 @@ Claude 每个账户最多有一个运行中请求或等待工具结果的调用�
 
 可续租的账户租约跨后端实例覆盖 Claude 凭据重载、执行、等待工具结果、凭据持久化和进程清理。取消或超时后，清理流程仍会尝试保存已轮换凭据。临时存储故障在三次尝试后仍未恢复时，TokenHub 会保留私有临时恢复目录，并记录其路径，不记录凭据值。恢复需要人工处理；在账户凭据持久化恢复前应保留该目录。过期会话不会覆盖管理员并发修改。
 
-模型发现失败时可能回退到固定种子 ID。目录元数据区分 `subscription-account-live`、`subscription-account-fallback`、`subscription-account-empty`；回退模型的权益与价格仍未验证。上游原始变体保留为元数据，只有显式 reasoning-effort 值才成为可选推理强度。目录中存在某模型不代表账户有权限、价格已确认、上下文大小已确认或尚有额度。本版未将全部上游 usage hook 暴露为管理员额度视图。
+模型发现失败时可能回退到固定种子 ID。目录元数据区分 `subscription-account-live`、`subscription-account-fallback`、`subscription-account-empty`；回退模型的权益与价格仍未验证。上游原始变体保留为元数据，只有显式 reasoning-effort 值才成为可选推理强度。目录中存在某模型不代表账户有权限、价格已确认、上下文大小已确认或尚有额度。已支持的 worker 额度 hook 通过 `quota.read` 暴露，签到 hook 使用 `checkin.run`。仅针对特定模型的额度窗口不会将整个账户标记为耗尽。
 
 测试覆盖合成 HTTP 流程、协议转换、流式输出、工具调用、加密凭据轮换、取消、进程隔离和回调限制。**尚未使用真实付费账户验证当前套餐额度及全部上游登录流程。** Trae 仍处于实验阶段，上游非公开接口可能独立于 TokenHub 发生变化。已有 Codex 生图能力保持不变；此次新增接入不承诺新的 Embedding、图像、音频或视频能力。
 
 ## 固定来源与许可证
 
-- [yetone/magpie](https://github.com/yetone/magpie)，提交 `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1`，提供已审阅的内置清单、原生协议参考与 API 预设信息。MIT 许可证保存在 `tools/licenses/magpie-LICENSE`。`backend/internal/server/SUBSCRIPTION_THIRD_PARTY_NOTICES.md` 列明原生 Copilot、ChatGPT、Claude、Gemini CLI 和 Antigravity 的来源；相应平台包与生成的 API 预设包均包含第三方声明。
-- [magpie-community/plugins](https://github.com/magpie-community/plugins)，提交 `c9a0215f31d401ca4249fac33d03e6b97e44ebbb`，以 MIT 许可证提供静态打包的社区适配器。`backend/internal/subscriptionworker/vendor/PROVENANCE.json` 记录包版本与 SHA256，旁边保留上游许可证。
+- [yetone/magpie](https://github.com/yetone/magpie)，提交 `d580537201938b9f510070a213e09b46479e53ad`，提供已审阅的内置清单、原生协议参考。MIT 许可证保存在 `tools/licenses/magpie-LICENSE`。`backend/internal/server/SUBSCRIPTION_THIRD_PARTY_NOTICES.md` 列明原生 Copilot、ChatGPT、Claude、Gemini CLI 和 Antigravity 的来源；相应平台包与生成的 API 预设包均包含第三方声明。
+- [magpie-community/plugins](https://github.com/magpie-community/plugins)，提交 `5c9b7a413756c2b4f139290047085075c83eb3e8`，以 MIT 许可证提供静态打包的社区适配器。`backend/internal/subscriptionworker/vendor/PROVENANCE.json` 记录包版本与 SHA256，旁边保留上游许可证。
 
 Vendored 源码固定版本，与来源清单记录的字节内容一致。TokenHub 的适配修改位于 vendor 目录之外；运行时不会更新源码或安装包。
+
+API 预设信息仍单独固定于 `d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1`。
+
+可复核的账户清单与明确排除项保存在 [`tools/magpie-subscription-coverage.json`](../../tools/magpie-subscription-coverage.json)，自动检查会将其与运行时注册表和插件包逐项核对。

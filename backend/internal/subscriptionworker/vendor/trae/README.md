@@ -354,12 +354,15 @@ an empty answer.
 Trae CN gives credits for a daily check-in (每日签到); Trae Global has no
 such page, so this is CN only. magpie can press it
 once a day for each account (Settings, or the switch on the usage card),
-through `auth.checkin`: `claimed` when Trae grants the credits, `done`
-when the status says today's is in already, `inactive` when the page is
+through `auth.checkin`: `claimed` when the status says today's is in after
+the claim, `done` when it said so before it, `inactive` when the page is
 disabled, `ineligible` when the claim answers 9095 (this device has
-checked in today) or 9074 (to be done in Trae CN's own app; not asked
-again that day), and `failed` for a turned-away sign-in or any other
-answer, which is tried again later that day.
+checked in today) or 9074 (Trae did not take it for this account's
+device) or answers code 0 while the read-back still says the day is out,
+and `failed` for a turned-away sign-in or any answer that got nowhere,
+which is tried again later that day. An `ineligible` is the day's answer:
+magpie asks that account no more until tomorrow, and only reads its
+status.
 It asks Trae CN's own pages through
 this plugin's fetch, which sends them as the account, as Trae CN's IDE
 (3.3.104) sends them: its Cloud-IDE-JWT (renewed first when near its
@@ -390,10 +393,27 @@ answered it 9074 even with the client's headers.
   plugin's, on its own device, got 9074 (yetone/magpie#808, #1920); that
   this header is what changes it hasn't been tried on a real account
   yet. Every other account keeps its own device, and a file that can't be
-  read or made out, or holds no single device, changes nothing. Files:
-  macOS `~/Library/Application Support/Trae CN/…`, Windows
-  `%APPDATA%\Trae CN\…` (or `trae-cn`), Linux `~/.config/trae-cn/…`
-  (or `Trae CN`; not seen on a real Linux install).
+  read or made out, or holds no single device, changes nothing.
+- **Every profile is read (0.2.21):** a machine can hold more than one
+  Trae CN client profile — the IDE's and TRAE SOLO CN's each write their
+  own `storage.json`, and each names the account that profile is signed in
+  as, with that account's device. So every profile is read and the one
+  signed in as the account answers with its device, which is how two
+  accounts can each check in on a real client's device. Before, only the
+  first profile was read and it decided for all of them: a second
+  account's own profile was never seen, and one profile signed in as
+  someone else (or one file that didn't parse) hid every profile after it.
+  A profile that isn't signed in as the account, or that names no single
+  device, is passed over rather than ending the search. Files: macOS
+  `~/Library/Application Support/Trae CN/…` and `…/TRAE SOLO CN/…`, Windows
+  `%APPDATA%\Trae CN\…`, `…\TRAE SOLO CN\…` (or `trae-cn`), Linux
+  `~/.config/trae-cn/…`, `…/Trae CN/…`, `…/TRAE SOLO CN/…`. The IDE's
+  folder has been seen in a real install (macOS and Windows); TRAE SOLO
+  CN's name and its `iCubeAuthInfo://` keys are read as the same client
+  of the same realm writes them, which hasn't been checked against real
+  files — harmless if they differ, since a folder that isn't there, or a
+  key that isn't named, is simply not read. A client started with its own
+  `--user-data-dir` is not found: there is no list of those to read.
 - **Every other account's device (0.2.16):** its own device id, in the
   client's shape. Trae CN answered a claim on the plugin's 19-digit id
   9074, while the same account and token on a 16-digit id were taken
@@ -404,12 +424,37 @@ answered it 9074 even with the client's headers.
   keep the 19-digit device it signed in with.
 - **What comes back:** Trae's answer as it is. A 401 or code 1001 marks
   the account for a new sign-in. Code 9095 means this device has checked
-  in today, and that holds for the day. No device id is ever changed or
-  rotated to get round a 9095 or a 9074, and no account is given another
-  account's device or its own client's device unless the client is signed
-  in as that account. The credit a claim granted is its `credits` plus
-  its `extra_credits`, either alone; the status answer's is the fallback
-  when the claim says none.
+  in today, and that holds for the day. Code 9074 means Trae did not take
+  the claim for this account's device: its own words say the pool is busy,
+  which two measurements do not bear out — the same account, token and
+  headers were taken on a 16-digit id where a 19-digit one got 9074
+  (plugins#194), and on 2026-10-23 the same account and headers were taken
+  on a device id Trae had never seen while this account's own id answered
+  9074. The message says so, and does not send people to Trae CN's app,
+  which is not where the problem is. Signing the account in to a Trae CN
+  client on this machine is the one thing seen to change a 9074, but it
+  hasn't been tried on a real account, so it isn't named in the message;
+  nor is it named when the claim already rode a client's device, where it
+  would only tell the user to do what they did. No device id is ever
+  changed or rotated to get round a 9095 or a 9074, and no account is
+  given another account's device or its own client's device unless a
+  client is signed in as that account.
+- **A claim's code 0 is not the answer (0.2.22):** Trae answers a
+  claim code 0 for one that registered nothing, so the status is read back
+  after every claim and only a day that is in is reported as `claimed`.
+  Since 0.2.22 one that isn't is an `ineligible` — the day's answer, not a
+  `failed` to be tried again: a `failed` is retried with backoff for the
+  rest of the day and each retry is another claim, which for an account
+  Trae keeps answering code 0 would turn one claim a day into many, and a
+  status that lags a claim that did land would read as not in once and
+  claim again. Nothing is claimed again that day; the status alone is
+  read, so a lag that catches up is still reported as `done`. The credit a
+  claim granted is its `credits`, or its `extra_credits` when it names
+  only that; Trae CN's claim usually names neither
+  (`{"code":0,"message":"success"}`), and then the read-back's `credits`
+  is the credit. The two are never added: the status carries
+  `extra_credits` beside `credits` (100 and 100 on a real account) while
+  the day gives 100.
 
 Only `api.trae.cn`'s `/trae/api/` pages are sent this way; any other URL
 that isn't a chat request is still refused (400). Needs 0.1.4 or later.

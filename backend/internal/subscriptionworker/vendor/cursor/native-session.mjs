@@ -768,14 +768,19 @@ class NativeSession {
     if (estimate != null) this.stepEstimate = estimate
   }
   // waitForBatch gives the step batchWait from its latest call, answered
-  // call or count, not from its first. Cursor sends each call once the model
-  // has written its arguments, so a step of many long calls arrives over
-  // longer than batchWait while never pausing that long (#155).
+  // call, count, text or heartbeat, not from its first. Cursor sends each
+  // call once the model has written its arguments, so a step of many long
+  // calls arrives over longer than batchWait while never pausing that long
+  // (#155), and one long call is written with only heartbeats meanwhile
+  // (#377); a heartbeat-only stretch is bounded by quiet. The failure says
+  // how much of the batch came, so a stall reads apart from a slow call.
   waitForBatch() {
     clearTimeout(this.batchTimer)
+    const since = Date.now()
     this.batchTimer = later(() => {
-      if (this.segment.expected == null && this.segment.calls.length && !this.resultSubmitted) this.missingCount()
-      else this.fail({ status: 502, message: "Cursor did not complete its declared native tool batch" })
+      const s = this.segment
+      if (s.expected == null && s.calls.length && !this.resultSubmitted) this.missingCount()
+      else this.fail({ status: 502, message: `Cursor did not complete its declared native tool batch: ${s.calls.length} of ${s.expected ?? "?"} calls came, ${s.answered} answered here, none since ${Date.now() - since} ms` })
     }, this.limits.batchWait)
   }
   missingCount() {
@@ -1005,6 +1010,8 @@ class NativeSession {
                 } else if (u.num === 27) {
                   this.listed(num(uf, 1))
                   if (this.error) return
+                } else if (u.num === 13) {
+                  if (this.batchTimer && !this.terminal && this.state !== "awaiting-results") this.waitForBatch()
                 }
               }
               break

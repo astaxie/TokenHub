@@ -78,7 +78,7 @@ func (s *subscriptionWorkerSecrets) addHeaders(headers http.Header) {
 	}
 	for name, values := range headers {
 		switch strings.ToLower(name) {
-		case "accept", "accept-encoding", "accept-language", "cache-control", "content-length", "content-type", "pragma", "user-agent", "host", "connection", "anthropic-version", "anthropic-beta":
+		case "accept", "accept-encoding", "accept-language", "cache-control", "content-length", "content-type", "pragma", "user-agent", "host", "connection", "anthropic-version", "anthropic-beta", "connect-protocol-version":
 			continue
 		}
 		// Proprietary credentials include ptKey and X-Authorization. Treat

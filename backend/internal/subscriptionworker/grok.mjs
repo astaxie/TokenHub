@@ -31,7 +31,7 @@ function headers(access) {
     "x-grok-client-identifier": "grok-shell", "x-grok-client-mode": "headless", "User-Agent": "grok-shell/1.0.41", "content-type": "application/json" };
 }
 
-export async function createGrokProvider({ client }) {
+export async function createGrokProvider({ client, magpie }) {
   let renewal;
   const renewed = new Map();
   async function refresh(auth) {
@@ -75,6 +75,8 @@ export async function createGrokProvider({ client }) {
     },
     auth: {
       provider: "grok", refreshLead: LEAD, refresh,
+      options: [{ key: "x_search", label: "Native X search",
+        description: "Offers X search when tools are automatic, preserving existing search filters and explicit tool choices." }],
       methods: [{ type: "oauth", label: "Grok account (device code)", async authorize() {
         const { response, data } = await form("/device/code", { client_id: CLIENT, scope: SCOPE });
         if (!response.ok || !data.device_code || !(data.verification_uri_complete || data.verification_uri)) throw new Error("Grok device authorization failed");
@@ -96,7 +98,7 @@ export async function createGrokProvider({ client }) {
         return { baseURL: BASE, apiKey: "grok", async fetch(input, init = {}) {
           const request = new Request(input, { ...init, duplex: "half" });
           if (new URL(request.url).pathname !== "/v1/responses") return new Response(null, { status: 404 });
-          const body = _internal.rewrite(await request.text());
+          const body = _internal.rewrite(await request.text(), magpie?.option?.("grok", "x_search") === true);
           const parsed = JSON.parse(body);
           const model = _internal.modelOf(parsed.model);
           const extra = {};

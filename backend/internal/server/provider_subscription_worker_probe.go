@@ -11,7 +11,7 @@ func (a *SubscriptionWorkerAdapter) DefaultProbeRequest() ProviderProbeRequest {
 }
 func (a *SubscriptionWorkerAdapter) Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error) {
 	started := time.Now()
-	provider.Options = cloneStringMap(provider.Options)
+	provider.Options = mergedStringMap(provider.Options, resource.Options)
 	if provider.Options == nil {
 		provider.Options = map[string]string{}
 	}

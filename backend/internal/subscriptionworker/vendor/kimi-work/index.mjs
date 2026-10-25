@@ -414,13 +414,29 @@ function createPlugin({readSession=readDesktop,fetchImpl=globalThis.fetch,platfo
           return response;
         },
       }),
+      // The allowance is read with Kimi's web sign-in (kimiWeb), not the
+      // Work one: the desktop rewrites it in its file only while it runs, so
+      // a closed desktop leaves a token www.kimi.com answers 401 "Session
+      // expired". Through 0.1.10 every failure was thrown, which magpie
+      // shows as a bare "暂时无法获取额度" with the reason only in a tooltip,
+      // and a 401 marked the Work account signed out though chat (Work's
+      // own token) still worked. A failure is now the card's error, and
+      // the Work sign-in is kept.
       usage:async getAuth=>{
         const s=current(await getAuth());
-        const j=await jsonRequest(MEMBER+'GetSubscriptionStats',s.webToken,{});
-        const b=j.subscriptionBalance,used=percent(b?.amountUsedRatio);
-        return {plan:'Kimi Work · 会员共享额度',windows:used===undefined?[]:[{
-          name:'会员共享额度',used,
-        }]};
+        const plan='Kimi Work · 会员共享额度';
+        let j;
+        try {j=await jsonRequest(MEMBER+'GetSubscriptionStats',s.webToken,{});}
+        catch(error) {
+          const why=error?.status===401?'Kimi 网页登录已过期，打开一次 Kimi 桌面版即可刷新额度（对话不受影响）'
+            :error?.name==='TimeoutError'?'读取 Kimi 会员额度超时':String(error?.message||error);
+          console.warn('kimi-work: GetSubscriptionStats failed ('+(error?.status?'HTTP '+error.status:why)+')');
+          return {plan,windows:[],error:why,signIn:'kept'};
+        }
+        // Connect JSON leaves a zero out: a balance with no ratio is 0% used.
+        const b=pick(j,'subscriptionBalance','subscription_balance'),used=isObj(b)?percent(pick(b,'amountUsedRatio','amount_used_ratio')??0):undefined;
+        if(used===undefined)return {plan,windows:[],error:'Kimi 会员额度回复里没有共享额度（subscriptionBalance）',signIn:'kept'};
+        return {plan,windows:[{name:'会员共享额度',used}]};
       },
     },
     provider:{id:ID,models:async(provider,{auth}={})=>{
