@@ -34,7 +34,7 @@
       "temperature": true,
       "knowledge": "2025-05",
       "release_date": "2026-04-24",
-      "last_updated": "2026-04-24",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -48,11 +48,6 @@
         "context": 1000000,
         "output": 384000
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0
-      },
       "display_name": "DeepSeek V4 Flash",
       "type": "chat",
       "extra_capabilities": {
@@ -65,6 +60,18 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -89,7 +96,7 @@
       "temperature": true,
       "knowledge": "2025-04",
       "release_date": "2026-06-02",
-      "last_updated": "2026-06-02",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -104,18 +111,24 @@
         "context": 1000000,
         "output": 64000
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "Qwen3.7 Plus",
       "type": "chat",
       "extra_capabilities": {
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -139,7 +152,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-05-21",
-      "last_updated": "2026-05-21",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -153,18 +166,24 @@
         "context": 1000000,
         "output": 65536
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "Qwen3.7 Max",
       "type": "chat",
       "extra_capabilities": {
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -188,7 +207,7 @@
       "structured_output": true,
       "temperature": true,
       "release_date": "2026-03-27",
-      "last_updated": "2026-03-27",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -202,12 +221,6 @@
         "context": 202752,
         "output": 128000
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "GLM-5.1",
       "type": "chat",
       "extra_capabilities": {
@@ -220,6 +233,18 @@
           "summaries": true,
           "visibility": "summary"
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -251,7 +276,7 @@
       "temperature": true,
       "knowledge": "2025-05",
       "release_date": "2026-04-24",
-      "last_updated": "2026-04-24",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -265,11 +290,6 @@
         "context": 1000000,
         "output": 384000
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0
-      },
       "display_name": "DeepSeek V4 Pro",
       "type": "chat",
       "extra_capabilities": {
@@ -282,6 +302,18 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -294,7 +326,7 @@
       "tool_call": false,
       "temperature": true,
       "release_date": "2026-05-29",
-      "last_updated": "2026-05-29",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -308,12 +340,20 @@
         "context": 8192,
         "output": 8192
       },
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "display_name": "Wan2.7 Image Pro",
-      "type": "image-generation"
+      "type": "image-generation",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
+      }
     },
     {
       "id": "qwen3.6-flash",
@@ -337,7 +377,7 @@
       "structured_output": true,
       "temperature": true,
       "release_date": "2026-04-27",
-      "last_updated": "2026-04-27",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -353,12 +393,6 @@
         "context": 1000000,
         "output": 65536
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "Qwen3.6 Flash",
       "type": "chat",
       "extra_capabilities": {
@@ -371,6 +405,18 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -397,7 +443,7 @@
       "temperature": true,
       "knowledge": "2025-01",
       "release_date": "2026-01",
-      "last_updated": "2026-01",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -413,12 +459,6 @@
         "context": 262144,
         "output": 32768
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "Kimi K2.5",
       "type": "chat",
       "extra_capabilities": {
@@ -431,6 +471,18 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -444,7 +496,7 @@
       "tool_call": false,
       "temperature": true,
       "release_date": "2026-03-03",
-      "last_updated": "2026-03-03",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -458,12 +510,20 @@
         "context": 8192,
         "output": 8192
       },
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "display_name": "Qwen Image 2.0",
-      "type": "image-generation"
+      "type": "image-generation",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
+      }
     },
     {
       "id": "MiniMax-M2.5",
@@ -481,7 +541,7 @@
       },
       "temperature": true,
       "release_date": "2026-02-12",
-      "last_updated": "2026-02-12",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -496,12 +556,6 @@
         "input": 196601,
         "output": 24576
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "MiniMax-M2.5",
       "type": "chat",
       "extra_capabilities": {
@@ -514,6 +568,18 @@
           "summaries": true,
           "visibility": "summary"
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -540,7 +606,7 @@
       "temperature": true,
       "knowledge": "2025-01",
       "release_date": "2026-04-21",
-      "last_updated": "2026-04-21",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -556,12 +622,6 @@
         "context": 262144,
         "output": 16384
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "Kimi K2.6",
       "type": "chat",
       "extra_capabilities": {
@@ -574,6 +634,18 @@
           "summaries": true,
           "visibility": "summary"
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -587,7 +659,7 @@
       "tool_call": false,
       "temperature": true,
       "release_date": "2026-03-03",
-      "last_updated": "2026-03-03",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -601,12 +673,20 @@
         "context": 8192,
         "output": 8192
       },
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "display_name": "Qwen Image 2.0 Pro",
-      "type": "image-generation"
+      "type": "image-generation",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
+      }
     },
     {
       "id": "wan2.7-image",
@@ -618,7 +698,7 @@
       "tool_call": false,
       "temperature": true,
       "release_date": "2026-05-29",
-      "last_updated": "2026-05-29",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -632,12 +712,20 @@
         "context": 8192,
         "output": 8192
       },
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "display_name": "Wan2.7 Image",
-      "type": "image-generation"
+      "type": "image-generation",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
+      }
     },
     {
       "id": "glm-5",
@@ -659,7 +747,7 @@
       },
       "temperature": true,
       "release_date": "2026-02-11",
-      "last_updated": "2026-02-11",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -673,12 +761,6 @@
         "context": 202752,
         "output": 16384
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "GLM-5",
       "type": "chat",
       "extra_capabilities": {
@@ -691,6 +773,18 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -712,7 +806,7 @@
       "temperature": true,
       "knowledge": "2025-01",
       "release_date": "2025-12-03",
-      "last_updated": "2025-12-05",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -726,16 +820,24 @@
         "context": 131072,
         "output": 65536
       },
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "display_name": "DeepSeek V3.2",
       "type": "chat",
       "extra_capabilities": {
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
     },
     {
@@ -760,7 +862,7 @@
       "temperature": true,
       "knowledge": "2025-04",
       "release_date": "2026-04-02",
-      "last_updated": "2026-04-02",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -776,12 +878,6 @@
         "context": 1000000,
         "output": 65536
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "Qwen3.6 Plus",
       "type": "chat",
       "extra_capabilities": {
@@ -794,7 +890,590 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview"
       }
+    },
+    {
+      "id": "qwen3.8-max",
+      "name": "qwen3.8-max",
+      "display_name": "qwen3.8-max",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Singapore only; Global deployment",
+        "billing_unit": "Credits",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "parameter_status": "Only identity, listed modality and plan availability verified; hosted-provider parameter differences require validation.",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "promotion_note": "Limited-time 22:00-08:00 UTC+8 Credits multiplier: 0.4 for Qwen3.8 Max/Flash; 0.5 for the named DeepSeek versions. End date unpublished."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "qwen3.8-flash",
+      "display_name": "qwen3.8-flash",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Singapore only; Global deployment",
+        "billing_unit": "Credits",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "parameter_status": "Only identity, listed modality and plan availability verified; hosted-provider parameter differences require validation.",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "promotion_note": "Limited-time 22:00-08:00 UTC+8 Credits multiplier: 0.4 for Qwen3.8 Max/Flash; 0.5 for the named DeepSeek versions. End date unpublished."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "deepseek-v4.1-flash",
+      "display_name": "deepseek-v4.1-flash",
+      "family": "deepseek",
+      "category": "deepseek",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Singapore only; Global deployment",
+        "billing_unit": "Credits",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "parameter_status": "Only identity, listed modality and plan availability verified; hosted-provider parameter differences require validation.",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "promotion_note": "Limited-time 22:00-08:00 UTC+8 Credits multiplier: 0.4 for Qwen3.8 Max/Flash; 0.5 for the named DeepSeek versions. End date unpublished."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "name": "deepseek-v4-pro-0813",
+      "display_name": "deepseek-v4-pro-0813",
+      "family": "deepseek",
+      "category": "deepseek",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Singapore only; Global deployment",
+        "billing_unit": "Credits",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "parameter_status": "Only identity, listed modality and plan availability verified; hosted-provider parameter differences require validation.",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "promotion_note": "Limited-time 22:00-08:00 UTC+8 Credits multiplier: 0.4 for Qwen3.8 Max/Flash; 0.5 for the named DeepSeek versions. End date unpublished."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "name": "deepseek-v4-flash-0731",
+      "display_name": "deepseek-v4-flash-0731",
+      "family": "deepseek",
+      "category": "deepseek",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Singapore only; Global deployment",
+        "billing_unit": "Credits",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "parameter_status": "Only identity, listed modality and plan availability verified; hosted-provider parameter differences require validation.",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "promotion_note": "Limited-time 22:00-08:00 UTC+8 Credits multiplier: 0.4 for Qwen3.8 Max/Flash; 0.5 for the named DeepSeek versions. End date unpublished."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "glm-5.3",
+      "name": "glm-5.3",
+      "display_name": "glm-5.3",
+      "family": "glm",
+      "category": "glm",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Singapore only; Global deployment",
+        "billing_unit": "Credits",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "parameter_status": "Only identity, listed modality and plan availability verified; hosted-provider parameter differences require validation.",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "glm-5.2",
+      "name": "glm-5.2",
+      "display_name": "glm-5.2",
+      "family": "glm",
+      "category": "glm",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Singapore only; Global deployment",
+        "billing_unit": "Credits",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited.",
+        "parameter_status": "Only identity, listed modality and plan availability verified; hosted-provider parameter differences require validation.",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen-image-3.0-pro",
+      "name": "qwen-image-3.0-pro",
+      "display_name": "qwen-image-3.0-pro",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "image",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "required_endpoint": "Vendor media or realtime endpoint; exact plan integration unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: media/session endpoint mapping and native-unit plan metering require gateway support.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen-audio-3.0-tts-plus",
+      "name": "qwen-audio-3.0-tts-plus",
+      "display_name": "qwen-audio-3.0-tts-plus",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "audio"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "required_endpoint": "Vendor media or realtime endpoint; exact plan integration unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: media/session endpoint mapping and native-unit plan metering require gateway support.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen-audio-3.0-realtime-plus",
+      "name": "qwen-audio-3.0-realtime-plus",
+      "display_name": "qwen-audio-3.0-realtime-plus",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "required_endpoint": "Vendor media or realtime endpoint; exact plan integration unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: media/session endpoint mapping and native-unit plan metering require gateway support.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen-audio-3.0-asr-flash",
+      "name": "qwen-audio-3.0-asr-flash",
+      "display_name": "qwen-audio-3.0-asr-flash",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "required_endpoint": "Vendor media or realtime endpoint; exact plan integration unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: media/session endpoint mapping and native-unit plan metering require gateway support.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "wan3.0-video",
+      "name": "wan3.0-video",
+      "display_name": "wan3.0-video",
+      "family": "wan",
+      "category": "wan",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "required_endpoint": "Vendor media or realtime endpoint; exact plan integration unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: media/session endpoint mapping and native-unit plan metering require gateway support.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "happyhorse-1.1-i2v",
+      "name": "happyhorse-1.1-i2v",
+      "display_name": "happyhorse-1.1-i2v",
+      "family": "happyhorse",
+      "category": "happyhorse",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "image",
+          "text"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "required_endpoint": "Vendor media or realtime endpoint; exact plan integration unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: media/session endpoint mapping and native-unit plan metering require gateway support.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "happyhorse-1.1-t2v",
+      "name": "happyhorse-1.1-t2v",
+      "display_name": "happyhorse-1.1-t2v",
+      "family": "happyhorse",
+      "category": "happyhorse",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "required_endpoint": "Vendor media or realtime endpoint; exact plan integration unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: media/session endpoint mapping and native-unit plan metering require gateway support.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "happyhorse-1.1-r2v",
+      "name": "happyhorse-1.1-r2v",
+      "display_name": "happyhorse-1.1-r2v",
+      "family": "happyhorse",
+      "category": "happyhorse",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "required_endpoint": "Vendor media or realtime endpoint; exact plan integration unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: media/session endpoint mapping and native-unit plan metering require gateway support.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "auto",
+      "name": "auto",
+      "display_name": "auto",
+      "family": "alibaba",
+      "category": "alibaba",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: automatic model selection or decision-model operation requires a verified request contract and plan metering.",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview",
+        "pricing_note": "Credits are deducted dynamically by model, token usage, thinking and tools. Subscription fees are not a USD token price; confirm costs before route publication.",
+        "billing_unit": "Credits",
+        "access_region": "Singapore only; Global deployment",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "usage_scope": "Personal plan: interactive coding or agent tools only; custom application backends, automation scripts, noninteractive batches and account sharing are prohibited."
+      },
+      "last_updated": "2026-10-16"
     }
   ]
 }

@@ -497,7 +497,7 @@
       "structured_output": true,
       "temperature": false,
       "knowledge": "2026-04-30",
-      "last_updated": "2026-10-10",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -550,9 +550,9 @@
       "description": "Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters are unsupported while reasoning is enabled.",
       "metadata": {
         "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
-        "verified_at": "2026-10-10",
+        "verified_at": "2026-10-16",
         "availability": "active",
-        "catalog_reviewed_at": "2026-10-10",
+        "catalog_reviewed_at": "2026-10-16",
         "lifecycle_status": "active",
         "reasoning_supported": "true",
         "reasoning_default": "true",
@@ -561,7 +561,12 @@
         "reference_token_prices": "{\"input\":2,\"output\":10,\"cache_read\":0.1,\"cache_write\":2.5,\"tiers\":[{\"input\":4,\"output\":15.0,\"cache_read\":0.2,\"cache_write\":5.0,\"tier\":{\"type\":\"context\",\"size\":272000}}]}",
         "pricing_status": "unverified",
         "catalog_price_reference": "true",
-        "pricing_note": "Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure billing."
+        "pricing_note": "Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure billing.",
+        "ultrafast_source": "https://developers.openai.com/api/docs/guides/ultrafast-mode",
+        "ultrafast_pricing_source": "https://developers.openai.com/api/docs/pricing?latest-pricing=ultrafast",
+        "ultrafast_regions": "US,EU,global",
+        "ultrafast_reference_prices": "{\"currency\":\"USD\",\"unit\":\"million_tokens\",\"short\":{\"input\":12,\"cache_read\":0.6,\"cache_write\":15,\"output\":60},\"long\":{\"input\":24,\"cache_read\":1.2,\"cache_write\":30,\"output\":90},\"long_context_above\":272000}",
+        "ultrafast_note": "Responses service_tier=ultrafast requires separate rate limits and configured billing. These conditional list rates do not change saved Standard prices."
       },
       "category": "openai",
       "supported_parameters": [
@@ -613,7 +618,7 @@
       "structured_output": true,
       "temperature": false,
       "knowledge": "2026-04-30",
-      "last_updated": "2026-09-07",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -670,10 +675,15 @@
       "metadata": {
         "pricing_status": "unverified",
         "catalog_price_reference": "true",
-        "catalog_reviewed_at": "2026-10-10",
-        "verified_at": "2026-10-10",
+        "catalog_reviewed_at": "2026-10-16",
+        "verified_at": "2026-10-16",
         "pricing_note": "Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure billing.",
-        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6-astra"
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+        "ultrafast_source": "https://developers.openai.com/api/docs/guides/ultrafast-mode",
+        "ultrafast_pricing_source": "https://developers.openai.com/api/docs/pricing?latest-pricing=ultrafast",
+        "ultrafast_regions": "US,global",
+        "ultrafast_reference_prices": "{\"currency\":\"USD\",\"unit\":\"million_tokens\",\"short\":{\"input\":60,\"cache_read\":6,\"cache_write\":75,\"output\":300},\"long\":{\"input\":120,\"cache_read\":12,\"cache_write\":150,\"output\":450},\"long_context_above\":272000}",
+        "ultrafast_note": "Responses service_tier=ultrafast requires separate rate limits and configured billing. These conditional list rates do not change saved Standard prices."
       }
     },
     {
@@ -1039,7 +1049,7 @@
       "temperature": true,
       "knowledge": "2023-09",
       "release_date": "2024-05-13",
-      "last_updated": "2024-08-06",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -1061,7 +1071,21 @@
         "cache_read": 1.25
       },
       "display_name": "GPT-4o",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4o",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference",
+        "alias_target": "gpt-4o-2024-08-06",
+        "lifecycle_note": "Official OpenAI alias resolves to a deprecated snapshot. This notice does not apply to independent hosted copies."
+      }
     },
     {
       "id": "gpt-4",
@@ -1727,7 +1751,7 @@
       "temperature": true,
       "knowledge": "2023-09",
       "release_date": "2024-08-06",
-      "last_updated": "2024-08-06",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -1748,7 +1772,19 @@
         "cache_read": 1.25
       },
       "display_name": "GPT-4o (2024-08-06)",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4o",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference"
+      }
     },
     {
       "id": "text-embedding-ada-002",
@@ -2396,7 +2432,7 @@
       "temperature": true,
       "knowledge": "2023-09",
       "release_date": "2024-11-20",
-      "last_updated": "2024-11-20",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -2417,7 +2453,19 @@
         "cache_read": 1.25
       },
       "display_name": "GPT-4o (2024-11-20)",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4o",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference"
+      }
     },
     {
       "id": "o1",
@@ -2763,7 +2811,7 @@
       "temperature": true,
       "knowledge": "2024-04",
       "release_date": "2025-04-14",
-      "last_updated": "2025-04-14",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -2785,7 +2833,21 @@
         "cache_read": 0.5
       },
       "display_name": "GPT-4.1",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4.1",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference",
+        "alias_target": "gpt-4.1-2025-04-14",
+        "lifecycle_note": "Official OpenAI alias resolves to a deprecated snapshot. This notice does not apply to independent hosted copies."
+      }
     },
     {
       "id": "o3-deep-research",
@@ -2974,7 +3036,7 @@
       "temperature": true,
       "knowledge": "2024-04",
       "release_date": "2025-04-14",
-      "last_updated": "2025-04-14",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -2996,7 +3058,21 @@
         "cache_read": 0.1
       },
       "display_name": "GPT-4.1 mini",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4.1-mini",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference",
+        "alias_target": "gpt-4.1-mini-2025-04-14",
+        "lifecycle_note": "Official OpenAI alias resolves to a deprecated snapshot. This notice does not apply to independent hosted copies."
+      }
     },
     {
       "id": "gpt-4-turbo",
@@ -3311,7 +3387,7 @@
       "temperature": true,
       "knowledge": "2023-09",
       "release_date": "2024-07-18",
-      "last_updated": "2024-07-18",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -3333,7 +3409,21 @@
         "cache_read": 0.075
       },
       "display_name": "GPT-4o mini",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4o-mini",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference",
+        "alias_target": "gpt-4o-mini-2024-07-18",
+        "lifecycle_note": "Official OpenAI alias resolves to a deprecated snapshot. This notice does not apply to independent hosted copies."
+      }
     },
     {
       "id": "gpt-5-codex",
@@ -3717,6 +3807,153 @@
         }
       },
       "type": "image-generation"
+    },
+    {
+      "id": "gpt-4o-mini-2024-07-18",
+      "name": "gpt-4o-mini-2024-07-18",
+      "family": "gpt-mini",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2023-09",
+      "release_date": "2024-07-18",
+      "last_updated": "2026-10-16",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 128000,
+        "output": 16384
+      },
+      "cost": {
+        "input": 0.15,
+        "output": 0.6,
+        "cache_read": 0.075
+      },
+      "display_name": "gpt-4o-mini-2024-07-18",
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4o-mini",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference"
+      }
+    },
+    {
+      "id": "gpt-4.1-2025-04-14",
+      "name": "gpt-4.1-2025-04-14",
+      "family": "gpt",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2024-04",
+      "release_date": "2025-04-14",
+      "last_updated": "2026-10-16",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1047576,
+        "output": 32768
+      },
+      "cost": {
+        "input": 2,
+        "output": 8,
+        "cache_read": 0.5
+      },
+      "display_name": "gpt-4.1-2025-04-14",
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4.1",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference"
+      }
+    },
+    {
+      "id": "gpt-4.1-mini-2025-04-14",
+      "name": "gpt-4.1-mini-2025-04-14",
+      "family": "gpt-mini",
+      "attachment": true,
+      "reasoning": {
+        "supported": false
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": true,
+      "knowledge": "2024-04",
+      "release_date": "2025-04-14",
+      "last_updated": "2026-10-16",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1047576,
+        "output": 32768
+      },
+      "cost": {
+        "input": 0.4,
+        "output": 1.6,
+        "cache_read": 0.1
+      },
+      "display_name": "gpt-4.1-mini-2025-04-14",
+      "type": "chat",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-4.1-mini",
+        "lifecycle_source": "https://developers.openai.com/api/docs/deprecations",
+        "lifecycle_status": "deprecated",
+        "deprecated_date": "2026-10-14",
+        "shutdown_date": "2027-01-14",
+        "lifecycle_timezone": "unknown",
+        "replacement_model": "gpt-6-luna",
+        "pricing_status": "reference"
+      }
     }
   ]
 }

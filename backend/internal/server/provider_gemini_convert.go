@@ -12,6 +12,9 @@ import (
 // buildGeminiRequest renders an OpenAI chat request as a Gemini
 // generateContent request body.
 func buildGeminiRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
+	if err := validateGeminiCatalogContract(providerModel, req); err != nil {
+		return nil, err
+	}
 	if req.ParallelToolCalls != nil && !*req.ParallelToolCalls {
 		// Gemini has no generateContent equivalent for disabling parallel tool
 		// calls. Silently ignoring it would let a client believe a constraint

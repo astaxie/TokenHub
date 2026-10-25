@@ -1,5 +1,11 @@
 export const modelCatalogNoticeTranslations: Record<"en" | "ja" | "ru", Record<string, string>> = {
   en: {
+    "此别名已公告重定向计划，请核对实际服务型号。": "A redirect is scheduled; verify the model actually serving requests.",
+    "官方停用日期：{date}（时区未公布）": "Shutdown date: {date} (timezone not published)",
+    "计划重定向日期：{date}（时区未公布）": "Planned redirect date: {date} (timezone not published)",
+    "新用户访问限制日期：{date}（时区未公布）": "New-user access restriction date: {date} (timezone not published)",
+    "部分地域已进入 Legacy：{regions}；请核对部署地域。": "Legacy in selected regions: {regions}; verify your deployment region.",
+    "上述地域停用日期：{date}（时区未公布）": "Regional end-of-life date: {date} (timezone not published)",
     "官方入口已停用；请选择替代型号。": "The official endpoint has retired; choose a replacement model.",
     "官方已公告弃用，请规划迁移。": "The vendor has announced deprecation; plan a migration.",
     "此型号为重定向别名，实际模型可能已变化。": "This is a redirected alias; the underlying model may have changed.",
@@ -13,6 +19,12 @@ export const modelCatalogNoticeTranslations: Record<"en" | "ja" | "ru", Record<s
     "请先确认并保存上游模型成本，再发布新线路。": "Confirm and save upstream model costs before publishing a new route.",
   },
   ja: {
+    "此别名已公告重定向计划，请核对实际服务型号。": "転送が予定されています。実際に処理するモデルを確認してください。",
+    "官方停用日期：{date}（时区未公布）": "公式提供終了日：{date}（タイムゾーン未公表）",
+    "计划重定向日期：{date}（时区未公布）": "転送予定日：{date}（タイムゾーン未公表）",
+    "新用户访问限制日期：{date}（时区未公布）": "新規ユーザーのアクセス制限日：{date}（タイムゾーン未公表）",
+    "部分地域已进入 Legacy：{regions}；请核对部署地域。": "一部リージョンで Legacy 状態：{regions}。デプロイ先を確認してください。",
+    "上述地域停用日期：{date}（时区未公布）": "該当リージョンの提供終了日：{date}（タイムゾーン未公表）",
     "官方入口已停用；请选择替代型号。": "公式エンドポイントは提供終了です。代替モデルを選択してください。",
     "官方已公告弃用，请规划迁移。": "提供元が廃止を発表しました。移行を計画してください。",
     "此型号为重定向别名，实际模型可能已变化。": "転送用エイリアスです。実際のモデルが変更されている場合があります。",
@@ -26,6 +38,12 @@ export const modelCatalogNoticeTranslations: Record<"en" | "ja" | "ru", Record<s
     "请先确认并保存上游模型成本，再发布新线路。": "上流モデルの原価を確認・保存してから新しいルートを公開してください。",
   },
   ru: {
+    "此别名已公告重定向计划，请核对实际服务型号。": "Перенаправление запланировано; проверьте фактическую модель.",
+    "官方停用日期：{date}（时区未公布）": "Дата отключения: {date} (часовой пояс не указан)",
+    "计划重定向日期：{date}（时区未公布）": "Дата перенаправления: {date} (часовой пояс не указан)",
+    "新用户访问限制日期：{date}（时区未公布）": "Ограничение для новых пользователей: {date} (часовой пояс не указан)",
+    "部分地域已进入 Legacy：{regions}；请核对部署地域。": "Статус Legacy в отдельных регионах: {regions}; проверьте регион развёртывания.",
+    "上述地域停用日期：{date}（时区未公布）": "Дата отключения в указанных регионах: {date} (часовой пояс не указан)",
     "官方入口已停用；请选择替代型号。": "Официальная модель отключена; выберите замену.",
     "官方已公告弃用，请规划迁移。": "Поставщик объявил об устаревании модели; запланируйте миграцию.",
     "此型号为重定向别名，实际模型可能已变化。": "Это перенаправляемый псевдоним; базовая модель могла измениться.",

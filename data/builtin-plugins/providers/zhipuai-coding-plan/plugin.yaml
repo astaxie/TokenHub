@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://open.bigmodel.cn/api/coding/paas/v4"
       doc_url: "https://docs.bigmodel.cn/cn/coding-plan/overview"
       categories: []
-      models_count: 7
+      models_count: 8
 permissions:
   network:
     allow: []

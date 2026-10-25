@@ -2,7 +2,7 @@
 
 Language: English | [简体中文](zh-CN/model-catalog-updates.md) | [日本語](ja/model-catalog-updates.md)
 
-The 2026-10-10 catalog review adds current upstream model offers and records access, retirement, compatibility, and pricing boundaries. Catalog inclusion lets administrators discover an offer; it does not establish call support, account entitlement, live health, or production deployment.
+The catalog reviews through 2026-10-16 add upstream model offers and record access, retirement, compatibility, and pricing boundaries. Catalog inclusion lets administrators discover an offer; it does not establish call support, account entitlement, live health, or production deployment.
 
 ## Magpie subscription and account presets (2026-10-24)
 
@@ -14,7 +14,18 @@ Plan seeds are candidate IDs from the pinned source. They do not prove account e
 
 Maintain the pinned facts in `tools/magpie-provider-presets.mjs`, run `node tools/sync-magpie-provider-presets.mjs`, then `node tools/generate-builtin-provider-plugins.mjs`. The source commit and MIT attribution accompany the catalog. The bundled OAuth/subscription adapters run directly inside TokenHub; see [Deployment](deployment.md) for the Node runtime requirement.
 
-## Review scope
+## 2026-10-16 update
+
+This update refreshes lifecycle and conditional-price evidence, adds region- and plan-specific offers, and extends the basic native Gemini contract for `gemini-4-argon`. It includes domestic Kimi and GLM coverage, Alibaba and Tencent subscription catalogs, Voyage text embeddings, and candidates for specialized operations. A discovery in this review is not necessarily a new release; source update dates and model release dates remain distinct.
+
+- **Lifecycle dates:** MiniMax M2.5/M2.7 PAYG offers stop accepting new users on October 19 and retire on November 18, 2026. The corresponding subscription aliases instead redirect to `MiniMax-M3.1-Flash-Preview` from October 19 and remain accepted. Perplexity Agent retirement applies only to the named Agent offers. The new GPT-4 snapshot notices apply to exact official OpenAI offers; they do not retire third-party deployments or every similarly named alias. See the [MiniMax notice](https://platform.minimax.io/docs/guides/models-intro), [Perplexity changelog](https://docs.perplexity.ai/docs/resources/changelog), and [OpenAI deprecations](https://developers.openai.com/api/docs/deprecations).
+- **Date precision:** An announcement with only a calendar date is stored as `shutdown_date`, without an invented `shutdown_at` or vendor timezone. The backend and UI use the same conservative cutoff: 36 hours after that date's 00:00 UTC, when the calendar day has ended across civil timezones. This is TokenHub's boundary for new-route checks and status presentation, not an official shutdown instant or a promise that calls work until then. Date-only notices retain their calendar date and say that the timezone is unpublished. A future `redirect_date` is shown as a planned redirect; it does not disable the alias.
+- **Regional lifecycle:** Bedrock Legacy/EOL evidence records the affected regions and dates as advisory metadata. It is not a global retirement rule for the base model, a cross-region inference profile, or the original vendor's API. Verify the actual deployment region and account access against the [AWS lifecycle table](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html).
+- **Native Gemini scope:** `gemini-4-argon` uses a shared 1,048,576-token context window and a maximum of 65,536 output tokens in the supported default synchronous flow. Thinking levels are `low`, `medium`, and `high`. Background long decoding and continuation needed for output approaching the shared 1M window are not supported by this update. Those advertised limits must not be treated as default synchronous output capacity. See the [model card](https://ai.google.dev/gemini-api/docs/models/gemini-4-argon).
+- **Costs and plans:** MiniMax M3 retains input-length and Standard/Priority tiers, with China CNY and global USD quotes kept separate. Alibaba/Tencent Credits or points and personal-plan usage restrictions remain attached to the relevant offer. OpenAI Ultrafast and Gemini launch/future prices are conditional references; this update does not install tier selection, a promotional clock, currency conversion, or automatic metering at those prices. Unknown, zero, trial, and subscription reference values do not establish free usage. Confirm the applicable account costs before publishing a new route; existing configured costs and request snapshots are preserved. Sources include [MiniMax pricing](https://platform.minimax.io/docs/pricing/overview), [Alibaba personal plans](https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview), [Tencent plans](https://cloud.tencent.com/document/product/1823/130659), and [Ultrafast](https://developers.openai.com/api/docs/guides/ultrafast-mode).
+- **Catalog-only operations:** Dedicated Agent/Decisions APIs, realtime audio, OCR/Parse, contextualized or multimodal embeddings, and other entries marked `call_support=unsupported` remain visible candidates that cannot be published as new active routes. Standard chat or text-embedding support does not validate those request contracts or native billing units. The China MiniMax preview also remains catalog-only while compatibility with the configured endpoint is unverified. The update does not establish real-account entitlement, successful upstream inference, actual billing, or production readiness.
+
+## 2026-10-10 review scope
 
 The update covers the standard model templates, official Provider catalogs, and generated built-in Provider plugin catalogs. It includes OpenAI GPT-6 Sol/Luna and newer media offers; Claude 5.5 and Fable 5.1; Gemini 3.8 and Embedding 2; Qwen 3.8, text retrieval, images, and realtime models; DeepSeek V4.1 Flash; Grok 4.7 and Imagine; MiMo V2.6; Doubao Seed 2.1; Mistral Large 4; Cohere Embed 5/Rerank 4; Voyage Rerank 3; and reviewed Kimi, GLM, MiniMax, and StepFun offers. A model can appear under several regions or subscription providers, so Provider entries and unique model templates are different counts.
 
@@ -26,11 +37,11 @@ Newly listed image, audio, video, and live-session offers are catalog-only where
 
 ## What administrators see
 
-Provider selection, model creation, and the Provider inventory show notices for preview access, subscription or special access requirements, retirement dates, replacement IDs, redirected aliases, unsupported operations, and prices that require confirmation. Dates are rendered in the selected UI locale and local timezone.
+Provider selection, model creation, and the Provider inventory show notices for preview access, subscription or special access requirements, retirement dates, replacement IDs, redirected aliases, unsupported operations, and prices that require confirmation. Timestamps are rendered in the selected UI locale and local timezone; date-only notices keep the published calendar date without timezone conversion.
 
 - `active` describes the upstream offer. It does not guarantee that a particular account can call it.
 - `preview` retains the upstream preview status. `restricted` or an access requirement identifies a named plan, approval, or special entitlement.
-- `deprecated` requires migration planning. A valid `shutdown_at` becomes a new-route restriction when the time is reached.
+- `deprecated` requires migration planning. A valid `shutdown_at`, or the conservative cutoff for `shutdown_date`, becomes a new-route restriction when reached.
 - `retired` prevents publishing a new active route to that exact official offer.
 - `redirected` means the upstream accepts the old name but serves another model. It is not automatically treated as an unavailable endpoint.
 - `call_support=unsupported` prevents publishing a new active route even when the model remains visible in the catalog.
@@ -42,6 +53,8 @@ Standard templates retain their source `provider_catalog_id` and `provider_model
 Catalog imports also retain their source catalog and model IDs. Legacy catalog inventory without provenance uses only the current exact-match catalog lifecycle policy, so changing a Provider to an independently hosted catalog does not carry over an old official retirement notice. For an exact match, current lifecycle and call-support annotations replace earlier advisory fields, including restrictions that have been withdrawn. This response overlay does not rewrite stored annotations, configured costs, or existing routes.
 
 Declared `reasoning_effort_options` also participate in Chat request admission, including older imported inventories. Jev checks the requested effort value for both Chat and Responses, so an incompatible Claude candidate does not stop a request that another candidate can serve. Declared compatibility aliases remain accepted, while inventories without declared effort options retain their prior behavior. DeepSeek accepts `top_p`; it only takes effect in thinking mode within 0.95–1.0, with lower values clamped to 0.95, and is fixed at 1.0 in non-thinking mode. This qualification stays in metadata and does not cause valid requests to be rejected.
+
+Jev also checks a declared positive `max_output_tokens` limit for Chat and Responses candidates. Requests above that per-response limit skip the candidate even when its total context window is large enough; missing or malformed limits preserve existing eligibility.
 
 ## Confirm upstream costs before publishing
 
@@ -67,8 +80,9 @@ Catalog model `metadata` is transported as string values. Serialize structured e
 | `catalog_reviewed_at` | Review marker used to retain that exact model entry when a later public catalog refresh contains stale data. Re-review marked entries when upstream facts change. |
 | `availability`, `access_requirement` | `active`, `preview`, or `restricted`, plus any required plan or approval. Do not infer subscription access from PAYG availability. |
 | `lifecycle_status`, `lifecycle_source` | `active`, `deprecated`, `retired`, or `redirected`, supported by an official notice for the specific Provider offer. |
-| `shutdown_at`, `replacement_model` | Enforced shutdown time in RFC 3339 with an explicit offset, and the exact suggested replacement ID. Keep date-only uncertainty in `shutdown_time_note`; do not invent an authoritative hour. |
-| `redirect_at`, `replacement_note` | Planned upstream redirection and its conditions. A redirection date must not be modeled as an unconditional call failure. |
+| `shutdown_at`, `shutdown_date`, `replacement_model` | Use RFC 3339 with an explicit offset only for a published instant. Otherwise retain `shutdown_date` (`YYYY-MM-DD`) and the unknown timezone; backend/UI use the 36-hour conservative rule above. Preserve the exact replacement ID. |
+| `redirect_at`, `redirect_date`, `replacement_note` | Planned upstream redirection and its conditions, preserving timestamp or date-only precision. A future date is a plan, not a completed redirect or an unconditional call failure. |
+| `new_user_restriction_date`, `regional_lifecycle_status`, `regional_legacy_date`, `regional_eol_date`, `lifecycle_regions` | Keep new-account restrictions and region-specific Legacy/EOL evidence separate from global retirement. Regional fields are advisories, not an unconditional publication block. |
 | `call_support`, `support_note`, `call_support_scope` | Use `unsupported` for catalog-only operations; describe the missing contract or a scope such as `text-only`. Omitting the flag is not an account or integration test result. |
 | `pricing_status`, `pricing_source`, `pricing_note` | `reference` for usable catalog reference prices, `unverified` when an operator must configure costs, and `configured` after explicit operator review. Preserve source and conditions. |
 | `catalog_price_reference` | `true` means a populated price is only a reference. Combined with `pricing_status=unverified`, even positive input/output prices require explicit cost confirmation before a new active route can be published; saving as `configured` clears that restriction. |
