@@ -1,13 +1,13 @@
 # TokenHub standard model catalog.
 # Base snapshot from ThinkInAIXYZ/PublicProviderConf, with reviewed first-party updates.
 # Source updated_at: 2026-07-08T06:38:13.852Z.
-# First-party entries reviewed: 2026-10-10. See per-model metadata for scope and sources.
+# First-party entries reviewed: 2026-10-16. See per-model metadata for scope and sources.
 version: 1
 models:
   - name: gpt-6.1-sol
     title: GPT-6.1 Sol
-    description: Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters are
-      unsupported while reasoning is enabled.
+    description: Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters
+      are unsupported while reasoning is enabled.
     category: openai
     family: gpt
     modality: chat
@@ -63,17 +63,25 @@ models:
       reasoning_supported: 'true'
       reasoning_default: 'true'
       reasoning_effort_options: low,medium,high,xhigh,max
-      verified_at: '2026-10-10'
+      verified_at: '2026-10-16'
       tool_call_note: Tool calling requires Responses; Chat Completions supports requests without tools.
-      sampling_note: temperature, top_p and log probabilities are unsupported; this model does not support reasoning effort
-        none.
-      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output
-        rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure
-        billing.
-      catalog_reviewed_at: '2026-10-10'
+      sampling_note: temperature, top_p and log probabilities are unsupported; this model does not support reasoning
+        effort none.
+      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double
+        and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier
+        notes do not configure billing.
+      catalog_reviewed_at: '2026-10-16'
       availability: active
       pricing_status: unverified
       catalog_price_reference: 'true'
+      lifecycle_status: active
+      reference_token_prices: '{"input":2,"output":10,"cache_read":0.1,"cache_write":2.5,"tiers":[{"input":4,"output":15.0,"cache_read":0.2,"cache_write":5.0,"tier":{"type":"context","size":272000}}]}'
+      ultrafast_source: https://developers.openai.com/api/docs/guides/ultrafast-mode
+      ultrafast_pricing_source: https://developers.openai.com/api/docs/pricing?latest-pricing=ultrafast
+      ultrafast_regions: US,EU,global
+      ultrafast_reference_prices: '{"currency":"USD","unit":"million_tokens","short":{"input":12,"cache_read":0.6,"cache_write":15,"output":60},"long":{"input":24,"cache_read":1.2,"cache_write":30,"output":90},"long_context_above":272000}'
+      ultrafast_note: Responses service_tier=ultrafast requires separate rate limits and configured billing. These conditional
+        list rates do not change saved Standard prices.
   - name: gpt-6-sol
     title: GPT-6 Sol
     description: Use Responses for tools with reasoning. Chat Completions tool calling requires reasoning_effort=none. Sampling
@@ -1951,26 +1959,30 @@ models:
     - tools
     metadata:
       upstream_source: https://platform.minimax.io/docs/guides/text-generation
-      verified_at: '2026-10-10'
+      verified_at: '2026-10-16'
       availability: preview
       pricing_status: unverified
-      access_note: Restricted to M Plan and MiniMax Code. Subscription Key is not interchangeable with PAYG key. CN endpoint
-        availability requires separate verification.
-      pricing_note: Subscription quota only; no PAYG per-token rate verified.
+      access_note: Restricted to M Plan and MiniMax Code. Subscription Key is not interchangeable with PAYG key. CN
+        endpoint availability requires separate verification.
+      pricing_note: Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before
+        publication.
       reasoning_effort_options: low,medium,high,xhigh,max
       reasoning_effort_default: max
       reasoning_required: 'true'
       output_limit_status: unverified
       api_note: Anthropic output_config.effort; Chat Completions reasoning_effort; Responses reasoning.effort.
-      catalog_reviewed_at: '2026-10-10'
+      catalog_reviewed_at: '2026-10-16'
       lifecycle_status: active
       reasoning_supported: 'true'
       reasoning_default: 'true'
       endpoints: chat/completions
-      access_requirement: Requires the named subscription plan; public API entitlement is separate.
+      access_requirement: Requires the named subscription plan and a permitted account; listing is not account entitlement.
       source: tokenhub-standard-catalog
       provider_catalog_id: minimax-coding-plan
       provider_model_id: MiniMax-M3.1-Flash-Preview
+      pricing_source: https://platform.minimax.io/docs/m-plan/intro
+      billing_unit: subscription_quota
+      access_region: Global
   - name: speech-2.8-hd
     title: MiniMax Speech 2.8 HD
     category: minimax
@@ -2927,13 +2939,19 @@ models:
       reasoning_supported: 'true'
       reasoning_default: 'true'
       reasoning_effort_options: low,medium,high,xhigh,max
-      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double and output
-        rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier notes do not configure
-        billing.
+      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double
+        and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier
+        notes do not configure billing.
       pricing_status: unverified
       catalog_price_reference: 'true'
-      catalog_reviewed_at: '2026-10-10'
-      verified_at: '2026-10-10'
+      catalog_reviewed_at: '2026-10-16'
+      verified_at: '2026-10-16'
+      ultrafast_source: https://developers.openai.com/api/docs/guides/ultrafast-mode
+      ultrafast_pricing_source: https://developers.openai.com/api/docs/pricing?latest-pricing=ultrafast
+      ultrafast_regions: US,global
+      ultrafast_reference_prices: '{"currency":"USD","unit":"million_tokens","short":{"input":60,"cache_read":6,"cache_write":75,"output":300},"long":{"input":120,"cache_read":12,"cache_write":150,"output":450},"long_context_above":272000}'
+      ultrafast_note: Responses service_tier=ultrafast requires separate rate limits and configured billing. These conditional
+        list rates do not change saved Standard prices.
   - name: "step-3.7-flash"
     title: "Step 3.7 Flash"
     description: "StepFun's flagship multimodal reasoning model for agents, coding, image understanding, and video understanding. It supports a 256K-token context window, tool calling, and low, medium, or high reasoning effort."
@@ -8586,3 +8604,1294 @@ models:
       source: tokenhub-standard-catalog
       provider_catalog_id: amazon-bedrock
       provider_model_id: amazon.nova-2-multimodal-embeddings-v1:0
+  # Additional first-party templates reviewed on 2026-10-16.
+  - name: cohere-transcribe-03-2026
+    title: Cohere Transcribe
+    category: cohere
+    family: cohere-transcribe
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://docs.cohere.com/v2/docs/models
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: evaluation
+      lifecycle_status: active
+      pricing_status: unverified
+      max_input_file_size_label: 25MB
+      pricing_source: https://cohere.com/pricing
+      availability_note: Rate-limited API evaluation; production deployment uses Model Vault.
+      pricing_note: Production Model Vault is billed per instance-hour; native unit prices unverified.
+      call_support: unsupported
+      support_note: 'Catalog only: native Audio Transcriptions payloads and billing require a dedicated adapter.'
+      endpoints: v2/audio/transcriptions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: cohere-transcribe-03-2026
+  - name: cohere-transcribe-arabic-07-2026
+    title: Cohere Transcribe Arabic
+    category: cohere
+    family: cohere-transcribe
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://docs.cohere.com/v2/docs/models
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: evaluation
+      lifecycle_status: active
+      pricing_status: unverified
+      max_input_file_size_label: 25MB
+      pricing_source: https://cohere.com/pricing
+      availability_note: Rate-limited API evaluation; production deployment uses Model Vault.
+      pricing_note: Production Model Vault is billed per instance-hour; native unit prices unverified.
+      call_support: unsupported
+      support_note: 'Catalog only: native Audio Transcriptions payloads and billing require a dedicated adapter.'
+      endpoints: v2/audio/transcriptions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: cohere-transcribe-arabic-07-2026
+  - name: north-small-translate-1-0
+    title: North Small Translate
+    category: cohere
+    family: north
+    modality: chat
+    context_window: 16000
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.cohere.com/v2/docs/north-small-translate-1.0
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: evaluation
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.cohere.com/v2/docs/north-small-translate-1.0
+      pricing_note: Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish
+        unrestricted free production usage.
+      availability_note: Trial and production API keys are free only within the published rate limits; contact sales
+        for production deployment.
+      license: CC-BY-NC-4.0 (open weights)
+      call_support: unsupported
+      support_note: 'Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible
+        host adapter has not been verified.'
+      endpoints: v2/chat
+      max_output_tokens: '16000'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: north-small-translate-1-0
+  - name: parse-v5.0
+    title: Cohere Parse 5
+    category: cohere
+    family: cohere-parse
+    modality: ocr
+    context_window: 8192
+    input_modalities:
+    - pdf
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - ocr
+    - pdf_input
+    - vision
+    supported_parameters:
+    - pdf_input
+    - image_input
+    metadata:
+      upstream_source: https://docs.cohere.com/v2/docs/parse
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      operation: document_parsing
+      input_file_types: PDF,PPT,JPEG (Base64)
+      output_format: Markdown
+      pricing_source: https://cohere.com/pricing
+      pricing_note: Model Vault per-instance rates must not be converted into token rates; serverless unit price unverified.
+      call_support: unsupported
+      support_note: 'Catalog only: native Cohere Parse API payloads and metering are not implemented.'
+      endpoints: v2/parse
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: parse-v5.0
+  - name: tiny-aya-earth
+    title: Tiny Aya Earth
+    category: cohere
+    family: aya
+    modality: chat
+    context_window: 8000
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.cohere.com/v2/docs/tiny-aya
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.cohere.com/v2/docs/tiny-aya
+      pricing_note: Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish
+        unrestricted free production usage.
+      call_support: unsupported
+      support_note: 'Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible
+        host adapter has not been verified.'
+      endpoints: v2/chat
+      max_output_tokens: '8000'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: tiny-aya-earth
+  - name: tiny-aya-fire
+    title: Tiny Aya Fire
+    category: cohere
+    family: aya
+    modality: chat
+    context_window: 8000
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.cohere.com/v2/docs/tiny-aya
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.cohere.com/v2/docs/tiny-aya
+      pricing_note: Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish
+        unrestricted free production usage.
+      call_support: unsupported
+      support_note: 'Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible
+        host adapter has not been verified.'
+      endpoints: v2/chat
+      max_output_tokens: '8000'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: tiny-aya-fire
+  - name: tiny-aya-global
+    title: Tiny Aya Global
+    category: cohere
+    family: aya
+    modality: chat
+    context_window: 8000
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.cohere.com/v2/docs/tiny-aya
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.cohere.com/v2/docs/tiny-aya
+      pricing_note: Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish
+        unrestricted free production usage.
+      call_support: unsupported
+      support_note: 'Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible
+        host adapter has not been verified.'
+      endpoints: v2/chat
+      max_output_tokens: '8000'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: tiny-aya-global
+  - name: tiny-aya-water
+    title: Tiny Aya Water
+    category: cohere
+    family: aya
+    modality: chat
+    context_window: 8000
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    supported_parameters: []
+    metadata:
+      upstream_source: https://docs.cohere.com/v2/docs/tiny-aya
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.cohere.com/v2/docs/tiny-aya
+      pricing_note: Production unit pricing is unverified; API evaluation access and open-weight licenses do not establish
+        unrestricted free production usage.
+      call_support: unsupported
+      support_note: 'Catalog only: native Cohere Chat V2 is documented; compatibility with the configured OpenAI-compatible
+        host adapter has not been verified.'
+      endpoints: v2/chat
+      max_output_tokens: '8000'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: cohere
+      provider_model_id: tiny-aya-water
+  - name: mistral-ocr-4-1
+    title: Mistral OCR 4.1
+    category: mistral
+    family: mistral-ocr
+    modality: ocr
+    context_window: 0
+    input_modalities:
+    - pdf
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - ocr
+    - pdf_input
+    - vision
+    supported_parameters:
+    - pdf_input
+    - image_input
+    metadata:
+      upstream_source: https://docs.mistral.ai/models/ocr-4-1
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      operation: ocr
+      ga_date: '2026-08-31'
+      pricing_source: https://docs.mistral.ai/models/ocr-4-1
+      billing_unit: page,annotated_page
+      usd_per_thousand_pages: '4'
+      usd_per_thousand_annotated_pages: '5'
+      pricing_note: Native USD per 1000 pages or annotated pages; not token pricing.
+      context_limit_status: unverified
+      call_support: unsupported
+      support_note: 'Catalog only: native OCR page extraction, annotations and per-page billing are not implemented.'
+      endpoints: ocr
+      source: tokenhub-standard-catalog
+      provider_catalog_id: mistral
+      provider_model_id: mistral-ocr-4-1
+  - name: zai-glm-5-3
+    title: Z.ai GLM 5.3 (Mistral)
+    category: mistral
+    family: glm
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 1.4
+    output_price_usd_per_1m: 4.4
+    cache_read_price_usd_per_1m: 0.14
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - max_tokens
+    - tools
+    - response_format
+    metadata:
+      upstream_source: https://docs.mistral.ai/models/zai-glm-5-3
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.mistral.ai/models/zai-glm-5-3
+      billing_unit: input_tokens,output_tokens,cache_read_tokens
+      pricing_note: Mistral-hosted USD per million token list rates. Do not substitute the Z.AI direct price.
+      release_date_note: Mistral changelog records GA on September 28; the model card dates the upstream model September
+        15.
+      endpoints: chat/completions
+      reasoning_controls_status: unverified
+      catalog_price_reference: 'true'
+      max_output_tokens: '128000'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: mistral
+      provider_model_id: zai-glm-5-3
+  - name: nvidia/nemotron-3.5-lightning-30b-a3b
+    title: Nemotron 3.5 Lightning
+    category: custom
+    family: nemotron
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    supported_parameters: []
+    metadata:
+      upstream_source: https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/modelcard
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: preview
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/modelcard
+      pricing_note: Development/trial endpoint availability does not establish a production per-token price; production
+        unit rates are unverified.
+      output_limit_status: unverified
+      call_support: unsupported
+      support_note: 'Catalog only: model-specific reasoning/modality or document-parsing contract and production metering
+        have not been verified.'
+      endpoints: chat/completions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: nvidia
+      provider_model_id: nvidia/nemotron-3.5-lightning-30b-a3b
+  - name: nvidia/nemotron-3.5-super-vl-120b-a12b
+    title: Nemotron 3.5 Super VL
+    category: custom
+    family: nemotron
+    modality: chat
+    context_window: 262000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - video_input
+    supported_parameters:
+    - image_input
+    - video_input
+    metadata:
+      upstream_source: https://build.nvidia.com/nvidia/nemotron-3.5-super-vl-120b-a12b
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: restricted
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://build.nvidia.com/nvidia/nemotron-3.5-super-vl-120b-a12b
+      pricing_note: Development/trial endpoint availability does not establish a production per-token price; production
+        unit rates are unverified.
+      output_limit_status: unverified
+      context_limit_label: 262K
+      release_date_status: unverified
+      reasoning_control_note: Upstream example uses chat_template_kwargs.enable_thinking; no gateway contract verified.
+      call_support: unsupported
+      support_note: 'Catalog only: model-specific reasoning/modality or document-parsing contract and production metering
+        have not been verified.'
+      endpoints: chat/completions
+      availability_stage: early-access
+      access_requirement: Requires NVIDIA early-access entitlement; development availability does not establish production
+        access.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: nvidia
+      provider_model_id: nvidia/nemotron-3.5-super-vl-120b-a12b
+  - name: nvidia/nemotron-parse-2.0
+    title: Nemotron Parse 2.0
+    category: custom
+    family: nemotron
+    modality: ocr
+    context_window: 0
+    input_modalities:
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - ocr
+    - vision
+    supported_parameters:
+    - image_input
+    metadata:
+      upstream_source: https://build.nvidia.com/nvidia/nemotron-parse-2.0
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: trial
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://build.nvidia.com/nvidia/nemotron-parse-2.0
+      pricing_note: Development/trial endpoint availability does not establish a production per-token price; production
+        unit rates are unverified.
+      output_limit_status: unverified
+      operation: document_parsing
+      context_limit_status: unverified
+      call_support: unsupported
+      support_note: 'Catalog only: model-specific reasoning/modality or document-parsing contract and production metering
+        have not been verified.'
+      endpoints: document-parsing
+      source: tokenhub-standard-catalog
+      provider_catalog_id: nvidia
+      provider_model_id: nvidia/nemotron-parse-2.0
+  - name: voyage-4
+    title: Voyage 4
+    category: custom
+    family: voyage-embed
+    modality: embedding
+    context_window: 32000
+    input_price_usd_per_1m: 0.06
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters:
+    - dimensions
+    - input_type
+    - truncation
+    metadata:
+      upstream_source: https://docs.voyageai.com/docs/embeddings
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.voyageai.com/docs/pricing
+      billing_unit: input_tokens
+      pricing_note: USD per million input tokens after any account-specific free credit. Trial credit is not a zero
+        unit price.
+      embedding_dimensions: '[256,512,1024,2048]'
+      default_embedding_dimensions: '1024'
+      embedding_space: voyage-4-shared
+      embedding_space_source: https://blog.voyageai.com/2026/01/15/voyage-4/
+      embedding_note: Text-only native Voyage calls; gateway requests use dimensions, input_type and truncation, with
+        output_dtype fixed to float. Do not mix a code-model space with the general Voyage 4 space.
+      call_support_scope: text-only,float-output
+      max_batch_inputs: '1000'
+      endpoints: embeddings
+      upstream_parameters: input_type,output_dimension,output_dtype,truncation
+      input_type_options: query,document
+      api_source: https://docs.voyageai.com/reference/embeddings-api
+      max_batch_input_tokens: '320000'
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: voyage
+      provider_model_id: voyage-4
+  - name: voyage-4-large
+    title: Voyage 4 Large
+    category: custom
+    family: voyage-embed
+    modality: embedding
+    context_window: 32000
+    input_price_usd_per_1m: 0.12
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters:
+    - dimensions
+    - input_type
+    - truncation
+    metadata:
+      upstream_source: https://docs.voyageai.com/docs/embeddings
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.voyageai.com/docs/pricing
+      billing_unit: input_tokens
+      pricing_note: USD per million input tokens after any account-specific free credit. Trial credit is not a zero
+        unit price.
+      embedding_dimensions: '[256,512,1024,2048]'
+      default_embedding_dimensions: '1024'
+      embedding_space: voyage-4-shared
+      embedding_space_source: https://blog.voyageai.com/2026/01/15/voyage-4/
+      embedding_note: Text-only native Voyage calls; gateway requests use dimensions, input_type and truncation, with
+        output_dtype fixed to float. Do not mix a code-model space with the general Voyage 4 space.
+      call_support_scope: text-only,float-output
+      max_batch_inputs: '1000'
+      endpoints: embeddings
+      upstream_parameters: input_type,output_dimension,output_dtype,truncation
+      input_type_options: query,document
+      api_source: https://docs.voyageai.com/reference/embeddings-api
+      max_batch_input_tokens: '120000'
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: voyage
+      provider_model_id: voyage-4-large
+  - name: voyage-4-lite
+    title: Voyage 4 Lite
+    category: custom
+    family: voyage-embed
+    modality: embedding
+    context_window: 32000
+    input_price_usd_per_1m: 0.02
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters:
+    - dimensions
+    - input_type
+    - truncation
+    metadata:
+      upstream_source: https://docs.voyageai.com/docs/embeddings
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.voyageai.com/docs/pricing
+      billing_unit: input_tokens
+      pricing_note: USD per million input tokens after any account-specific free credit. Trial credit is not a zero
+        unit price.
+      embedding_dimensions: '[256,512,1024,2048]'
+      default_embedding_dimensions: '1024'
+      embedding_space: voyage-4-shared
+      embedding_space_source: https://blog.voyageai.com/2026/01/15/voyage-4/
+      embedding_note: Text-only native Voyage calls; gateway requests use dimensions, input_type and truncation, with
+        output_dtype fixed to float. Do not mix a code-model space with the general Voyage 4 space.
+      call_support_scope: text-only,float-output
+      max_batch_inputs: '1000'
+      endpoints: embeddings
+      upstream_parameters: input_type,output_dimension,output_dtype,truncation
+      input_type_options: query,document
+      api_source: https://docs.voyageai.com/reference/embeddings-api
+      max_batch_input_tokens: '1000000'
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: voyage
+      provider_model_id: voyage-4-lite
+  - name: voyage-code-4
+    title: Voyage Code 4
+    category: custom
+    family: voyage-embed
+    modality: embedding
+    context_window: 32000
+    input_price_usd_per_1m: 0.12
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters:
+    - dimensions
+    - input_type
+    - truncation
+    metadata:
+      upstream_source: https://blog.voyageai.com/2026/08/13/voyage-code-4/
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.voyageai.com/docs/pricing
+      billing_unit: input_tokens
+      pricing_note: USD per million input tokens after any account-specific free credit. Trial credit is not a zero
+        unit price.
+      embedding_dimensions: '[256,512,1024,2048]'
+      default_embedding_dimensions: '1024'
+      embedding_space: voyage-code-4
+      embedding_space_source: https://blog.voyageai.com/2026/08/13/voyage-code-4/
+      embedding_note: Text-only native Voyage calls; gateway requests use dimensions, input_type and truncation, with
+        output_dtype fixed to float. Do not mix a code-model space with the general Voyage 4 space.
+      call_support_scope: text-only,float-output
+      max_batch_inputs: '1000'
+      endpoints: embeddings
+      upstream_parameters: input_type,output_dimension,output_dtype,truncation
+      input_type_options: query,document
+      api_source: https://docs.voyageai.com/reference/embeddings-api
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: voyage
+      provider_model_id: voyage-code-4
+  - name: voyage-context-4
+    title: Voyage Context 4
+    category: custom
+    family: voyage-embed
+    modality: embedding
+    context_window: 0
+    input_modalities:
+    - text
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    supported_parameters: []
+    metadata:
+      upstream_source: https://blog.voyageai.com/2026/06/29/voyage-context-4/
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.voyageai.com/docs/pricing
+      embedding_dimensions: '[256,512,1024,2048]'
+      default_embedding_dimensions: '1024'
+      call_support_scope: catalog-only
+      billing_unit: input_tokens
+      usd_per_million_input_tokens: '0.12'
+      embedding_space: voyage-context-4
+      context_limit_note: The contextualized API automatically splits inputs over 32K; no single ordinary-embeddings
+        context limit is inferred.
+      upstream_parameters: enable_auto_chunking,chunk_size,chunk_overlap,output_dimension
+      call_support: unsupported
+      support_note: 'Catalog only: requires contextualized or multimodal embedding payloads and matching output/native-unit
+        metering; the ordinary text embedding adapter is insufficient.'
+      endpoints: contextualizedembeddings
+      source: tokenhub-standard-catalog
+      provider_catalog_id: voyage
+      provider_model_id: voyage-context-4
+  - name: voyage-multimodal-3.5
+    title: Voyage Multimodal 3.5
+    category: custom
+    family: voyage-embed
+    modality: embedding
+    context_window: 32000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - embedding
+    capabilities:
+    - embedding
+    - vision
+    - video_input
+    supported_parameters:
+    - image_input
+    - video_input
+    metadata:
+      upstream_source: https://docs.voyageai.com/docs/multimodal-embeddings
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.voyageai.com/docs/pricing
+      embedding_dimensions: '[256,512,1024,2048]'
+      default_embedding_dimensions: '1024'
+      call_support_scope: catalog-only
+      billing_unit: text_tokens,image_pixels
+      usd_per_million_text_tokens: '0.12'
+      usd_per_billion_pixels: '0.60'
+      embedding_space: voyage-multimodal-3.5
+      pricing_note: Video frames are priced as images; account free quotas are not zero unit rates.
+      call_support: unsupported
+      support_note: 'Catalog only: requires contextualized or multimodal embedding payloads and matching output/native-unit
+        metering; the ordinary text embedding adapter is insufficient.'
+      endpoints: multimodalembeddings
+      source: tokenhub-standard-catalog
+      provider_catalog_id: voyage
+      provider_model_id: voyage-multimodal-3.5
+  - name: grok-voice-2.0
+    title: Grok Voice 2.0
+    category: grok
+    family: grok-voice
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://docs.x.ai/developers/models/speech-to-speech
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: deprecated
+      pricing_status: unverified
+      pricing_source: https://docs.x.ai/developers/models/speech-to-speech
+      billing_unit: audio_minute,text_input_event
+      usd_per_audio_minute: '0.08'
+      usd_per_text_input_event: '0.004'
+      availability_region: us-east-1
+      text_input_event_definition: Each client conversation.item.create event; function_call_output is excluded; input_audio/audio
+        use the audio meter; response.create is not a text input.
+      audio_billing_note: Default server_vad bills session duration; push-to-talk bills audio sent and received.
+      pricing_note: Native USD per audio minute plus per billable text input event; no per-token rates.
+      reasoning_effort_options: none,high
+      reasoning_effort_default: high
+      reasoning_source: https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech
+      api_note: WebSocket /v1/realtime?model=...; server API key or client ephemeral token.
+      lifecycle_source: https://docs.x.ai/developers/release-notes
+      deprecated_date: '2026-10-14'
+      replacement_model: grok-voice-3.0
+      lifecycle_note: Deprecated; no shutdown date published. The API contract and price are unchanged for Voice 3.0.
+      call_support: unsupported
+      support_note: 'Catalog only: requires a realtime WebSocket session adapter and duration/event metering.'
+      endpoints: realtime
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-voice-2.0
+  - name: grok-voice-3.0
+    title: Grok Voice 3.0
+    category: grok
+    family: grok-voice
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://docs.x.ai/developers/models/speech-to-speech
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.x.ai/developers/models/speech-to-speech
+      billing_unit: audio_minute,text_input_event
+      usd_per_audio_minute: '0.08'
+      usd_per_text_input_event: '0.004'
+      availability_region: us-east-1
+      text_input_event_definition: Each client conversation.item.create event; function_call_output is excluded; input_audio/audio
+        use the audio meter; response.create is not a text input.
+      audio_billing_note: Default server_vad bills session duration; push-to-talk bills audio sent and received.
+      pricing_note: Native USD per audio minute plus per billable text input event; no per-token rates.
+      reasoning_effort_options: none,high
+      reasoning_effort_default: high
+      reasoning_source: https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech
+      api_note: WebSocket /v1/realtime?model=...; server API key or client ephemeral token.
+      lifecycle_source: https://docs.x.ai/developers/release-notes
+      call_support: unsupported
+      support_note: 'Catalog only: requires a realtime WebSocket session adapter and duration/event metering.'
+      endpoints: realtime
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-voice-3.0
+  - name: grok-voice-latest
+    title: Grok Voice Latest
+    category: grok
+    family: grok-voice
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - text
+    - audio
+    output_modalities:
+    - text
+    - audio
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://docs.x.ai/developers/models/speech-to-speech
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      pricing_source: https://docs.x.ai/developers/models/speech-to-speech
+      billing_unit: audio_minute,text_input_event
+      usd_per_audio_minute: '0.08'
+      usd_per_text_input_event: '0.004'
+      availability_region: us-east-1
+      text_input_event_definition: Each client conversation.item.create event; function_call_output is excluded; input_audio/audio
+        use the audio meter; response.create is not a text input.
+      audio_billing_note: Default server_vad bills session duration; push-to-talk bills audio sent and received.
+      pricing_note: Native USD per audio minute plus per billable text input event; no per-token rates.
+      reasoning_effort_options: none,high
+      reasoning_effort_default: high
+      reasoning_source: https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech
+      api_note: WebSocket /v1/realtime?model=...; server API key or client ephemeral token.
+      lifecycle_source: https://docs.x.ai/developers/release-notes
+      alias_target: grok-voice-3.0
+      alias_updated_date: '2026-10-14'
+      call_support: unsupported
+      support_note: 'Catalog only: requires a realtime WebSocket session adapter and duration/event metering.'
+      endpoints: realtime
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-voice-latest
+  - name: grok-voice-transcribe-1.0
+    title: Grok Voice Transcribe 1.0
+    category: grok
+    family: grok-voice
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://docs.x.ai/developers/model-capabilities/audio/speech-to-text
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: redirected
+      pricing_status: unverified
+      billing_unit: audio_hour
+      usd_per_rest_audio_hour: '0.10'
+      usd_per_streaming_audio_hour: '0.20'
+      pricing_source: https://docs.x.ai/developers/pricing
+      max_input_file_size_label: 500MB
+      pricing_note: Native audio-hour billing differs for REST and streaming; not text-token pricing.
+      redirect_date: '2026-10-02'
+      replacement_model: grok-voice-transcribe-2.0
+      lifecycle_source: https://docs.x.ai/developers/release-notes
+      lifecycle_note: The old slug reached EOL on October 2 and requests are routed to Transcribe 2.0 at the same price.
+      call_support: unsupported
+      support_note: 'Catalog only: requires native speech transcription REST/streaming handling and audio-hour metering.'
+      endpoints: stt
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-voice-transcribe-1.0
+  - name: grok-voice-transcribe-2.0
+    title: Grok Voice Transcribe 2.0
+    category: grok
+    family: grok-voice
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    - audio_input
+    supported_parameters:
+    - audio_input
+    metadata:
+      upstream_source: https://docs.x.ai/developers/model-capabilities/audio/speech-to-text
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      billing_unit: audio_hour
+      usd_per_rest_audio_hour: '0.10'
+      usd_per_streaming_audio_hour: '0.20'
+      pricing_source: https://docs.x.ai/developers/pricing
+      max_input_file_size_label: 500MB
+      pricing_note: Native audio-hour billing differs for REST and streaming; not text-token pricing.
+      call_support: unsupported
+      support_note: 'Catalog only: requires native speech transcription REST/streaming handling and audio-hour metering.'
+      endpoints: stt
+      source: tokenhub-standard-catalog
+      provider_catalog_id: xai
+      provider_model_id: grok-voice-transcribe-2.0
+  - name: glm-5.2
+    title: glm-5.2
+    category: glm
+    family: glm
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 1.4
+    output_price_usd_per_1m: 4.4
+    cache_read_price_usd_per_1m: 0.26
+    input_modalities:
+    - text
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - reasoning
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - max_tokens
+    - tools
+    - response_format
+    - temperature
+    metadata:
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      upstream_source: https://docs.z.ai/guides/llm/glm-5.2
+      lifecycle_status: active
+      pricing_status: unverified
+      access_region: Global
+      endpoints: chat/completions
+      pricing_source: https://docs.z.ai/guides/overview/pricing
+      catalog_price_reference: 'true'
+      billing_unit: per_million_tokens
+      regional_currency: USD
+      pricing_note: Public USD reference only; cached-input storage is free for a limited time. Confirm configured upstream
+        costs before publication.
+      reasoning_supported: 'true'
+      max_output_tokens: '128000'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: zai
+      provider_model_id: glm-5.2
+  - name: gemini-4-argon
+    title: Gemini 4 Argon
+    category: gemini
+    family: gemini
+    modality: chat
+    context_window: 1048576
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    - pdf
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - reasoning
+    - vision
+    - video_input
+    - audio_input
+    - pdf_input
+    supported_parameters:
+    - max_tokens
+    - tools
+    - reasoning
+    - reasoning_effort
+    - image_input
+    - video_input
+    - audio_input
+    - pdf_input
+    metadata:
+      upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+      verified_at: '2026-10-16'
+      availability: active
+      pricing_source: https://ai.google.dev/gemini-api/docs/latest-model
+      pricing_note: Introductory Standard USD/MTok through 2026-11-30; input/cache/output double on 2026-12-01. Thinking
+        tokens count as output. No free tier; confirm account billing before publication.
+      sampling_note: temperature, top_p and top_k are accepted but ignored by the upstream model; use thinking level instead.
+      protocols: generateContent,interactions
+      reasoning_effort_options: low,medium,high
+      reasoning_effort_parameter: thinking_level
+      catalog_reviewed_at: '2026-10-16'
+      lifecycle_status: active
+      reasoning_effort_default: medium
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: gemini
+      max_output_tokens: '65536'
+      pricing_status: unverified
+      migration_source: https://ai.google.dev/gemini-api/docs/latest-model
+      pricing_effective_until: '2026-11-30'
+      reference_token_prices: '{"input":2,"output":10,"cache_read":0.1}'
+      future_pricing: '{"effective_from":"2026-12-01","input":4,"output":20,"cache_read":0.2}'
+      context_note: 'Unified input and output limit: 1048576 tokens.'
+      cache_note: Implicit caching only; explicit caching is unsupported.
+      output_limit_note: TokenHub synchronous adapter limit is 65536. Native long decode up to 1048576 requires background/continuation
+        handling that is not implemented.
+      adapter_verification: Synthetic native GenerateContent contract only; account entitlement and live billing remain
+        unverified.
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-4-argon
+      native_endpoints: generateContent,streamGenerateContent
+  - name: claude-mythos-5-1
+    title: Claude Mythos 5.1
+    category: claude
+    family: claude
+    modality: chat
+    context_window: 1000000
+    input_price_usd_per_1m: 10
+    output_price_usd_per_1m: 50
+    cache_read_price_usd_per_1m: 0.25
+    cache_write_5m_price_usd_per_1m: 12.5
+    cache_write_1h_price_usd_per_1m: 20
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - reasoning
+    - vision
+    supported_parameters:
+    - max_tokens
+    - tools
+    - reasoning
+    - reasoning_effort
+    - image_input
+    metadata:
+      upstream_source: https://platform.claude.com/docs/en/release-notes/overview
+      verified_at: '2026-10-16'
+      availability: restricted
+      reasoning_effort_options: low,medium,high,xhigh,max
+      reasoning_effort_parameter: output_config.effort
+      sampling_note: Omit temperature, top_p and top_k; non-default sampling can fail.
+      pricing_note: Standard Claude API USD/MTok; cache_write is 5-minute TTL; Batch/Fast pricing excluded.
+      compatibility_source: https://platform.claude.com/docs/en/release-notes/overview
+      tool_choice_allowed: auto,none
+      thinking_mode: adaptive
+      thinking_can_disable: 'false'
+      retention_note: Requires 30-day retention; ZDR only with explicit Anthropic authorization.
+      thinking_history_note: Preserve signed thinking and account affinity; changing system/tools/history or switching
+        model/account can reject or drop blocks.
+      catalog_reviewed_at: '2026-10-16'
+      lifecycle_status: active
+      reasoning_effort_default: high
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: anthropic
+      max_output_tokens: '128000'
+      pricing_status: unverified
+      access_requirement: Project Glasswing participants only; listing does not establish account entitlement.
+      call_support: unsupported
+      support_note: 'Catalog only: restricted model access and its native thinking/history contract have not been validated.'
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: anthropic
+      provider_model_id: claude-mythos-5-1
+  - name: gpt-4o-2024-08-06
+    title: GPT-4o (2024-08-06)
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 128000
+    input_price_usd_per_1m: 2.5
+    output_price_usd_per_1m: 10
+    cache_read_price_usd_per_1m: 1.25
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - structured_outputs
+    - vision
+    supported_parameters:
+    - max_tokens
+    - tools
+    - response_format
+    - temperature
+    - image_input
+    metadata:
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-4o
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      lifecycle_status: deprecated
+      deprecated_date: '2026-10-14'
+      shutdown_date: '2027-01-14'
+      lifecycle_timezone: unknown
+      replacement_model: gpt-6-luna
+      pricing_status: unverified
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-4o-2024-08-06
+      max_output_tokens: '16384'
+  - name: gpt-4o-2024-11-20
+    title: GPT-4o (2024-11-20)
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 128000
+    input_price_usd_per_1m: 2.5
+    output_price_usd_per_1m: 10
+    cache_read_price_usd_per_1m: 1.25
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - structured_outputs
+    - vision
+    supported_parameters:
+    - max_tokens
+    - tools
+    - response_format
+    - temperature
+    - image_input
+    metadata:
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-4o
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      lifecycle_status: deprecated
+      deprecated_date: '2026-10-14'
+      shutdown_date: '2027-01-14'
+      lifecycle_timezone: unknown
+      replacement_model: gpt-6-luna
+      pricing_status: unverified
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-4o-2024-11-20
+      max_output_tokens: '16384'
+  - name: gpt-4o-mini-2024-07-18
+    title: gpt-4o-mini-2024-07-18
+    category: openai
+    family: gpt-mini
+    modality: chat
+    context_window: 128000
+    input_price_usd_per_1m: 0.15
+    output_price_usd_per_1m: 0.6
+    cache_read_price_usd_per_1m: 0.075
+    input_modalities:
+    - text
+    - image
+    - pdf
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - structured_outputs
+    - vision
+    - pdf_input
+    supported_parameters:
+    - max_tokens
+    - tools
+    - response_format
+    - temperature
+    - image_input
+    - pdf_input
+    metadata:
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-4o-mini
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      lifecycle_status: deprecated
+      deprecated_date: '2026-10-14'
+      shutdown_date: '2027-01-14'
+      lifecycle_timezone: unknown
+      replacement_model: gpt-6-luna
+      pricing_status: unverified
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-4o-mini-2024-07-18
+      max_output_tokens: '16384'
+  - name: gpt-4.1-2025-04-14
+    title: gpt-4.1-2025-04-14
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 1047576
+    input_price_usd_per_1m: 2
+    output_price_usd_per_1m: 8
+    cache_read_price_usd_per_1m: 0.5
+    input_modalities:
+    - text
+    - image
+    - pdf
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - structured_outputs
+    - vision
+    - pdf_input
+    supported_parameters:
+    - max_tokens
+    - tools
+    - response_format
+    - temperature
+    - image_input
+    - pdf_input
+    metadata:
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-4.1
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      lifecycle_status: deprecated
+      deprecated_date: '2026-10-14'
+      shutdown_date: '2027-01-14'
+      lifecycle_timezone: unknown
+      replacement_model: gpt-6-luna
+      pricing_status: unverified
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-4.1-2025-04-14
+      max_output_tokens: '32768'
+  - name: gpt-4.1-mini-2025-04-14
+    title: gpt-4.1-mini-2025-04-14
+    category: openai
+    family: gpt-mini
+    modality: chat
+    context_window: 1047576
+    input_price_usd_per_1m: 0.4
+    output_price_usd_per_1m: 1.6
+    cache_read_price_usd_per_1m: 0.1
+    input_modalities:
+    - text
+    - image
+    - pdf
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - structured_outputs
+    - vision
+    - pdf_input
+    supported_parameters:
+    - max_tokens
+    - tools
+    - response_format
+    - temperature
+    - image_input
+    - pdf_input
+    metadata:
+      verified_at: '2026-10-16'
+      catalog_reviewed_at: '2026-10-16'
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-4.1-mini
+      lifecycle_source: https://developers.openai.com/api/docs/deprecations
+      lifecycle_status: deprecated
+      deprecated_date: '2026-10-14'
+      shutdown_date: '2027-01-14'
+      lifecycle_timezone: unknown
+      replacement_model: gpt-6-luna
+      pricing_status: unverified
+      catalog_price_reference: 'true'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-4.1-mini-2025-04-14
+      max_output_tokens: '32768'

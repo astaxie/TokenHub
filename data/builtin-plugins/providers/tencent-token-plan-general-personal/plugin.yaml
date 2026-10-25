@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.lkeap.cloud.tencent.com/plan/v3"
       doc_url: "https://cloud.tencent.com/document/product/1823/130060"
       categories: []
-      models_count: 8
+      models_count: 25
 permissions:
   network:
     allow: []

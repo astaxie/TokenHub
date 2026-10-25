@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.voyageai.com/v1"
       doc_url: "https://docs.voyageai.com/docs/reranker"
       categories: []
-      models_count: 2
+      models_count: 8
 permissions:
   network:
     allow: []
