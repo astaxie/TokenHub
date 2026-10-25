@@ -112,6 +112,9 @@ The parent must atomically persist the encrypted credential revision before
 sending `{"operation":"auth.ack","update_id":"..."}`. An `error` field rejects
 the update. Inference cannot use a rotated token before acknowledgement, and a
 failed save disables subsequent network calls for that worker account.
+A timed-out save retains one pending snapshot per account. A late successful
+acknowledgement for that exact update ID restores the durably saved credentials;
+an explicit rejection or an unrelated acknowledgement cannot restore them.
 An unchanged API key's metadata-only save can retry the exact pending snapshot
 before the next command, provided its incoming credential revision still matches.
 Other changes remain blocked; retrying metadata never authorizes an unsaved token

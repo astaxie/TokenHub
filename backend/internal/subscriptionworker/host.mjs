@@ -9,9 +9,28 @@ export function createHost({ scope, emit, relayCallback }) {
   const sessions = new Map();
   const active = new Map();
 
+  function acceptSave(account, next, enterpriseHost) {
+    account.auth = next;
+    account.saveError = null;
+    account.pendingSave = null;
+    if (account.provider === "qwenwork-enterprise") account.enterpriseHost = enterpriseHost;
+    account.loader = null;
+  }
+
   function acknowledge(message) {
     const pending = acknowledgements.get(message.update_id);
-    if (!pending) return;
+    if (!pending) {
+      // A slow durable save may finish after its caller timed out. Retain only
+      // the account's exact pending update, never an unbounded expired-ACK map.
+      for (const account of accounts.values()) {
+        const update = account.pendingSave;
+        if (!update?.updateID || update.updateID !== message.update_id) continue;
+        update.updateID = null;
+        if (!message.error) acceptSave(account, update.next, update.enterpriseHost);
+        return;
+      }
+      return;
+    }
     acknowledgements.delete(message.update_id);
     if (message.error) pending.reject(failure("credential_save_failed", "Subscription credential changes could not be saved", 503));
     else pending.resolve();
@@ -21,26 +40,26 @@ export function createHost({ scope, emit, relayCallback }) {
     const context = scope.getStore();
     const next = validateAuth(account.provider, auth, context.enterpriseHost);
     const updateID = randomUUID();
+    if (account.pendingSave) account.pendingSave.updateID = null;
+    let timedOut = false;
     const promise = new Promise((resolve, reject) => acknowledgements.set(updateID, { resolve, reject }));
     const timer = setTimeout(() => {
       const pending = acknowledgements.get(updateID);
       acknowledgements.delete(updateID);
+      timedOut = !!pending;
       pending?.reject(failure("credential_save_failed", "Subscription credential changes could not be saved", 503));
     }, 30000);
     timer.unref();
     try {
       await emit({ id: context.id, event: "auth.update", update_id: updateID, resource_id: account.resourceID, auth: next });
       await promise;
-      account.auth = next;
-      account.saveError = null;
-      account.pendingSave = null;
-      if (account.provider === "qwenwork-enterprise") account.enterpriseHost = context.enterpriseHost;
-      account.loader = null;
+      acceptSave(account, next, context.enterpriseHost);
     } catch (error) {
       account.saveError = error;
       const { metadata: previousMetadata, ...previousIdentity } = account.auth ?? {};
       const { metadata: nextMetadata, ...nextIdentity } = next;
-      account.pendingSave = { previous: account.auth, next, metadataOnly: previousIdentity.type === "api" &&
+      account.pendingSave = { previous: account.auth, next, updateID: timedOut ? updateID : null, enterpriseHost: context.enterpriseHost,
+        metadataOnly: previousIdentity.type === "api" &&
         typeof previousIdentity.key === "string" && previousIdentity.key.trim() !== "" && isDeepStrictEqual(previousIdentity, nextIdentity) };
       throw error;
     } finally { clearTimeout(timer); }

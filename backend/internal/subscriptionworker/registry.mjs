@@ -24,6 +24,7 @@ export const providerIDs = Object.freeze(Object.keys(REGISTRY));
 export async function loadProvider(id, context, getAuth) {
   if (!Object.hasOwn(REGISTRY, id)) throw failure("provider_not_supported", "Subscription provider is not supported");
   if (id === "cursor") return (await import("./cursor.mjs")).createCursorProvider(context, getAuth);
+  if (id === "qwenwork-enterprise") return (await import("./qwenwork.mjs")).createQwenWorkEnterpriseProvider(context);
   if (id === "gcp-ai") return (await import("./gcp-ai.mjs")).createGCPProvider(context);
   if (id === "grok") return (await import("./grok.mjs")).createGrokProvider(context);
   const [directory, name] = REGISTRY[id];

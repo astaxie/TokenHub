@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type subscriptionWorkerTransport struct {
@@ -99,9 +100,22 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 				}
 				received = true
 				failedStatus = event.Status < 200 || event.Status >= 300
-				responseHeaders := event.Headers.Clone()
+				// Node serializes lowercase header names; Go's Header.Get and Del
+				// require canonical map keys for content handling and retry policy.
+				responseHeaders := http.Header{}
+				for name, values := range event.Headers {
+					for _, value := range values {
+						responseHeaders.Add(name, value)
+					}
+				}
 				if failedStatus {
+					retry := parseRetryAfter(responseHeaders.Get("Retry-After"))
 					responseHeaders = http.Header{"Content-Type": []string{"application/json"}}
+					// Retain the retry delay without forwarding arbitrary upstream
+					// headers or exposing their unsanitized values.
+					if retry > 0 {
+						responseHeaders.Set("Retry-After", strconv.FormatInt(int64((retry-1)/time.Second)+1, 10))
+					}
 				}
 				responseHeaders.Del("Content-Length")
 				responseHeaders.Del("Content-Encoding")

@@ -58,7 +58,12 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
       const response = await once(request);
       // The allowance policy belongs to the original request even when its
       // endpoint redirects to a canonical path before returning the payload.
-      if (![301, 302, 303, 307, 308].includes(response.status)) return guardFactoryAllowance(scope.getStore(), original, response);
+      if (![301, 302, 303, 307, 308].includes(response.status)) {
+        const context = scope.getStore();
+        const guarded = await guardFactoryAllowance(context, original, response);
+        const hook = context.account?.hooks?.["network.response"];
+        return hook ? hook(original, guarded, context.operation) : guarded;
+      }
       const location = response.headers.get("location");
       if (!location || original.redirect === "manual") return response;
       if (original.redirect === "error" || redirects === 5) {

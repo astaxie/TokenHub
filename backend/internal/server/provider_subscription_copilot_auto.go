@@ -214,6 +214,12 @@ func (w *copilotAutoWriter) Write(data []byte) (int, error) {
 	return n, err
 }
 
+func (w *copilotAutoWriter) Flush() {
+	if flusher, ok := w.Writer.(streamFlusher); ok {
+		flusher.Flush()
+	}
+}
+
 func (a *CopilotSubscriptionAdapter) ChatStream(ctx context.Context, provider Provider, model string, request ChatCompletionRequest, writer io.Writer) (Usage, error) {
 	refused := map[string]bool{}
 	out := &copilotAutoWriter{Writer: writer}

@@ -20,7 +20,7 @@ func subscriptionWorkerJSONFixture(t *testing.T, protocol, body string) (*Subscr
 			if command["operation"] == "models" {
 				return []subscriptionWorkerEvent{{Event: "result", Result: json.RawMessage(`{"models":[{"id":"test-model","protocol":"` + protocol + `"}]}`)}}
 			}
-			return []subscriptionWorkerEvent{{Event: "response", Status: 200, Headers: http.Header{"Content-Type": []string{"application/json"}}}, {Event: "chunk", Data: base64.StdEncoding.EncodeToString([]byte(body))}, {Event: "end"}}
+			return []subscriptionWorkerEvent{{Event: "response", Status: 200, Headers: http.Header{"content-type": []string{"application/json"}}}, {Event: "chunk", Data: base64.StdEncoding.EncodeToString([]byte(body))}, {Event: "end"}}
 		}), nil
 	}
 	adapter := &SubscriptionWorkerAdapter{Definition: subscriptionWorkerDefinition{"cursor", "Cursor"}, Pool: pool, RefreshCredentials: func(context.Context, string, bool) (ProviderResourceCredentials, error) {

@@ -114,7 +114,9 @@ export async function createGrokProvider({ client, magpie }) {
         const config = (await response.json()).config ?? {};
         const period = config.currentPeriod ?? {};
         const end = period.end || config.billingPeriodEnd;
-        return { windows: [{ name: "Allowance", used: Number(config.creditUsagePercent) || 0,
+        const reported = config.creditUsagePercent;
+        const used = typeof reported === "number" || typeof reported === "string" && reported.trim() !== "" ? Number(reported) : NaN;
+        return { windows: [{ name: "Allowance", ...(Number.isFinite(used) && used >= 0 ? { used } : {}),
           ...(typeof end === "string" && Number.isFinite(Date.parse(end)) ? { resetsAt: end } : {}) }] };
       },
     },
