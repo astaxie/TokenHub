@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.perplexity.ai/v1"
       doc_url: "https://docs.perplexity.ai/docs/agent-api/models"
       categories: []
-      models_count: 18
+      models_count: 30
 permissions:
   network:
     allow: []

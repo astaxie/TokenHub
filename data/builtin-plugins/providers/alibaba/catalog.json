@@ -3776,6 +3776,301 @@
         "source": "official-documentation",
         "pricing_status": "unverified"
       }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "deepseek-v4.1-flash",
+      "display_name": "deepseek-v4.1-flash",
+      "family": "alibaba",
+      "category": "alibaba",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "parameter_status": "unverified",
+        "modality_status": "Text catalog identity only; no additional modality inferred from the original vendor",
+        "call_support": "unsupported",
+        "support_note": "Catalog candidate only: exact region, account availability, hosted request contract and price require separate verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "name": "deepseek-v4-pro-0813",
+      "display_name": "deepseek-v4-pro-0813",
+      "family": "alibaba",
+      "category": "alibaba",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "parameter_status": "unverified",
+        "modality_status": "Text catalog identity only; no additional modality inferred from the original vendor",
+        "call_support": "unsupported",
+        "support_note": "Catalog candidate only: exact region, account availability, hosted request contract and price require separate verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "glm-5.2",
+      "name": "glm-5.2",
+      "display_name": "glm-5.2",
+      "family": "alibaba",
+      "category": "alibaba",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "parameter_status": "unverified",
+        "modality_status": "Text catalog identity only; no additional modality inferred from the original vendor",
+        "call_support": "unsupported",
+        "support_note": "Catalog candidate only: exact region, account availability, hosted request contract and price require separate verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "ZHIPU/GLM-5.3",
+      "name": "ZHIPU/GLM-5.3",
+      "display_name": "ZHIPU/GLM-5.3",
+      "family": "alibaba",
+      "category": "alibaba",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "parameter_status": "unverified",
+        "modality_status": "Text catalog identity only; no additional modality inferred from the original vendor",
+        "call_support": "unsupported",
+        "support_note": "Catalog candidate only: exact region, account availability, hosted request contract and price require separate verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "kimi-k3",
+      "name": "kimi-k3",
+      "display_name": "kimi-k3",
+      "family": "alibaba",
+      "category": "alibaba",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "parameter_status": "unverified",
+        "modality_status": "Text catalog identity only; no additional modality inferred from the original vendor",
+        "call_support": "unsupported",
+        "support_note": "Catalog candidate only: exact region, account availability, hosted request contract and price require separate verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "MiniMax-M2.5",
+      "name": "MiniMax-M2.5",
+      "display_name": "MiniMax-M2.5",
+      "family": "alibaba",
+      "category": "alibaba",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "parameter_status": "unverified",
+        "modality_status": "Text catalog identity only; no additional modality inferred from the original vendor",
+        "call_support": "unsupported",
+        "support_note": "Catalog candidate only: exact region, account availability, hosted request contract and price require separate verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen-image-3.0-pro",
+      "name": "qwen-image-3.0-pro",
+      "display_name": "qwen-image-3.0-pro",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "image",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: the regional media/session operation, adapter and native billing units require verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen-audio-3.1-asr-flash-streaming",
+      "name": "qwen-audio-3.1-asr-flash-streaming",
+      "display_name": "qwen-audio-3.1-asr-flash-streaming",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: the regional media/session operation, adapter and native billing units require verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen-audio-3.1-asr-flash-filetrans",
+      "name": "qwen-audio-3.1-asr-flash-filetrans",
+      "display_name": "qwen-audio-3.1-asr-flash-filetrans",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: the regional media/session operation, adapter and native billing units require verification."
+      },
+      "last_updated": "2026-10-16"
+    },
+    {
+      "id": "qwen-audio-3.1-realtime-plus",
+      "name": "qwen-audio-3.1-realtime-plus",
+      "display_name": "qwen-audio-3.1-realtime-plus",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "supported_parameters": [],
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://www.alibabacloud.com/help/en/model-studio/models",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "unverified per model/deployment",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: the regional media/session operation, adapter and native billing units require verification."
+      },
+      "last_updated": "2026-10-16"
     }
   ]
 }

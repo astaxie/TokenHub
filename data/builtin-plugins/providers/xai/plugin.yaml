@@ -26,7 +26,7 @@ capabilities:
       base_url: ""
       doc_url: "https://docs.x.ai/docs/models"
       categories: []
-      models_count: 19
+      models_count: 24
 permissions:
   network:
     allow: []

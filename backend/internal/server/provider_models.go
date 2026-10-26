@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -284,6 +285,13 @@ func (s *Server) importProviderModels(req ProviderModelImportRequest) (ProviderM
 
 func providerModelFromCatalog(providerID string, model ProviderCatalogModel) ProviderModel {
 	now := time.Now().UTC()
+	metadata := cloneStringMap(model.Metadata)
+	if model.MaxOutputTokens > 0 {
+		if metadata == nil {
+			metadata = map[string]string{}
+		}
+		metadata["max_output_tokens"] = strconv.FormatInt(model.MaxOutputTokens, 10)
+	}
 	return ProviderModel{
 		ProviderID:                providerID,
 		UpstreamModel:             model.ID,
@@ -309,7 +317,7 @@ func providerModelFromCatalog(providerID string, model ProviderCatalogModel) Pro
 		OutputModalities:    append([]string(nil), model.OutputModalities...),
 		Capabilities:        append([]string(nil), model.Capabilities...),
 		SupportedParameters: append([]string(nil), model.SupportedParameters...),
-		Metadata:            cloneStringMap(model.Metadata),
+		Metadata:            metadata,
 		Source:              firstNonEmpty(model.Metadata["source"], "provider-catalog"),
 		Status:              StatusActive,
 		LastSeenAt:          &now,

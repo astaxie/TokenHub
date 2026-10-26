@@ -5,6 +5,302 @@
   "doc": "https://docs.voyageai.com/docs/reranker",
   "models": [
     {
+      "id": "voyage-multimodal-3.5",
+      "name": "Voyage Multimodal 3.5",
+      "display_name": "Voyage Multimodal 3.5",
+      "family": "voyage-embed",
+      "category": "custom",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://docs.voyageai.com/docs/multimodal-embeddings",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.voyageai.com/docs/pricing",
+        "embedding_dimensions": "[256,512,1024,2048]",
+        "default_embedding_dimensions": "1024",
+        "call_support_scope": "catalog-only",
+        "billing_unit": "text_tokens,image_pixels",
+        "usd_per_million_text_tokens": "0.12",
+        "usd_per_billion_pixels": "0.60",
+        "embedding_space": "voyage-multimodal-3.5",
+        "pricing_note": "Video frames are priced as images; account free quotas are not zero unit rates.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: requires contextualized or multimodal embedding payloads and matching output/native-unit metering; the ordinary text embedding adapter is insufficient.",
+        "endpoints": "multimodalembeddings"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "release_date": "2026-01-15",
+      "endpoints": "multimodalembeddings"
+    },
+    {
+      "id": "voyage-context-4",
+      "name": "Voyage Context 4",
+      "display_name": "Voyage Context 4",
+      "family": "voyage-embed",
+      "category": "custom",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [],
+      "metadata": {
+        "upstream_source": "https://blog.voyageai.com/2026/06/29/voyage-context-4/",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "pricing_source": "https://docs.voyageai.com/docs/pricing",
+        "embedding_dimensions": "[256,512,1024,2048]",
+        "default_embedding_dimensions": "1024",
+        "call_support_scope": "catalog-only",
+        "billing_unit": "input_tokens",
+        "usd_per_million_input_tokens": "0.12",
+        "embedding_space": "voyage-context-4",
+        "context_limit_note": "The contextualized API automatically splits inputs over 32K; no single ordinary-embeddings context limit is inferred.",
+        "upstream_parameters": "enable_auto_chunking,chunk_size,chunk_overlap,output_dimension",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: requires contextualized or multimodal embedding payloads and matching output/native-unit metering; the ordinary text embedding adapter is insufficient.",
+        "endpoints": "contextualizedembeddings"
+      },
+      "release_date": "2026-06-29",
+      "endpoints": "contextualizedembeddings"
+    },
+    {
+      "id": "voyage-code-4",
+      "name": "Voyage Code 4",
+      "display_name": "Voyage Code 4",
+      "family": "voyage-embed",
+      "category": "custom",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "dimensions",
+        "input_type",
+        "truncation"
+      ],
+      "metadata": {
+        "upstream_source": "https://blog.voyageai.com/2026/08/13/voyage-code-4/",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "reference",
+        "pricing_source": "https://docs.voyageai.com/docs/pricing",
+        "billing_unit": "input_tokens",
+        "pricing_note": "USD per million input tokens after any account-specific free credit. Trial credit is not a zero unit price.",
+        "embedding_dimensions": "[256,512,1024,2048]",
+        "default_embedding_dimensions": "1024",
+        "embedding_space": "voyage-code-4",
+        "embedding_space_source": "https://blog.voyageai.com/2026/08/13/voyage-code-4/",
+        "embedding_note": "Text-only native Voyage calls; gateway requests use dimensions, input_type and truncation, with output_dtype fixed to float. Do not mix a code-model space with the general Voyage 4 space.",
+        "call_support_scope": "text-only,float-output",
+        "max_batch_inputs": "1000",
+        "endpoints": "embeddings",
+        "upstream_parameters": "input_type,output_dimension,output_dtype,truncation",
+        "input_type_options": "query,document",
+        "api_source": "https://docs.voyageai.com/reference/embeddings-api"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "release_date": "2026-08-13",
+      "cost": {
+        "input": 0.12
+      },
+      "endpoints": "embeddings"
+    },
+    {
+      "id": "voyage-4-lite",
+      "name": "Voyage 4 Lite",
+      "display_name": "Voyage 4 Lite",
+      "family": "voyage-embed",
+      "category": "custom",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "dimensions",
+        "input_type",
+        "truncation"
+      ],
+      "metadata": {
+        "upstream_source": "https://docs.voyageai.com/docs/embeddings",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "reference",
+        "pricing_source": "https://docs.voyageai.com/docs/pricing",
+        "billing_unit": "input_tokens",
+        "pricing_note": "USD per million input tokens after any account-specific free credit. Trial credit is not a zero unit price.",
+        "embedding_dimensions": "[256,512,1024,2048]",
+        "default_embedding_dimensions": "1024",
+        "embedding_space": "voyage-4-shared",
+        "embedding_space_source": "https://blog.voyageai.com/2026/01/15/voyage-4/",
+        "embedding_note": "Text-only native Voyage calls; gateway requests use dimensions, input_type and truncation, with output_dtype fixed to float. Do not mix a code-model space with the general Voyage 4 space.",
+        "call_support_scope": "text-only,float-output",
+        "max_batch_inputs": "1000",
+        "endpoints": "embeddings",
+        "upstream_parameters": "input_type,output_dimension,output_dtype,truncation",
+        "input_type_options": "query,document",
+        "api_source": "https://docs.voyageai.com/reference/embeddings-api",
+        "max_batch_input_tokens": "1000000"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "release_date": "2026-01-15",
+      "cost": {
+        "input": 0.02
+      },
+      "endpoints": "embeddings"
+    },
+    {
+      "id": "voyage-4",
+      "name": "Voyage 4",
+      "display_name": "Voyage 4",
+      "family": "voyage-embed",
+      "category": "custom",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "dimensions",
+        "input_type",
+        "truncation"
+      ],
+      "metadata": {
+        "upstream_source": "https://docs.voyageai.com/docs/embeddings",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "reference",
+        "pricing_source": "https://docs.voyageai.com/docs/pricing",
+        "billing_unit": "input_tokens",
+        "pricing_note": "USD per million input tokens after any account-specific free credit. Trial credit is not a zero unit price.",
+        "embedding_dimensions": "[256,512,1024,2048]",
+        "default_embedding_dimensions": "1024",
+        "embedding_space": "voyage-4-shared",
+        "embedding_space_source": "https://blog.voyageai.com/2026/01/15/voyage-4/",
+        "embedding_note": "Text-only native Voyage calls; gateway requests use dimensions, input_type and truncation, with output_dtype fixed to float. Do not mix a code-model space with the general Voyage 4 space.",
+        "call_support_scope": "text-only,float-output",
+        "max_batch_inputs": "1000",
+        "endpoints": "embeddings",
+        "upstream_parameters": "input_type,output_dimension,output_dtype,truncation",
+        "input_type_options": "query,document",
+        "api_source": "https://docs.voyageai.com/reference/embeddings-api",
+        "max_batch_input_tokens": "320000"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "release_date": "2026-01-15",
+      "cost": {
+        "input": 0.06
+      },
+      "endpoints": "embeddings"
+    },
+    {
+      "id": "voyage-4-large",
+      "name": "Voyage 4 Large",
+      "display_name": "Voyage 4 Large",
+      "family": "voyage-embed",
+      "category": "custom",
+      "type": "embedding",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "embedding"
+        ]
+      },
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "dimensions",
+        "input_type",
+        "truncation"
+      ],
+      "metadata": {
+        "upstream_source": "https://docs.voyageai.com/docs/embeddings",
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "reference",
+        "pricing_source": "https://docs.voyageai.com/docs/pricing",
+        "billing_unit": "input_tokens",
+        "pricing_note": "USD per million input tokens after any account-specific free credit. Trial credit is not a zero unit price.",
+        "embedding_dimensions": "[256,512,1024,2048]",
+        "default_embedding_dimensions": "1024",
+        "embedding_space": "voyage-4-shared",
+        "embedding_space_source": "https://blog.voyageai.com/2026/01/15/voyage-4/",
+        "embedding_note": "Text-only native Voyage calls; gateway requests use dimensions, input_type and truncation, with output_dtype fixed to float. Do not mix a code-model space with the general Voyage 4 space.",
+        "call_support_scope": "text-only,float-output",
+        "max_batch_inputs": "1000",
+        "endpoints": "embeddings",
+        "upstream_parameters": "input_type,output_dimension,output_dtype,truncation",
+        "input_type_options": "query,document",
+        "api_source": "https://docs.voyageai.com/reference/embeddings-api",
+        "max_batch_input_tokens": "120000"
+      },
+      "limit": {
+        "context": 32000
+      },
+      "release_date": "2026-01-15",
+      "cost": {
+        "input": 0.12
+      },
+      "endpoints": "embeddings"
+    },
+    {
       "id": "rerank-3-lite",
       "name": "Voyage Rerank 3 Lite",
       "display_name": "Voyage Rerank 3 Lite",

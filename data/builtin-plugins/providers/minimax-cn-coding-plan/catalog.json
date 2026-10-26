@@ -17,7 +17,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2025-12-23",
-      "last_updated": "2025-12-23",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -31,16 +31,23 @@
         "context": 204800,
         "output": 131072
       },
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "display_name": "MiniMax-M2.1",
       "type": "chat",
       "extra_capabilities": {
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://platform.minimax.cn/docs/m-plan/intro",
+        "pricing_note": "Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before publication.",
+        "billing_unit": "subscription_quota",
+        "access_region": "China",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "upstream_source": "https://platform.minimax.cn/docs/m-plan/intro"
       }
     },
     {
@@ -55,7 +62,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-02-13",
-      "last_updated": "2026-02-13",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -69,18 +76,30 @@
         "context": 204800,
         "output": 131072
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "MiniMax-M2.5-highspeed",
       "type": "chat",
       "extra_capabilities": {
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_source": "https://platform.minimax.cn/docs/guides/models-intro",
+        "lifecycle_timezone": "unknown",
+        "lifecycle_date_precision": "date",
+        "notice_publication_date": "unknown",
+        "lifecycle_status": "redirected",
+        "redirect_date": "2026-10-19",
+        "replacement_model": "MiniMax-M3.1-Flash-Preview",
+        "lifecycle_note": "Scheduled redirect on 2026-10-19; the legacy plan ID remains accepted and plan allowances remain unchanged. No PAYG shutdown applies to this plan alias.",
+        "pricing_status": "unverified",
+        "pricing_source": "https://platform.minimax.cn/docs/m-plan/intro",
+        "pricing_note": "Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before publication.",
+        "billing_unit": "subscription_quota",
+        "access_region": "China",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement."
       }
     },
     {
@@ -95,7 +114,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-03-18",
-      "last_updated": "2026-03-18",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -109,12 +128,6 @@
         "context": 204800,
         "output": 131072
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "MiniMax-M2.7-highspeed",
       "type": "chat",
       "extra_capabilities": {
@@ -127,6 +140,24 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_source": "https://platform.minimax.cn/docs/guides/models-intro",
+        "lifecycle_timezone": "unknown",
+        "lifecycle_date_precision": "date",
+        "notice_publication_date": "unknown",
+        "lifecycle_status": "redirected",
+        "redirect_date": "2026-10-19",
+        "replacement_model": "MiniMax-M3.1-Flash-Preview",
+        "lifecycle_note": "Scheduled redirect on 2026-10-19; the legacy plan ID remains accepted and plan allowances remain unchanged. No PAYG shutdown applies to this plan alias.",
+        "pricing_status": "unverified",
+        "pricing_source": "https://platform.minimax.cn/docs/m-plan/intro",
+        "pricing_note": "Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before publication.",
+        "billing_unit": "subscription_quota",
+        "access_region": "China",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement."
       }
     },
     {
@@ -141,7 +172,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2025-10-27",
-      "last_updated": "2025-10-27",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -155,16 +186,23 @@
         "context": 196608,
         "output": 128000
       },
-      "cost": {
-        "input": 0,
-        "output": 0
-      },
       "display_name": "MiniMax-M2",
       "type": "chat",
       "extra_capabilities": {
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://platform.minimax.cn/docs/m-plan/intro",
+        "pricing_note": "Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before publication.",
+        "billing_unit": "subscription_quota",
+        "access_region": "China",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "upstream_source": "https://platform.minimax.cn/docs/m-plan/intro"
       }
     },
     {
@@ -179,7 +217,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-02-12",
-      "last_updated": "2026-02-12",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -193,18 +231,30 @@
         "context": 204800,
         "output": 131072
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "MiniMax-M2.5",
       "type": "chat",
       "extra_capabilities": {
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_source": "https://platform.minimax.cn/docs/guides/models-intro",
+        "lifecycle_timezone": "unknown",
+        "lifecycle_date_precision": "date",
+        "notice_publication_date": "unknown",
+        "lifecycle_status": "redirected",
+        "redirect_date": "2026-10-19",
+        "replacement_model": "MiniMax-M3.1-Flash-Preview",
+        "lifecycle_note": "Scheduled redirect on 2026-10-19; the legacy plan ID remains accepted and plan allowances remain unchanged. No PAYG shutdown applies to this plan alias.",
+        "pricing_status": "unverified",
+        "pricing_source": "https://platform.minimax.cn/docs/m-plan/intro",
+        "pricing_note": "Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before publication.",
+        "billing_unit": "subscription_quota",
+        "access_region": "China",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement."
       }
     },
     {
@@ -224,7 +274,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-06-01",
-      "last_updated": "2026-06-01",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text",
@@ -240,18 +290,23 @@
         "context": 512000,
         "output": 128000
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "MiniMax-M3",
       "type": "chat",
       "extra_capabilities": {
         "reasoning": {
           "supported": true
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "pricing_status": "unverified",
+        "pricing_source": "https://platform.minimax.cn/docs/m-plan/intro",
+        "pricing_note": "Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before publication.",
+        "billing_unit": "subscription_quota",
+        "access_region": "China",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "upstream_source": "https://platform.minimax.cn/docs/m-plan/intro"
       }
     },
     {
@@ -266,7 +321,7 @@
       "tool_call": true,
       "temperature": true,
       "release_date": "2026-03-18",
-      "last_updated": "2026-03-18",
+      "last_updated": "2026-10-16",
       "modalities": {
         "input": [
           "text"
@@ -280,12 +335,6 @@
         "context": 204800,
         "output": 131072
       },
-      "cost": {
-        "input": 0,
-        "output": 0,
-        "cache_read": 0,
-        "cache_write": 0
-      },
       "display_name": "MiniMax-M2.7",
       "type": "chat",
       "extra_capabilities": {
@@ -298,7 +347,93 @@
             "thinking_blocks"
           ]
         }
+      },
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_source": "https://platform.minimax.cn/docs/guides/models-intro",
+        "lifecycle_timezone": "unknown",
+        "lifecycle_date_precision": "date",
+        "notice_publication_date": "unknown",
+        "lifecycle_status": "redirected",
+        "redirect_date": "2026-10-19",
+        "replacement_model": "MiniMax-M3.1-Flash-Preview",
+        "lifecycle_note": "Scheduled redirect on 2026-10-19; the legacy plan ID remains accepted and plan allowances remain unchanged. No PAYG shutdown applies to this plan alias.",
+        "pricing_status": "unverified",
+        "pricing_source": "https://platform.minimax.cn/docs/m-plan/intro",
+        "pricing_note": "Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before publication.",
+        "billing_unit": "subscription_quota",
+        "access_region": "China",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement."
       }
+    },
+    {
+      "id": "MiniMax-M3.1-Flash-Preview",
+      "name": "MiniMax M3.1 Flash Preview",
+      "display_name": "MiniMax M3.1 Flash Preview",
+      "family": "minimax",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.minimax.cn/docs/api-reference/text-anthropic-api",
+        "verified_at": "2026-10-16",
+        "availability": "preview",
+        "pricing_status": "unverified",
+        "access_note": "China M Plan explicitly lists this model. The documented api.minimax.cn endpoint has not been verified against the existing api.minimaxi.com provider base URL; preserve that base URL.",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "reasoning_effort_default": "max",
+        "reasoning_required": "true",
+        "output_limit_status": "unverified",
+        "api_note": "Anthropic output_config.effort; Chat Completions reasoning_effort; Responses reasoning.effort.",
+        "catalog_reviewed_at": "2026-10-16",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
+        "call_support": "unsupported",
+        "support_note": "Catalog only: verify China M Plan entitlement and compatibility of the existing provider endpoint before enabling a route.",
+        "pricing_note": "Subscription allowances are not a zero USD per-token price. Confirm configured upstream cost before publication.",
+        "access_region": "China",
+        "required_endpoint": "Anthropic Messages API",
+        "pricing_source": "https://platform.minimax.cn/docs/m-plan/intro",
+        "billing_unit": "subscription_quota"
+      },
+      "limit": {
+        "context": 1000000
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "category": "minimax",
+      "last_updated": "2026-10-16",
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ]
     }
   ]
 }

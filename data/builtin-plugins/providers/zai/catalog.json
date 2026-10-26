@@ -822,6 +822,56 @@
           "visibility": "summary"
         }
       }
+    },
+    {
+      "id": "glm-5.2",
+      "name": "glm-5.2",
+      "display_name": "glm-5.2",
+      "family": "glm",
+      "category": "glm",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "metadata": {
+        "verified_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-16",
+        "upstream_source": "https://docs.z.ai/guides/llm/glm-5.2",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "access_region": "Global",
+        "endpoints": "chat/completions",
+        "pricing_source": "https://docs.z.ai/guides/overview/pricing",
+        "catalog_price_reference": "true",
+        "billing_unit": "per_million_tokens",
+        "regional_currency": "USD",
+        "pricing_note": "Public USD reference only; cached-input storage is free for a limited time. Confirm configured upstream costs before publication."
+      },
+      "last_updated": "2026-10-16",
+      "limit": {
+        "context": 1000000,
+        "output": 128000
+      },
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "temperature": true,
+      "structured_output": true,
+      "cost": {
+        "input": 1.4,
+        "output": 4.4,
+        "cache_read": 0.26
+      }
     }
   ]
 }

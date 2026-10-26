@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://integrate.api.nvidia.com/v1"
       doc_url: "https://docs.api.nvidia.com/nim/"
       categories: []
-      models_count: 83
+      models_count: 86
 permissions:
   network:
     allow: []
