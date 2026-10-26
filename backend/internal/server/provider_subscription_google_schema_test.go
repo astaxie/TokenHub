@@ -18,6 +18,8 @@ func TestGoogleSubscriptionAntigravityToolSchemaCompatibility(t *testing.T) {
 			if err := json.Unmarshal([]byte(`{"model":"public","messages":[{"role":"user","content":"Read a file"}],"tools":[{"type":"function","function":{"name":"read","parameters":{"type":"object","additionalProperties":false,"properties":{"path":{"type":["string","null"]},"options":{"$ref":"#/$defs/Options"},"count":{"anyOf":[{"type":"integer"},{"type":"null"}]}},"required":["path","options"],"$defs":{"Options":{"type":"object","properties":{"verbose":{"type":"boolean","default":false}}}}}}}]}`), &request); err != nil {
 				t.Fatal(err)
 			}
+			tool := request.Tools.([]any)[0].(map[string]any)["function"].(map[string]any)
+			tool["parameters"].(map[string]any)["allOf"] = []any{map[string]any{"required": []any{"count"}}}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if googleSubscriptionTestProject(w, r) {
 					return
@@ -32,7 +34,7 @@ func TestGoogleSubscriptionAntigravityToolSchemaCompatibility(t *testing.T) {
 					t.Error("Antigravity received unsupported parametersJsonSchema")
 				}
 				var expected any
-				_ = json.Unmarshal([]byte(`{"type":"object","properties":{"path":{"type":"string","nullable":true},"options":{"type":"object","properties":{"verbose":{"type":"boolean"}}},"count":{"type":"integer","nullable":true}},"required":["path","options"]}`), &expected)
+				_ = json.Unmarshal([]byte(`{"type":"object","properties":{"path":{"type":"string","nullable":true},"options":{"type":"object","properties":{"verbose":{"type":"boolean"}}},"count":{"type":"integer","nullable":true}},"required":["path","options","count"]}`), &expected)
 				if !reflect.DeepEqual(declaration["parameters"], expected) {
 					t.Errorf("incompatible tool schema: %#v", declaration["parameters"])
 				}
@@ -156,5 +158,28 @@ func TestGoogleSubscriptionAntigravitySchemaMergesRequiredProperties(t *testing.
 	after, _ := json.Marshal(schema)
 	if !bytes.Equal(before, after) {
 		t.Fatal("allOf projection mutated the caller's schema")
+	}
+}
+
+func TestGoogleSubscriptionAntigravitySchemaPreservesCrossBranchRequirements(t *testing.T) {
+	for name, raw := range map[string]string{
+		"sibling":          `{"type":"object","properties":{"value":{"type":"string"}},"allOf":[{"required":["value"]}]}`,
+		"branches":         `{"allOf":[{"type":"object","properties":{"value":{"type":"string"}}},{"required":["value"]}]}`,
+		"nested reference": `{"allOf":[{"type":"object","properties":{"value":{"type":"string"}}},{"allOf":[{"$ref":"#/$defs/Required"}]}],"$defs":{"Required":{"required":["value"]}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var schema any
+			if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+				t.Fatal(err)
+			}
+			result, err := antigravitySubscriptionSchema(schema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			projected := result.(map[string]any)
+			if !reflect.DeepEqual(projected["required"], []any{"value"}) {
+				t.Fatalf("allOf dropped a required property declared elsewhere: %v", projected)
+			}
+		})
 	}
 }

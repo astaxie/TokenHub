@@ -36,6 +36,9 @@ func claudeSubscriptionTools(request ChatCompletionRequest) ([]claudeSubscriptio
 	if choice.Mode == "none" {
 		return tools, nil
 	}
+	if len(parsed) > 0 && request.ParallelToolCalls != nil && !*request.ParallelToolCalls {
+		return nil, unsupportedCapabilityError("Claude Code subscriptions do not support parallel_tool_calls=false with enabled tools")
+	}
 	for index, tool := range parsed {
 		tools = append(tools, claudeSubscriptionTool{Name: fmt.Sprintf("tool_%d", index), Description: tool.Description, InputSchema: tool.Parameters, OriginalName: tool.Name})
 	}

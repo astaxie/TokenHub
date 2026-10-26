@@ -278,12 +278,13 @@ func TestSubscriptionWorkerDescribesEveryBundledProvider(t *testing.T) {
 			Capabilities struct {
 				Usage   bool `json:"usage"`
 				Checkin bool `json:"checkin"`
+				Refresh bool `json:"refresh"`
 			} `json:"capabilities"`
 		}
 		if err := json.Unmarshal(result, &described); err != nil {
 			t.Fatal(err)
 		}
-		if described.Capabilities.Usage != subscriptionWorkerHasQuota(definition.ID) || described.Capabilities.Checkin != subscriptionWorkerHasCheckin(definition.ID) {
+		if described.Capabilities.Usage != subscriptionWorkerHasQuota(definition.ID) || described.Capabilities.Checkin != subscriptionWorkerHasCheckin(definition.ID) || described.Capabilities.Refresh != subscriptionWorkerHasRefresh(definition.ID) {
 			t.Fatalf("Provider %s management registration does not match its bundled hooks: %+v", definition.ID, described.Capabilities)
 		}
 	}

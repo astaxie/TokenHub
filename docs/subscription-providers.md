@@ -120,6 +120,8 @@ The Provider editor’s advanced settings expose Grok X search (`x_search`), Fac
 
 Quota reads are available for community accounts except Nous Portal and GCP AI. Where the adapter supports it, a manual check-in action reports `claimed`, `done`, `inactive`, or `ineligible`; it does not schedule automatic claims. Qoder international may require native device identity that TokenHub does not collect. Model-specific and display-only allowance windows remain separate from account-wide exhaustion. Quota percentages stay unknown when the upstream reports only a balance or incomplete windows; monitoring shows `-`, while an explicit exhausted allowance remains `0%`, including after a manual refresh.
 
+Saved community OAuth accounts with a refresh token and a supported refresh hook expose **Renew Token** in the account resource list. API-key accounts and adapters without token refresh do not expose this operation.
+
 An expired subscription reported by quota or check-in returns HTTP 409 with `provider_resource_reauthorization_required`, keeping the administrator signed in. Reauthorize that resource. Factory Standard-only also treats this state as a broken account credential and permits normal fallback to another eligible route.
 
 The coverage inventory includes all 35 account-provider IDs at the pinned revisions. Cloudflare Workers AI and OpenCode Zen Free are API/public services, and Kimi Desktop is an agent connector; they are not additional subscription-account providers. Account coverage does not imply full Magpie feature parity: host account scanning, agent switching, browser credit scraping, and new media-generation APIs are outside this integration.
@@ -157,6 +159,8 @@ Each relayed upstream response is capped at 64 MiB in total, including streaming
 Claude Code runs separately with an isolated home/configuration, disabled host file/shell tools, settings sources, hooks, skills, and browser integration. Only tools declared in the caller's request are exposed through a private local MCP connection. The genuine CLI performs its own upstream network requests outside the Go worker relay; apply host outbound policy for this process. Its executable is application-controlled, not a provider option. This isolation is not an OS sandbox.
 
 Claude allows one active request or parked tool call per account, with at most 16 runs per backend process. Tool results must return through the same authenticated tenant/API credential and backend process. Parked tool calls expire after five minutes, and a run lasts at most 30 minutes. Restarting or switching backend instances loses parked continuation state.
+
+When caller-defined tools are enabled, Claude rejects `parallel_tool_calls: false` with HTTP 400 because the CLI cannot enforce serial tool calls. Requests without active tools, including `tool_choice: "none"`, remain supported.
 
 A renewable account lease covers Claude credential reload, execution, parked tool rounds, credential persistence, and process cleanup across backend instances. Cleanup still attempts to save rotated credentials after cancellation or timeout. If a transient storage failure persists after three attempts, TokenHub retains the private temporary recovery directory and logs its path, without logging credential values. Recovery is manual: preserve that directory until the account credentials are durably restored. Concurrent administrator edits are never overwritten by a stale session.
 

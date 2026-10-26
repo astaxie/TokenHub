@@ -42,6 +42,55 @@ func TestClaudeSubscriptionBatchesStreamedToolBlocksBeforeContinuation(t *testin
 	}
 }
 
+func TestClaudeSubscriptionRejectsDisabledParallelToolCalls(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(map[bool]string{false: "chat", true: "stream"}[stream], func(t *testing.T) {
+			adapter, provider, ctx := claudeSubscriptionFixture(t)
+			adapter.ExecutableArgs = []string{"-test.run=^TestClaudeSubscriptionBlockHelperProcess$", "--", "tokenhub-claude-block-helper"}
+			request := claudeSubscriptionToolRequest()
+			disabled := false
+			request.ParallelToolCalls = &disabled
+			var err error
+			if stream {
+				_, err = adapter.ChatStream(ctx, provider, "blocks", request, io.Discard)
+			} else {
+				_, _, err = adapter.Chat(ctx, provider, "blocks", request)
+			}
+			if failure := AsHTTPError(err); failure == nil || failure.Code != "provider_capability_not_supported" {
+				t.Fatalf("unsupported parallel tool constraint was accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestClaudeSubscriptionAcceptsParallelToolControlsWithoutConflict(t *testing.T) {
+	enabled, disabled := true, false
+	for _, test := range []struct {
+		name     string
+		parallel *bool
+		choice   any
+		noTools  bool
+		want     int
+	}{
+		{name: "default", want: 1},
+		{name: "enabled", parallel: &enabled, want: 1},
+		{name: "tools disabled", parallel: &disabled, choice: "none"},
+		{name: "no tools", parallel: &disabled, noTools: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := claudeSubscriptionToolRequest()
+			request.ParallelToolCalls, request.ToolChoice = test.parallel, test.choice
+			if test.noTools {
+				request.Tools = nil
+			}
+			tools, err := claudeSubscriptionTools(request)
+			if err != nil || len(tools) != test.want {
+				t.Fatalf("supported tool controls failed: tools=%d error=%v", len(tools), err)
+			}
+		})
+	}
+}
+
 // This fixture follows the genuine CLI's one-assistant-event-per-content-block
 // shape, with the final usage arriving in message_delta after both tool blocks.
 func TestClaudeSubscriptionBlockHelperProcess(t *testing.T) {

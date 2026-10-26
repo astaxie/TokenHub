@@ -32,7 +32,14 @@ func (s *GormStore) ReplaceProviderSession(ctx context.Context, resourceID, prov
 		credentials.SessionJSON = next
 		resource.CredentialBlob = s.encryptProviderResourceCredentialBlob(credentials)
 		resource.UpdatedAt = time.Now().UTC()
-		return updateExistingProviderResourceColumns(s.db.WithContext(leaseCtx), &resource, "credential_blob", "updated_at")
+		columns := []string{"credential_blob", "updated_at"}
+		if resource.Options == nil {
+			resource.Options = map[string]string{}
+		}
+		if applySubscriptionWorkerRefreshSummary(resource.Options, resource.ResourceType, next) {
+			columns = append(columns, "options")
+		}
+		return updateExistingProviderResourceColumns(s.db.WithContext(leaseCtx), &resource, columns...)
 	})
 }
 

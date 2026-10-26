@@ -68,8 +68,8 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 		}
 		return nil
 	}
-	var walk func(v any, depth int) any
-	walk = func(v any, depth int) any {
+	var walk func(v any, depth int, keepRequired bool) any
+	walk = func(v any, depth int, keepRequired bool) any {
 		if projectionErr != nil {
 			return nil
 		}
@@ -95,7 +95,7 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 					}
 				}
 				active[ref] = true
-				resolved := walk(target, depth+1)
+				resolved := walk(target, depth+1, keepRequired)
 				delete(active, ref)
 				return resolved
 			}
@@ -108,7 +108,9 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 					}
 				}
 				for _, e := range all {
-					if m, ok := walk(e, depth+1).(map[string]any); ok {
+					// A required field may be declared by another allOf member.
+					// Filter names only after the properties have been combined.
+					if m, ok := walk(e, depth+1, true).(map[string]any); ok {
 						for k, v := range m {
 							if k == "properties" {
 								current, _ := merged["properties"].(map[string]any)
@@ -141,7 +143,7 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 						}
 					}
 				}
-				return walk(merged, depth+1)
+				return walk(merged, depth+1, keepRequired)
 			}
 			// anyOf / oneOf: the first member that isn't null, nullable
 			for _, k := range []string{"anyOf", "oneOf"} {
@@ -161,7 +163,7 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 					}
 					out := map[string]any{}
 					if pick != nil {
-						if m, ok := walk(pick, depth+1).(map[string]any); ok {
+						if m, ok := walk(pick, depth+1, keepRequired).(map[string]any); ok {
 							out = m
 						}
 					}
@@ -209,11 +211,11 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 						return fail("Antigravity tool schema properties must be an object")
 					}
 					for pk, pv := range m {
-						props[pk] = walk(pv, depth+1)
+						props[pk] = walk(pv, depth+1, false)
 					}
 					out[k] = props
 				case "items":
-					out[k] = walk(v, depth+1)
+					out[k] = walk(v, depth+1, false)
 				case "enum":
 					// Google takes string enums only
 					if es, ok := v.([]any); ok {
@@ -249,7 +251,7 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 			if out["type"] == "array" && out["items"] == nil {
 				out["items"] = map[string]any{}
 			}
-			if req, ok := out["required"].([]any); ok {
+			if req, ok := out["required"].([]any); ok && !keepRequired {
 				// required names only the properties there are
 				props, _ := out["properties"].(map[string]any)
 				keep := []any{}
@@ -268,6 +270,6 @@ func antigravitySubscriptionSchema(value any) (any, error) {
 		}
 		return fail("Antigravity tool schema nodes must be objects")
 	}
-	result := walk(root, 0)
+	result := walk(root, 0, false)
 	return result, projectionErr
 }

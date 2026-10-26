@@ -98,14 +98,16 @@ func redactSubscriptionQuotaText(quota map[string]any, provider Provider) {
 }
 
 type subscriptionQuotaResult struct {
-	Plan, Balance, Until, Error, SignIn string
-	Windows                             []struct {
-		Name, Display, ResetsAt string
-		Used                    *float64
-		Span                    float64
-		Aside                   bool
-		Models                  []string
-		NotModels               []string
+	Plan, Balance, Error, SignIn string
+	Until                        json.RawMessage
+	Windows                      []struct {
+		Name, Display string
+		ResetsAt      json.RawMessage
+		Used          *float64
+		Span          float64
+		Aside         bool
+		Models        []string
+		NotModels     []string
 	}
 }
 
@@ -137,7 +139,7 @@ func normalizeSubscriptionQuota(raw []byte, now time.Time) (map[string]any, erro
 		}
 		used := math.Max(0, math.Min(100, *window.Used))
 		item := map[string]any{"key": "window-" + strconv.Itoa(index), "label": name, "used_percent": used}
-		if reset, err := time.Parse(time.RFC3339Nano, window.ResetsAt); err == nil {
+		if reset, ok := subscriptionQuotaTimestamp(window.ResetsAt); ok {
 			item["reset_at"] = reset.Unix()
 			item["reset_after_seconds"] = max(int64(0), reset.Unix()-now.Unix())
 		}
@@ -155,7 +157,7 @@ func normalizeSubscriptionQuota(raw []byte, now time.Time) (map[string]any, erro
 	if source.Balance != "" {
 		metrics = append(metrics, map[string]string{"label": "Balance", "value": boundedSubscriptionText(source.Balance)})
 	}
-	if until, err := time.Parse(time.RFC3339Nano, source.Until); err == nil {
+	if until, ok := subscriptionQuotaTimestamp(source.Until); ok {
 		metrics = append(metrics, map[string]string{"label": "Plan expires", "value": until.UTC().Format(time.RFC3339)})
 	}
 	result := map[string]any{"plan_type": boundedSubscriptionText(source.Plan), "fetched_at": now.Unix(), "windows": windows, "additional_rate_limits": additional, "metrics": metrics}
@@ -167,6 +169,20 @@ func normalizeSubscriptionQuota(raw []byte, now time.Time) (map[string]any, erro
 		result["status_label"] = "Quota reported"
 	}
 	return result, nil
+}
+
+// Most adapters use RFC3339; Devin's daily and weekly windows use Unix seconds.
+func subscriptionQuotaTimestamp(raw json.RawMessage) (time.Time, bool) {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		parsed, err := time.Parse(time.RFC3339Nano, text)
+		return parsed, err == nil
+	}
+	var seconds int64
+	if json.Unmarshal(raw, &seconds) == nil && seconds > 0 && seconds <= 253402300799 {
+		return time.Unix(seconds, 0).UTC(), true
+	}
+	return time.Time{}, false
 }
 
 func normalizeSubscriptionCheckin(raw []byte) (map[string]any, error) {

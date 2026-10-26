@@ -29,6 +29,18 @@ func subscriptionWorkerHasQuota(id string) bool {
 	return id != "nous-portal" && id != "gcp-ai"
 }
 
+func subscriptionWorkerHasRefresh(id string) bool {
+	switch id {
+	case "kiro", "qoder", "qoder-cn", "qwenwork", "qwenwork-enterprise", "gcp-ai",
+		"workbuddy", "workbuddy-ai", "mimo-app", "factory", "grok", "minimax-code",
+		"minimax-code-global", "cline", "trae-cn", "trae-global", "nous-portal",
+		"raccoon", "autoclaw", "autoclaw-cn", "codearts":
+		return true
+	default:
+		return false
+	}
+}
+
 func subscriptionWorkerHasCheckin(id string) bool {
 	switch id {
 	case "qoder", "qoder-cn", "minimax-code", "minimax-code-global", "trae-cn", "trae-global", "raccoon", "autoclaw", "autoclaw-cn", "codearts":

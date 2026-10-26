@@ -506,10 +506,12 @@ func applyProviderAccountOptions(options map[string]string, resourceType string,
 	stripProviderResourceCredentialOptions(options)
 	options["credential_source"] = firstNonEmpty(strings.TrimSpace(resourceType), providerAccountCredentialSourceFallback)
 	options["auth_type"] = firstNonEmpty(creds.AuthType, options["auth_type"], "oauth")
-	if strings.TrimSpace(creds.RefreshToken) != "" {
-		options["has_refresh_token"] = "true"
-	} else if options["has_refresh_token"] == "" {
-		options["has_refresh_token"] = "false"
+	if !applySubscriptionWorkerRefreshSummary(options, resourceType, creds.SessionJSON) {
+		if strings.TrimSpace(creds.RefreshToken) != "" {
+			options["has_refresh_token"] = "true"
+		} else if options["has_refresh_token"] == "" {
+			options["has_refresh_token"] = "false"
+		}
 	}
 	setOptionIfValue(options, "token_expires_at", creds.ExpiresAt)
 	setOptionIfValue(options, "account_id", creds.AccountID)
