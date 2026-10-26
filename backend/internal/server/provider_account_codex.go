@@ -440,7 +440,7 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 		}
 		opened, err := streamAdapter.OpenResponses(ctx, prepared.Provider, prepared.ProviderModel, upstreamRequest, r.Header)
 		if providerResourceModelUnsupportedError(err) {
-			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+			s.removeProviderResourceModel(ctx, route)
 		}
 		if err != nil {
 			return nil, subscriptionJSONFailureUsage(err), err

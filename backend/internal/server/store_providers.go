@@ -528,6 +528,9 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
 	}
 	retainCredentialReplacementSettings(&patch, resource)
+	// Credential replacement clears protected options, so retain the prior
+	// generation before preparing the new credential snapshot.
+	credentialReplacementGeneration := providerCredentialReplacementGeneration(resource.Options)
 	before := resource
 	var beforeProvider Provider
 	if err := db.First(&beforeProvider, "id = ?", before.ProviderID).Error; err != nil {
@@ -620,7 +623,7 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 		if resource.Options == nil {
 			resource.Options = map[string]string{}
 		}
-		resource.Options[providerCredentialReplacementGenerationOption] = strconv.FormatInt(providerCredentialReplacementGeneration(resource.Options)+1, 10)
+		resource.Options[providerCredentialReplacementGenerationOption] = strconv.FormatInt(credentialReplacementGeneration+1, 10)
 	}
 	afterCredentials := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
 	imageCapabilityProfiles := mergeProviderImageCapabilityRouteProfiles(

@@ -357,7 +357,7 @@ func (s *Server) executeRoutedGemini(r *http.Request, routed RoutedCall, request
 		}
 		response, usage, err := s.invokeResponsesAdapter(ctx, prepared, upstream, headers)
 		if providerResourceModelUnsupportedError(err) {
-			s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
+			s.removeProviderResourceModel(ctx, prepared)
 		}
 		if err != nil {
 			return nil, usage, err

@@ -89,7 +89,7 @@ func (s *Server) streamCodexCompatibility(
 	)
 	if err != nil {
 		if providerResourceModelUnsupportedError(err) {
-			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+			s.removeProviderResourceModel(ctx, route)
 		}
 		return subscriptionJSONFailureUsage(err), err
 	}
@@ -98,7 +98,7 @@ func (s *Server) streamCodexCompatibility(
 	usage, streamErr := consumeCodexCompatibilityStream(opened.Body, sink)
 	applyCodexResponseMetadata(&usage, opened.Header)
 	if providerResourceModelUnsupportedError(streamErr) {
-		s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+		s.removeProviderResourceModel(ctx, route)
 	}
 	return usage, streamErr
 }

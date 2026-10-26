@@ -112,14 +112,19 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
         await onCredentialsRef.current(result);
         if (!cancelled) { setComplete(true); setSession(null); }
       } catch (err) {
-        if (!cancelled) { setError(err instanceof Error ? err.message : tx("账号授权失败")); activeSession.current = null; setSession(null); }
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : tx("账号授权失败"));
+          const pending = activeSession.current;
+          activeSession.current = null; setSession(null); setCallback("");
+          if (pending && cancelAction) void runProviderCapabilityAction(api, providerType, "oauth.cancel", cancelAction, { session_id: pending.session_id, state: pending.state }, tx("取消")).catch(() => {});
+        }
       } finally {
         if (exchangeInFlight.current === operation) { exchangeInFlight.current = null; setPolling(false); }
       }
     };
     timer = setTimeout(() => { void poll(); }, interval * 1000);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [api, busy, exchangeAction, providerType, session]);
+  }, [api, busy, cancelAction, exchangeAction, providerType, session]);
 
   async function start() {
     if (!startAction) return;

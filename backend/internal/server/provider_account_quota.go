@@ -57,6 +57,7 @@ func (s *Server) queryOpenAIAccountQuotaCached(ctx context.Context, resourceID s
 	if !ok {
 		return OpenAIAccountQuota{}, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
 	}
+	expectedGeneration := providerCredentialReplacementGeneration(resource.Options)
 	provider, ok := s.providerByID(resource.ProviderID)
 	if !ok {
 		return OpenAIAccountQuota{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
@@ -99,7 +100,7 @@ func (s *Server) queryOpenAIAccountQuotaCached(ctx context.Context, resourceID s
 			return encodeErr
 		}
 		fetchedAt := time.Unix(fetched.FetchedAt, 0).UTC()
-		if saveErr := s.store.SaveProviderResourceQuota(resourceID, provider.Type, string(encoded), fetchedAt); saveErr != nil {
+		if saveErr := s.store.SaveProviderResourceQuotaIfCurrent(leaseCtx, resourceID, provider.Type, string(encoded), fetchedAt, expectedGeneration); saveErr != nil {
 			return saveErr
 		}
 		s.store.RecordProviderObservation(ProviderObservation{

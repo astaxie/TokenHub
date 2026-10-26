@@ -545,7 +545,7 @@ func (s *Server) executeRoutedPlaygroundStream(
 				}
 				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundResponses(ctx, r, prepared, upstreamReq, routed.Call, events, routed.Call.RequestID)
 				if providerResourceModelUnsupportedError(attemptErr) {
-					s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
+					s.removeProviderResourceModel(ctx, prepared)
 				}
 			} else {
 				upstreamReq := req

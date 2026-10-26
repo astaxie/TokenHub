@@ -127,6 +127,24 @@ describe("Subscription authorization", () => {
     expect(onCredentials).toHaveBeenCalledWith({ access_token: "device-token" });
   });
 
+  for (const flow of ["auto", "device_code"]) it(`cancels the remote ${flow} session after a polling failure`, async () => {
+    const { requests, onCredentials, unmount } = setup(({ capability }) => {
+      if (capability === "oauth.start") return { ...session, flow, poll_interval: 2 };
+      throw new TypeError("Synthetic network failure");
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开授权" })).toBeEnabled());
+    vi.useFakeTimers();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "打开授权" })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.getByRole("alert")).toHaveTextContent("Synthetic network failure");
+    expect(screen.getByRole("button", { name: "打开授权" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+    expect(onCredentials).not.toHaveBeenCalled();
+    expect(requests.at(-1)).toMatchObject({ capability: "oauth.cancel", body: { session_id: session.session_id, state: session.state } });
+    unmount();
+    expect(requests.filter(request => request.capability === "oauth.cancel")).toHaveLength(1);
+  });
+
   it("rejects non-HTTPS authorization links", async () => {
     setup(() => ({ ...session, auth_url: "http://auth.example.test" }));
     await start();

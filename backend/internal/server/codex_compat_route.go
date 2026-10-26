@@ -25,7 +25,7 @@ func (s *Server) executeCodexAnthropicMessages(
 	applyClaudeCodeCodexToolConstraints(&upstream, headers)
 	resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstream, codexAnthropicCompatibilityHeaders(headers, req.Raw))
 	if providerResourceModelUnsupportedError(err) {
-		s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+		s.removeProviderResourceModel(ctx, route)
 	}
 	if err != nil {
 		return nil, usage, err
@@ -111,7 +111,7 @@ func (s *Server) executeCodexChatRoute(
 	}
 	resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstream, codexChatCompatibilityHeaders(headers, req))
 	if providerResourceModelUnsupportedError(err) {
-		s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+		s.removeProviderResourceModel(ctx, route)
 	}
 	if err != nil {
 		return nil, usage, err

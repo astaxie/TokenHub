@@ -181,39 +181,6 @@ func cachedProviderCatalogSource(catalog ProviderCatalogEntry) string {
 	return "provider-resource-cache"
 }
 
-func (s *Server) persistProviderResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {
-	modelIDs := make([]string, 0, len(models))
-	seen := map[string]struct{}{}
-	for _, model := range models {
-		modelID := strings.TrimSpace(model.ID)
-		lookupName := normalizeModelLookupName(modelID)
-		if modelID == "" {
-			continue
-		}
-		if _, ok := seen[lookupName]; ok {
-			continue
-		}
-		seen[lookupName] = struct{}{}
-		modelIDs = append(modelIDs, modelID)
-	}
-	sort.Strings(modelIDs)
-	encoded, err := json.Marshal(modelIDs)
-	if err != nil {
-		return err
-	}
-	catalogEncoded, err := json.Marshal(models)
-	if err != nil {
-		return err
-	}
-	_, err = s.store.UpdateProviderResourceOptions(resourceID, map[string]string{
-		providerResourceSupportedModelsOption: string(encoded),
-		providerResourceModelsFetchedAtOption: fetchedAt.UTC().Format(time.RFC3339Nano),
-		providerResourceModelsETagOption:      firstNonEmptyModelETag(models),
-		providerResourceModelCatalogOption:    string(catalogEncoded),
-	})
-	return err
-}
-
 func firstNonEmptyModelETag(models []ProviderCatalogModel) string {
 	for _, model := range models {
 		if value := strings.TrimSpace(model.Metadata["models_etag"]); value != "" {
@@ -314,9 +281,14 @@ func (s *Server) filterProviderAccountRoutesByModel(modelName string, routes []R
 	)
 }
 
-func (s *Server) removeProviderResourceModel(resourceID string, modelName string) {
+func (s *Server) removeProviderResourceModel(ctx context.Context, route RouteSelection) {
+	if route.Resource == nil {
+		return
+	}
+	resourceID := routeResourceID(route)
+	expectedGeneration := providerCredentialReplacementGeneration(route.Resource.Options)
 	resource, ok := s.providerResourceByID(resourceID)
-	if !ok {
+	if !ok || providerCredentialReplacementGeneration(resource.Options) != expectedGeneration {
 		return
 	}
 	models, _, cached := providerResourceCachedModels(&resource)
@@ -325,7 +297,7 @@ func (s *Server) removeProviderResourceModel(resourceID string, modelName string
 	}
 	filtered := make([]string, 0, len(models))
 	for _, candidate := range models {
-		if normalizeModelLookupName(candidate) != normalizeModelLookupName(modelName) {
+		if normalizeModelLookupName(candidate) != normalizeModelLookupName(route.ProviderModel) {
 			filtered = append(filtered, candidate)
 		}
 	}
@@ -333,7 +305,7 @@ func (s *Server) removeProviderResourceModel(resourceID string, modelName string
 	for _, modelID := range filtered {
 		catalogModels = append(catalogModels, ProviderCatalogModel{ID: modelID})
 	}
-	_ = s.persistProviderResourceModels(resourceID, catalogModels, time.Now().UTC())
+	_ = s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalogModels, time.Now().UTC(), expectedGeneration)
 }
 
 func cloneStringMap(values map[string]string) map[string]string {
