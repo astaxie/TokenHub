@@ -21,7 +21,7 @@ function setup(handle: (request: Request) => unknown | Promise<unknown>, opaque 
     expect(request.body.resource_type).toBe("test_account");
     const data = request.capability === "oauth.methods" ? { methods: methodList }
       : request.capability === "oauth.cancel" ? { status: "cancelled" } : await handle(request);
-    return new Response(JSON.stringify({ data }));
+    return data instanceof Response ? data : new Response(JSON.stringify({ data }));
   }));
   const onCredentials = vi.fn();
   const view = render(<ProviderSubscriptionAuth api={api} actions={actions(opaque)} providerType="test_subscription" onCredentials={onCredentials} />);
@@ -125,6 +125,42 @@ describe("Subscription authorization", () => {
     expect(onCredentials).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(onCredentials).toHaveBeenCalledWith({ access_token: "device-token" });
+  });
+
+  it("automatically fills a browser subscription session after pending authorization", async () => {
+    let polls = 0;
+    const credentials = { session_json: '{"type":"oauth","access":"synthetic-workbuddy"}' };
+    const { requests, onCredentials } = setup(({ capability }) => capability === "oauth.start"
+      ? { ...session, flow: "auto", callback_mode: "none", poll_interval: 2 }
+      : ++polls === 1 ? { status: "pending" } : credentials, true);
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开授权" })).toBeEnabled());
+    vi.useFakeTimers();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "打开授权" })); });
+    expect(screen.getByText("请在供应商网页完成登录后返回这里。TokenHub 会自动回填账号凭据，无需粘贴授权码。回填后请保存账号资源。")).toBeInTheDocument();
+    expect(screen.queryByLabelText("回调结果")).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(onCredentials).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(onCredentials).toHaveBeenCalledExactlyOnceWith(credentials);
+    expect(requests.filter(request => request.capability === "oauth.exchange").map(request => request.body)).toEqual([
+      { resource_type: "test_account", session_id: session.session_id, state: session.state, code: "" },
+      { resource_type: "test_account", session_id: session.session_id, state: session.state, code: "" },
+    ]);
+    expect(screen.getByText("已回填账号 Token")).toBeInTheDocument();
+    expect(screen.getByText("账号凭据已回填，请保存账号资源以完成接入。")).toBeInTheDocument();
+  });
+
+  it("explains a failed browser authorization without requiring a pasted code", async () => {
+    setup(({ capability }) => {
+      if (capability === "oauth.start") return { ...session, flow: "auto", callback_mode: "none", poll_interval: 2 };
+      return new Response(JSON.stringify({ error: { code: "subscription_authorization_failed", message: "Subscription authorization failed or expired; start again" } }), { status: 400 });
+    }, true);
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开授权" })).toBeEnabled());
+    vi.useFakeTimers();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "打开授权" })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.getByRole("alert")).toHaveTextContent("未能取得账号凭据，授权可能失败或已过期。请重新打开授权并在网页完成登录；无需手动复制 Token。");
+    expect(screen.getByRole("button", { name: "打开授权" })).toBeEnabled();
   });
 
   for (const flow of ["auto", "device_code"]) it(`cancels the remote ${flow} session after a polling failure`, async () => {

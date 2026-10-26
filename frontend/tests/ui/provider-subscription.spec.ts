@@ -5,7 +5,8 @@ import type { MockAPI } from "./network";
 const catalog: ProviderCatalogEntry = { id: "ui-subscription", name: "UI Subscription", display_name: "UI Subscription", type: "ui_subscription", base_url: "", categories: ["openai"], models_count: 0, source: "ui-fixture", models: [] };
 const plugin: PluginDescriptor = { id: "test.subscription", name: "UI Subscription", version: "1", source: "built_in", kinds: ["provider"], placements: [], capabilities: [{ kind: "provider_resource_type", name: "ui_account", subject: catalog.type }] };
 const model = { id: "ui-chat", name: "UI Chat", category: "openai", type: "chat" };
-function install(api: MockAPI, device: boolean | "token", pollFailure = false) {
+function install(api: MockAPI, device: boolean | "token" | "auto", pollFailure = false) {
+  let browserAuthorized = false;
   const actions: PluginActionDescriptor[] = ["oauth.methods", "oauth.start", "oauth.exchange", "oauth.cancel"].map(capability => ({ plugin_id: plugin.id, action_id: capability, capability, subject: catalog.type, kind: "mutate", metadata: { provider_resource_type: "ui_account", subscription_auth: "true", subscription_session_json: device === "token" ? "false" : "true" } }));
   api.respond("GET", "/api/admin/provider-catalog", { data: [catalog] });
   api.respond("GET", "/api/admin/provider-catalog/ui-subscription", { data: catalog });
@@ -22,7 +23,7 @@ function install(api: MockAPI, device: boolean | "token", pollFailure = false) {
   api.define("POST", `/api/admin/provider-actions/${catalog.type}/oauth.start`, input => {
     expect(input.body).toMatchObject({ resource_type: "ui_account", method_id: "login" });
     if (device === "token") expect(input.body).toMatchObject({ inputs: { client_id: "synthetic-client", client_secret: "synthetic-client-secret" } });
-    return { json: { data: { session_id: "ui-login", state: "synthetic-state", flow: "device_code", user_code: "ABCD-EFGH", poll_interval: device === "token" || pollFailure ? 2 : 60, auth_url: "https://auth.example.test/login" } } };
+    return { json: { data: { session_id: "ui-login", state: "synthetic-state", ...(device === "auto" ? { flow: "auto", callback_mode: "none" } : { flow: "device_code", user_code: "ABCD-EFGH" }), poll_interval: device === "token" || device === "auto" || pollFailure ? 2 : 60, auth_url: "https://auth.example.test/login" } } };
   });
   api.define("POST", `/api/admin/provider-actions/${catalog.type}/oauth.cancel`, input => {
     expect(input.body).toEqual({ resource_type: "ui_account", session_id: "ui-login", state: "synthetic-state" });
@@ -37,6 +38,10 @@ function install(api: MockAPI, device: boolean | "token", pollFailure = false) {
       expect(input.body).toEqual({ resource_type: "ui_account", session_id: "ui-login", state: "synthetic-state", code: "" });
       return { json: { data: { access_token: "synthetic-native-token", client_id: "synthetic-client", client_secret: "synthetic-client-secret", catalog: { ...catalog, models_count: 1, models: [model] } } } };
     }
+    if (device === "auto") {
+      expect(input.body).toEqual({ resource_type: "ui_account", session_id: "ui-login", state: "synthetic-state", code: "" });
+      return { json: { data: browserAuthorized ? { session_json: '{"refresh":"synthetic-rotated"}', catalog: { ...catalog, models_count: 1, models: [model] } } : { status: "pending" } } };
+    }
     expect(device).toBe(false);
     expect(input.body).toEqual({ resource_type: "ui_account", mode: "import", session_json: '{"refresh":"synthetic-original"}' });
     return { json: { data: { session_json: '{"refresh":"synthetic-rotated"}', catalog: { ...catalog, models_count: 1, models: [model] } } } };
@@ -49,9 +54,36 @@ function install(api: MockAPI, device: boolean | "token", pollFailure = false) {
     expect(input.body).toMatchObject({ provider_id: "prv_ui", resource_type: "ui_account", base_url: "", credentials: { replace: true, ...(device === "token" ? { access_token: "synthetic-native-token", client_id: "synthetic-client", client_secret: "synthetic-client-secret" } : { session_json: '{"refresh":"synthetic-rotated"}' }) } });
     return { status: 201, json: { id: "rsrc_ui", provider_id: "prv_ui", resource_type: "ui_account", name: "Synthetic account", healthy: true, status: "active", priority: 1, weight: 100 } };
   });
+  return () => { browserAuthorized = true; };
 }
 
 for (const viewport of ["desktop", "mobile"] as const) {
+  test(`subscription browser authorization fills credentials automatically ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => { window.open = () => null; });
+    const authorize = install(api, "auto");
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    await editor.getByRole("button", { name: /UI Subscription/ }).click();
+    const auth = editor.locator("div.provider-account-auth-wide");
+    await auth.getByRole("button", { name: "打开授权", exact: true }).click();
+    await expect(auth.getByText("请在供应商网页完成登录后返回这里。TokenHub 会自动回填账号凭据，无需粘贴授权码。回填后请保存账号资源。", { exact: true })).toBeVisible();
+    await expect(auth.getByLabel("回调结果", { exact: true })).toHaveCount(0);
+    await expect.poll(() => api.calls.filter(call => call.path.endsWith("oauth.exchange")).length).toBeGreaterThan(0);
+    await auth.scrollIntoViewIfNeeded();
+    await capture(page, testInfo, auth, `subscription-browser-pending-${viewport}`, "订阅授权：网页登录后自动回填，无需粘贴", "viewport");
+    authorize();
+    await expect(auth.getByText("已回填账号 Token", { exact: true })).toBeVisible();
+    await expect(auth.getByText("账号凭据已回填，请保存账号资源以完成接入。", { exact: true })).toBeVisible();
+    await capture(page, testInfo, auth, `subscription-browser-complete-${viewport}`, "订阅授权：凭据已回填，提示保存账号资源", "viewport");
+    await editor.getByRole("button", { name: "下一步", exact: true }).click();
+    await editor.getByRole("checkbox", { name: /UI Chat/ }).check();
+    await editor.getByRole("button", { name: "添加供应商并引入模型", exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect(api.calls.filter(call => call.path === "/api/admin/provider-resources" && call.method === "POST")).toHaveLength(1);
+  });
+
   test(`subscription device authorization and cancellation ${viewport}`, async ({ page, api }, testInfo) => {
     if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => { window.open = () => null; });

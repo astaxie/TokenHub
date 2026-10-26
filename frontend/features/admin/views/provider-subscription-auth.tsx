@@ -5,7 +5,7 @@ import { providerPluginActionForCapability, runProviderCapabilityAction } from "
 import { tx } from "../i18n/runtime";
 
 type LoginMethod = { id: string; method_id?: string; label: string; type: string; prompts?: Array<{ key: string; label: string; type?: string; options?: Array<{ value: string; label: string }> }> };
-type LoginSession = { session_id: string; state: string; auth_url?: string; url?: string; flow?: string; user_code?: string; poll_interval?: number; expires_at?: string; instructions?: string; local_listener?: boolean };
+type LoginSession = { session_id: string; state: string; auth_url?: string; url?: string; flow?: string; user_code?: string; poll_interval?: number; expires_at?: string; instructions?: string; local_listener?: boolean; callback_mode?: string };
 
 export function supportsSubscriptionAuthorization(actions: PluginActionDescriptor[], providerType: string) {
   return providerPluginActionForCapability(actions, providerType, "oauth.start")?.metadata?.subscription_auth === "true";
@@ -16,6 +16,13 @@ function validAuthorizationURL(raw: string, localListener?: boolean) {
   if (url.username || url.password) return false;
   if (url.protocol === "https:") return true;
   return localListener === true && url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) && Boolean(url.port) && !url.hash;
+}
+
+function subscriptionAuthorizationError(error: unknown) {
+  if (!(error instanceof Error)) return tx("账号授权失败");
+  return error.message === "Subscription authorization failed or expired; start again"
+    ? tx("未能取得账号凭据，授权可能失败或已过期。请重新打开授权并在网页完成登录；无需手动复制 Token。")
+    : error.message;
 }
 
 const subscriptionCredentialKeys = ["session_json", "client_id", "client_secret", "access_token", "refresh_token", "id_token", "account_email", "account_id", "organization_id", "plan_type", "token_type", "expires_at", "scopes"] as const;
@@ -113,7 +120,7 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
         if (!cancelled) { setComplete(true); setSession(null); }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : tx("账号授权失败"));
+          setError(subscriptionAuthorizationError(err));
           const pending = activeSession.current;
           activeSession.current = null; setSession(null); setCallback("");
           if (pending && cancelAction) void runProviderCapabilityAction(api, providerType, "oauth.cancel", cancelAction, { session_id: pending.session_id, state: pending.state }, tx("取消")).catch(() => {});
@@ -144,7 +151,7 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
       setSession(activeSession.current);
       if (authURL) window.open(authURL, "_blank", "noopener,noreferrer");
     } catch (err) {
-      if (generation.current === current) setError(err instanceof Error ? err.message : tx("账号授权失败"));
+      if (generation.current === current) setError(subscriptionAuthorizationError(err));
     } finally { if (generation.current === current) setBusy(false); }
   }
 
@@ -165,7 +172,7 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
       activeSession.current = null;
       await onCredentialsRef.current(result);
       setCallback(""); setSession(null); setComplete(true);
-    } catch (err) { if (generation.current === current) setError(err instanceof Error ? err.message : tx("账号授权失败")); }
+    } catch (err) { if (generation.current === current) setError(subscriptionAuthorizationError(err)); }
     finally { if (exchangeInFlight.current === operation) exchangeInFlight.current = null; if (generation.current === current) setBusy(false); }
   }
 
@@ -194,12 +201,12 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
       {session.local_listener ? <p>{tx("此登录页运行在 TokenHub 服务器本机；远程使用时需转发对应端口。")}</p> : null}
       {session.instructions ? <p>{session.instructions}</p> : null}
       {session.user_code ? <p>{tx("设备授权码")} <strong>{session.user_code}</strong></p> : null}
-      {["device_code", "auto"].includes(session.flow ?? "") ? <p>{tx("请在授权页面完成登录，TokenHub 会自动检查结果。")}</p> : null}
-      {session.flow !== "device_code" ? <label className="field"><span>{tx("回调结果")}</span><textarea value={callback} onChange={(event) => setCallback(event.target.value)} /><button className="secondary-button" type="button" disabled={busy || polling || !callback.trim()} onClick={() => { void exchange(); }}>{tx("完成授权")}</button></label> : null}
+      {session.flow === "auto" && session.callback_mode === "none" ? <p>{tx("请在供应商网页完成登录后返回这里。TokenHub 会自动回填账号凭据，无需粘贴授权码。回填后请保存账号资源。")}</p> : ["device_code", "auto"].includes(session.flow ?? "") ? <p>{tx("请在授权页面完成登录，TokenHub 会自动检查结果。")}</p> : null}
+      {session.flow !== "device_code" && session.callback_mode !== "none" ? <label className="field"><span>{tx("回调结果")}</span><textarea value={callback} onChange={(event) => setCallback(event.target.value)} /><button className="secondary-button" type="button" disabled={busy || polling || !callback.trim()} onClick={() => { void exchange(); }}>{tx("完成授权")}</button></label> : null}
       <button className="secondary-button" type="button" onClick={cancelSession}>{tx("取消")}</button>
     </div> : null}
     {opaqueSession ? <details><summary>{tx("导入订阅会话")}</summary><label className="field"><span>{tx("订阅会话 JSON")}</span><textarea value={importedSession} onChange={(event) => setImportedSession(event.target.value)} /><small>{tx("仅粘贴本人授权的完整会话 JSON；将加密保存，保存后不会再次显示。")}</small></label><button className="secondary-button" type="button" disabled={disabled || busy || Boolean(session) || !importedSession.trim()} onClick={() => { void importSession(); }}>{tx("导入订阅会话")}</button></details> : null}
-    {complete ? <p role="status">{tx("已回填账号 Token")}</p> : null}
+    {complete ? <div role="status"><p>{tx("已回填账号 Token")}</p><p>{tx("账号凭据已回填，请保存账号资源以完成接入。")}</p></div> : null}
     {error ? <p role="alert">{error}</p> : null}
   </div>;
 }

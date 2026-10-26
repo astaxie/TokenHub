@@ -144,7 +144,11 @@ func (a *SubscriptionWorkerAdapter) startAuthorization(ctx context.Context, acto
 			return nil, NewHTTPError(502, "subscription_authorization_url_invalid", "Subscription authorization returned an invalid URL")
 		}
 	}
-	return map[string]any{"session_id": key, "state": state, "flow": flow, "auth_url": authURL, "local_listener": localListener, "instructions": result["instructions"], "poll_interval": 3, "expires_at": session.expires.UTC().Format(time.RFC3339)}, nil
+	response := map[string]any{"session_id": key, "state": state, "flow": flow, "auth_url": authURL, "local_listener": localListener, "instructions": result["instructions"], "poll_interval": 3, "expires_at": session.expires.UTC().Format(time.RFC3339)}
+	if result["callback_mode"] == "none" {
+		response["callback_mode"] = "none"
+	}
+	return response, nil
 }
 
 func subscriptionAuthorizationURLAllowed(value string, localListener bool) bool {
@@ -259,7 +263,7 @@ func (a *SubscriptionWorkerAdapter) continueAuthorization(ctx context.Context, a
 		return credentials, err
 	default:
 		a.endAuthorization(input.SessionID, session)
-		return nil, NewHTTPError(400, "subscription_authorization_failed", "Subscription authorization failed or expired; start again")
+		return nil, subscriptionAuthorizationFailure(raw)
 	}
 }
 

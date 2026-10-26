@@ -361,14 +361,20 @@ func subscriptionNodeVersionSupported(version string) bool {
 }
 
 type subscriptionWorkerFailure struct {
-	Code   string `json:"code"`
-	Status int    `json:"status"`
-	SignIn string `json:"sign_in"`
+	Code           string `json:"code"`
+	Status         int    `json:"status"`
+	SignIn         string `json:"sign_in"`
+	Stage          string `json:"stage"`
+	UpstreamStatus int    `json:"upstream_status"`
+	UpstreamCode   *int64 `json:"upstream_code"`
 }
 
 func subscriptionWorkerInvocationError(failure *subscriptionWorkerFailure) error {
 	status := http.StatusBadGateway
 	if failure != nil {
+		if failure.Code == "workbuddy_authorization_failed" {
+			return subscriptionAuthorizationFailureDetails(failure)
+		}
 		if err := subscriptionWorkerEgressError(failure.Code); err != nil {
 			return err
 		}

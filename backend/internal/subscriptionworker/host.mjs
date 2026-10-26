@@ -263,6 +263,7 @@ export function createHost({ scope, emit, relayCallback }) {
       }
       return { session_id: session.id, state: session.state, url: session.authorization.url || "", instructions: session.authorization.instructions || "",
         method: session.authorization.method || "auto", opened: session.authorization.opened === true,
+        ...(session.authorization.callback_mode === "none" ? { callback_mode: "none" } : {}),
         ...(ownedAuthorizationListener(session, session.authorization.url) ? { local_listener: true } : {}) };
     } catch (error) { endSession(session); sessions.delete(session.id); throw error; }
   }

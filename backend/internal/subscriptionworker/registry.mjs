@@ -27,6 +27,7 @@ export async function loadProvider(id, context, getAuth) {
   if (id === "qwenwork-enterprise") return (await import("./qwenwork.mjs")).createQwenWorkEnterpriseProvider(context);
   if (id === "gcp-ai") return (await import("./gcp-ai.mjs")).createGCPProvider(context);
   if (id === "grok") return (await import("./grok.mjs")).createGrokProvider(context);
+  if (id === "workbuddy" || id === "workbuddy-ai") return (await import("./workbuddy.mjs")).createWorkBuddyProvider(id, context);
   const [directory, name] = REGISTRY[id];
   const module = await import(`./vendor/${directory}/index.mjs`);
   if (id === "kimi-work") {

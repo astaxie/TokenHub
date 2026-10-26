@@ -120,6 +120,12 @@ export function validateAuth(provider, value, boundHost) {
 }
 
 export function publicError(error) {
+  if (error?.code === "workbuddy_authorization_failed") {
+    return { code: error.code, message: "WorkBuddy authorization did not complete", status: 400,
+      ...(["state", "token", "account"].includes(error.stage) ? { stage: error.stage } : {}),
+      ...(Number.isInteger(error.upstream_status) && error.upstream_status >= 100 && error.upstream_status <= 599 ? { upstream_status: error.upstream_status } : {}),
+      ...(Number.isSafeInteger(error.upstream_code) ? { upstream_code: error.upstream_code } : {}) };
+  }
   const safe = new Set(["invalid_credentials", "credentials_too_large", "local_credentials_not_supported", "upstream_host_not_allowed",
     "provider_not_supported", "operation_not_supported", "method_not_supported", "invalid_upstream", "invalid_request", "invalid_session",
     "callback_not_allowed", "credential_save_failed", "request_cancelled", "body_too_large", "model_not_found", "protocol_mismatch",
