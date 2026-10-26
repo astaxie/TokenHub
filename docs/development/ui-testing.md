@@ -41,6 +41,8 @@ For an affected page, cover its normal path and relevant empty, loading, failure
 
 Initial coverage includes customer/provider/margin statements, unknown versus zero amounts, empty/loading/error states, CSV from the displayed snapshot, filter invalidation, mobile actions, and the base branch's pricing preview/shadow-publication flow. The gallery adapts the earlier hybrid billing screenshot experiment; its scenarios target the checked-out product, not unmerged pricing redesigns.
 
+`login-responsive.spec.ts` covers login layouts from 320px mobile to 1920px desktop, including short landscape viewports, form-first layout on narrow screens, image/icon rendering, password visibility, theme/language controls, and SSO/error states with long labels. `console-responsive.spec.ts` covers desktop/mobile overview content, utility and navigation icons, model search and details, and the mobile model empty state. Run these scenarios with `npm run test:ui -- --grep "login-responsive|console-responsive"`, or use `capture:ui` with the same filter for review images. Their synthetic sessions and provider responses establish frontend behavior; they do not validate real credentials or an external identity provider.
+
 ## Review screenshots
 
 Time, timezone, language, viewport and motion are controlled. The capture helper waits for fonts and captures the relevant section. It rejects sections taller than the viewport, which must use explicitly positioned, named viewport segments to avoid internal-scroll clipping. Desktop scenarios use 1440×1000; mobile form/result segments use 390×844. Test names and diagnostics are English; the human-facing gallery captions are Chinese. Native controls and system fonts can vary between operating systems.
