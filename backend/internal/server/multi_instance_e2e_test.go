@@ -51,6 +51,9 @@ func (a *multiInstanceBlockingAdapter) ChatStream(ctx context.Context, provider 
 
 func TestMultiInstancePostgresE2E(t *testing.T) {
 	storeA, storeB, config := openSharedPostgresStores(t)
+	t.Run("create-only model publication has one winner", func(t *testing.T) {
+		testPostgresModelCreateOnly(t, storeA, storeB)
+	})
 	t.Run("media task bindings persist across instances", func(t *testing.T) {
 		testMediaTaskBindingPersistence(t, storeA, storeB)
 	})

@@ -160,7 +160,7 @@ type Store interface {
 	BulkOperateProviderResources(action string, ids []string) (ProviderResourceBulkResult, error)
 	ImportProviderResources(resources []ProviderResource) (ProviderResourceImportResult, error)
 	AddModel(model Model) Model
-	CreateModelWithRoutes(model Model, routes []ModelRoute) (Model, error)
+	CreateModelWithRoutes(model Model, routes []ModelRoute, options ...ModelCreateOptions) (Model, error)
 	ListModels() []Model
 	UpdateModel(name string, patch Model) (Model, error)
 	DeleteModel(name string) error

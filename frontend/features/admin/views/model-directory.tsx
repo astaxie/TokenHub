@@ -16,6 +16,7 @@ import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
 import { ModelDirectoryActions } from "./model-directory-actions";
 import { ModelDirectoryDetail } from "./model-directory-detail";
 import { ModelDirectoryPrice } from "./model-directory-price";
+import { ProviderModelImportModal } from "./provider-model-import-modal";
 
 export function ModelDirectoryView({
   api,
@@ -49,6 +50,7 @@ export function ModelDirectoryView({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [detailName, setDetailName] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
 
   const publishedModels = useMemo(() => externalModels(data, readOnly), [data, readOnly]);
   const filteredExternal = useMemo(
@@ -76,47 +78,34 @@ export function ModelDirectoryView({
     }
   }
 
-  if (!loading && publishedModels.length === 0) {
-    if (readOnly) {
-      return (
-        <DataSection title={config.eyebrow}>
-          <ModelGovernanceEmptyState
-            stage="models"
-            title="当前没有可见模型"
-            description="请联系管理员发布模型并授予 API Key 访问范围。"
-          />
-        </DataSection>
-      );
-    }
-    return (
-      <DataSection title={config.eyebrow}>
-        <ModelGovernanceEmptyState
-          stage={hasImportedProviderModels ? "models" : "providers"}
-          title={hasImportedProviderModels ? "还没有对外模型" : "先引入可用的 Provider 模型"}
-          description={hasImportedProviderModels
-            ? "从内置模型目录中挑选对外模型，再选择已引入的 Provider 模型并设置统一对外价格。"
-            : "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。"}
-          actionLabel={hasImportedProviderModels ? "新建对外模型" : "前往 Provider 渠道"}
-          onAction={hasImportedProviderModels ? onCreateModel : onOpenProviders}
-        />
-      </DataSection>
-    );
-  }
-
-  return (
+  const empty = !loading && publishedModels.length === 0;
+  return <>
     <DataSection title={config.eyebrow}>
+      {empty ? <>
+        <ModelGovernanceEmptyState
+          stage={readOnly || hasImportedProviderModels ? "models" : "providers"}
+          title={readOnly ? "当前没有可见模型" : hasImportedProviderModels ? "还没有对外模型" : "先引入可用的 Provider 模型"}
+          description={readOnly ? "请联系管理员发布模型并授予 API Key 访问范围。" : hasImportedProviderModels
+            ? "从已引入的 Provider 模型批量生成同名对外模型，或从内置目录新建自定义映射。"
+            : "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。"}
+          actionLabel={readOnly ? undefined : hasImportedProviderModels ? "从 Provider 引入" : "前往 Provider 渠道"}
+          onAction={readOnly ? undefined : hasImportedProviderModels ? () => setImportOpen(true) : onOpenProviders}
+        />
+        {!readOnly ? <div className="model-provider-import-directory-actions">
+          {!hasImportedProviderModels ? <button className="secondary-button" type="button" onClick={() => setImportOpen(true)}>{tx("从 Provider 引入")}</button> : null}
+          <button className="secondary-button" type="button" onClick={onCreateModel}>{tx("新建对外模型")}</button>
+        </div> : null}
+      </> : (
       <div className="model-directory">
         <header className="model-management-header">
           <div>
             <h2>{tx("对外模型目录")}</h2>
             <span>{tx("这里的模型和价格面向客户端统一生效，不随实际命中的 Provider 改变。")}</span>
           </div>
-          {!readOnly ? (
-              <button className="button" onClick={onCreateModel} type="button">
-                <Plus size={16} />
-                {tx("新建对外模型")}
-              </button>
-          ) : null}
+          {!readOnly ? <div className="model-provider-import-directory-actions">
+            <button className="secondary-button" type="button" disabled={loading} onClick={() => setImportOpen(true)}>{tx("从 Provider 引入")}</button>
+            <button className="button" onClick={onCreateModel} type="button"><Plus size={16} />{tx("新建对外模型")}</button>
+          </div> : null}
         </header>
 
         {notice ? <div className="inline-notice success"><CircleCheck size={15} />{notice}</div> : null}
@@ -157,9 +146,10 @@ export function ModelDirectoryView({
           onOpenDetails={(model) => setDetailName(model.name)}
         />
         {detailModel ? <ModelDirectoryDetail model={detailModel} data={data} readOnly={readOnly} onClose={() => setDetailName("")} /> : null}
-      </div>
+      </div>)}
     </DataSection>
-  );
+    {importOpen && !readOnly ? <ProviderModelImportModal api={api} data={data} onReload={onReload} onClose={() => setImportOpen(false)} onOpenProviders={onOpenProviders} /> : null}
+  </>;
 }
 
 function ExternalModelsTable({ api, data, models, readOnly, busy, onOpenRoutes, onEdit, onDelete, onPublish, onOpenDetails }: {
