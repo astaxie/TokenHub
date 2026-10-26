@@ -130,7 +130,7 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
         state.controller?.close();
         end();
       } else if (message.operation === "network.error") {
-        throw new Error("Subscription upstream network request failed");
+        throw failure(message.error, "Subscription upstream network request failed", message.status ?? 502);
       }
     } catch (error) {
       state.reject(error);

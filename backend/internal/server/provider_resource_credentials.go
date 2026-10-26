@@ -655,6 +655,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		}
 		s.mu.Unlock()
 
+		leaseCtx = providerCredentialRefreshContext(leaseCtx, provider.Type, resource)
 		refreshed, err := refreshRegistration.Refresh(leaseCtx, creds)
 		if err != nil {
 			if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code == "provider_resource_reauthorization_required" {
@@ -665,7 +666,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 					if loadErr := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; loadErr != nil {
 						return loadErr
 					}
-					if err := s.validateProviderCredentialBinding(mutationCtx, current); err != nil {
+					if err := s.validateProviderCredentialRefreshSnapshot(mutationCtx, current, resource); err != nil {
 						return err
 					}
 					if !s.supportsNativeProviderResourceCredentialRefresh(provider, current) ||
@@ -693,7 +694,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			if err := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; err != nil {
 				return notFound(err, "provider_resource_not_found", "Provider resource not found")
 			}
-			if err := s.validateProviderCredentialBinding(mutationCtx, current); err != nil {
+			if err := s.validateProviderCredentialRefreshSnapshot(mutationCtx, current, resource); err != nil {
 				return err
 			}
 			if !s.supportsNativeProviderResourceCredentialRefresh(provider, current) {

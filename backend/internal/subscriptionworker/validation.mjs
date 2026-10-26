@@ -122,7 +122,8 @@ export function validateAuth(provider, value, boundHost) {
 export function publicError(error) {
   const safe = new Set(["invalid_credentials", "credentials_too_large", "local_credentials_not_supported", "upstream_host_not_allowed",
     "provider_not_supported", "operation_not_supported", "method_not_supported", "invalid_upstream", "invalid_request", "invalid_session",
-    "callback_not_allowed", "credential_save_failed", "request_cancelled", "body_too_large", "model_not_found", "protocol_mismatch"]);
+    "callback_not_allowed", "credential_save_failed", "request_cancelled", "body_too_large", "model_not_found", "protocol_mismatch",
+    "provider_proxy_config_error", "provider_proxy_connect_failed", "provider_proxy_auth_failed", "provider_proxy_timeout"]);
   const code = safe.has(error?.code) ? error.code : "subscription_operation_failed";
   return { code, message: safe.has(error?.code) ? error.message : "The subscription provider request failed. Check the account and upstream connection.",
     ...(Number.isInteger(error?.status) ? { status: error.status } : {}),

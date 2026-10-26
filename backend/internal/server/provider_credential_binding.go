@@ -13,6 +13,20 @@ func providerCredentialLoaderForType(store Store, providerType string) func(cont
 	}
 }
 
+func providerCredentialRefreshContext(ctx context.Context, providerType string, resource ProviderResource) context.Context {
+	// Background renewal has no adapter binding until the store selects the
+	// provider. Preserve that selection and the account identity through refresh.
+	ctx = context.WithValue(ctx, providerCredentialBindingKey{}, providerType)
+	return context.WithValue(ctx, providerCredentialRefreshPersistenceKey{}, resource)
+}
+
+func (s *GormStore) validateProviderCredentialRefreshSnapshot(ctx context.Context, current, expected ProviderResource) error {
+	if !sameProviderAccountSnapshot(current, expected) {
+		return NewHTTPError(409, "provider_resource_changed", "Provider resource changed during credential refresh")
+	}
+	return s.validateProviderCredentialBinding(ctx, current)
+}
+
 // The caller holds the store lock. Refresh releases it while contacting the
 // upstream, so inspect the current provider again before consuming its secrets.
 func (s *GormStore) validateProviderCredentialBinding(ctx context.Context, resource ProviderResource) error {

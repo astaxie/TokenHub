@@ -237,17 +237,17 @@ func (p *subscriptionWorkerProcess) startNetwork(event subscriptionWorkerEvent) 
 }
 
 func (p *subscriptionWorkerProcess) network(ctx context.Context, event subscriptionWorkerEvent) {
-	failed := func() {
-		_ = p.send(map[string]any{"operation": "network.error", "request_id": event.RequestID, "error": "upstream_request_failed"})
+	failed := func(err error) {
+		_ = p.send(subscriptionWorkerNetworkFailure(event.RequestID, err))
 	}
 	body, err := base64.StdEncoding.DecodeString(event.Body)
 	if err != nil || len(body) > 16<<20 {
-		failed()
+		failed(err)
 		return
 	}
 	req, err := http.NewRequestWithContext(ctx, event.Method, event.URL, strings.NewReader(string(body)))
 	if err != nil || req.URL.Scheme != "https" || req.URL.User != nil || req.URL.Fragment != "" {
-		failed()
+		failed(err)
 		return
 	}
 	for name, value := range event.Headers {
@@ -256,7 +256,7 @@ func (p *subscriptionWorkerProcess) network(ctx context.Context, event subscript
 	p.invocationSecrets(event.ID).addHeaders(req.Header)
 	resp, err := p.client.Do(req)
 	if err != nil {
-		failed()
+		failed(err)
 		return
 	}
 	defer resp.Body.Close()
@@ -274,7 +274,7 @@ func (p *subscriptionWorkerProcess) network(ctx context.Context, event subscript
 			if errors.Is(readErr, io.EOF) {
 				_ = p.send(map[string]any{"operation": "network.end", "request_id": event.RequestID})
 			} else {
-				failed()
+				failed(readErr)
 			}
 			return
 		}
@@ -369,6 +369,9 @@ type subscriptionWorkerFailure struct {
 func subscriptionWorkerInvocationError(failure *subscriptionWorkerFailure) error {
 	status := http.StatusBadGateway
 	if failure != nil {
+		if err := subscriptionWorkerEgressError(failure.Code); err != nil {
+			return err
+		}
 		if failure.Status >= 400 && failure.Status <= 599 {
 			status = failure.Status
 		}

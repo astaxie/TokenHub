@@ -53,6 +53,9 @@ func (a *GoogleSubscriptionAdapter) refresh(ctx context.Context, current Provide
 		if response.StatusCode == http.StatusUnauthorized || (response.StatusCode == http.StatusBadRequest && failure.Error == "invalid_grant") {
 			return current, subscriptionCredentialError(NewHTTPError(409, "provider_resource_reauthorization_required", "Google subscription authorization expired. Import renewed credentials."))
 		}
+		if response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusRequestTimeout || response.StatusCode >= http.StatusInternalServerError {
+			return current, newProviderHTTPError(response.StatusCode, response.Header, []byte("Google subscription token endpoint is temporarily unavailable"))
+		}
 		return current, NewHTTPError(502, "google_subscription_refresh_failed", "Google subscription credential refresh failed")
 	}
 	var token struct {

@@ -82,7 +82,7 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 
 Copilot 和社区 Chat 请求路由到 Responses 模型时，会保留 `temperature`、`top_p`、`user` 和 `service_tier`，包括显式零值，具体支持取决于所选模型。对于 Factory，显式 `service_tier: "priority"` 可选择模型的 Fast 变体。Gemini CLI 和 Antigravity 会保留终止错误事件报告的用量，并将上游授权、额度和临时故障分类后交给路由处理。
 
-Gemini CLI 和 Antigravity 将代理认证失败与连接超时保留为出口故障，不会惩罚有效账号。GCP 的 token 刷新和模型发现会区分临时上游故障、限流和凭据被拒绝。ChatGPT 的 token 刷新同样保留临时故障的上游状态和有效重试等待时间，包括绑定账号的限流。
+Gemini CLI 和 Antigravity 将代理认证失败与连接超时保留为出口故障，不会惩罚有效账号。GCP 的 token 刷新和模型发现会区分临时上游故障、限流和凭据被拒绝。ChatGPT、Gemini CLI 和 Antigravity 的 token 刷新同样保留临时故障的上游状态和有效重试等待时间，包括绑定账号的限流。
 
 Gemini CLI 和 Antigravity 登录时，需要在登录表单中显式填写获所选 Provider 批准的桌面应用 **OAuth client ID 与 client secret**。它们是账户登录字段，不是环境变量；TokenHub 不内置共享 Google OAuth 客户端凭据。客户端配置随账户凭据加密保存，供 token 刷新使用。任意 Google OAuth 桌面客户端即使可以认证 Google 用户，也可能没有对应 Code Assist 或 Antigravity 服务的使用资格。使用前应取得获准的配置，并确认账户具备上游访问资格。
 
@@ -152,7 +152,11 @@ Provider 编辑器的高级设置提供 Grok X 搜索（`x_search`）、Factory 
 
 已保存账户凭据使用 TokenHub 的加密资源存储。读取凭据时会验证所选适配器类型；账户迁移到另一种 Provider 后，旧请求会返回 HTTP 409，不会使用新 Provider 的凭据。社区 worker 按账户和已认证调用方隔离，拥有独立的 home、工作目录和环境。账户级锁与集群租约串行化可能轮换 token 的操作。凭据更新采用比较并交换写入；worker 只有收到持久化成功确认后才可使用新凭据。管理员并发修改或保存失败会使操作失败，不会覆盖更新的凭据。持久化期间，即使账户以相同资源 ID 被替换或删除重建，旧会话轮换也不会覆盖新账户。模型和额度结果同时绑定资源身份与账户替换版本；删除重建或移到另一个 Provider 会使进行中的查询结果失效，包括模型未变化的响应。如果保存成功的确认消息晚于 worker 等待超时到达，仅恢复与该确认匹配的已保存凭据版本，供下一次请求使用；失败或不相关的确认不会授权使用新凭据。
 
+原生 token 刷新（包括后台续期）还会在返回或保存结果前验证原账号身份和凭据替换版本。迁移、替换或删除重建账号都会使进行中的刷新失效，即使 token 值未变；旧刷新失败也不会把新账号标记为需要重新授权。
+
 打包的 worker 属于可信应用代码，不是任意代码沙箱。直接 HTTP/HTTPS 调用和子进程创建被禁用；支持的上游 fetch 经过 Go 传输层的目标地址与网络防护。各 Provider 的域名限制继续生效，包括拒绝任意 Factory 企业主机名。Cursor 使用上游 HTTP/1 RunSSE 兼容路径。错误响应脱敏后仍保留有效的上游重试等待时间，供路由使用；不会转发私有错误响应头或凭据值。
+
+社区 worker 请求会将代理配置、连接、认证和超时故障保留为出口错误。这些共享传输故障不会惩罚账号或触发账号切换，私有传输诊断信息仍会脱敏。
 
 每个中继上游响应的累计大小上限为 64 MiB，流式响应也受此限制，另有 32 MiB 的排队数据限制。超限后会取消上游请求。进程池最多保留 32 个 Node worker，每个以 256 MiB 的 V8 old-space 限制启动。这不是进程 RSS 上限；部署时应为全部 worker、原生缓冲区及 TokenHub 其他组件预留足够内存。
 
