@@ -99,6 +99,8 @@ for (const state of ["save", "failure", "mobile"] as const) {
       await panel.getByLabel("最低置信度").fill("0.75");
       await page.getByRole("button", { name: "应用策略" }).click();
       await expect(page.getByRole("button", { name: "应用策略" })).toBeDisabled();
+      // Apply is disabled during saving and after success; wait for the refresh to finish before editing.
+      await expect(page.getByRole("dialog", { name: "配置模型路由", exact: true }).getByRole("button", { name: "添加线路", exact: true })).toBeEnabled();
       await page.locator(".route-provider-row").filter({ hasText: "upstream-1" }).getByRole("button", { name: "编辑", exact: true }).click();
       const dialog = page.locator(".modal").filter({ has: page.getByRole("heading", { name: "路由策略", exact: true }) });
       await dialog.getByRole("combobox", { name: /^Provider 模型/ }).selectOption("replacement");
