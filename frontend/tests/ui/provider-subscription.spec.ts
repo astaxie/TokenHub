@@ -1,12 +1,15 @@
-import type { PluginActionDescriptor, PluginDescriptor, ProviderCatalogEntry } from "../../features/admin/core/types";
+import type { PluginActionDescriptor, PluginDescriptor, ProviderCatalogEntry, ProviderCatalogModel } from "../../features/admin/core/types";
 import { test, expect, capture } from "./harness";
 import type { MockAPI } from "./network";
 
 const catalog: ProviderCatalogEntry = { id: "ui-subscription", name: "UI Subscription", display_name: "UI Subscription", type: "ui_subscription", base_url: "", categories: ["openai"], models_count: 0, source: "ui-fixture", models: [] };
 const plugin: PluginDescriptor = { id: "test.subscription", name: "UI Subscription", version: "1", source: "built_in", kinds: ["provider"], placements: [], capabilities: [{ kind: "provider_resource_type", name: "ui_account", subject: catalog.type }] };
 const model = { id: "ui-chat", name: "UI Chat", category: "openai", type: "chat" };
-function install(api: MockAPI, device: boolean | "token" | "auto", pollFailure = false) {
+function install(api: MockAPI, device: boolean | "token" | "auto", pollFailure = false, options: { models?: ProviderCatalogModel[]; selectedModels?: string[] } = {}) {
   let browserAuthorized = false;
+  const models = options.models ?? [model];
+  const selectedModels = options.selectedModels ?? models.map(entry => entry.id);
+  const authorizedCatalog = { ...catalog, models_count: models.length, models };
   const actions: PluginActionDescriptor[] = ["oauth.methods", "oauth.start", "oauth.exchange", "oauth.cancel"].map(capability => ({ plugin_id: plugin.id, action_id: capability, capability, subject: catalog.type, kind: "mutate", metadata: { provider_resource_type: "ui_account", subscription_auth: "true", subscription_session_json: device === "token" ? "false" : "true" } }));
   api.respond("GET", "/api/admin/provider-catalog", { data: [catalog] });
   api.respond("GET", "/api/admin/provider-catalog/ui-subscription", { data: catalog });
@@ -36,19 +39,19 @@ function install(api: MockAPI, device: boolean | "token" | "auto", pollFailure =
     }
     if (device === "token") {
       expect(input.body).toEqual({ resource_type: "ui_account", session_id: "ui-login", state: "synthetic-state", code: "" });
-      return { json: { data: { access_token: "synthetic-native-token", client_id: "synthetic-client", client_secret: "synthetic-client-secret", catalog: { ...catalog, models_count: 1, models: [model] } } } };
+      return { json: { data: { access_token: "synthetic-native-token", client_id: "synthetic-client", client_secret: "synthetic-client-secret", catalog: authorizedCatalog } } };
     }
     if (device === "auto") {
       expect(input.body).toEqual({ resource_type: "ui_account", session_id: "ui-login", state: "synthetic-state", code: "" });
-      return { json: { data: browserAuthorized ? { session_json: '{"refresh":"synthetic-rotated"}', catalog: { ...catalog, models_count: 1, models: [model] } } : { status: "pending" } } };
+      return { json: { data: browserAuthorized ? { session_json: '{"refresh":"synthetic-rotated"}', catalog: authorizedCatalog } : { status: "pending" } } };
     }
     expect(device).toBe(false);
     expect(input.body).toEqual({ resource_type: "ui_account", mode: "import", session_json: '{"refresh":"synthetic-original"}' });
-    return { json: { data: { session_json: '{"refresh":"synthetic-rotated"}', catalog: { ...catalog, models_count: 1, models: [model] } } } };
+    return { json: { data: { session_json: '{"refresh":"synthetic-rotated"}', catalog: authorizedCatalog } } };
   });
   api.define("POST", "/api/admin/providers", input => {
-    expect(input.body).toMatchObject({ type: catalog.type, selected_models: [model.id], base_url: "", custom_models: [model] });
-    return { status: 201, json: { provider: { id: "prv_ui", name: catalog.name, type: catalog.type, priority: 1, healthy: true, status: "active" }, imported_models: 1 } };
+    expect(input.body).toMatchObject({ type: catalog.type, selected_models: selectedModels, base_url: "", custom_models: models });
+    return { status: 201, json: { provider: { id: "prv_ui", name: catalog.name, type: catalog.type, priority: 1, healthy: true, status: "active" }, imported_models: selectedModels.length } };
   });
   api.define("POST", "/api/admin/provider-resources", input => {
     expect(input.body).toMatchObject({ provider_id: "prv_ui", resource_type: "ui_account", base_url: "", credentials: { replace: true, ...(device === "token" ? { access_token: "synthetic-native-token", client_id: "synthetic-client", client_secret: "synthetic-client-secret" } : { session_json: '{"refresh":"synthetic-rotated"}' }) } });
@@ -58,6 +61,64 @@ function install(api: MockAPI, device: boolean | "token" | "auto", pollFailure =
 }
 
 for (const viewport of ["desktop", "mobile"] as const) {
+  test(`subscription model bulk selection preserves filtered-out choices ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    const models = [
+      { ...model, id: "ui-assistant-alpha", name: "UI Assistant Alpha" },
+      { ...model, id: "ui-assistant-beta", name: "UI Assistant Beta" },
+      { ...model, id: "ui-vision", name: "UI Vision" },
+    ];
+    install(api, false, false, { models, selectedModels: ["ui-vision"] });
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    await editor.getByRole("button", { name: /UI Subscription/ }).click();
+    const auth = editor.locator("div.provider-account-auth-wide");
+    await auth.locator("summary").filter({ hasText: "导入订阅会话" }).click();
+    await auth.getByLabel(/^订阅会话 JSON/).fill('{"refresh":"synthetic-original"}');
+    await auth.getByRole("button", { name: "导入订阅会话", exact: true }).click();
+    await expect(auth.getByText("已回填账号 Token", { exact: true })).toBeVisible();
+    await editor.getByRole("button", { name: "下一步", exact: true }).click();
+    const directory = editor.locator(".provider-model-list");
+    const toolbar = editor.locator(".provider-model-tools");
+    const search = toolbar.getByPlaceholder("搜索模型、能力、参数");
+    await expect(directory.getByRole("checkbox")).toHaveCount(3);
+    await expect(directory.locator("input:checked")).toHaveCount(0);
+    await toolbar.getByRole("button", { name: "全选", exact: true }).click();
+    await expect(directory.locator("input:checked")).toHaveCount(3);
+    await expect(toolbar.getByRole("button", { name: "取消全选", exact: true })).toBeEnabled();
+    await expect.poll(() => editor.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await expect.poll(() => toolbar.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await toolbar.scrollIntoViewIfNeeded();
+    await capture(page, testInfo, directory, `subscription-model-select-all-${viewport}`, "订阅模型：全选目录中的三个模型", "viewport");
+    await toolbar.getByRole("button", { name: "取消全选", exact: true }).click();
+    await expect(directory.locator("input:checked")).toHaveCount(0);
+    await directory.getByRole("checkbox", { name: /UI Vision/ }).check();
+    await search.fill("assistant");
+    await expect(directory.getByRole("checkbox")).toHaveCount(2);
+    await toolbar.getByRole("button", { name: "全选筛选结果", exact: true }).click();
+    await expect(directory.locator("input:checked")).toHaveCount(2);
+    await expect(toolbar.getByRole("button", { name: "取消全选筛选结果", exact: true })).toBeEnabled();
+    await expect.poll(() => toolbar.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await toolbar.scrollIntoViewIfNeeded();
+    await capture(page, testInfo, directory, `subscription-model-select-filtered-${viewport}`, "订阅模型：全选筛选结果并保留隐藏选择", "viewport");
+    await toolbar.getByRole("button", { name: "取消全选筛选结果", exact: true }).click();
+    await expect(directory.locator("input:checked")).toHaveCount(0);
+    await search.fill("missing-model");
+    await expect(directory.getByText("没有匹配的模型", { exact: true })).toBeVisible();
+    await expect(toolbar.getByRole("button", { name: "全选筛选结果", exact: true })).toBeDisabled();
+    await expect.poll(() => editor.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await toolbar.scrollIntoViewIfNeeded();
+    await capture(page, testInfo, directory, `subscription-model-select-empty-${viewport}`, "订阅模型：空筛选结果禁用全选", "viewport");
+    await search.clear();
+    await expect(directory.getByRole("checkbox")).toHaveCount(3);
+    await expect(directory.getByRole("checkbox", { name: /UI Vision/ })).toBeChecked();
+    await expect(directory.locator("input:checked")).toHaveCount(1);
+    await editor.getByRole("button", { name: "添加供应商并引入模型", exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect(api.calls.filter(call => call.path === "/api/admin/providers" && call.method === "POST")).toHaveLength(1);
+  });
+
   test(`subscription browser authorization fills credentials automatically ${viewport}`, async ({ page, api }, testInfo) => {
     if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => { window.open = () => null; });

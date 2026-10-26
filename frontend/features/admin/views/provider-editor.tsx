@@ -505,6 +505,23 @@ export function ProviderUpsertModal({
     .filter(([id, selected]) => selected && !importedModelIDs.has(id))
     .map(([id]) => id);
   const selectedModelCount = selectedModelIDs.length;
+  const selectableFilteredModelIDs = filteredModels.filter((model) => !importedModelIDs.has(model.id)).map((model) => model.id);
+  const allFilteredModelsSelected = selectableFilteredModelIDs.length > 0 && selectableFilteredModelIDs.every((id) => selectedModels[id] === true);
+  const modelSelectionControl = (
+    <button
+      className="secondary-button"
+      disabled={loading || effectiveCatalogLoading || Boolean(effectiveCatalogError) || selectableFilteredModelIDs.length === 0}
+      onClick={() => setSelectedModels((current) => {
+        const selected = !selectableFilteredModelIDs.every((id) => current[id] === true);
+        return { ...current, ...Object.fromEntries(selectableFilteredModelIDs.map((id) => [id, selected])) };
+      })}
+      type="button"
+    >
+      {modelQuery.trim()
+        ? tx(allFilteredModelsSelected ? "取消全选筛选结果" : "全选筛选结果")
+        : tx(allFilteredModelsSelected ? "取消全选" : "全选")}
+    </button>
+  );
   const selectedEntry = usesAccountCatalog
     ? accountProviderCatalog ?? accountProviderCatalogOptions.find((entry) => entry.id === catalogID) ?? defaultAccountProviderCatalogEntry
     : detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
@@ -1155,6 +1172,7 @@ export function ProviderUpsertModal({
                   modelQuery={modelQuery}
                   selectedModelCount={selectedModelIDs.length}
                   selectedModels={selectedModels}
+                  modelSelectionControl={modelSelectionControl}
                   activeTab={quickAPITab}
                   values={values}
                   onModelQueryChange={setModelQuery}
@@ -1459,6 +1477,7 @@ export function ProviderUpsertModal({
               </div>
               <div className="provider-model-tools">
                 <input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tx("搜索模型、能力、参数")} />
+                {modelSelectionControl}
                 <button className="secondary-button" onClick={reloadSelectedCatalog} type="button">
                   {tx("重新加载")}
                 </button>

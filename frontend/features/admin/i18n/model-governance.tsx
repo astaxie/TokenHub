@@ -1,4 +1,7 @@
 const en: Record<string, string> = {
+  "取消全选": "Deselect all",
+  "全选筛选结果": "Select filtered models",
+  "取消全选筛选结果": "Deselect filtered models",
   "决策": "Decision",
   "Provider 是上游渠道实例；先选择并引入它实际提供的模型，再分别维护渠道成本、对外模型和路由。": "A Provider is an upstream channel. Select and import the models it serves, then manage Provider costs, external models, and routes separately.",
   "Provider 模型价格用于真实成本审计；客户端仍按模型目录中的统一价格计费。": "Provider model prices are used for actual-cost audit; clients are still billed at the unified Model Directory price.",
@@ -142,6 +145,9 @@ const en: Record<string, string> = {
 };
 
 const ja: Record<string, string> = {
+  "取消全选": "すべて選択解除",
+  "全选筛选结果": "絞り込み結果をすべて選択",
+  "取消全选筛选结果": "絞り込み結果をすべて選択解除",
   "决策": "判定",
   "Provider 是上游渠道实例；先选择并引入它实际提供的模型，再分别维护渠道成本、对外模型和路由。": "Provider は上流チャネルです。提供するモデルを選択して取り込み、Provider コスト、外部モデル、ルートを個別に管理します。",
   "Provider 模型价格用于真实成本审计；客户端仍按模型目录中的统一价格计费。": "Provider モデル価格は実コスト監査に使用し、クライアントには Model Directory の統一価格で請求します。",
@@ -285,6 +291,9 @@ const ja: Record<string, string> = {
 };
 
 const ru: Record<string, string> = {
+  "取消全选": "Снять выбор со всех",
+  "全选筛选结果": "Выбрать отфильтрованные модели",
+  "取消全选筛选结果": "Снять выбор с отфильтрованных моделей",
   "决策": "Решение",
   "Provider 是上游渠道实例；先选择并引入它实际提供的模型，再分别维护渠道成本、对外模型和路由。": "Провайдер — это экземпляр внешнего канала; сначала выберите и импортируйте предоставляемые им модели, затем настройте себестоимость, внешние модели и маршруты.",
   "Provider 模型价格用于真实成本审计；客户端仍按模型目录中的统一价格计费。": "Цены моделей провайдера используются для аудита реальной себестоимости; клиенты тарифицируются по единой цене из каталога моделей.",
