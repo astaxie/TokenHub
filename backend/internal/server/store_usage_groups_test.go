@@ -204,8 +204,25 @@ func TestUsageQueriesStopAtCanceledContextAndReleaseReadPool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats := pool.Stats(); stats.InUse != 0 {
-		t.Fatalf("canceled usage queries retained %d read connections", stats.InUse)
+	// database/sql can mark a canceled transaction done before its asynchronous
+	// rollback has returned the connection to the pool.
+	releaseCtx, stopRelease := context.WithTimeout(t.Context(), time.Second)
+	defer stopRelease()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for pool.Stats().InUse != 0 {
+		select {
+		case <-releaseCtx.Done():
+			t.Fatalf("canceled usage queries retained %d read connections: %v", pool.Stats().InUse, releaseCtx.Err())
+		case <-ticker.C:
+		}
+	}
+	recoveryCtx, stopRecovery := context.WithTimeout(t.Context(), time.Second)
+	defer stopRecovery()
+	scope := UsageSummaryScope{Global: true}
+	summary, err := store.QueryUsageSummary(recoveryCtx, UsageSummaryQuery{UsageRecords: scope, RequestLogs: scope})
+	if err != nil || summary.UsageRecordCount != 1 {
+		t.Fatalf("usage query after cancellation = %+v, %v, want the preserved record", summary, err)
 	}
 }
 
