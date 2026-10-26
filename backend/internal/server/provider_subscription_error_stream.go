@@ -55,7 +55,9 @@ func (r *subscriptionErrorStream) Read(p []byte) (int, error) {
 func (r *subscriptionErrorStream) sanitizeEvent(event serverSentEvent) ([]byte, bool) {
 	raw, framed := subscriptionStreamEventFraming(event.Raw)
 	if !framed {
-		return nil, true
+		// Unknown-only frames have no SSE semantics. Drop their separators too,
+		// so an unframed error body cannot start public output before EOF.
+		return nil, false
 	}
 	event.Raw = raw
 	payload := strings.TrimSpace(event.Data)

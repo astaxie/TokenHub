@@ -70,6 +70,18 @@ func TestSubscriptionErrorStreamPreservesStandardFramingAndOutput(t *testing.T) 
 	if err != nil || string(output) != expected {
 		t.Fatalf("valid framing or normal output changed: %q, %v", output, err)
 	}
+	t.Run("standalone unknown field", func(t *testing.T) {
+		const before = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"account-\"}\n\n"
+		const after = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"secret\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n"
+		const extension = "x-extension: heartbeat\n\n"
+		reader := newSubscriptionErrorStream(io.NopCloser(strings.NewReader(before+extension+after)), func() Provider { return Provider{APIKey: "account-secret"} }, 0)
+		defer func() { _ = reader.Close() }()
+		var output bytes.Buffer
+		_, text, _, err := consumeSubscriptionResponsesStream(reader, &output)
+		if err != nil || output.String() != before+after || text != "account-secret" {
+			t.Fatalf("standalone unknown field interrupted valid output: %q, %q, %v", output.String(), text, err)
+		}
+	})
 }
 
 func TestSubscriptionErrorStreamRejectsUnframedPendingFailure(t *testing.T) {
