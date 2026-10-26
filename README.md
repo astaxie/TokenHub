@@ -1,14 +1,12 @@
 # Login responsiveness screenshot gallery
 
-Application commit: [`564c1b3`](https://github.com/astaxie/TokenHub/commit/564c1b313b89e6a4656f9cb7161cc0735dc29115)
+Application commit: [`10973a0`](https://github.com/astaxie/TokenHub/commit/10973a062f4d953bf8d34a330a663d4e427a82e9)
 
-All 30 screenshots were captured from 25 passing UI scenarios using synthetic API fixtures. The application worktree was clean. These images establish frontend behavior; external identity providers and real credentials are not used.
+All 30 screenshots were captured from 25 passing UI scenarios using synthetic API fixtures and a clean application worktree. These images establish frontend behavior; external identity providers and real credentials are not used.
 
-This branch contains review artifacts only. The implementation pull request uses `codex/fix-login-responsive`.
+This branch contains review artifacts only. The implementation is in [PR #403](https://github.com/astaxie/TokenHub/pull/403), including the CI-discovered cancellation-test synchronization fix.
 
 Validated viewport sizes: 1920x1080, 1440x1000, 1366x768, 1280x720, 1024x768, 768x1024, 390x844, 320x568, and 844x390.
-
-Local verification on the application commit: frontend lint, typecheck and build; 194 domain tests; 578 component tests; 186 repository tool tests; 166 UI tests; 16 backend browser smoke tests; translation, environment and source line gates.
 
 ## Console models empty mobile
 

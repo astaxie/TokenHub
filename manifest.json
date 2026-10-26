@@ -1,5 +1,5 @@
 {
-  "sourceHead": "564c1b313b89e6a4656f9cb7161cc0735dc29115",
+  "sourceHead": "10973a062f4d953bf8d34a330a663d4e427a82e9",
   "workingTreeDirty": false,
   "status": "passed",
   "evidence": "Frontend UI with synthetic API fixtures; no backend or database verification; no pixel baseline comparison.",
