@@ -32,7 +32,7 @@ type claudeSubscriptionRun struct {
 	adapter                                                    *ClaudeSubscriptionAdapter
 	resourceID, scope, originalSession, root, configDir, token string
 	caller, model, accessToken                                 string
-	toolHash                                                   [32]byte
+	continuationHash                                           [32]byte
 	tools                                                      []claudeSubscriptionTool
 	history                                                    []ChatMessage
 	ctx                                                        context.Context
@@ -51,7 +51,7 @@ type claudeSubscriptionRun struct {
 	timer                                                      *time.Timer
 }
 
-func (a *ClaudeSubscriptionAdapter) start(ctx context.Context, provider Provider, model string, credentials ProviderResourceCredentials, scope string, toolHash [32]byte, tools []claudeSubscriptionTool, request ChatCompletionRequest) (*claudeSubscriptionRun, error) {
+func (a *ClaudeSubscriptionAdapter) start(ctx context.Context, provider Provider, model string, credentials ProviderResourceCredentials, scope string, continuationHash [32]byte, tools []claudeSubscriptionTool, request ChatCompletionRequest) (*claudeSubscriptionRun, error) {
 	if strings.TrimSpace(credentials.AccessToken) == "" && strings.TrimSpace(credentials.SessionJSON) == "" {
 		return nil, NewHTTPError(400, "claude_subscription_credentials_required", "Import a Claude Code subscription token or account session")
 	}
@@ -74,7 +74,7 @@ func (a *ClaudeSubscriptionAdapter) start(ctx context.Context, provider Provider
 	resourceID := provider.Options["resource_id"]
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Minute)
 	caller, _ := ctx.Value(subscriptionCallerKey{}).(string)
-	run := &claudeSubscriptionRun{caller: caller, model: model, accessToken: credentials.AccessToken, adapter: a, resourceID: resourceID, scope: scope, originalSession: credentials.SessionJSON, toolHash: toolHash, tools: tools, history: append([]ChatMessage(nil), request.Messages...), ctx: runCtx, cancel: cancel, exited: make(chan struct{}), cleanupDone: make(chan struct{}), events: make(chan claudeSubscriptionEvent, 128), waiting: make(map[string]*claudeSubscriptionPending), internal: make(map[string]*claudeSubscriptionPending), busy: true}
+	run := &claudeSubscriptionRun{caller: caller, model: model, accessToken: credentials.AccessToken, adapter: a, resourceID: resourceID, scope: scope, originalSession: credentials.SessionJSON, continuationHash: continuationHash, tools: tools, history: append([]ChatMessage(nil), request.Messages...), ctx: runCtx, cancel: cancel, exited: make(chan struct{}), cleanupDone: make(chan struct{}), events: make(chan claudeSubscriptionEvent, 128), waiting: make(map[string]*claudeSubscriptionPending), internal: make(map[string]*claudeSubscriptionPending), busy: true}
 	a.mu.Lock()
 	if a.runs == nil {
 		a.runs = make(map[string]*claudeSubscriptionRun)
@@ -89,7 +89,7 @@ func (a *ClaudeSubscriptionAdapter) start(ctx context.Context, provider Provider
 		if closed {
 			select {
 			case <-current.cleanupDone:
-				return a.start(ctx, provider, model, credentials, scope, toolHash, tools, request)
+				return a.start(ctx, provider, model, credentials, scope, continuationHash, tools, request)
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}

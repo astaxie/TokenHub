@@ -114,6 +114,12 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 		assertAdminOAuthFlowUsesDatabaseClockAcrossInstances(t, storeA, storeB)
 		assertAdminOAuthExchangeUsesDatabaseClockAcrossInstances(t, storeA, storeB)
 	})
+	t.Run("credential writes reject concurrent provider type changes", func(t *testing.T) {
+		first, second, _ := openSharedPostgresStores(t)
+		for _, operation := range []string{"native_success", "native_reauthorization", "session", "plugin_success", "plugin_reauthorization", "store_success", "store_reauthorization"} {
+			t.Run(operation, func(t *testing.T) { testCredentialPersistenceProviderTypeChange(t, first, second, operation) })
+		}
+	})
 	t.Run("account quota observations are ordered with deletion", func(t *testing.T) {
 		testPostgresProviderObservationDeletionOrdering(t, storeA, storeB)
 	})

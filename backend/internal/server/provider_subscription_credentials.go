@@ -31,7 +31,7 @@ func (s *GormStore) ReplaceProviderSession(ctx context.Context, resourceID, prov
 		}
 		// Deletes and creates do not take this lease. Recheck the original
 		// identity and encrypted credentials in the final atomic update.
-		leaseCtx = context.WithValue(leaseCtx, providerCredentialRefreshPersistenceKey{}, resource)
+		leaseCtx = providerCredentialRefreshContext(leaseCtx, providerType, resource)
 		db := s.db.WithContext(leaseCtx).Where("credential_blob = ?", resource.CredentialBlob)
 		credentials.SessionJSON = next
 		resource.CredentialBlob = s.encryptProviderResourceCredentialBlob(credentials)

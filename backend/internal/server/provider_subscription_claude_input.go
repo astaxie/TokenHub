@@ -15,8 +15,8 @@ type claudeSubscriptionTool struct {
 }
 
 func claudeSubscriptionTools(request ChatCompletionRequest) ([]claudeSubscriptionTool, error) {
-	if request.Temperature != nil || request.TopP != nil || request.Stop != nil || request.ResponseFormat != nil {
-		return nil, unsupportedCapabilityError("Claude Code subscriptions do not support temperature, top_p, stop, or response_format controls")
+	if err := validateClaudeSubscriptionControls(request); err != nil {
+		return nil, err
 	}
 	choice, err := parseChatToolChoice(request.ToolChoice)
 	if err != nil {
@@ -84,7 +84,7 @@ func claudeSubscriptionResults(messages []ChatMessage) []ChatMessage {
 	return messages[start:]
 }
 
-func (a *ClaudeSubscriptionAdapter) resume(scope string, tools [32]byte, request ChatCompletionRequest, results []ChatMessage) (*claudeSubscriptionRun, error) {
+func (a *ClaudeSubscriptionAdapter) resume(scope string, configuration [32]byte, request ChatCompletionRequest, results []ChatMessage) (*claudeSubscriptionRun, error) {
 	invalid := NewHTTPError(400, "claude_subscription_continuation_invalid", "Claude tool continuation is expired or does not match this account, caller, or conversation")
 	a.mu.Lock()
 	run := a.calls[results[0].ToolCallID]
@@ -94,7 +94,7 @@ func (a *ClaudeSubscriptionAdapter) resume(scope string, tools [32]byte, request
 	}
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	if run.scope != scope || run.toolHash != tools || run.busy || run.closed {
+	if run.scope != scope || run.continuationHash != configuration || run.busy || run.closed {
 		return nil, invalid
 	}
 	prefix, err := json.Marshal(request.Messages[:len(request.Messages)-len(results)])

@@ -329,6 +329,7 @@ func (s *Server) applyCredentialsRefreshActionSideEffects(ctx context.Context, d
 	if revision, ok := pluginActionResourceRevision(ctx); ok {
 		expected = revision
 	}
+	ctx = providerCredentialRefreshContext(ctx, provider.Type, expected)
 	updated, err := s.store.ApplyProviderResourceCredentialRefresh(ctx, expected, credentials, reauthorizationRequired)
 	if err != nil {
 		return result, err

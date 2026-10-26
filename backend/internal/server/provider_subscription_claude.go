@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"strings"
 	"sync"
 	"time"
 )
@@ -121,17 +122,25 @@ func (a *ClaudeSubscriptionAdapter) complete(ctx context.Context, provider Provi
 	for i, tool := range tools {
 		names[i] = tool.OriginalName
 	}
-	toolBytes, _ := json.Marshal(struct {
-		Tools []claudeSubscriptionTool
-		Names []string
-	}{tools, names})
-	toolHash := sha256.Sum256(toolBytes)
+	// A parked CLI retains its launch controls. Continuing it with a different
+	// token budget or reasoning effort would silently ignore the new request.
+	effort := ""
+	if request.ReasoningEffort != nil {
+		effort = strings.TrimSpace(*request.ReasoningEffort)
+	}
+	configuration, _ := json.Marshal(struct {
+		Tools           []claudeSubscriptionTool
+		Names           []string
+		MaxTokens       int64
+		ReasoningEffort string
+	}{tools, names, max(0, request.requestedMaxTokens()), effort})
+	continuationHash := sha256.Sum256(configuration)
 	resultMessages := claudeSubscriptionResults(request.Messages)
 	var run *claudeSubscriptionRun
 	if len(resultMessages) > 0 {
-		run, err = a.resume(hex.EncodeToString(scope[:]), toolHash, request, resultMessages)
+		run, err = a.resume(hex.EncodeToString(scope[:]), continuationHash, request, resultMessages)
 	} else {
-		run, err = a.start(ctx, provider, model, credentials, hex.EncodeToString(scope[:]), toolHash, tools, request)
+		run, err = a.start(ctx, provider, model, credentials, hex.EncodeToString(scope[:]), continuationHash, tools, request)
 	}
 	if err != nil {
 		return Usage{}, err

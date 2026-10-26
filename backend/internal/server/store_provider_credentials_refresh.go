@@ -17,6 +17,11 @@ func updateExistingProviderResourceColumns(db *gorm.DB, resource *ProviderResour
 		// Deletion does not take the mutation lease. Keep the original identity
 		// in the final UPDATE predicate so a reused ID cannot receive this result.
 		query = query.Where("id = ? AND provider_id = ? AND resource_type = ? AND created_at = ?", expected.ID, expected.ProviderID, expected.ResourceType, expected.CreatedAt)
+		if providerType, _ := db.Statement.Context.Value(providerCredentialBindingKey{}).(string); providerType != "" {
+			// Provider edits do not take the account mutation lease. Check its
+			// type in the same statement that writes credentials or their state.
+			query = query.Where("provider_id IN (SELECT id FROM providers WHERE type = ?)", providerType)
+		}
 	}
 	result := query.Select(columns).Updates(resource)
 	if result.Error != nil {
@@ -64,6 +69,14 @@ func (s *GormStore) ApplyProviderResourceCredentialRefresh(ctx context.Context, 
 			!current.CreatedAt.Equal(expected.CreatedAt) ||
 			providerCredentialReplacementGeneration(current.Options) != providerCredentialReplacementGeneration(expected.Options) {
 			return NewHTTPError(http.StatusConflict, "provider_resource_changed", "Provider resource changed during credential refresh")
+		}
+		if providerType, _ := leaseCtx.Value(providerCredentialBindingKey{}).(string); providerType == "" {
+			var provider Provider
+			if err := db.First(&provider, "id = ?", current.ProviderID).Error; err != nil {
+				return notFound(err, "provider_not_found", "Provider not found")
+			}
+			leaseCtx = providerCredentialRefreshContext(leaseCtx, provider.Type, expected)
+			db = db.WithContext(leaseCtx)
 		}
 		if credentials != nil {
 			var err error
