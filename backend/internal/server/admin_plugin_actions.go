@@ -325,15 +325,11 @@ func (s *Server) applyCredentialsRefreshActionSideEffects(ctx context.Context, d
 	if expectedResourceType != "" && resource.ResourceType != expectedResourceType {
 		return result, NewHTTPError(http.StatusForbidden, "plugin_action_resource_type_mismatch", "Plugin action resource type does not match the Provider resource")
 	}
-	if reauthorizationRequired && !hasCredentials {
-		updated, err := s.store.UpdateProviderResourceOptions(resourceID, map[string]string{providerResourceReauthorizationRequiredOption: "true"})
-		if err != nil {
-			return result, err
-		}
-		result.Data = pluginActionResultWithCredentialSummary(result.Data, updated.CredentialSummary)
-		return result, nil
+	expected := resource
+	if revision, ok := pluginActionResourceRevision(ctx); ok {
+		expected = revision
 	}
-	updated, err := s.store.UpdateProviderResource(resourceID, providerResourceCredentialPatch(resource, credentials))
+	updated, err := s.store.ApplyProviderResourceCredentialRefresh(ctx, expected, credentials, reauthorizationRequired)
 	if err != nil {
 		return result, err
 	}

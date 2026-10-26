@@ -31,15 +31,9 @@ func collectGoogleSubscriptionChat(reader io.Reader, model string) (any, Usage, 
 			continue
 		}
 		body, err := googleSubscriptionUnwrap(payload)
+		mergeGoogleSubscriptionUsage(usage, body)
 		if err != nil {
 			return nil, measuredUsage(), err
-		}
-		if snapshot, ok := body["usageMetadata"].(map[string]any); ok {
-			for key, value := range snapshot {
-				if value != nil {
-					usage[key] = value
-				}
-			}
 		}
 		if reason := geminiPromptBlockReason(body); reason != "" {
 			return nil, measuredUsage(), newProviderPolicyRefusal("Google subscription blocked the prompt")

@@ -9,7 +9,7 @@ import (
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
-type pluginActionResourceGenerationKey struct{}
+type pluginActionResourceRevisionKey struct{}
 
 func (s *Server) capturePluginActionResourceRevision(ctx context.Context, payload json.RawMessage) context.Context {
 	var request struct {
@@ -22,12 +22,17 @@ func (s *Server) capturePluginActionResourceRevision(ctx context.Context, payloa
 	if !ok {
 		return ctx
 	}
-	return context.WithValue(ctx, pluginActionResourceGenerationKey{}, providerCredentialReplacementGeneration(resource.Options))
+	return context.WithValue(ctx, pluginActionResourceRevisionKey{}, resource)
 }
 
 func pluginActionResourceGeneration(ctx context.Context) (int64, bool) {
-	generation, ok := ctx.Value(pluginActionResourceGenerationKey{}).(int64)
-	return generation, ok && generation >= 0
+	resource, ok := pluginActionResourceRevision(ctx)
+	return providerCredentialReplacementGeneration(resource.Options), ok
+}
+
+func pluginActionResourceRevision(ctx context.Context) (ProviderResource, bool) {
+	resource, ok := ctx.Value(pluginActionResourceRevisionKey{}).(ProviderResource)
+	return resource, ok
 }
 
 type providerPluginActionOptions struct {

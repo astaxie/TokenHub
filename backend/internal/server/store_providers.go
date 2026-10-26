@@ -488,20 +488,6 @@ func clearProviderImageCapabilityOptions(options map[string]string, profiles []p
 	}
 }
 
-func updateExistingProviderResourceColumns(db *gorm.DB, resource *ProviderResource, columns ...string) error {
-	result := db.Model(&ProviderResource{}).
-		Where("id = ?", resource.ID).
-		Select(columns).
-		Updates(resource)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
-	}
-	return nil
-}
-
 func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error) {
 	if err := validateProviderResourceSession(patch.Credentials); err != nil {
 		return ProviderResource{}, err
@@ -515,9 +501,7 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 	return updated, err
 }
 
-func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch ProviderResource) (ProviderResource, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *GormStore) updateProviderResourceLocked(ctx context.Context, id string, patch ProviderResource) (ProviderResource, error) {
 	db := s.db.WithContext(ctx)
 
 	if err := validateSystemPromptTransformOptions(patch.Options); err != nil {

@@ -80,6 +80,8 @@ TokenHub は、固定版 Magpie の有効な組み込みアカウント Provider
 
 ネイティブの Copilot と ChatGPT の HTTP エラーでは、ルーティング用に上流のステータスと有効な `Retry-After` 待機時間を保持します。認証情報とモデルのエラーには、通常のアカウントおよびモデルのフェイルオーバーが適用されます。
 
+Copilot とコミュニティの Chat リクエストを Responses モデルへ送る場合、明示的なゼロ値を含む `temperature`、`top_p`、`user` を保持します。利用可否は選択したモデルに依存します。Gemini CLI と Antigravity は終了エラーイベントで報告された使用量を保持し、上流の認証、クォータ、一時的な障害を分類してルーティングに渡します。
+
 Gemini CLI と Antigravity は、プロキシ認証の失敗と接続タイムアウトを出口通信の障害として扱い、有効なアカウントにペナルティを与えません。GCP の token 更新とモデル取得では、一時的な上流障害やレート制限を認証情報の拒否と区別します。
 
 Gemini CLI と Antigravity では、選択した Provider が承認したデスクトップアプリの **OAuth client ID と client secret** をログインフォームに明示的に入力してください。環境変数ではなくアカウントのログイン項目です。TokenHub は共有の Google OAuth クライアント認証情報を同梱しません。クライアント設定は token 更新のためアカウント認証情報とともに暗号化して保存します。任意の Google OAuth デスクトップクライアントで Google ユーザーを認証できても、対象の Code Assist や Antigravity サービスの利用資格がない場合があります。承認された設定を取得し、アカウントの上流サービス利用資格を確認してから使用してください。

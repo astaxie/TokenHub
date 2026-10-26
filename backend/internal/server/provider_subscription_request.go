@@ -5,8 +5,12 @@ func chatToSubscriptionResponsesRequest(request ChatCompletionRequest) (Response
 	if err != nil {
 		return ResponsesRequest{}, err
 	}
-	// Subscription Responses endpoints accept output limits that the Codex
-	// backend omits. Preserve the gateway's existing Chat limit semantics.
+	// Subscription Responses endpoints accept sampling and user parameters
+	// that the Codex backend omits. Preserve their Chat equivalents.
+	upstream.Temperature = request.Temperature
+	setRawJSONField(upstream.raw, "top_p", request.TopP, request.TopP != nil)
+	setRawJSONField(upstream.raw, "user", request.User, request.User != nil)
+	// Preserve the gateway's existing Chat output-limit semantics.
 	if limit := request.requestedMaxTokens(); limit > 0 {
 		upstream.MaxTokens = int(limit)
 	}

@@ -164,16 +164,17 @@ func subscriptionAuthorizationURLAllowed(value string, localListener bool) bool 
 	return err == nil && port > 0 && port <= 65535
 }
 
-func (a *SubscriptionWorkerAdapter) endAuthorization(key string, session *subscriptionWorkerAuthorization) {
+func (a *SubscriptionWorkerAdapter) endAuthorization(key string, session *subscriptionWorkerAuthorization) bool {
 	a.Pool.mu.Lock()
 	if a.Pool.sessions[key] != session {
 		a.Pool.mu.Unlock()
-		return
+		return false
 	}
 	delete(a.Pool.sessions, key)
 	a.Pool.mu.Unlock()
 	session.process.cancel()
 	session.release()
+	return true
 }
 
 func (a *SubscriptionWorkerAdapter) continueAuthorization(ctx context.Context, actorID string, input subscriptionWorkerAuthInput, cancel bool) (map[string]any, error) {
@@ -184,6 +185,14 @@ func (a *SubscriptionWorkerAdapter) continueAuthorization(ctx context.Context, a
 	if session == nil || session.actorID != actorID || session.providerID != a.Definition.ID || !session.expires.After(time.Now()) || subtle.ConstantTimeCompare([]byte(session.state), []byte(input.State)) != 1 {
 		return nil, invalid
 	}
+	// Cancellation must interrupt the worker even while an exchange holds the
+	// session lock. Only the operation that consumes the session can complete.
+	if cancel {
+		if !a.endAuthorization(input.SessionID, session) {
+			return nil, invalid
+		}
+		return map[string]any{"status": "cancelled"}, nil
+	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	a.Pool.mu.Lock()
@@ -192,14 +201,10 @@ func (a *SubscriptionWorkerAdapter) continueAuthorization(ctx context.Context, a
 	if current != session || !session.expires.After(time.Now()) {
 		return nil, invalid
 	}
-	if cancel {
-		a.endAuthorization(input.SessionID, session)
-		return map[string]any{"status": "cancelled"}, nil
-	}
 	if session.workerSession == "" {
 		result, err := a.authorizationCredentials(ctx, session.process, session.poolKey)
-		if err == nil {
-			a.endAuthorization(input.SessionID, session)
+		if err == nil && !a.endAuthorization(input.SessionID, session) {
+			return nil, invalid
 		}
 		return result, err
 	}
@@ -231,11 +236,17 @@ func (a *SubscriptionWorkerAdapter) continueAuthorization(ctx context.Context, a
 	}
 	switch result["state"] {
 	case "pending":
+		a.Pool.mu.Lock()
+		current := a.Pool.sessions[input.SessionID]
+		a.Pool.mu.Unlock()
+		if current != session {
+			return nil, invalid
+		}
 		return map[string]any{"status": "pending", "poll_interval": 3}, nil
 	case "complete":
 		credentials, err := a.authorizationCredentials(ctx, session.process, session.poolKey)
-		if err == nil {
-			a.endAuthorization(input.SessionID, session)
+		if err == nil && !a.endAuthorization(input.SessionID, session) {
+			return nil, invalid
 		}
 		return credentials, err
 	default:
@@ -248,6 +259,12 @@ func (a *SubscriptionWorkerAdapter) authorizationCredentials(ctx context.Context
 	// Capture the newest auth after model discovery, which can rotate a refresh
 	// token. A model-discovery outage must not discard a completed login.
 	models, modelErr := a.workerModels(ctx, p, resourceID)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := p.ctx.Err(); err != nil {
+		return nil, err
+	}
 	auth := p.authSnapshot()
 	if err := validateSubscriptionSession(auth); err != nil {
 		return nil, err

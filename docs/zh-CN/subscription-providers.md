@@ -80,6 +80,8 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 
 原生 Copilot 和 ChatGPT 的 HTTP 错误保留上游状态码及有效的 `Retry-After` 等待时间，供路由使用；凭据和模型错误沿用正常的账号与模型故障转移行为。
 
+Copilot 和社区 Chat 请求路由到 Responses 模型时，会保留 `temperature`、`top_p` 和 `user`，包括显式零值，具体支持取决于所选模型。Gemini CLI 和 Antigravity 会保留终止错误事件报告的用量，并将上游授权、额度和临时故障分类后交给路由处理。
+
 Gemini CLI 和 Antigravity 将代理认证失败与连接超时保留为出口故障，不会惩罚有效账号。GCP 的 token 刷新和模型发现会区分临时上游故障、限流和凭据被拒绝。
 
 Gemini CLI 和 Antigravity 登录时，需要在登录表单中显式填写获所选 Provider 批准的桌面应用 **OAuth client ID 与 client secret**。它们是账户登录字段，不是环境变量；TokenHub 不内置共享 Google OAuth 客户端凭据。客户端配置随账户凭据加密保存，供 token 刷新使用。任意 Google OAuth 桌面客户端即使可以认证 Google 用户，也可能没有对应 Code Assist 或 Antigravity 服务的使用资格。使用前应取得获准的配置，并确认账户具备上游访问资格。

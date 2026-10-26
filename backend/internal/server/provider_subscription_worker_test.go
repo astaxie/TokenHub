@@ -82,7 +82,8 @@ func TestSubscriptionWorkerConvertsEveryProtocol(t *testing.T) {
 					return ProviderResourceCredentials{SessionJSON: `{"type":"api","key":"test-secret"}`}, nil
 				}, SaveSession: func(context.Context, string, string, string, string) error { return nil }}
 				provider := Provider{Type: a.Definition.providerType(), Options: map[string]string{"resource_id": "account-1"}}
-				request := ChatCompletionRequest{Model: "public-model", Messages: []ChatMessage{{Role: "user", Content: "Hello"}}, MaxTokens: 17}
+				temperature, topP := 0.0, 0.8
+				request := ChatCompletionRequest{Model: "public-model", Messages: []ChatMessage{{Role: "user", Content: "Hello"}}, MaxTokens: 17, Temperature: &temperature, TopP: &topP, User: "test-user"}
 				var result any
 				var usage Usage
 				var err error
@@ -112,6 +113,9 @@ func TestSubscriptionWorkerConvertsEveryProtocol(t *testing.T) {
 				}
 				if protocol == "responses" && body["max_output_tokens"] != float64(request.MaxTokens) {
 					t.Fatalf("Responses request lost the caller's output limit: %#v", body)
+				}
+				if protocol == "responses" && (body["temperature"] != temperature || body["top_p"] != topP || body["user"] != request.User) {
+					t.Fatalf("Responses request lost sampling or user parameters: %#v", body)
 				}
 				if stream && !bytes.Contains(encoded, []byte("[DONE]")) {
 					t.Fatalf("Stream missing completion marker: %s", encoded)

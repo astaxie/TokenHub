@@ -151,6 +151,7 @@ type Store interface {
 	ListProviderResources() []ProviderResource
 	GetProviderResource(id string) (ProviderResource, bool)
 	UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error)
+	ApplyProviderResourceCredentialRefresh(ctx context.Context, expected ProviderResource, credentials *ProviderResourceCredentials, reauthorizationRequired bool) (ProviderResource, error)
 	UpdateProviderResourceOptions(id string, options map[string]string) (ProviderResource, error)
 	UpdateProviderResourceOptionsIfCurrent(ctx context.Context, id string, options map[string]string, expectedGeneration int64) (ProviderResource, error)
 	IsProviderAccountResourceType(providerType string, resourceType string) bool

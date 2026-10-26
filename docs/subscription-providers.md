@@ -80,6 +80,8 @@ For existing subscription accounts, open the provider editor, select one account
 
 Native Copilot and ChatGPT HTTP errors preserve the upstream status and valid `Retry-After` delay for routing; credential and model errors use the normal account and model failover behavior.
 
+Copilot and community Chat requests routed to Responses models retain `temperature`, `top_p`, and `user`, including explicit zero values, subject to the selected model's support. Gemini CLI and Antigravity retain reported usage from terminal error events and classify upstream authorization, quota, and transient failures for routing.
+
 Gemini CLI and Antigravity keep proxy authentication failures and connection timeouts classified as egress failures, so they do not penalize a valid account. GCP token refresh and model discovery keep temporary upstream failures and rate limits distinct from rejected credentials.
 
 For Gemini CLI and Antigravity, explicitly supply the **OAuth client ID and client secret** of a desktop application approved for the selected provider in the login prompts. These are account login fields, not environment variables; TokenHub does not ship shared Google OAuth client credentials. The client configuration is retained with the encrypted account credentials for refresh. An arbitrary Google OAuth desktop client may authenticate a Google user yet lack eligibility for the provider's Code Assist or Antigravity service. Obtain an approved configuration and confirm the account's upstream eligibility before use.

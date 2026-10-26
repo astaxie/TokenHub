@@ -204,7 +204,12 @@ func (a *GoogleSubscriptionAdapter) ChatStream(ctx context.Context, p Provider, 
 	}
 	defer response.Body.Close()
 	p.APIKey = creds.AccessToken
-	return streamGeminiChatForProvider(&googleSubscriptionSSEReader{events: newSSEDecoder(response.Body)}, newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req)), p)
+	reader := &googleSubscriptionSSEReader{events: newSSEDecoder(response.Body), usage: map[string]any{}}
+	usage, err := streamGeminiChatForProvider(reader, newOpenAIChatStreamEncoder(w, req.Model, streamUsageRequested(req)), p)
+	if err != nil && len(reader.usage) > 0 {
+		usage = geminiUsage(map[string]any{"usageMetadata": reader.usage})
+	}
+	return usage, err
 }
 
 func (a *GoogleSubscriptionAdapter) Responses(context.Context, Provider, string, ResponsesRequest) (any, Usage, error) {
@@ -313,22 +318,40 @@ func (a *GoogleSubscriptionAdapter) call(ctx context.Context, base, method strin
 }
 
 func googleSubscriptionUnwrap(body map[string]any) (map[string]any, error) {
-	if _, ok := body["error"]; ok {
-		return nil, NewHTTPError(502, "google_subscription_upstream_error", "Google subscription reported an upstream error")
+	if detail, ok := body["error"]; ok {
+		return body, googleSubscriptionStreamError(detail)
 	}
 	inner, ok := body["response"].(map[string]any)
 	if !ok {
 		return nil, NewHTTPError(502, "google_subscription_invalid_response", "Google subscription response envelope is missing")
 	}
-	if _, ok = inner["error"]; ok {
-		return nil, NewHTTPError(502, "google_subscription_upstream_error", "Google subscription reported an upstream error")
+	if detail, ok := inner["error"]; ok {
+		return inner, googleSubscriptionStreamError(detail)
 	}
 	return inner, nil
+}
+
+func googleSubscriptionStreamError(value any) error {
+	detail, _ := value.(map[string]any)
+	err := newProviderHTTPError(subscriptionJSONErrorStatus(detail), nil, []byte("Google subscription reported an upstream error"))
+	AsHTTPError(err).UpstreamStatus = http.StatusOK
+	return err
+}
+
+func mergeGoogleSubscriptionUsage(usage, body map[string]any) {
+	if snapshot, ok := body["usageMetadata"].(map[string]any); ok {
+		for key, value := range snapshot {
+			if value != nil {
+				usage[key] = value
+			}
+		}
+	}
 }
 
 type googleSubscriptionSSEReader struct {
 	events  *sseDecoder
 	pending []byte
+	usage   map[string]any
 }
 
 func (r *googleSubscriptionSSEReader) Read(p []byte) (int, error) {
@@ -345,6 +368,10 @@ func (r *googleSubscriptionSSEReader) Read(p []byte) (int, error) {
 			continue
 		}
 		inner, err := googleSubscriptionUnwrap(payload)
+		if r.usage == nil {
+			r.usage = map[string]any{}
+		}
+		mergeGoogleSubscriptionUsage(r.usage, inner)
 		if err != nil {
 			return 0, err
 		}
