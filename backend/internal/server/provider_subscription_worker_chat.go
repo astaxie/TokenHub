@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 )
 
 func (a *SubscriptionWorkerAdapter) codec(process *subscriptionWorkerProcess, id string, model subscriptionWorkerModel, stream bool) (ProviderAdapter, Provider, error) {
@@ -37,9 +38,28 @@ func (a *SubscriptionWorkerAdapter) chat(ctx context.Context, provider Provider,
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	codec, proxy, err := a.codec(process, id, model, model.Protocol == "responses")
+	streamOnlyChat := model.Protocol == "chat" && (a.Definition.ID == "workbuddy" || a.Definition.ID == "workbuddy-ai")
+	codec, proxy, err := a.codec(process, id, model, model.Protocol == "responses" || streamOnlyChat)
 	if err != nil {
 		return nil, Usage{}, err
+	}
+	if streamOnlyChat {
+		// WorkBuddy rejects non-streaming Chat requests, including account probes.
+		// Collect its stream while preserving the caller's non-streaming contract.
+		publicModel := firstNonEmpty(request.Model, model.ID)
+		core := codec.(OpenAICompatibleAdapter).core()
+		request = withoutGatewayExtensions(request, core.preserveReasoningContent(proxy))
+		request.Model, request.Stream = model.ID, true
+		request.ReasoningEffort = normalizedReasoningEffort(request.ReasoningEffort)
+		request = includeOpenAIStreamUsage(request)
+		callCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+		defer cancel()
+		response, err := core.doRaw(callCtx, proxy, http.MethodPost, model.ID, "/chat/completions", request, true)
+		if err != nil {
+			return nil, Usage{}, err
+		}
+		defer response.Body.Close()
+		return collectSubscriptionChat(response.Body, publicModel)
 	}
 	if model.Protocol != "responses" {
 		return codec.Chat(ctx, proxy, model.ID, request)

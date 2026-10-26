@@ -74,6 +74,8 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 
 WorkBuddy 和 WorkBuddy AI 的网页登录会通过轮询自动完成。在供应商页面登录后返回 TokenHub，无需粘贴授权码或 Token；凭据回填后还需保存账号资源。授权流程兼容数字或字符串状态码。WorkBuddy 的账号 `domain` 按有长度和字符限制的 `X-Domain` 请求头元数据保留；API 请求目标仍限制为固定官方域名。失败时显示所处阶段及可用的 HTTP／供应商状态码，不暴露账号凭据或上游响应原文。
 
+WorkBuddy 的 Chat 接口要求流式请求。供应商测试和非流式 Chat API 调用也由 TokenHub 在内部以流式方式请求，再汇总为完整 JSON，保留文本、推理内容、工具调用、结束原因和上游报告的用量。原有流式调用仍逐步返回；未完成的响应会报错，不会被误判为测试成功。
+
 凭据应填写在资源的受保护凭据字段中，包括加密会话 JSON；不要放入 Provider Options、普通请求头、日志或源码仓库。待完成授权会话绑定发起管理员和 Provider，使用随机 state、有有效期且只能消费一次。大部分流程十分钟后过期；Claude setup-token 交接五分钟后过期。不再使用的授权流程可在编辑器中取消。如果取消或超时使授权交换中的 worker 停止，TokenHub 会立即释放这个无法继续使用的会话。
 
 通过 `PATCH /api/admin/provider-resources/{id}` 更换已有账户，或在会话 JSON 与 token 之间切换时，将 `credentials.replace` 设为 `true`，并提供新的 `access_token` 或完整 `session_json`。这会整体替换凭据，清除未提供的旧 token、OAuth 客户端配置及账户元数据。所需的新客户端配置和账户元数据也应放入 `credentials`；不带该标记的普通凭据更新继续只合并已提供的凭据字段。未提供新 token 或会话的替换请求会被拒绝。
