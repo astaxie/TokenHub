@@ -142,15 +142,7 @@ func subscriptionWorkerModelMetadata(model subscriptionWorkerModel) map[string]s
 		return metadata
 	}
 	metadata["subscription_variants"] = string(encoded)
-	efforts := map[string]bool{}
-	for _, raw := range model.Variants {
-		var variant struct {
-			ReasoningEffort string `json:"reasoningEffort"`
-		}
-		if json.Unmarshal(raw, &variant) == nil && strings.TrimSpace(variant.ReasoningEffort) != "" {
-			efforts[strings.TrimSpace(variant.ReasoningEffort)] = true
-		}
-	}
+	efforts := subscriptionWorkerReasoningEfforts(model)
 	ordered := []string{}
 	for _, effort := range []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"} {
 		if efforts[effort] {
@@ -168,6 +160,21 @@ func subscriptionWorkerModelMetadata(model subscriptionWorkerModel) map[string]s
 		metadata["reasoning_effort_options"] = strings.Join(ordered, ",")
 	}
 	return metadata
+}
+
+// A subscription can serve non-Claude models over Messages. Honor its explicit
+// effort declarations rather than limiting it to Anthropic's model families.
+func subscriptionWorkerReasoningEfforts(model subscriptionWorkerModel) map[string]bool {
+	efforts := map[string]bool{}
+	for _, raw := range model.Variants {
+		var variant struct {
+			ReasoningEffort string `json:"reasoningEffort"`
+		}
+		if json.Unmarshal(raw, &variant) == nil && strings.TrimSpace(variant.ReasoningEffort) != "" {
+			efforts[strings.TrimSpace(variant.ReasoningEffort)] = true
+		}
+	}
+	return efforts
 }
 
 func (a *SubscriptionWorkerAdapter) resourceModels(ctx context.Context, provider Provider, resource ProviderResource, _ string) (ProviderCatalogEntry, int, error) {

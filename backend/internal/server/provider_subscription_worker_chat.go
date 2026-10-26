@@ -15,7 +15,7 @@ func (a *SubscriptionWorkerAdapter) codec(process *subscriptionWorkerProcess, id
 		return OpenAICompatibleAdapter{Client: client, StreamClient: client, StreamIdleTimeout: a.StreamIdleTimeout}, provider, nil
 	case "anthropic":
 		provider.Type = ProviderAnthropic
-		return AnthropicAdapter{Client: client, StreamClient: client, StreamIdleTimeout: a.StreamIdleTimeout}, provider, nil
+		return AnthropicAdapter{Client: client, StreamClient: client, StreamIdleTimeout: a.StreamIdleTimeout, reasoningEfforts: subscriptionWorkerReasoningEfforts(model)}, provider, nil
 	case "gemini":
 		provider.Type = ProviderGemini
 		return GeminiAdapter{Client: client, StreamClient: client, StreamIdleTimeout: a.StreamIdleTimeout}, provider, nil

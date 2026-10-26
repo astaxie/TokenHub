@@ -83,7 +83,7 @@ func TestCopilotSubscriptionRejectsEmbeddedModelErrors(t *testing.T) {
 func TestCopilotSubscriptionJSONPreservesNormalModelOutput(t *testing.T) {
 	const normal = "{\n \"choices\": [{\"message\":{\"content\":\"github-secret exchanged-secret\"}}], \"error\": null\n}"
 	response := &http.Response{Body: io.NopCloser(strings.NewReader(normal))}
-	if err := checkCopilotSubscriptionJSON(response, Provider{}, "github-secret", "exchanged-secret"); err != nil {
+	if err := checkCopilotSubscriptionJSON(context.Background(), response, Provider{}, "github-secret", "exchanged-secret"); err != nil {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()

@@ -29,6 +29,10 @@ func (s *GormStore) ReplaceProviderSession(ctx context.Context, resourceID, prov
 		if provider.Type != providerType || !s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) || strings.TrimSpace(credentials.SessionJSON) != strings.TrimSpace(previous) {
 			return NewHTTPError(409, "provider_credentials_changed", "Account credentials changed during the request; retry with the current account")
 		}
+		// Deletes and creates do not take this lease. Recheck the original
+		// identity and encrypted credentials in the final atomic update.
+		leaseCtx = context.WithValue(leaseCtx, providerCredentialRefreshPersistenceKey{}, resource)
+		db := s.db.WithContext(leaseCtx).Where("credential_blob = ?", resource.CredentialBlob)
 		credentials.SessionJSON = next
 		resource.CredentialBlob = s.encryptProviderResourceCredentialBlob(credentials)
 		resource.UpdatedAt = time.Now().UTC()
@@ -39,7 +43,7 @@ func (s *GormStore) ReplaceProviderSession(ctx context.Context, resourceID, prov
 		if applySubscriptionWorkerRefreshSummary(resource.Options, resource.ResourceType, next) {
 			columns = append(columns, "options")
 		}
-		return updateExistingProviderResourceColumns(s.db.WithContext(leaseCtx), &resource, columns...)
+		return updateExistingProviderResourceColumns(db, &resource, columns...)
 	})
 }
 

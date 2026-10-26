@@ -134,7 +134,7 @@ func (a *CopilotSubscriptionAdapter) exchangeSession(ctx context.Context, creds 
 	if err != nil {
 		return copilotSubscriptionSession{}, err
 	}
-	if err := checkCopilotSubscriptionJSON(resp, Provider{}, creds.AccessToken, ""); err != nil {
+	if err := checkCopilotSubscriptionJSON(ctx, resp, Provider{}, creds.AccessToken, ""); err != nil {
 		return copilotSubscriptionSession{}, err
 	}
 	var session copilotSubscriptionSession
@@ -256,7 +256,7 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 			resp.Body = newIdleTimeoutReadCloser(resp.Body, subscriptionIdleTimeout(a.StreamIdleTimeout), NewHTTPError(504, "subscription_stream_idle", "Subscription stream was idle for too long"))
 		}
 		if !stream || subscriptionJSONContentType(resp.Header) {
-			if err := checkCopilotSubscriptionJSON(resp, provider, creds.AccessToken, session.Token); err != nil {
+			if err := checkCopilotSubscriptionJSON(ctx, resp, provider, creds.AccessToken, session.Token); err != nil {
 				return nil, err
 			}
 		}

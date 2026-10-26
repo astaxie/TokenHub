@@ -25,7 +25,8 @@ func updateExistingProviderResourceColumns(db *gorm.DB, resource *ProviderResour
 	if result.RowsAffected != 1 {
 		if guarded {
 			var count int64
-			if err := db.Model(&ProviderResource{}).Where("id = ?", resource.ID).Count(&count).Error; err != nil {
+			// Ignore update-only conditions when distinguishing replacement from deletion.
+			if err := db.Session(&gorm.Session{NewDB: true}).Model(&ProviderResource{}).Where("id = ?", resource.ID).Count(&count).Error; err != nil {
 				return err
 			}
 			if count > 0 {
