@@ -189,7 +189,7 @@ func quotaSnapshotFetchedAt(value any, fallback time.Time) time.Time {
 }
 
 func (s *Server) fetchOpenAIAccountQuota(ctx context.Context, resourceID string) (OpenAIAccountQuota, error) {
-	creds, err := s.store.RefreshProviderResourceCredentials(ctx, resourceID, false)
+	creds, err := providerCredentialLoaderForType(s.store, ProviderOpenAICodex)(ctx, resourceID, false)
 	if err != nil {
 		return OpenAIAccountQuota{}, err
 	}
@@ -203,7 +203,7 @@ func (s *Server) fetchOpenAIAccountQuota(ctx context.Context, resourceID string)
 		return quota, err
 	}
 
-	refreshed, refreshErr := s.store.RefreshProviderResourceCredentials(ctx, resourceID, true)
+	refreshed, refreshErr := providerCredentialLoaderForType(s.store, ProviderOpenAICodex)(ctx, resourceID, true)
 	if refreshErr != nil {
 		return OpenAIAccountQuota{}, refreshErr
 	}

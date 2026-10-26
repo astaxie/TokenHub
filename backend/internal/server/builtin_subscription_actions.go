@@ -107,7 +107,7 @@ func (s *Server) executeBuiltinSubscriptionAction(ctx context.Context, definitio
 		result, err := s.integrations.TestProviderResource(ctx, payload.ResourceID, &ProviderProbeRequest{Model: payload.Model, Prompt: payload.Prompt})
 		return pluginmeta.ActionResult{Data: result}, err
 	case "credentials.refresh":
-		credentials, err := s.store.RefreshProviderResourceCredentials(ctx, payload.ResourceID, payload.Force)
+		credentials, err := providerCredentialLoaderForType(s.store, definition.providerType)(ctx, payload.ResourceID, payload.Force)
 		if err != nil {
 			return pluginmeta.ActionResult{}, err
 		}

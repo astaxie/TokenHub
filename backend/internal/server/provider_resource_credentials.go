@@ -621,6 +621,11 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			s.mu.Unlock()
 			return notFound(err, "provider_not_found", "Provider not found")
 		}
+		if expected, _ := leaseCtx.Value(providerCredentialBindingKey{}).(string); expected != "" &&
+			(provider.Type != expected || !s.IsProviderAccountResourceType(provider.Type, resource.ResourceType)) {
+			s.mu.Unlock()
+			return NewHTTPError(409, "provider_resource_changed", "Provider resource no longer belongs to the selected subscription adapter")
+		}
 		creds := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
 		authentication := creds
 		refreshRegistration, refreshSupported := s.providerCredentialRefreshRegistration(provider)
@@ -660,6 +665,9 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 					if loadErr := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; loadErr != nil {
 						return loadErr
 					}
+					if err := s.validateProviderCredentialBinding(mutationCtx, current); err != nil {
+						return err
+					}
 					if !s.supportsNativeProviderResourceCredentialRefresh(provider, current) ||
 						!refreshRegistration.AuthenticationEqual(s.providerResourceCredentialsForRuntimeForProvider(provider.Type, current), authentication) {
 						return nil
@@ -684,6 +692,9 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			var current ProviderResource
 			if err := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; err != nil {
 				return notFound(err, "provider_resource_not_found", "Provider resource not found")
+			}
+			if err := s.validateProviderCredentialBinding(mutationCtx, current); err != nil {
+				return err
 			}
 			if !s.supportsNativeProviderResourceCredentialRefresh(provider, current) {
 				result = refreshed

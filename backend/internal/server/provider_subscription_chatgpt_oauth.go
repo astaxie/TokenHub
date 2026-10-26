@@ -111,6 +111,9 @@ func (a *ChatGPTSubscriptionAdapter) token(ctx context.Context, form url.Values)
 		if slices.Contains([]string{"invalid_grant", "invalid_client", "invalid_refresh_token", "token_expired", "refresh_token_expired", "refresh_token_invalidated", "refresh_token_reused"}, failure.Error) {
 			return oauthTokenResponse{}, NewHTTPError(409, "provider_resource_reauthorization_required", "ChatGPT API account must be authorized again")
 		}
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode >= http.StatusInternalServerError {
+			return oauthTokenResponse{}, newProviderHTTPError(resp.StatusCode, resp.Header, []byte("ChatGPT API token endpoint is temporarily unavailable"))
+		}
 		return oauthTokenResponse{}, NewHTTPError(502, "subscription_token_request_failed", "ChatGPT API token endpoint refused the request")
 	}
 	var token oauthTokenResponse

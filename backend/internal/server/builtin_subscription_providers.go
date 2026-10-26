@@ -20,8 +20,8 @@ func addBuiltinSubscriptionRuntime(adapters map[string]any, deps builtinProvider
 	copilot := &CopilotSubscriptionAdapter{Client: deps.Client, StreamClient: deps.StreamClient, CredentialRefreshClient: deps.Client, StreamIdleTimeout: deps.StreamIdleTimeout}
 	chatgpt := &ChatGPTSubscriptionAdapter{Client: deps.Client, StreamClient: deps.StreamClient, CredentialRefreshClient: deps.Client, StreamIdleTimeout: deps.StreamIdleTimeout}
 	if deps.Store != nil {
-		copilot.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
-		chatgpt.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
+		copilot.RefreshCredentials = providerCredentialLoaderForType(deps.Store, ProviderGitHubCopilotSubscription)
+		chatgpt.RefreshCredentials = providerCredentialLoaderForType(deps.Store, ProviderChatGPTSubscription)
 	}
 	adapters[ProviderGitHubCopilotSubscription], adapters[ProviderChatGPTSubscription] = copilot, chatgpt
 	for _, kind := range []string{providerGeminiCLISubscription, providerAntigravitySubscription} {

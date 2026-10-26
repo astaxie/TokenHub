@@ -230,7 +230,7 @@ func (s *Server) resetOpenAIAccountQuota(ctx context.Context, resourceID string,
 				return openAIAccountQuotaResetStoredError(operation)
 			case openAIAccountQuotaResetPending, openAIAccountQuotaResetUnknown:
 				var credentialErr error
-				creds, credentialErr = s.store.RefreshProviderResourceCredentials(leaseCtx, resourceID, false)
+				creds, credentialErr = providerCredentialLoaderForType(s.store, ProviderOpenAICodex)(leaseCtx, resourceID, false)
 				if credentialErr != nil {
 					return credentialErr
 				}
@@ -452,7 +452,7 @@ func (s *Server) executeOpenAIAccountQuotaResetOperation(ctx context.Context, re
 	}
 	result, status, consumeErr := consumeOpenAIAccountQuotaResetWithClient(ctx, codexSubscription.Client, endpoint, creds, payload)
 	if status == http.StatusUnauthorized {
-		refreshed, refreshErr := s.store.RefreshProviderResourceCredentials(ctx, resourceID, true)
+		refreshed, refreshErr := providerCredentialLoaderForType(s.store, ProviderOpenAICodex)(ctx, resourceID, true)
 		if refreshErr != nil {
 			return openAIAccountQuotaResetResult{}, refreshErr
 		}
@@ -581,7 +581,7 @@ func (s *Server) providerResourceForQuotaResetCapability(resourceID string, acti
 }
 
 func (s *Server) fetchOpenAIAccountQuotaResetCredits(ctx context.Context, resourceID string) (openAIAccountQuotaResetCredits, ProviderResourceCredentials, error) {
-	creds, err := s.store.RefreshProviderResourceCredentials(ctx, resourceID, false)
+	creds, err := providerCredentialLoaderForType(s.store, ProviderOpenAICodex)(ctx, resourceID, false)
 	if err != nil {
 		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, err
 	}
@@ -597,7 +597,7 @@ func (s *Server) fetchOpenAIAccountQuotaResetCredits(ctx context.Context, resour
 	if status != http.StatusUnauthorized {
 		return details, creds, err
 	}
-	refreshed, refreshErr := s.store.RefreshProviderResourceCredentials(ctx, resourceID, true)
+	refreshed, refreshErr := providerCredentialLoaderForType(s.store, ProviderOpenAICodex)(ctx, resourceID, true)
 	if refreshErr != nil {
 		return openAIAccountQuotaResetCredits{}, ProviderResourceCredentials{}, refreshErr
 	}

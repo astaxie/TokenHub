@@ -394,7 +394,7 @@ func (s *Server) prepareRouteForUpstream(ctx context.Context, route RouteSelecti
 	if !ok || !supportChecker.SupportsNativeProviderResourceCredentialRefresh(*route.Resource) {
 		return route, nil
 	}
-	creds, err := s.store.RefreshProviderResourceCredentials(ctx, routeResourceID(route), false)
+	creds, err := providerCredentialLoaderForType(s.store, route.Provider.Type)(ctx, routeResourceID(route), false)
 	if err != nil {
 		return route, err
 	}

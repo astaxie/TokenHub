@@ -27,6 +27,7 @@ func (r *claudeSubscriptionRun) readOutput(output io.Reader) {
 	usageReported := Usage{}
 	messageUsage := make(map[string]Usage)
 	messageID := ""
+	stopReason := ""
 	messageOpen := false
 	anonymous := 0
 	var pendingCalls []map[string]any
@@ -52,11 +53,16 @@ func (r *claudeSubscriptionRun) readOutput(output io.Reader) {
 			case "message_start":
 				message, _ := event["message"].(map[string]any)
 				messageID, _ = message["id"].(string)
+				stopReason = ""
 				messageOpen = true
 				if !r.emit(claudeSubscriptionEvent{Usage: accountUsage(messageID, anthropicUsage(message))}) {
 					return
 				}
 			case "message_delta":
+				delta, _ := event["delta"].(map[string]any)
+				if reason, _ := delta["stop_reason"].(string); reason != "" {
+					stopReason = reason
+				}
 				if !r.emit(claudeSubscriptionEvent{Usage: accountUsage(messageID, anthropicUsage(event))}) {
 					return
 				}
@@ -82,6 +88,9 @@ func (r *claudeSubscriptionRun) readOutput(output io.Reader) {
 			}
 		case "assistant":
 			message, _ := item["message"].(map[string]any)
+			if reason, _ := message["stop_reason"].(string); reason != "" {
+				stopReason = reason
+			}
 			content, _ := message["content"].([]any)
 			id, _ := message["id"].(string)
 			if id == "" && messageOpen {
@@ -114,7 +123,14 @@ func (r *claudeSubscriptionRun) readOutput(output io.Reader) {
 				r.emit(claudeSubscriptionEvent{Usage: remaining, Err: NewHTTPError(502, "claude_subscription_failed", "Claude Code could not complete the subscription request")})
 				return
 			}
-			r.emit(claudeSubscriptionEvent{Done: true, Usage: remaining})
+			if reason, _ := item["stop_reason"].(string); reason != "" {
+				stopReason = reason
+			}
+			finish, err := anthropicFinishReason(stopReason, false)
+			if err != nil {
+				err = invalidProviderResponseError("Claude Code returned an unsupported stop reason")
+			}
+			r.emit(claudeSubscriptionEvent{Done: err == nil, FinishReason: finish, Usage: remaining, Err: err})
 			return
 		}
 	}

@@ -11,7 +11,7 @@ import (
 func addBuiltinClaudeSubscriptionRuntime(adapters map[string]any, deps builtinProviderRuntimeDependencies) {
 	adapter := &ClaudeSubscriptionAdapter{StreamIdleTimeout: deps.StreamIdleTimeout}
 	if deps.Store != nil {
-		adapter.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
+		adapter.RefreshCredentials = providerCredentialLoaderForType(deps.Store, providerClaudeSubscription)
 		adapter.RunClusterOperation = deps.Store.RunClusterOperation
 	}
 	if store, ok := deps.Store.(interface {

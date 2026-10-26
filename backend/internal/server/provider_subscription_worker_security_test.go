@@ -48,7 +48,7 @@ func TestSubscriptionWorkerRelayRetainsConfiguredSSRFGuard(t *testing.T) {
 	p.client = subscriptionClient(client)
 	var event map[string]any
 	p.input = subscriptionTestInput{write: func(data []byte) (int, error) { err := json.Unmarshal(data, &event); return len(data), err }}
-	p.network(subscriptionWorkerEvent{RequestID: "blocked", URL: upstream.URL, Method: http.MethodGet})
+	p.network(p.ctx, subscriptionWorkerEvent{RequestID: "blocked", URL: upstream.URL, Method: http.MethodGet})
 	if calls.Load() != 0 || event["operation"] != "network.error" {
 		t.Fatalf("SSRF guard did not reject local egress: calls=%d event=%#v", calls.Load(), event)
 	}

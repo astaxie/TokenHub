@@ -79,7 +79,7 @@ func TestSubscriptionWorkerStreamTracksRotationsAndRequestHeaders(t *testing.T) 
 		}
 		call++
 		id := command["id"].(string)
-		process.network(subscriptionWorkerEvent{ID: id, RequestID: "upstream-" + strconv.Itoa(call), URL: "https://api.cursor.com/chat", Method: "POST", Headers: http.Header{
+		process.network(process.ctx, subscriptionWorkerEvent{ID: id, RequestID: "upstream-" + strconv.Itoa(call), URL: "https://api.cursor.com/chat", Method: "POST", Headers: http.Header{
 			"Authorization": []string{"Bearer signed-secret-" + strconv.Itoa(call)}, "Ptkey": []string{"vendor-secret"}, "Cookie": []string{"session=cookie-secret"},
 		}})
 		process.updateAuth(subscriptionWorkerEvent{ID: id, UpdateID: "rotation", Auth: json.RawMessage(`{"type":"oauth","access":"rotated-secret"}`)})

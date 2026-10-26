@@ -78,7 +78,7 @@ func addBuiltinSubscriptionWorkerRuntime(adapters map[string]any, deps builtinPr
 	for _, definition := range subscriptionWorkerDefinitions() {
 		adapter := &SubscriptionWorkerAdapter{Definition: definition, Pool: pool, StreamIdleTimeout: deps.StreamIdleTimeout}
 		if deps.Store != nil {
-			adapter.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
+			adapter.RefreshCredentials = providerCredentialLoaderForType(deps.Store, definition.providerType())
 			adapter.RunClusterOperation = deps.Store.RunClusterOperation
 		}
 		if store, ok := deps.Store.(interface {

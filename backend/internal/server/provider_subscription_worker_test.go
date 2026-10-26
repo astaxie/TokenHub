@@ -319,7 +319,7 @@ func TestSubscriptionWorkerRelayKeepsRepeatedHeadersAndRefusesRedirects(t *testi
 		}
 		return &http.Response{StatusCode: 302, Header: http.Header{"Location": []string{"https://untrusted.example"}, "Set-Cookie": []string{"a=1", "b=2"}}, Body: io.NopCloser(strings.NewReader("redirect")), Request: request}, nil
 	})})
-	p.network(subscriptionWorkerEvent{RequestID: "relay", URL: "https://api.cursor.com/test", Method: "GET", Headers: http.Header{"X-Test": []string{"first", "second"}}})
+	p.network(p.ctx, subscriptionWorkerEvent{RequestID: "relay", URL: "https://api.cursor.com/test", Method: "GET", Headers: http.Header{"X-Test": []string{"first", "second"}}})
 	if calls != 1 {
 		t.Fatalf("Followed redirect: %d requests", calls)
 	}

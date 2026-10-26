@@ -29,7 +29,7 @@ func newBuiltinProviderRuntime(deps builtinProviderRuntimeDependencies) builtinP
 		StreamIdleTimeout:       deps.StreamIdleTimeout,
 	}
 	if deps.Store != nil {
-		codexSubscription.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
+		codexSubscription.RefreshCredentials = providerCredentialLoaderForType(deps.Store, ProviderOpenAICodex)
 	}
 	runtime := builtinProviderRuntime{
 		adapters: map[string]any{

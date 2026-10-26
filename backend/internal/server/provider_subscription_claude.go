@@ -42,26 +42,30 @@ type ClaudeSubscriptionAdapter struct {
 }
 
 type claudeSubscriptionEvent struct {
-	Text  string
-	Calls []map[string]any
-	Usage Usage
-	Done  bool
-	Err   error
+	Text         string
+	Calls        []map[string]any
+	Usage        Usage
+	FinishReason string
+	Done         bool
+	Err          error
 }
 
 func (a *ClaudeSubscriptionAdapter) Chat(ctx context.Context, provider Provider, model string, request ChatCompletionRequest) (any, Usage, error) {
 	text := ""
 	var calls []map[string]any
+	finish := "stop"
 	usage, err := a.complete(ctx, provider, model, request, func(event claudeSubscriptionEvent) error {
 		text += event.Text
 		calls = append(calls, event.Calls...)
+		if event.FinishReason != "" {
+			finish = event.FinishReason
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, usage, err
 	}
 	message := map[string]any{"role": "assistant", "content": text}
-	finish := "stop"
 	if len(calls) > 0 {
 		message["tool_calls"] = calls
 		finish = "tool_calls"
@@ -73,6 +77,9 @@ func (a *ClaudeSubscriptionAdapter) ChatStream(ctx context.Context, provider Pro
 	encoder := newOpenAIChatStreamEncoder(w, model, streamUsageRequested(request))
 	finish := "stop"
 	usage, err := a.complete(ctx, provider, model, request, func(event claudeSubscriptionEvent) error {
+		if event.FinishReason != "" {
+			finish = event.FinishReason
+		}
 		if err := encoder.EmitText(event.Text); err != nil {
 			return err
 		}

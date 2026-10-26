@@ -684,7 +684,7 @@ func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar
 				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
 			}
 		}
-		credentials, err := server.store.RefreshProviderResourceCredentials(ctx, payload.ResourceID, payload.Force)
+		credentials, err := providerCredentialLoaderForType(server.store, ProviderOpenAICodex)(ctx, payload.ResourceID, payload.Force)
 		if err != nil {
 			return pluginmeta.ActionResult{}, err
 		}

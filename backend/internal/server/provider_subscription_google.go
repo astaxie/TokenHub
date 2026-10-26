@@ -67,7 +67,7 @@ type GoogleSubscriptionAdapter struct {
 func newGoogleSubscriptionAdapter(providerType string, deps builtinProviderRuntimeDependencies) *GoogleSubscriptionAdapter {
 	a := &GoogleSubscriptionAdapter{ProviderType: providerType, Client: deps.Client, StreamClient: deps.StreamClient, StreamIdleTimeout: deps.StreamIdleTimeout, accountState: &googleSubscriptionAccountState{}}
 	if deps.Store != nil {
-		a.RefreshCredentials = deps.Store.RefreshProviderResourceCredentials
+		a.RefreshCredentials = providerCredentialLoaderForType(deps.Store, providerType)
 	}
 	return a
 }

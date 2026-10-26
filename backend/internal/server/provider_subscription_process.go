@@ -141,7 +141,7 @@ func (p *subscriptionWorkerProcess) read(output io.Reader) {
 		}
 		switch event.Event {
 		case "network.request":
-			go p.network(event)
+			p.startNetwork(event)
 		case "network.cancel":
 			p.mu.Lock()
 			cancel := p.networks[event.RequestID]
@@ -217,7 +217,26 @@ func (p *subscriptionWorkerProcess) updateAuth(event subscriptionWorkerEvent) {
 	_ = p.send(ack)
 }
 
-func (p *subscriptionWorkerProcess) network(event subscriptionWorkerEvent) {
+func (p *subscriptionWorkerProcess) startNetwork(event subscriptionWorkerEvent) {
+	ctx, cancel := context.WithTimeout(p.ctx, 10*time.Minute)
+	p.mu.Lock()
+	if event.RequestID == "" || len(p.networks) >= 16 || p.networks[event.RequestID] != nil {
+		p.mu.Unlock()
+		cancel()
+		_ = p.send(map[string]any{"operation": "network.error", "request_id": event.RequestID, "error": "upstream_request_failed"})
+		return
+	}
+	// Register in stdout order so the next frame can cancel this request even
+	// before the network goroutine is scheduled.
+	p.networks[event.RequestID] = cancel
+	p.mu.Unlock()
+	go func() {
+		defer func() { cancel(); p.mu.Lock(); delete(p.networks, event.RequestID); p.mu.Unlock() }()
+		p.network(ctx, event)
+	}()
+}
+
+func (p *subscriptionWorkerProcess) network(ctx context.Context, event subscriptionWorkerEvent) {
 	failed := func() {
 		_ = p.send(map[string]any{"operation": "network.error", "request_id": event.RequestID, "error": "upstream_request_failed"})
 	}
@@ -226,17 +245,6 @@ func (p *subscriptionWorkerProcess) network(event subscriptionWorkerEvent) {
 		failed()
 		return
 	}
-	ctx, cancel := context.WithTimeout(p.ctx, 10*time.Minute)
-	p.mu.Lock()
-	if event.RequestID == "" || len(p.networks) >= 16 || p.networks[event.RequestID] != nil {
-		p.mu.Unlock()
-		cancel()
-		failed()
-		return
-	}
-	p.networks[event.RequestID] = cancel
-	p.mu.Unlock()
-	defer func() { cancel(); p.mu.Lock(); delete(p.networks, event.RequestID); p.mu.Unlock() }()
 	req, err := http.NewRequestWithContext(ctx, event.Method, event.URL, strings.NewReader(string(body)))
 	if err != nil || req.URL.Scheme != "https" || req.URL.User != nil || req.URL.Fragment != "" {
 		failed()
