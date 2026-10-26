@@ -1,0 +1,158 @@
+{
+  "sourceHead": "564c1b313b89e6a4656f9cb7161cc0735dc29115",
+  "workingTreeDirty": false,
+  "status": "passed",
+  "evidence": "Frontend UI with synthetic API fixtures; no backend or database verification; no pixel baseline comparison.",
+  "images": [
+    {
+      "id": "console-models-empty-mobile",
+      "test": "console-responsive mobile model empty state remains readable",
+      "file": "screenshots/console-models-empty-mobile.png"
+    },
+    {
+      "id": "console-overview-desktop",
+      "test": "console-responsive desktop navigation, icons and model details",
+      "file": "screenshots/console-overview-desktop.png"
+    },
+    {
+      "id": "console-trend-desktop",
+      "test": "console-responsive desktop navigation, icons and model details",
+      "file": "screenshots/console-trend-desktop.png"
+    },
+    {
+      "id": "console-models-desktop",
+      "test": "console-responsive desktop navigation, icons and model details",
+      "file": "screenshots/console-models-desktop.png"
+    },
+    {
+      "id": "console-overview-mobile",
+      "test": "console-responsive mobile navigation, icons and model details",
+      "file": "screenshots/console-overview-mobile.png"
+    },
+    {
+      "id": "console-trend-mobile",
+      "test": "console-responsive mobile navigation, icons and model details",
+      "file": "screenshots/console-trend-mobile.png"
+    },
+    {
+      "id": "console-models-mobile",
+      "test": "console-responsive mobile navigation, icons and model details",
+      "file": "screenshots/console-models-mobile.png"
+    },
+    {
+      "id": "login-compact-desktop",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-compact-desktop.png"
+    },
+    {
+      "id": "login-desktop",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-desktop.png"
+    },
+    {
+      "id": "login-laptop",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-laptop.png"
+    },
+    {
+      "id": "login-mobile",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-mobile.png"
+    },
+    {
+      "id": "login-mobile-features",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-mobile-features.png"
+    },
+    {
+      "id": "login-mobile-dark",
+      "test": "renders brand and feature icons and toggles password, theme and language",
+      "file": "screenshots/login-mobile-dark.png"
+    },
+    {
+      "id": "login-mobile-en",
+      "test": "fits translated text on a narrow mobile screen",
+      "file": "screenshots/login-mobile-en.png"
+    },
+    {
+      "id": "login-mobile-ja",
+      "test": "fits translated text on a narrow mobile screen",
+      "file": "screenshots/login-mobile-ja.png"
+    },
+    {
+      "id": "login-mobile-landscape",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-mobile-landscape.png"
+    },
+    {
+      "id": "login-mobile-landscape-actions",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-mobile-landscape-actions.png"
+    },
+    {
+      "id": "login-mobile-ru",
+      "test": "fits translated text on a narrow mobile screen",
+      "file": "screenshots/login-mobile-ru.png"
+    },
+    {
+      "id": "login-mobile-sso",
+      "test": "keeps SSO icons and login failure actions usable with long provider labels",
+      "file": "screenshots/login-mobile-sso.png"
+    },
+    {
+      "id": "login-mobile-error",
+      "test": "keeps SSO icons and login failure actions usable with long provider labels",
+      "file": "screenshots/login-mobile-error.png"
+    },
+    {
+      "id": "login-small-laptop",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-small-laptop.png"
+    },
+    {
+      "id": "login-small-mobile",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-small-mobile.png"
+    },
+    {
+      "id": "login-small-mobile-actions",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-small-mobile-actions.png"
+    },
+    {
+      "id": "login-tablet",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-tablet.png"
+    },
+    {
+      "id": "login-wide-desktop",
+      "test": "keeps the form reachable and content separated without horizontal clipping",
+      "file": "screenshots/login-wide-desktop.png"
+    },
+    {
+      "id": "oauth-personal-console",
+      "test": "oauth-login successful exchange opens the personal console without a provider dialog",
+      "file": "screenshots/oauth-personal-console.png"
+    },
+    {
+      "id": "oauth-provider-error",
+      "test": "oauth-login provider error remains visible after callback cleanup",
+      "file": "screenshots/oauth-provider-error.png"
+    },
+    {
+      "id": "oauth-provider-error-en",
+      "test": "uses the selected language for the persisted failure",
+      "file": "screenshots/oauth-provider-error-en.png"
+    },
+    {
+      "id": "oauth-provider-error-ja",
+      "test": "uses the selected language for the persisted failure",
+      "file": "screenshots/oauth-provider-error-ja.png"
+    },
+    {
+      "id": "oauth-provider-error-ru",
+      "test": "uses the selected language for the persisted failure",
+      "file": "screenshots/oauth-provider-error-ru.png"
+    }
+  ]
+}
