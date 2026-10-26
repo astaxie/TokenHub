@@ -114,6 +114,9 @@ func TestMultiInstancePostgresE2E(t *testing.T) {
 		assertAdminOAuthFlowUsesDatabaseClockAcrossInstances(t, storeA, storeB)
 		assertAdminOAuthExchangeUsesDatabaseClockAcrossInstances(t, storeA, storeB)
 	})
+	t.Run("account quota observations are ordered with deletion", func(t *testing.T) {
+		testPostgresProviderObservationDeletionOrdering(t, storeA, storeB)
+	})
 	t.Run("startup task revision runs once", func(t *testing.T) {
 		testClusterTaskRunsOnce(t, storeA, storeB)
 	})
@@ -559,7 +562,7 @@ func testResponseRecoveryRenewalRace(t *testing.T, storeA *GormStore, storeB *Go
 	}); err != nil {
 		t.Fatal(err)
 	}
-	defer storeB.db.Callback().Query().Remove(callbackName)
+	defer func() { _ = storeB.db.Callback().Query().Remove(callbackName) }()
 
 	type recoveryResult struct {
 		requeued  int64
@@ -812,7 +815,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storeA.DeleteAPIKey(concurrencyKey.ID)
+	defer func() { _ = storeA.DeleteAPIKey(concurrencyKey.ID) }()
 
 	release := make(chan struct{})
 	blocking := &multiInstanceBlockingAdapter{started: make(chan struct{}), release: release}
@@ -949,7 +952,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storeA.DeleteAPIKey(quotaKey.ID)
+	defer func() { _ = storeA.DeleteAPIKey(quotaKey.ID) }()
 
 	const requests = 16
 	statuses := make(chan int, requests)
@@ -994,7 +997,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storeA.DeleteAPIKey(minuteKey.ID)
+	defer func() { _ = storeA.DeleteAPIKey(minuteKey.ID) }()
 	minuteCall, err := storeA.StartCall(context.Background(), project, minuteKey, modelName, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -1014,7 +1017,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storeA.DeleteAPIKey(tokenKey.ID)
+	defer func() { _ = storeA.DeleteAPIKey(tokenKey.ID) }()
 	tokenCall, err := storeA.StartCall(context.Background(), project, tokenKey, modelName, 3)
 	if err != nil {
 		t.Fatal(err)
@@ -1046,7 +1049,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storeA.DeleteAPIKey(providerKey.ID)
+	defer func() { _ = storeA.DeleteAPIKey(providerKey.ID) }()
 	providerRelease := make(chan struct{})
 	providerBlocking := &multiInstanceBlockingAdapter{started: make(chan struct{}), release: providerRelease}
 	registerTestAdapter(serverA, ProviderMock, providerBlocking)
@@ -1085,7 +1088,7 @@ func testClusterWideHTTPEnforcement(t *testing.T, storeA *GormStore, storeB *Gor
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storeA.DeleteAPIKey(rpmKey.ID)
+	defer func() { _ = storeA.DeleteAPIKey(rpmKey.ID) }()
 	registerTestAdapter(serverA, ProviderMock, MockAdapter{})
 	if status, body := postChat(httpA.URL, rpmSecret, modelName); status != http.StatusOK {
 		t.Fatalf("first provider RPM request failed: status=%d body=%s", status, body)
@@ -1180,7 +1183,7 @@ func testSharedOAuthAndRefresh(t *testing.T, storeA *GormStore, storeB *GormStor
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storeA.DeleteProvider(provider.ID)
+	defer func() { _ = storeA.DeleteProvider(provider.ID) }()
 
 	results := make(chan ProviderResourceCredentials, 2)
 	errors := make(chan error, 2)

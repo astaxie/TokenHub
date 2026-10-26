@@ -41,7 +41,7 @@ func TestModelRejectionFromPreviousAccountPreservesReplacementCatalog(t *testing
 			t.Fatalf("account replacement failed: %s", response.Body)
 		}
 		current, _ := store.GetProviderResource(resource.ID)
-		if err := server.persistProviderResourceModelsIfCurrent(context.Background(), resource.ID, []ProviderCatalogModel{{ID: "shared-model", DisplayName: "Replacement model"}}, time.Now(), providerCredentialReplacementGeneration(current.Options)); err != nil {
+		if err := server.persistProviderResourceModelsIfCurrent(context.Background(), resource.ID, []ProviderCatalogModel{{ID: "shared-model", DisplayName: "Replacement model"}}, time.Now(), current); err != nil {
 			t.Fatal(err)
 		}
 	}})

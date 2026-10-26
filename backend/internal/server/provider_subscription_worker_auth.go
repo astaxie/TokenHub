@@ -201,6 +201,14 @@ func (a *SubscriptionWorkerAdapter) continueAuthorization(ctx context.Context, a
 	if current != session || !session.expires.After(time.Now()) {
 		return nil, invalid
 	}
+	defer func() {
+		// A canceled exchange stops its worker, including during the callback
+		// or final model discovery. Such a session cannot resume and must not
+		// retain an active pool slot until authorization expiry.
+		if session.process.ctx.Err() != nil {
+			a.endAuthorization(input.SessionID, session)
+		}
+	}()
 	if session.workerSession == "" {
 		result, err := a.authorizationCredentials(ctx, session.process, session.poolKey)
 		if err == nil && !a.endAuthorization(input.SessionID, session) {

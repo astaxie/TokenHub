@@ -280,8 +280,8 @@ func (s *Server) applyQuotaReadActionSideEffects(ctx context.Context, descriptor
 		return result, NewHTTPError(http.StatusBadGateway, "plugin_quota_read_invalid_result", "Quota read action returned an invalid quota snapshot")
 	}
 	var saveErr error
-	if generation, ok := pluginActionResourceGeneration(ctx); ok {
-		saveErr = s.store.SaveProviderResourceQuotaIfCurrent(ctx, resourceID, provider.Type, snapshot, fetchedAt, generation)
+	if expected, ok := pluginActionResourceRevision(ctx); ok {
+		saveErr = s.store.SaveProviderResourceQuotaIfCurrent(ctx, resourceID, provider.Type, snapshot, fetchedAt, expected)
 	} else {
 		saveErr = s.store.SaveProviderResourceQuota(resourceID, provider.Type, snapshot, fetchedAt)
 	}

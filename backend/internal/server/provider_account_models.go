@@ -33,7 +33,6 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 	if !ok {
 		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
 	}
-	expectedGeneration := providerCredentialReplacementGeneration(resource.Options)
 	provider, ok := s.providerByID(resource.ProviderID)
 	if !ok {
 		return ProviderCatalogEntry{}, false, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
@@ -60,7 +59,7 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 	catalog, status, err := modeler.ResourceModels(ctx, provider, resource, etag)
 	if err == nil && status == http.StatusNotModified {
 		current, currentOK := s.providerResourceByID(resourceID)
-		if !currentOK || providerCredentialReplacementGeneration(current.Options) != expectedGeneration {
+		if !currentOK || !sameProviderAccountSnapshot(current, resource) {
 			return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusConflict, "provider_resource_changed", "Provider resource changed during the model request")
 		}
 		pluginCatalog, _ := s.pluginProviderCatalogCapabilityEntryForType(provider.Type)
@@ -70,14 +69,14 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 		catalog, _, err = modeler.ResourceModels(ctx, provider, resource, "")
 	}
 	if err == nil {
-		if persistErr := s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalog.Models, time.Now().UTC(), expectedGeneration); persistErr != nil {
+		if persistErr := s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalog.Models, time.Now().UTC(), resource); persistErr != nil {
 			return ProviderCatalogEntry{}, true, persistErr
 		}
 	}
 	return catalog, true, err
 }
 
-func (s *Server) persistProviderResourceModelsIfCurrent(ctx context.Context, resourceID string, models []ProviderCatalogModel, fetchedAt time.Time, expectedGeneration int64) error {
+func (s *Server) persistProviderResourceModelsIfCurrent(ctx context.Context, resourceID string, models []ProviderCatalogModel, fetchedAt time.Time, expected ProviderResource) error {
 	modelIDs := make([]string, 0, len(models))
 	seen := map[string]struct{}{}
 	for _, model := range models {
@@ -106,7 +105,7 @@ func (s *Server) persistProviderResourceModelsIfCurrent(ctx context.Context, res
 		providerResourceModelsFetchedAtOption: fetchedAt.UTC().Format(time.RFC3339Nano),
 		providerResourceModelsETagOption:      firstNonEmptyModelETag(models),
 		providerResourceModelCatalogOption:    string(catalogEncoded),
-	}, expectedGeneration)
+	}, expected)
 	return err
 }
 
@@ -286,9 +285,8 @@ func (s *Server) removeProviderResourceModel(ctx context.Context, route RouteSel
 		return
 	}
 	resourceID := routeResourceID(route)
-	expectedGeneration := providerCredentialReplacementGeneration(route.Resource.Options)
 	resource, ok := s.providerResourceByID(resourceID)
-	if !ok || providerCredentialReplacementGeneration(resource.Options) != expectedGeneration {
+	if !ok || !sameProviderAccountSnapshot(resource, *route.Resource) {
 		return
 	}
 	models, _, cached := providerResourceCachedModels(&resource)
@@ -305,7 +303,7 @@ func (s *Server) removeProviderResourceModel(ctx context.Context, route RouteSel
 	for _, modelID := range filtered {
 		catalogModels = append(catalogModels, ProviderCatalogModel{ID: modelID})
 	}
-	_ = s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalogModels, time.Now().UTC(), expectedGeneration)
+	_ = s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalogModels, time.Now().UTC(), resource)
 }
 
 func cloneStringMap(values map[string]string) map[string]string {

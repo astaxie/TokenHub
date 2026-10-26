@@ -235,20 +235,28 @@ func (s *GormStore) SaveProviderResourceQuota(resourceID string, adapterType str
 	return s.saveProviderResourceQuota(resourceID, adapterType, snapshot, fetchedAt)
 }
 
-func (s *GormStore) SaveProviderResourceQuotaIfCurrent(ctx context.Context, resourceID string, adapterType string, snapshot string, fetchedAt time.Time, expectedGeneration int64) error {
+func (s *GormStore) SaveProviderResourceQuotaIfCurrent(ctx context.Context, resourceID string, adapterType string, snapshot string, fetchedAt time.Time, expected ProviderResource) error {
 	return s.withClusterLease(ctx, providerResourceMutationLeaseName(resourceID), func(leaseCtx context.Context) error {
-		var resource ProviderResource
-		if err := s.db.WithContext(leaseCtx).First(&resource, "id = ?", strings.TrimSpace(resourceID)).Error; err != nil {
-			return notFound(err, "provider_resource_not_found", "Provider resource not found")
-		}
-		if providerCredentialReplacementGeneration(resource.Options) != expectedGeneration {
-			return NewHTTPError(http.StatusConflict, "provider_resource_changed", "Provider resource changed during the quota request")
-		}
-		return s.saveProviderResourceQuota(resourceID, adapterType, snapshot, fetchedAt)
+		// Deletion does not take the mutation lease. Lock the resource until its
+		// observation is saved so a concurrent deletion cannot leave a stale row.
+		return s.db.WithContext(leaseCtx).Transaction(func(tx *gorm.DB) error {
+			var resource ProviderResource
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&resource, "id = ?", strings.TrimSpace(resourceID)).Error; err != nil {
+				return notFound(err, "provider_resource_not_found", "Provider resource not found")
+			}
+			if !sameProviderAccountSnapshot(resource, expected) {
+				return NewHTTPError(http.StatusConflict, "provider_resource_changed", "Provider resource changed during the quota request")
+			}
+			return saveProviderResourceQuota(tx, resourceID, adapterType, snapshot, fetchedAt)
+		})
 	})
 }
 
 func (s *GormStore) saveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
+	return saveProviderResourceQuota(s.db, resourceID, adapterType, snapshot, fetchedAt)
+}
+
+func saveProviderResourceQuota(db *gorm.DB, resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
 	observation := ProviderResourceObservation{
 		ResourceID:     strings.TrimSpace(resourceID),
 		AdapterType:    strings.TrimSpace(adapterType),
@@ -256,7 +264,7 @@ func (s *GormStore) saveProviderResourceQuota(resourceID string, adapterType str
 		QuotaFetchedAt: &fetchedAt,
 		UpdatedAt:      time.Now().UTC(),
 	}
-	return s.db.Clauses(clause.OnConflict{
+	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "resource_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"adapter_type",

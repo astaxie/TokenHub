@@ -26,7 +26,7 @@ func TestCopilotSubscriptionResponsesPreservesSamplingParameters(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Error(err)
 				}
-				if body["temperature"] != float64(0) || body["top_p"] != 0.8 || body["user"] != "test-user" {
+				if body["temperature"] != float64(0) || body["top_p"] != 0.8 || body["user"] != "test-user" || body["service_tier"] != "priority" {
 					t.Errorf("Responses conversion lost caller parameters: %#v", body)
 				}
 				response := `{"id":"resp-test","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"answer"}]}]}`
@@ -38,7 +38,7 @@ func TestCopilotSubscriptionResponsesPreservesSamplingParameters(t *testing.T) {
 				}
 			})
 			var request ChatCompletionRequest
-			if err := json.Unmarshal([]byte(`{"model":"public","messages":[{"role":"user","content":"Hello"}],"temperature":0,"top_p":0.8,"user":"test-user"}`), &request); err != nil {
+			if err := json.Unmarshal([]byte(`{"model":"public","messages":[{"role":"user","content":"Hello"}],"temperature":0,"top_p":0.8,"user":"test-user","service_tier":"priority"}`), &request); err != nil {
 				t.Fatal(err)
 			}
 			var err error

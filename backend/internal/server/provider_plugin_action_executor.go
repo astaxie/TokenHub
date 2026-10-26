@@ -25,11 +25,6 @@ func (s *Server) capturePluginActionResourceRevision(ctx context.Context, payloa
 	return context.WithValue(ctx, pluginActionResourceRevisionKey{}, resource)
 }
 
-func pluginActionResourceGeneration(ctx context.Context) (int64, bool) {
-	resource, ok := pluginActionResourceRevision(ctx)
-	return providerCredentialReplacementGeneration(resource.Options), ok
-}
-
 func pluginActionResourceRevision(ctx context.Context) (ProviderResource, bool) {
 	resource, ok := ctx.Value(pluginActionResourceRevisionKey{}).(ProviderResource)
 	return resource, ok

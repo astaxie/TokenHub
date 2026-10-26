@@ -261,7 +261,7 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 			}
 		}
 		if stream {
-			resp.Body = newCopilotSubscriptionStream(resp.Body, provider, creds.AccessToken, session.Token, mediaChatStreamLimit(ctx))
+			resp.Body = newCopilotSubscriptionStream(&subscriptionStreamReadCloser{ReadCloser: resp.Body}, provider, creds.AccessToken, session.Token, mediaChatStreamLimit(ctx))
 		}
 		return resp, nil
 	}

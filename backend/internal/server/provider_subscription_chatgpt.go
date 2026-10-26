@@ -93,7 +93,7 @@ func (a *ChatGPTSubscriptionAdapter) request(ctx context.Context, provider Provi
 			if subscriptionJSONContentType(resp.Header) {
 				return nil, rejectChatGPTSubscriptionJSON(ctx, resp, redactionProvider)
 			}
-			resp.Body = newSubscriptionErrorStream(resp.Body, func() Provider { return redactionProvider }, 0)
+			resp.Body = newSubscriptionErrorStream(&subscriptionStreamReadCloser{ReadCloser: resp.Body}, func() Provider { return redactionProvider }, 0)
 		}
 		return resp, nil
 	}

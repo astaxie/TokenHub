@@ -153,7 +153,7 @@ type Store interface {
 	UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error)
 	ApplyProviderResourceCredentialRefresh(ctx context.Context, expected ProviderResource, credentials *ProviderResourceCredentials, reauthorizationRequired bool) (ProviderResource, error)
 	UpdateProviderResourceOptions(id string, options map[string]string) (ProviderResource, error)
-	UpdateProviderResourceOptionsIfCurrent(ctx context.Context, id string, options map[string]string, expectedGeneration int64) (ProviderResource, error)
+	UpdateProviderResourceOptionsIfCurrent(ctx context.Context, id string, options map[string]string, expected ProviderResource) (ProviderResource, error)
 	IsProviderAccountResourceType(providerType string, resourceType string) bool
 	DeleteProviderResource(id string) error
 	SetProviderResourceHealth(resourceID string, healthy bool) (ProviderResource, error)
@@ -236,7 +236,7 @@ type Store interface {
 	RecordProviderObservation(observation ProviderObservation)
 	GetProviderResourceObservation(resourceID string) (ProviderResourceObservation, bool)
 	SaveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error
-	SaveProviderResourceQuotaIfCurrent(ctx context.Context, resourceID string, adapterType string, snapshot string, fetchedAt time.Time, expectedGeneration int64) error
+	SaveProviderResourceQuotaIfCurrent(ctx context.Context, resourceID string, adapterType string, snapshot string, fetchedAt time.Time, expected ProviderResource) error
 	GetRequestDetail(requestID string) (map[string]any, error)
 	ListAlerts() []AlertEvent
 	GetAlert(id string) (AlertEvent, error)
