@@ -31,7 +31,11 @@ func TestWorkBuddyAuthorizationPollsAndHandsOffAccount(t *testing.T) {
 							body = `{"code":"11217","msg":"Pending"}`
 						}
 					case "/v2/plugin/login/account":
-						if values := req.Header["x-domain"]; len(values) != 1 || values[0] != "enterprise.accounts.example" {
+						headers := http.Header{}
+						for name, values := range req.Header {
+							headers[http.CanonicalHeaderKey(name)] = values
+						}
+						if headers.Get("X-Domain") != "enterprise.accounts.example" {
 							t.Error("Account domain was not retained as WorkBuddy header metadata")
 						}
 						body = `{"code":"0","data":{"uid":"synthetic-user","type":"personal"}}`
