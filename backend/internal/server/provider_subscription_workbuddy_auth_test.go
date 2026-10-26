@@ -26,11 +26,14 @@ func TestWorkBuddyAuthorizationPollsAndHandsOffAccount(t *testing.T) {
 					case "/v2/plugin/auth/state":
 						body = `{"code":"0","data":{"state":"synthetic-state","authUrl":"https://copilot.tencent.com/login"}}`
 					case "/v2/plugin/auth/token":
-						body = `{"code":"0","data":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresIn":3600}}`
+						body = `{"code":"0","data":{"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","expiresIn":3600,"domain":"enterprise.accounts.example"}}`
 						if tokens.Add(1) == 1 {
 							body = `{"code":"11217","msg":"Pending"}`
 						}
 					case "/v2/plugin/login/account":
+						if values := req.Header["x-domain"]; len(values) != 1 || values[0] != "enterprise.accounts.example" {
+							t.Error("Account domain was not retained as WorkBuddy header metadata")
+						}
 						body = `{"code":"0","data":{"uid":"synthetic-user","type":"personal"}}`
 						if rejected {
 							body = `{"code":12199,"msg":"private-access-token-and-upstream-details"}`
@@ -75,7 +78,7 @@ func TestWorkBuddyAuthorizationPollsAndHandsOffAccount(t *testing.T) {
 						t.Fatal(err)
 					}
 					var auth map[string]any
-					if json.Unmarshal([]byte(result["session_json"].(string)), &auth) != nil || auth["access"] != "synthetic-access" || auth["uid"] != "synthetic-user" {
+					if json.Unmarshal([]byte(result["session_json"].(string)), &auth) != nil || auth["access"] != "synthetic-access" || auth["uid"] != "synthetic-user" || auth["domain"] != "enterprise.accounts.example" {
 						t.Fatal("Completed browser authorization did not return the account for saving")
 					}
 				}

@@ -104,6 +104,15 @@ export function validateAuth(provider, value, boundHost) {
       if (BAD_KEYS.has(key) || FILE_KEYS.test(key) || (key === "source" && item)) {
         throw failure("local_credentials_not_supported", "Import credential values; local files and executable references are not accepted");
       }
+      // WorkBuddy's top-level domain identifies the account in X-Domain;
+      // it never selects the fixed API endpoint. Nested host fields still
+      // receive the normal destination checks below.
+      if (depth === 0 && key === "domain" && (provider === "workbuddy" || provider === "workbuddy-ai")) {
+        if (typeof item !== "string" || item.length > 1024 || /[^\x20-\x7e]/.test(item)) {
+          throw failure("invalid_credentials", "WorkBuddy account domain must be a bounded HTTP header value");
+        }
+        continue;
+      }
       if (typeof item === "string") {
         if (HOST_KEYS.test(key) && item) {
           if (/^https?:\/\//i.test(item)) validateTarget(provider, item, boundHost);

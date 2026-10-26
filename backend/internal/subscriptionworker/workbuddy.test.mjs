@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fixture } from "./worker-fixture.mjs";
+import { validateAuth } from "./validation.mjs";
 
 const providers = ["workbuddy", "workbuddy-ai"];
 const sensitive = "synthetic-private-token";
@@ -15,7 +16,7 @@ async function terminalStatus(worker, provider, sessionID) {
   assert.fail("WorkBuddy authorization did not finish");
 }
 
-function loginNetwork(provider, codes, override) {
+function loginNetwork(provider, codes, override, domain) {
   const origin = provider === "workbuddy" ? "https://copilot.tencent.com" : "https://www.workbuddy.ai";
   const polls = { token: 0, account: 0 };
   return { polls, network(request) {
@@ -30,9 +31,10 @@ function loginNetwork(provider, codes, override) {
     } else if (url.pathname === "/v2/plugin/auth/token") {
       assert.equal(url.searchParams.get("state"), "synthetic-state");
       payload = ++polls.token === 1 ? { code: codes.token, msg: "Pending browser authorization" } :
-        { code: codes.success, data: { accessToken: sensitive, refreshToken: "synthetic-refresh", expiresIn: 3600 } };
+        { code: codes.success, data: { accessToken: sensitive, refreshToken: "synthetic-refresh", expiresIn: 3600, ...(domain ? { domain } : {}) } };
     } else if (url.pathname === "/v2/plugin/login/account") {
       assert.deepEqual(request.headers.authorization, ["Bearer " + sensitive]);
+      if (domain) assert.deepEqual(request.headers["x-domain"], [domain]);
       payload = ++polls.account === 1 ? { code: codes.account, msg: "Pending account selection" } :
         { code: codes.success, data: { uid: "synthetic-user", type: "personal" } };
     } else assert.fail("Unexpected WorkBuddy login endpoint: " + url.pathname);
@@ -65,6 +67,68 @@ test("WorkBuddy browser authorization accepts numeric and string success and pen
       });
     }
   }
+});
+
+test("WorkBuddy account domain remains header metadata through login, model discovery, and refresh", async (t) => {
+  for (const provider of providers) {
+    await t.test(provider, async (t) => {
+      const domain = "enterprise-account.example";
+      const origin = provider === "workbuddy" ? "https://copilot.tencent.com" : "https://www.workbuddy.ai";
+      const login = loginNetwork(provider, { success: 0, token: 11217, account: 12151 }, undefined, domain);
+      const observed = [];
+      const worker = await fixture(t, { network(request) {
+        const url = new URL(request.url);
+        assert.equal(url.origin, origin, "Account domain must never select a network destination");
+        if (url.pathname === "/v3/config" || url.pathname === "/v2/plugin/auth/token/refresh") {
+          assert.deepEqual(request.headers["x-domain"], [domain]);
+          observed.push(url.pathname);
+          return { status: 200, body: JSON.stringify(url.pathname === "/v3/config" ?
+            { code: 0, data: { agents: [{ name: "cli", models: ["fixture-model"] }], models: [{ id: "fixture-model" }] } } :
+            { code: 0, data: { accessToken: "synthetic-rotated", refreshToken: "synthetic-rotated-refresh", expiresIn: 3600, domain } }) };
+        }
+        return login.network(request);
+      } });
+      const start = await worker.call("auth.start", { provider });
+      assert.equal((await terminalStatus(worker, provider, start.result.session_id)).state, "complete");
+      assert.equal(worker.saves[0].domain, domain);
+      const models = await worker.call("models", { provider });
+      assert.equal(models.result.models[0].id, "fixture-model");
+      const refresh = await worker.call("refresh", { provider });
+      assert.equal(refresh.event, "result");
+      assert.equal(refresh.result.auth.domain, domain);
+      assert.equal(refresh.result.auth.access, "synthetic-rotated");
+      assert.deepEqual(observed, ["/v3/config", "/v2/plugin/auth/token/refresh"]);
+    });
+  }
+});
+
+test("WorkBuddy domain exception rejects header injection and preserves endpoint and redirect guards", async (t) => {
+  const auth = { type: "oauth", access: sensitive, refresh: "synthetic-refresh", uid: "fixture", expires: Date.now() + 3600000 };
+  for (const provider of providers) {
+    await t.test(provider, async (t) => {
+      const worker = await fixture(t, { network: () => ({ status: 307, headers: { location: ["https://enterprise-account.example/collect"] }, body: "" }) });
+      for (const domain of ["header\r\nX-Secret: value", "nul\0value", "tab\tvalue", "delete\u007f", "x".repeat(1025), 12, null, {}, []]) {
+        const result = await worker.call("import", { provider, auth: { ...auth, domain } });
+        assert.equal(result.error?.code, "invalid_credentials");
+      }
+      for (const fields of [
+        { metadata: { domain: "enterprise-account.example" } }, { endpoint: "https://enterprise-account.example" },
+        { baseURL: "http://127.0.0.1:8080" }, { metadata: { domain: "https://attacker.example" } },
+      ]) {
+        const result = await worker.call("import", { provider, auth: { ...auth, domain: "enterprise-account.example", ...fields } });
+        assert.equal(result.error?.code, "upstream_host_not_allowed");
+      }
+      assert.equal(worker.requests.length, 0);
+      assert.equal(worker.saves.length, 0);
+      const imported = await worker.call("import", { provider, auth: { ...auth, domain: "enterprise-account.example" } });
+      assert.equal(imported.result.state, "complete");
+      const refresh = await worker.call("refresh", { provider });
+      assert.equal(refresh.event, "error");
+      assert.equal(worker.requests.length, 1, "Account metadata must not allow cross-origin credential redirects");
+      assert.notEqual(new URL(worker.requests[0].url).hostname, "enterprise-account.example");
+    });
+  }
+  assert.throws(() => validateAuth("grok", { ...auth, domain: "enterprise-account.example" }), { code: "upstream_host_not_allowed" });
 });
 
 test("WorkBuddy authorization preserves HTTP failures and refuses malformed or unknown codes without leaking diagnostics", async (t) => {
