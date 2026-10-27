@@ -3,13 +3,20 @@ package server
 import (
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 )
+
+const subscriptionResponsesResponseLimit = 32 << 20
 
 // Subscription Responses are always streamed upstream. Decode bounded SSE
 // frames for both buffered requests and public passthrough, retaining terminal
 // failure usage and rejecting incomplete response objects before hydration.
 func consumeSubscriptionResponsesStream(body io.Reader, destination io.Writer) (map[string]any, string, Usage, error) {
+	return consumeSubscriptionResponsesStreamWithLimit(body, destination, subscriptionResponsesResponseLimit)
+}
+
+func consumeSubscriptionResponsesStreamWithLimit(body io.Reader, destination io.Writer, limit int) (map[string]any, string, Usage, error) {
 	decoder := newSSEDecoder(body)
 	var response map[string]any
 	var text strings.Builder
@@ -17,6 +24,7 @@ func consumeSubscriptionResponsesStream(body io.Reader, destination io.Writer) (
 	outputs := make(map[int]map[string]any)
 	var outputOrder []int
 	nextUnindexedOutput := -1
+	total := 0
 	for {
 		event, err := decoder.Next()
 		if err != nil {
@@ -25,6 +33,10 @@ func consumeSubscriptionResponsesStream(body io.Reader, destination io.Writer) (
 			}
 			return response, text.String(), usage, err
 		}
+		if len(event.Data) > limit-total {
+			return response, text.String(), usage, invalidProviderResponseError("Subscription Responses completion exceeds the response limit")
+		}
+		total += len(event.Data)
 		if strings.TrimSpace(event.Data) == "[DONE]" {
 			return response, text.String(), usage, NewHTTPError(http.StatusBadGateway, "subscription_stream_incomplete", "Subscription stream ended before a terminal response event")
 		}
@@ -70,8 +82,20 @@ func consumeSubscriptionResponsesStream(body io.Reader, destination io.Writer) (
 			}
 			response = terminal
 			if output, _ := anySlice(response["output"]); len(output) == 0 && len(outputOrder) > 0 {
+				// Completed items may arrive out of order. Sort only indexed slots;
+				// legacy unindexed items retain their original arrival positions.
+				indexed := make([]int, 0, len(outputOrder))
+				for _, index := range outputOrder {
+					if index >= 0 {
+						indexed = append(indexed, index)
+					}
+				}
+				sort.Ints(indexed)
 				output = make([]any, 0, len(outputOrder))
 				for _, index := range outputOrder {
+					if index >= 0 {
+						index, indexed = indexed[0], indexed[1:]
+					}
 					output = append(output, outputs[index])
 				}
 				response["output"] = output

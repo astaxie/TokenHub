@@ -95,6 +95,9 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
         if (state.controller) throw new Error("duplicate network response");
         state.context.egressError = null;
         const headers = toHeaders(message.headers);
+        // Account state is declared only by the trusted adapter after fetch.
+        // An upstream response cannot manufacture that routing instruction.
+        headers.delete("x-magpie-sign-in");
         headers.delete("content-encoding");
         headers.delete("content-length");
         const empty = [101, 204, 205, 304].includes(message.status);

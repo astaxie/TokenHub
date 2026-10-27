@@ -95,6 +95,7 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 		defer cancel()
 		received := false
 		failedStatus := false
+		var signInErr error
 		_, invokeErr := t.process.invoke(ctx, command, func(event subscriptionWorkerEvent) error {
 			switch event.Event {
 			case "response":
@@ -111,7 +112,15 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 						responseHeaders.Add(name, value)
 					}
 				}
+				responseHeaders.Del("X-Magpie-Sign-In")
 				if failedStatus {
+					signInErr = subscriptionWorkerSignInError(event.Status, event.SignIn, responseHeaders)
+					if signInErr != nil {
+						// The trusted adapter has already classified this failure.
+						// Stop the worker and its upstream body without waiting for
+						// discarded error bytes; account release still drains saves.
+						return signInErr
+					}
 					retry := parseRetryAfter(responseHeaders.Get("Retry-After"))
 					responseHeaders = http.Header{"Content-Type": []string{"application/json"}}
 					// Retain the retry delay without forwarding arbitrary upstream
@@ -145,6 +154,14 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 			}
 			return nil
 		})
+		if signInErr != nil {
+			if invokeErr != nil {
+				signInErr = invokeErr
+			}
+			ready <- responseResult{err: signInErr}
+			_ = writer.CloseWithError(signInErr)
+			return
+		}
 		if !received {
 			if invokeErr == nil {
 				invokeErr = NewHTTPError(502, "subscription_response_missing", "Subscription runtime returned no response")
@@ -158,18 +175,23 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 		}
 		_ = writer.CloseWithError(invokeErr)
 	}()
+	var result responseResult
 	select {
-	case result := <-ready:
-		if result.err != nil {
-			cancel()
-			_ = reader.Close()
-		}
-		return result.response, result.err
+	case result = <-ready:
 	case <-ctx.Done():
+		// Invocation cleanup cancels this context after publishing a result.
+		// Do not replace its classified failure with that internal cancellation.
+		select {
+		case result = <-ready:
+		default:
+			result.err = ctx.Err()
+		}
+	}
+	if result.err != nil {
 		cancel()
 		_ = reader.Close()
-		return nil, ctx.Err()
 	}
+	return result.response, result.err
 }
 
 func subscriptionWorkerSessionID(ctx context.Context, payload map[string]json.RawMessage) string {

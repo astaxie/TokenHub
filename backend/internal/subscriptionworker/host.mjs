@@ -190,7 +190,11 @@ export function createHost({ scope, emit, relayCallback }) {
       await response.body?.cancel();
       throw scope.getStore().egressError;
     }
-    await emit({ id: command.id, event: "response", status: response.status, headers: headerObject(response.headers) });
+    const signIn = response.headers.get("x-magpie-sign-in");
+    const responseHeaders = new Headers(response.headers);
+    responseHeaders.delete("x-magpie-sign-in");
+    await emit({ id: command.id, event: "response", status: response.status, headers: headerObject(responseHeaders),
+      ...(["kept", "renewed", "expired"].includes(signIn) ? { sign_in: signIn } : {}) });
     if (response.body) {
       const reader = response.body.getReader();
       try {

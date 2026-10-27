@@ -26,6 +26,7 @@ type subscriptionWorkerEvent struct {
 	Event      string                     `json:"event"`
 	Result     json.RawMessage            `json:"result"`
 	Status     int                        `json:"status"`
+	SignIn     string                     `json:"sign_in"`
 	Headers    http.Header                `json:"headers"`
 	Data       string                     `json:"data"`
 	RequestID  string                     `json:"request_id"`
@@ -404,8 +405,8 @@ func subscriptionWorkerInvocationError(failure *subscriptionWorkerFailure) error
 		case "credential_save_failed":
 			status = http.StatusServiceUnavailable
 		}
-		if failure.SignIn == "expired" {
-			status = http.StatusUnauthorized
+		if err := subscriptionWorkerSignInError(status, failure.SignIn, nil); err != nil {
+			return err
 		}
 	}
 	classification := classifyProviderStatus(status)

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 )
 
 // The renewable cluster lease remains held while a CLI process is parked on
@@ -12,15 +13,27 @@ import (
 // until the process has stopped and its updated credentials are persisted.
 func (r *claudeSubscriptionRun) launchWithLease(requestCtx context.Context, provider Provider, executable, model, instructions string, prompt []map[string]any, credentials ProviderResourceCredentials, request ChatCompletionRequest) error {
 	ready := make(chan error, 1)
-	operation := func(leaseCtx context.Context) error {
+	runCtx := r.ctx
+	leaseCtx, cancelLease := context.WithCancel(context.WithoutCancel(runCtx))
+	stopWaiting := context.AfterFunc(runCtx, cancelLease)
+	operation := func(heldCtx context.Context) error {
+		if !stopWaiting() && runCtx.Err() != nil {
+			return runCtx.Err()
+		}
+		// Stop the CLI when its lifetime ends or coordination is lost, while
+		// renewing the account lease until credential cleanup has finished.
+		operationCtx, cancelOperation := context.WithCancelCause(runCtx)
+		defer cancelOperation(nil)
+		stopHeld := context.AfterFunc(heldCtx, func() { cancelOperation(context.Cause(heldCtx)) })
+		defer stopHeld()
 		r.mu.Lock()
 		if r.closed {
 			r.mu.Unlock()
 			return context.Canceled
 		}
-		r.ctx = leaseCtx
+		r.ctx = operationCtx
 		// Credentials may have changed while another replica held the lease.
-		fresh, err := subscriptionCredentials(leaseCtx, provider, r.adapter.RefreshCredentials, false)
+		fresh, err := subscriptionCredentials(operationCtx, provider, r.adapter.RefreshCredentials, false)
 		if err == nil {
 			credentials = fresh
 			r.originalSession = fresh.SessionJSON
@@ -40,15 +53,18 @@ func (r *claudeSubscriptionRun) launchWithLease(requestCtx context.Context, prov
 		r.mu.Unlock()
 		ready <- err
 		if err != nil {
+			r.close()
+			<-r.cleanupDone
 			return err
 		}
-		<-leaseCtx.Done()
+		<-operationCtx.Done()
 		r.close()
 		<-r.cleanupDone
 		return nil
 	}
-	leaseCtx := r.ctx
 	go func() {
+		defer cancelLease()
+		defer stopWaiting()
 		var err error
 		if r.adapter.RunClusterOperation == nil {
 			err = operation(leaseCtx)
@@ -62,12 +78,18 @@ func (r *claudeSubscriptionRun) launchWithLease(requestCtx context.Context, prov
 	}()
 	select {
 	case err := <-ready:
+		if errors.Is(err, context.Canceled) && requestCtx.Err() != nil {
+			return requestCtx.Err()
+		}
 		return err
 	case <-requestCtx.Done():
 		r.close()
 		return requestCtx.Err()
-	case <-leaseCtx.Done():
+	case <-runCtx.Done():
 		r.close()
-		return leaseCtx.Err()
+		if requestCtx.Err() != nil {
+			return requestCtx.Err()
+		}
+		return runCtx.Err()
 	}
 }
