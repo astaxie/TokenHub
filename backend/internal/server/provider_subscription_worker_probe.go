@@ -32,13 +32,5 @@ func (a *SubscriptionWorkerAdapter) Probe(ctx context.Context, provider Provider
 		return ProviderProbeResult{}, err
 	}
 	body, _ := response.(map[string]any)
-	text := ""
-	if choices, ok := body["choices"].([]any); ok && len(choices) > 0 {
-		if choice, ok := choices[0].(map[string]any); ok {
-			if message, ok := choice["message"].(map[string]any); ok {
-				text, _ = message["content"].(string)
-			}
-		}
-	}
-	return ProviderProbeResult{ResourceID: resource.ID, Model: model, OutputText: text, Usage: usage, LatencyMS: time.Since(started).Milliseconds(), Response: body}, nil
+	return ProviderProbeResult{ResourceID: resource.ID, Model: model, OutputText: choiceText(body), Usage: usage, LatencyMS: time.Since(started).Milliseconds(), Response: body}, nil
 }
