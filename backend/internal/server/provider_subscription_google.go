@@ -290,7 +290,7 @@ func (a *GoogleSubscriptionAdapter) request(ctx context.Context, base, method st
 		}
 		return nil, NewHTTPError(502, "google_subscription_request_failed", "Google subscription request failed")
 	}
-	if err = checkProviderResponseForProvider(response, Provider{APIKey: creds.AccessToken}); err != nil {
+	if err = checkGoogleSubscriptionResponse(response, creds.AccessToken); err != nil {
 		return nil, err
 	}
 	if stream {
@@ -336,7 +336,11 @@ func googleSubscriptionUnwrap(body map[string]any) (map[string]any, error) {
 
 func googleSubscriptionStreamError(value any) error {
 	detail, _ := value.(map[string]any)
-	err := newProviderHTTPError(subscriptionJSONErrorStatus(detail), nil, []byte("Google subscription reported an upstream error"))
+	status := subscriptionJSONErrorStatus(detail)
+	err := googleSubscriptionLocationFailure(status, detail)
+	if err == nil {
+		err = newProviderHTTPError(status, nil, []byte("Google subscription reported an upstream error"))
+	}
 	AsHTTPError(err).UpstreamStatus = http.StatusOK
 	return err
 }

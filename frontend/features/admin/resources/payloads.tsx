@@ -804,6 +804,8 @@ export async function readAdminError(resp: Response, fallback: string) {
 
 function localizedAdminErrorCode(code?: string) {
   switch (code) {
+    case "google_subscription_location_unsupported":
+      return tx("Google 订阅服务不支持当前请求所在地区。请检查账号的地区资格以及 TokenHub 服务器的网络出口地区。");
     case "provider_model_retired":
       return tx("请选择未停用的上游模型后再发布新线路。");
     case "provider_model_price_required":

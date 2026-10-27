@@ -96,6 +96,8 @@ Gemini CLI 和 Antigravity 默认选择 **Google 账号（默认）**，直接�
 
 Google 账号如果需要指定 Cloud 项目，可选择 **Google 账号（指定 Cloud 项目）**，只填写项目 ID，继续使用内置客户端配置。自定义客户端方式也支持项目 ID。项目随新凭据保存，重新授权时不会自动沿用旧账号的项目。完成 Google 登录后，将回调 URL 粘贴到 TokenHub，凭据回填后保存账号。账号资格和模型访问权限仍由上游服务决定。
 
+Google 返回 `UNSUPPORTED_LOCATION` 时，TokenHub 会报告 `google_subscription_location_unsupported`。Google 登录和模型发现可能成功，但推理仍受地区可用性限制。请检查账号的地区使用资格，以及 TokenHub 服务端的实际网络出口地区，包括已配置代理的出口。填写 OAuth 客户端参数或反复授权账号无法解除这一地区限制。
+
 Antigravity 工具参数会转换为其支持的 OpenAPI schema 子集，支持本地引用和可空字段；递归、外部、无法解析或展开过大的 schema 会在推理前返回 HTTP 400。Gemini CLI 保留现有的 JSON Schema 处理方式。
 
 Kimi Work 需要导入包含 `type: "oauth"`、`access`、`webToken`、`uid` 的对象，`deviceId` 可选。这些值应由管理员从本人有权使用的账户中显式获取；TokenHub 不读取桌面数据库。其他 Provider 的会话结构各不相同，必须与所选 Provider 匹配。

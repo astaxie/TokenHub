@@ -96,6 +96,8 @@ Gemini CLI と Antigravity では、**Google アカウント（標準）** を�
 
 Cloud プロジェクトの指定が必要な Google アカウントでは、**Google アカウント（Cloud プロジェクトを指定）** を選び、プロジェクト ID のみを入力します。クライアントは内蔵設定を使用します。カスタムクライアント方式でもプロジェクト ID を指定できます。プロジェクトは新しい認証情報とともに保存され、再認可時に旧アカウントの値を自動で引き継ぎません。Google ログイン後にコールバック URL を TokenHub に貼り付け、認証情報が入力されたらアカウントを保存してください。アカウント資格とモデルへのアクセスは上流サービスが判断します。
 
+Google が `UNSUPPORTED_LOCATION` を返すと、TokenHub は `google_subscription_location_unsupported` を報告します。Google ログインとモデル取得が成功しても、提供地域の制限で推論が拒否される場合があります。アカウントが利用可能な地域と、設定済みプロキシを含む TokenHub サーバーの実際の通信出口の地域を確認してください。OAuth クライアント設定の入力やアカウントの再認可を繰り返しても、この地域制限は解消しません。
+
 Antigravity のツール引数は、対応する OpenAPI schema のサブセットへ変換されます。ローカル参照と nullable フィールドに対応し、再帰参照、外部参照、未解決の参照、過大な展開は推論前に HTTP 400 で拒否します。Gemini CLI の既存の JSON Schema 処理は維持されます。
 
 Kimi Work は `type: "oauth"`、`access`、`webToken`、`uid` を含むオブジェクトをインポートします。`deviceId` は任意です。値は権限のある自身のアカウントから明示的に取得してください。TokenHub はデスクトップのデータベースを読みません。他のセッション形式は Provider ごとに異なり、選択した Provider と一致する必要があります。

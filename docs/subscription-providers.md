@@ -96,6 +96,8 @@ For Gemini CLI and Antigravity, select **Google account (default)** and click th
 
 If a Google account needs an explicit Cloud project, select **Google account with Cloud project (advanced)** and enter only the project ID; it uses the same built-in client configuration. The custom-client method also accepts a project ID. The selected project is saved with the new credentials and is not silently inherited from an old account during reauthorization. Complete Google sign-in, paste the callback URL into TokenHub, and save the account after credentials are filled. Account eligibility and model access are still determined by the upstream service.
 
+If Google returns `UNSUPPORTED_LOCATION`, TokenHub reports `google_subscription_location_unsupported`. Google sign-in and model discovery can succeed while inference is blocked by regional availability. Check the account's regional eligibility and the actual outbound region of the TokenHub server, including any configured proxy. Filling in OAuth client parameters or repeatedly authorizing the account does not resolve this regional restriction.
+
 Antigravity tool parameters are projected to its supported OpenAPI schema subset. Local references and nullable fields are supported; recursive, external, unresolved, or excessively expanded schemas are rejected with HTTP 400 before inference. Gemini CLI retains its existing JSON Schema handling.
 
 For Kimi Work, import an object with `type: "oauth"`, `access`, `webToken`, and `uid`, with optional `deviceId`. Obtain those values explicitly from your own authorized account; TokenHub never reads the desktop database. Other session schemas remain provider-specific and must match the selected provider.

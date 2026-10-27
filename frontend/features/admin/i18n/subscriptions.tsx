@@ -1,5 +1,6 @@
 export const subscriptionTranslations = {
   en: {
+  "Google 订阅服务不支持当前请求所在地区。请检查账号的地区资格以及 TokenHub 服务器的网络出口地区。": "Google subscription access is unavailable in the location associated with this request. Check the account's regional eligibility and the TokenHub server's outbound location.",
   "Google 账号（默认）": "Google account (default)",
   "Google 账号（指定 Cloud 项目）": "Google account with Cloud project (advanced)",
   "自定义 Google OAuth（高级）": "Custom Google OAuth (advanced)",
@@ -65,6 +66,7 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth Client ID"
 },
   ja: {
+  "Google 订阅服务不支持当前请求所在地区。请检查账号的地区资格以及 TokenHub 服务器的网络出口地区。": "このリクエストに関連する地域では Google サブスクリプションサービスを利用できません。アカウントの地域別の利用資格と TokenHub サーバーの接続元地域を確認してください。",
   "Google 账号（默认）": "Google アカウント（標準）",
   "Google 账号（指定 Cloud 项目）": "Google アカウント（Cloud プロジェクトを指定）",
   "自定义 Google OAuth（高级）": "カスタム Google OAuth（詳細設定）",
@@ -130,6 +132,7 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth クライアント ID"
 },
   ru: {
+  "Google 订阅服务不支持当前请求所在地区。请检查账号的地区资格以及 TokenHub 服务器的网络出口地区。": "Доступ к подписке Google недоступен в регионе, связанном с этим запросом. Проверьте региональную доступность для аккаунта и регион исходящего подключения сервера TokenHub.",
   "Google 账号（默认）": "Аккаунт Google (по умолчанию)",
   "Google 账号（指定 Cloud 项目）": "Аккаунт Google с проектом Cloud (дополнительно)",
   "自定义 Google OAuth（高级）": "Свой клиент Google OAuth (дополнительно)",
