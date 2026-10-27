@@ -8,11 +8,20 @@ import { guardFactoryAllowance } from "./factory.mjs";
 const CROSS_ORIGIN_SAFE_HEADERS = new Set([
   "accept", "accept-encoding", "accept-language", "cache-control", "content-length", "content-type", "pragma", "user-agent",
 ]);
+const MAX_ERROR_BODY = 64 * 1024;
+const ERROR_BODY_TIMEOUT = 1000;
+
+function completeJSONBody(chunks) {
+  const text = Buffer.concat(chunks).toString("utf8").trim();
+  if (!text.startsWith("{") && !text.startsWith("[")) return false;
+  try { JSON.parse(text); return true; } catch { return false; }
+}
 
 // Every vendor fetch is executed by the parent's guarded HTTP transport. DNS,
 // redirects, proxy selection and connection limits remain Go responsibilities.
 export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 * 1024 } = {}) {
   const pending = new Map();
+  const maxErrorBytes = Math.min(MAX_ERROR_BODY, maxResponseBytes);
 
   async function once(input, init = {}) {
     const context = scope.getStore();
@@ -32,13 +41,14 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
     const abort = () => {
       if (state.aborted) return;
       state.aborted = true;
+      state.dispose();
       const error = failure("request_cancelled", "Subscription request was cancelled", 499);
       state.reject(error);
       state.controller?.error(error);
       pending.delete(requestID);
       void emit({ id: context.id, event: "network.cancel", request_id: requestID });
     };
-    state.dispose = () => signal.removeEventListener("abort", abort);
+    state.dispose = () => { signal.removeEventListener("abort", abort); clearTimeout(state.errorTimer); };
     signal.addEventListener("abort", abort, { once: true });
     pending.set(requestID, state);
     await emit({ id: context.id, event: "network.request", request_id: requestID, resource_id: context.resourceID,
@@ -90,6 +100,15 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
     const state = pending.get(message.request_id);
     if (!state) return;
     const end = () => { state.dispose(); pending.delete(message.request_id); };
+    const finishErrorBody = (complete, cancel = true) => {
+      // Never expose a truncated diagnostic: a prefix such as "token expired"
+      // can change an adapter's account classification. Missing diagnostics
+      // leave the original HTTP status and headers as the fallback.
+      if (complete && state.errorChunks.length) state.controller.enqueue(Buffer.concat(state.errorChunks));
+      state.controller.close();
+      end();
+      if (cancel) void emit({ id: state.context.id, event: "network.cancel", request_id: message.request_id }).catch(() => {});
+    };
     try {
       if (message.operation === "network.response") {
         if (state.controller) throw new Error("duplicate network response");
@@ -101,8 +120,10 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
         headers.delete("content-encoding");
         headers.delete("content-length");
         const empty = [101, 204, 205, 304].includes(message.status);
+        const boundedError = state.context.operation === "fetch" && (message.status < 200 || message.status >= 300);
         if (message.body !== undefined || empty) {
-          const bytes = Buffer.from(message.body ?? "", "base64");
+          let bytes = Buffer.from(message.body ?? "", "base64");
+          if (boundedError && bytes.length > maxErrorBytes) bytes = Buffer.alloc(0);
           if (bytes.length > MAX_BODY || bytes.length > maxResponseBytes) throw failure("body_too_large", "Subscription response exceeds the size limit");
           state.resolve(new Response(empty ? null : bytes, { status: message.status, headers }));
           end();
@@ -115,10 +136,23 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
             return emit({ id: state.context.id, event: "network.cancel", request_id: message.request_id });
           },
         }, { highWaterMark: 65536, size: (chunk) => chunk.byteLength });
+        if (boundedError) {
+          // Some trusted adapters consume error.text() before returning their
+          // response to Go. Bound that inspection at the actual HTTP boundary.
+          state.errorChunks = [];
+          state.errorTimer = setTimeout(() => finishErrorBody(false), ERROR_BODY_TIMEOUT);
+          state.errorTimer.unref();
+        }
         state.resolve(new Response(stream, { status: message.status, headers }));
       } else if (message.operation === "network.chunk") {
         const chunk = Buffer.from(message.data ?? "", "base64");
         state.bytes += chunk.length;
+        if (state.errorChunks) {
+          if (state.bytes > maxErrorBytes) { finishErrorBody(false); return; }
+          state.errorChunks.push(chunk);
+          if (completeJSONBody(state.errorChunks)) finishErrorBody(true);
+          return;
+        }
         // A fast JSON/text consumer can accumulate the whole response outside
         // the queue, so bound total bytes independently of backpressure.
         if (state.bytes > maxResponseBytes) {
@@ -131,9 +165,16 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
         if (!state.controller) throw new Error("network response headers are missing");
         state.controller.enqueue(chunk);
       } else if (message.operation === "network.end") {
+        if (state.errorChunks) { finishErrorBody(true, false); return; }
         state.controller?.close();
         end();
       } else if (message.operation === "network.error") {
+        if (state.errorChunks && message.error === "upstream_request_failed") {
+          // The HTTP failure is already known; a reset while reading its
+          // optional diagnostic must not replace that status with a 502.
+          finishErrorBody(false, false);
+          return;
+        }
         const error = failure(message.error, "Subscription upstream network request failed", message.status ?? 502);
         // Some pinned adapters catch fetch errors and manufacture an HTTP
         // response. Keep guarded transport failures in the command context so

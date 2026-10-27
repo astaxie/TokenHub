@@ -184,7 +184,9 @@ The bundled worker is trusted application code, not an arbitrary-code sandbox. D
 
 Explicit reauthorization or deleting and recreating an account invalidates retained workers, credential writes, and parked Claude tool continuations, even when the replacement contains identical token values.
 
-Subscription inference failures are classified from their status and trusted adapter metadata without waiting for discarded error bodies. Google regional-eligibility and Grok missing-scope diagnostics inspect at most 4 KiB for up to one second; an incomplete diagnostic falls back to the HTTP status.
+Subscription inference failures are classified from their status and trusted adapter metadata without waiting for discarded error bodies. During community inference, adapters that inspect upstream error bodies receive at most 64 KiB within one second. Complete JSON diagnostics are available immediately; incomplete or oversized diagnostics are discarded before adapter classification. Google regional-eligibility and Grok missing-scope diagnostics inspect at most 4 KiB for up to one second; an incomplete diagnostic falls back to the HTTP status.
+
+Cline preserves the upstream `Retry-After` delay when rewriting an error without changing its status. A confirmed missing model subscription is classified as model unavailable, allowing model-specific fallback without marking the account credentials invalid. Rejected credentials and unrecognized permission failures retain their normal authorization handling.
 
 When a bundled adapter reports that the saved account credentials should be retained, its HTTP 401/403 response is treated as a temporary failure instead of broken credentials. An explicit expired sign-in still requires reauthorization. Only trusted adapter metadata can make this distinction; upstream headers cannot override it.
 

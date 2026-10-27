@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 )
 
-//go:embed worker.mjs host.mjs registry.mjs network.mjs isolation.mjs validation.mjs grok.mjs gcp-ai.mjs cursor.mjs factory.mjs qwenwork.mjs workbuddy.mjs vendor
+//go:embed worker.mjs host.mjs registry.mjs network.mjs isolation.mjs validation.mjs grok.mjs gcp-ai.mjs cursor.mjs factory.mjs qwenwork.mjs workbuddy.mjs cline.mjs vendor
 var runtimeFiles embed.FS
 
 // WriteRuntime extracts the versioned worker into a caller-owned private directory.

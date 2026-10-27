@@ -104,6 +104,10 @@ Each relayed upstream response has a 64 MiB cumulative byte ceiling, including
 streams consumed immediately. The separate 32 MiB queued-data limit remains in
 effect. Exceeding either bound fails the response and emits `network.cancel`,
 which aborts the parent's HTTP request instead of leaving it running.
+During inference commands, non-2xx diagnostic bodies have a separate 64 KiB,
+one-second bound. Complete JSON or EOF releases the diagnostic immediately;
+timeout or overflow discards the partial diagnostic and cancels the upstream
+body while preserving its status and headers for adapter classification.
 The Go launcher fixes V8 old-space at 256 MiB per worker; this does not cap RSS
 or native buffers. The worker pool permits up to 32 processes.
 
