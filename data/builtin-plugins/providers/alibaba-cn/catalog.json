@@ -10,7 +10,7 @@
       "name": "Qwen Audio 3.1 Realtime Flash",
       "display_name": "Qwen Audio 3.1 Realtime Flash",
       "family": "qwen",
-      "type": "chat",
+      "type": "audio",
       "modalities": {
         "input": [
           "text",
@@ -30,10 +30,10 @@
         "catalog_reviewed_at": "2026-10-28",
         "availability": "active",
         "call_support": "unsupported",
-        "call_support_note": "Native realtime session protocol is not implemented by the chat adapter.",
         "pricing_status": "unverified",
         "pricing_note": "Multimodal realtime pricing has separate text and audio units; verify the account and region.",
-        "native_endpoints": "WebSocket,WebRTC,AOQ"
+        "native_endpoints": "WebSocket,WebRTC,AOQ",
+        "support_note": "Native realtime session protocol is not implemented by the chat adapter."
       }
     },
     {

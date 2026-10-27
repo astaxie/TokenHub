@@ -70,4 +70,12 @@ describe("ModelCatalogNotices", () => {
     expect(screen.getByText(/Regional end-of-life date: Mar 30, 2027/)).toBeVisible();
     expect(screen.queryByText(/endpoint has retired/)).not.toBeInTheDocument();
   });
+  it("shows a regional retirement without retiring other regions", () => {
+    setActiveLanguage("en");
+    render(<ModelCatalogNotices metadata={{ lifecycle_status: "active", regional_lifecycle_status: "retiring", regional_eol_date: "2026-10-31", lifecycle_regions: '["Guangzhou"]' }} />);
+    expect(screen.getByText(/Retirement announced in selected regions: Guangzhou/)).toBeVisible();
+    expect(screen.getByText(/Regional end-of-life date: Oct 31, 2026/)).toBeVisible();
+    expect(screen.queryByText(/endpoint has retired/)).not.toBeInTheDocument();
+  });
+
 });

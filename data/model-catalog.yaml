@@ -9986,7 +9986,7 @@ models:
       availability: active
       lifecycle_status: active
       call_support: unsupported
-      call_support_note: Catalog only until the native model contract is verified.
+      support_note: Catalog only until the native model contract is verified.
       reasoning_effort_options: low,high,max
       max_output_tokens: '1048576'
       output_note: Default 131072; maximum 1048576 within the shared context.
@@ -9997,11 +9997,12 @@ models:
     title: Qwen Audio 3.1 Realtime Flash
     category: alibaba
     family: qwen
-    modality: chat
+    modality: audio
     context_window: 262144
     input_modalities: [text, audio]
     output_modalities: [text, audio]
-    capabilities: [chat]
+    capabilities: [audio, audio_input, tools]
+    supported_parameters: [audio_input, tools]
     metadata:
       source: tokenhub-standard-catalog
       provider_catalog_id: alibaba
@@ -10012,7 +10013,7 @@ models:
       availability: active
       lifecycle_status: active
       call_support: unsupported
-      call_support_note: Native realtime session protocol is not implemented by the chat adapter.
+      support_note: Native realtime session protocol is not implemented by the chat adapter.
       native_endpoints: WebSocket,WebRTC,AOQ
       pricing_status: unverified
       pricing_note: Separate text and audio rates depend on account and deployment region.

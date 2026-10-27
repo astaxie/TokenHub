@@ -1040,10 +1040,9 @@
         "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
         "usage_scope": "Enterprise subscription; region-specific model access and key permissions apply.",
         "regional_lifecycle_status": "retiring",
-        "regional_lifecycle_regions": "Guangzhou",
-        "regional_shutdown_date": "2026-10-31",
-        "regional_lifecycle_note": "Guangzhou enterprise professional plan only; Singapore has no corresponding retirement notice. Exact time is not specified.",
-        "lifecycle_source": "https://cloud.tencent.com/document/product/1823/130659"
+        "lifecycle_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "regional_eol_date": "2026-10-31",
+        "lifecycle_regions": "[\"Guangzhou\"]"
       },
       "last_updated": "2026-10-16"
     },

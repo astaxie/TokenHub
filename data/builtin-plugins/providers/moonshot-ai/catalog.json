@@ -41,7 +41,7 @@
         "max_output_tokens": "1048576",
         "pricing_status": "reference",
         "call_support": "unsupported",
-        "call_support_note": "Catalog only until image, video, thinking and continuation contracts have been verified for this model."
+        "support_note": "Catalog only until image, video, thinking and continuation contracts have been verified for this model."
       },
       "limit": {
         "context": 1048576,
@@ -111,7 +111,7 @@
         "max_output_tokens": "1048576",
         "pricing_status": "reference",
         "call_support": "unsupported",
-        "call_support_note": "Catalog only until image, video, thinking and continuation contracts have been verified for this model."
+        "support_note": "Catalog only until image, video, thinking and continuation contracts have been verified for this model."
       },
       "limit": {
         "context": 1048576,

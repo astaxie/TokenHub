@@ -41,9 +41,9 @@
         "access_requirement": "Pro or Allegretto and above; highspeed uses approximately twice the quota.",
         "catalog_reviewed_at": "2026-10-28",
         "call_support": "unsupported",
-        "call_support_note": "Catalog only until subscription API contract is verified.",
         "reasoning_effort_options": "low,high,max",
-        "thinking_can_disable": "false"
+        "thinking_can_disable": "false",
+        "support_note": "Catalog only until subscription API contract is verified."
       }
     },
     {
@@ -82,9 +82,9 @@
         "access_requirement": "Plus or Moderato and above; 1M context requires Pro or Allegretto and above.",
         "catalog_reviewed_at": "2026-10-28",
         "call_support": "unsupported",
-        "call_support_note": "Catalog only until subscription API contract is verified.",
         "reasoning_effort_options": "low,high,max",
-        "thinking_can_disable": "false"
+        "thinking_can_disable": "false",
+        "support_note": "Catalog only until subscription API contract is verified."
       }
     },
     {
