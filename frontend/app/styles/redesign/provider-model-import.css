@@ -35,6 +35,11 @@
 .model-provider-import-footer { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--border); }
 .model-provider-import-footer .model-provider-import-confirm { padding: 0; border: 0; }
 .model-provider-import-validation { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.model-provider-import-validation.is-error { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border)); border-radius: 8px; color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--surface)); }
+.model-provider-import-validation.is-error > svg { flex-shrink: 0; margin-top: 1px; }
+.model-provider-import-footer .model-provider-import-confirm.is-invalid { padding: 10px 12px; border: 1px solid var(--red); color: var(--red); }
+.provider-model-import-modal[data-validation-attempted] .model-provider-import-row-fields input[aria-invalid="true"]:not(:disabled) { border-color: var(--red); }
+.model-provider-import-footer .inline-notice { margin: 0; }
 .model-provider-import-footer-actions { display: flex; justify-content: flex-end; gap: 10px; }
 @media (max-width: 600px) {
   .provider-model-import-modal { width: calc(100vw - 16px); max-height: calc(100dvh - 24px); }

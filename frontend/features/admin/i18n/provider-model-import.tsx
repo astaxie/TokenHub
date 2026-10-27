@@ -1,5 +1,7 @@
 export const providerModelImportTranslations: Record<"en" | "ja" | "ru", Record<string, string>> = {
   en: {
+    "尚未引入：{reason}": "Import has not started: {reason}",
+    "请勾选上方的订阅成本确认，再次点击“引入所选模型”。": "Check the subscription cost confirmation above, then click “Import selected models” again.",
     "还有 {count} 个所选模型的对外价格未填完整或无效。": "Public prices are incomplete or invalid for {count} selected models.",
     "请确认所选订阅模型的按量成本。": "Confirm the usage-based cost of the selected subscription models.",
     "填写统一价格后，请点击“应用到所选模型”；也可逐项填写。": "After entering shared prices, click “Apply to selected models”, or set each model’s prices individually.",
@@ -40,6 +42,8 @@ export const providerModelImportTranslations: Record<"en" | "ja" | "ru", Record<
     "从已引入的 Provider 模型批量生成同名对外模型，或从内置目录新建自定义映射。": "Create public models with matching IDs from imported Provider models, or build custom mappings from the built-in catalog."
   },
   ja: {
+    "尚未引入：{reason}": "取り込みは開始されていません：{reason}",
+    "请勾选上方的订阅成本确认，再次点击“引入所选模型”。": "上のサブスクリプションコスト確認にチェックを入れ、もう一度「選択したモデルを取り込む」を押してください。",
     "还有 {count} 个所选模型的对外价格未填完整或无效。": "選択した {count} 件のモデルの公開価格が未入力または無効です。",
     "请确认所选订阅模型的按量成本。": "選択したサブスクリプションモデルの従量コストを確認してください。",
     "填写统一价格后，请点击“应用到所选模型”；也可逐项填写。": "共通価格を入力したら「選択したモデルに適用」を押してください。モデルごとに入力することもできます。",
@@ -80,6 +84,8 @@ export const providerModelImportTranslations: Record<"en" | "ja" | "ru", Record<
     "从已引入的 Provider 模型批量生成同名对外模型，或从内置目录新建自定义映射。": "取り込み済みの Provider モデルから同じ ID の公開モデルを一括作成するか、組み込みカタログからカスタムマッピングを作成します。"
   },
   ru: {
+    "尚未引入：{reason}": "Импорт не начат: {reason}",
+    "请勾选上方的订阅成本确认，再次点击“引入所选模型”。": "Отметьте подтверждение затрат подписки выше, затем снова нажмите «Импортировать выбранные модели».",
     "还有 {count} 个所选模型的对外价格未填完整或无效。": "Для {count} выбранных моделей публичные цены не заполнены или недопустимы.",
     "请确认所选订阅模型的按量成本。": "Подтвердите стоимость использования выбранных моделей подписки.",
     "填写统一价格后，请点击“应用到所选模型”；也可逐项填写。": "После ввода общих цен нажмите «Применить к выбранным моделям» или задайте цены каждой модели отдельно.",

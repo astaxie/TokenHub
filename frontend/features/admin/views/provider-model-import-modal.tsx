@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { AlertCircle, X } from "lucide-react";
 import { useId, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { type ApiContext, type AppData } from "../core/types";
@@ -28,6 +28,7 @@ export function ProviderModelImportModal({ api, data, onReload, onClose, onOpenP
   const [results, setResults] = useState<Record<string, ImportResult>>({});
   const [bulk, setBulk] = useState(blankDraft);
   const [confirmZeroCost, setConfirmZeroCost] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -49,14 +50,20 @@ export function ProviderModelImportModal({ api, data, onReload, onClose, onOpenP
   const validation = blocked ? tx("部分所选模型已不可引入，请取消选择后重试。") : invalidPrices.length
     ? formatTranslationTemplate(tx("还有 {count} 个所选模型的对外价格未填完整或无效。"), { count: number(invalidPrices.length) })
     : zeroCostPending.length && !confirmZeroCost ? tx("请确认所选订阅模型的按量成本。") : "";
+  const confirmationInvalid = validationAttempted && !blocked && !invalidPrices.length && zeroCostPending.length > 0 && !confirmZeroCost;
+  const validationMessage = validationAttempted && validation
+    ? formatTranslationTemplate(tx("尚未引入：{reason}"), { reason: !blocked && !invalidPrices.length && confirmationInvalid ? tx("请勾选上方的订阅成本确认，再次点击“引入所选模型”。") : validation })
+    : validation;
 
   function toggle(id: string) {
+    setValidationAttempted(false);
     setConfirmZeroCost(false);
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
     setDrafts((current) => ({ ...current, [id]: current[id] ?? blankDraft() }));
   }
 
   function selectAll() {
+    setValidationAttempted(false);
     setConfirmZeroCost(false);
     const ids = selectable.map((item) => item.model.id);
     setSelected((current) => allVisibleSelected ? current.filter((id) => !ids.includes(id)) : Array.from(new Set([...current, ...ids])));
@@ -65,6 +72,7 @@ export function ProviderModelImportModal({ api, data, onReload, onClose, onOpenP
 
   function applyBulk() {
     if (!validImportPrice(bulk.input) || !validImportPrice(bulk.output)) return;
+    setValidationAttempted(false);
     setDrafts((current) => ({ ...current, ...Object.fromEntries(pending.map(({ model }) => [model.id, { ...(current[model.id] ?? blankDraft()), input: bulk.input, output: bulk.output }])) }));
   }
 
@@ -72,8 +80,8 @@ export function ProviderModelImportModal({ api, data, onReload, onClose, onOpenP
     event.preventDefault();
     if (!pending.length || pendingSubmit.current) return;
     if (validation) {
+      flushSync(() => { setValidationAttempted(true); if (blocked || invalidPrices.length) setQuery(""); });
       if (blocked || invalidPrices.length) {
-        flushSync(() => setQuery(""));
         focus.ref.current?.querySelector<HTMLInputElement>(blocked
           ? '.model-provider-import-model[data-blocked="true"] input[type="checkbox"]'
           : '.model-provider-import-row-fields input[aria-invalid="true"]:not(:disabled)')?.focus();
@@ -87,6 +95,7 @@ export function ProviderModelImportModal({ api, data, onReload, onClose, onOpenP
       return;
     }
     pendingSubmit.current = true;
+    setValidationAttempted(false);
     setBusy(true);
     setError("");
     setNotice("");
@@ -117,12 +126,12 @@ export function ProviderModelImportModal({ api, data, onReload, onClose, onOpenP
   }
 
   return <div className="modal-backdrop" role="presentation">
-    <form className="modal provider-model-import-modal" role="dialog" aria-modal="true" aria-label={tx("从 Provider 引入")} aria-busy={busy} {...focus} noValidate onSubmit={submit}>
+    <form className="modal provider-model-import-modal" role="dialog" aria-modal="true" aria-label={tx("从 Provider 引入")} aria-busy={busy} data-validation-attempted={validationAttempted || undefined} {...focus} noValidate onSubmit={submit}>
       <header className="model-provider-import-header"><div><h2>{tx("从 Provider 引入")}</h2><p>{tx("每个所选上游模型会生成一个同名对外模型和一条独立路由。")}</p></div><button className="icon-button" type="button" aria-label={tx("关闭")} disabled={busy} onClick={onClose}><X size={18} /></button></header>
       <div className="model-provider-import-body">
         <p className="model-provider-import-help">{tx("对外价格由你单独设置，不会复制 Provider 成本。明确填写 0 表示免费；可在引入后编辑缓存和分时价格。")}</p>
         <div className="model-provider-import-controls">
-          <label>{tx("选择 Provider")}<select value={providerID} disabled={busy} onChange={(event) => { setProviderID(event.target.value); setSelected([]); setQuery(""); setConfirmZeroCost(false); setNotice(""); setError(""); }}><option value="">{tx("请选择 Provider")}</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
+          <label>{tx("选择 Provider")}<select value={providerID} disabled={busy} onChange={(event) => { setProviderID(event.target.value); setSelected([]); setQuery(""); setConfirmZeroCost(false); setValidationAttempted(false); setNotice(""); setError(""); }}><option value="">{tx("请选择 Provider")}</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
           <label>{tx("搜索 Provider 模型")}<input value={query} disabled={busy} onChange={(event) => setQuery(event.target.value)} /></label>
         </div>
         {!providers.length ? <div className="model-provider-import-empty"><strong>{tx("暂无可用的 Provider")}</strong><button className="secondary-button" type="button" onClick={() => { onClose(); onOpenProviders(); }}>{tx("前往 Provider 渠道")}</button></div> : null}
@@ -134,12 +143,12 @@ export function ProviderModelImportModal({ api, data, onReload, onClose, onOpenP
           <div className="model-provider-import-models">{visible.map((candidate) => <ProviderImportModelRow key={candidate.model.id} candidate={candidate} draft={drafts[candidate.model.id] ?? blankDraft()} selected={selected.includes(candidate.model.id)} busy={busy} result={results[candidate.model.id]} onToggle={() => toggle(candidate.model.id)} onChange={(key, value) => setDrafts((current) => ({ ...current, [candidate.model.id]: { ...(current[candidate.model.id] ?? blankDraft()), [key]: value } }))} />)}</div>
           {candidates.some((item) => item.costRequired && !item.canConfirmZeroCost) ? <button className="text-button" disabled={busy} type="button" onClick={() => { onClose(); onOpenProviders(); }}>{tx("前往 Provider 渠道配置未确认的成本")}</button> : null}
         </> : null}
-        {notice ? <p className="inline-notice" role="status">{notice}</p> : null}
-        {error ? <p className="inline-notice error" role="alert">{error}</p> : null}
       </div>
       <footer className="model-provider-import-footer">
-        {zeroCostPending.length ? <label className="model-provider-import-confirm"><input ref={confirmation} type="checkbox" checked={confirmZeroCost} disabled={busy} onChange={(event) => setConfirmZeroCost(event.target.checked)} />{tx("确认所选订阅模型的按量成本为 0（订阅费用另行核算）")}</label> : null}
-        {validation && !busy ? <p id={validationID} className="model-provider-import-validation" aria-live="polite">{validation}</p> : null}
+        {zeroCostPending.length ? <label className={`model-provider-import-confirm${confirmationInvalid ? " is-invalid" : ""}`}><input ref={confirmation} type="checkbox" checked={confirmZeroCost} disabled={busy} aria-invalid={confirmationInvalid} aria-describedby={confirmationInvalid ? validationID : undefined} onChange={(event) => setConfirmZeroCost(event.target.checked)} />{tx("确认所选订阅模型的按量成本为 0（订阅费用另行核算）")}</label> : null}
+        {validation && !busy ? <p key={validationAttempted ? "error" : "hint"} id={validationID} className={`model-provider-import-validation${validationAttempted ? " is-error" : ""}`} role={validationAttempted ? "alert" : undefined} aria-live={validationAttempted ? undefined : "polite"}>{validationAttempted ? <AlertCircle size={18} aria-hidden="true" /> : null}<span>{validationMessage}</span></p> : null}
+        {notice ? <p className="inline-notice" role="status">{notice}</p> : null}
+        {error ? <p className="inline-notice error" role="alert">{error}</p> : null}
         <div className="model-provider-import-footer-actions"><button className="secondary-button" type="button" disabled={busy} onClick={onClose}>{tx("关闭")}</button><button className="button" type="submit" disabled={busy || !pending.length} aria-describedby={validation && !busy ? validationID : undefined}>{tx(busy ? "正在引入…" : "引入所选模型")}</button></div>
       </footer>
     </form>
