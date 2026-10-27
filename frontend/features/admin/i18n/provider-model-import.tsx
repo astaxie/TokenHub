@@ -1,5 +1,9 @@
 export const providerModelImportTranslations: Record<"en" | "ja" | "ru", Record<string, string>> = {
   en: {
+    "还有 {count} 个所选模型的对外价格未填完整或无效。": "Public prices are incomplete or invalid for {count} selected models.",
+    "请确认所选订阅模型的按量成本。": "Confirm the usage-based cost of the selected subscription models.",
+    "填写统一价格后，请点击“应用到所选模型”；也可逐项填写。": "After entering shared prices, click “Apply to selected models”, or set each model’s prices individually.",
+    "部分所选模型已不可引入，请取消选择后重试。": "Some selected models are no longer importable. Deselect them and try again.",
     "音频价格（USD / 秒）": "Audio price (USD / second)",
     "按音频时长计费时使用；请单独填写，不会复制 Provider 成本。": "Used for duration-based audio billing. Set it separately; Provider costs are not copied.",
     "前往 Provider 渠道": "Go to Provider Channels",
@@ -36,6 +40,10 @@ export const providerModelImportTranslations: Record<"en" | "ja" | "ru", Record<
     "从已引入的 Provider 模型批量生成同名对外模型，或从内置目录新建自定义映射。": "Create public models with matching IDs from imported Provider models, or build custom mappings from the built-in catalog."
   },
   ja: {
+    "还有 {count} 个所选模型的对外价格未填完整或无效。": "選択した {count} 件のモデルの公開価格が未入力または無効です。",
+    "请确认所选订阅模型的按量成本。": "選択したサブスクリプションモデルの従量コストを確認してください。",
+    "填写统一价格后，请点击“应用到所选模型”；也可逐项填写。": "共通価格を入力したら「選択したモデルに適用」を押してください。モデルごとに入力することもできます。",
+    "部分所选模型已不可引入，请取消选择后重试。": "選択したモデルの一部が取り込めなくなりました。該当モデルの選択を解除して再試行してください。",
     "音频价格（USD / 秒）": "音声価格（USD / 秒）",
     "按音频时长计费时使用；请单独填写，不会复制 Provider 成本。": "音声の時間課金に使用します。Provider のコストはコピーされないため、別途入力してください。",
     "前往 Provider 渠道": "Provider チャネルへ",
@@ -72,6 +80,10 @@ export const providerModelImportTranslations: Record<"en" | "ja" | "ru", Record<
     "从已引入的 Provider 模型批量生成同名对外模型，或从内置目录新建自定义映射。": "取り込み済みの Provider モデルから同じ ID の公開モデルを一括作成するか、組み込みカタログからカスタムマッピングを作成します。"
   },
   ru: {
+    "还有 {count} 个所选模型的对外价格未填完整或无效。": "Для {count} выбранных моделей публичные цены не заполнены или недопустимы.",
+    "请确认所选订阅模型的按量成本。": "Подтвердите стоимость использования выбранных моделей подписки.",
+    "填写统一价格后，请点击“应用到所选模型”；也可逐项填写。": "После ввода общих цен нажмите «Применить к выбранным моделям» или задайте цены каждой модели отдельно.",
+    "部分所选模型已不可引入，请取消选择后重试。": "Некоторые выбранные модели больше недоступны для импорта. Снимите с них выбор и повторите попытку.",
     "音频价格（USD / 秒）": "Цена аудио (USD / секунда)",
     "按音频时长计费时使用；请单独填写，不会复制 Provider 成本。": "Используется при оплате по длительности аудио. Укажите отдельно; затраты провайдера не копируются.",
     "前往 Provider 渠道": "Перейти к провайдерам",

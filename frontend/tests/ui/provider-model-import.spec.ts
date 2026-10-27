@@ -146,6 +146,85 @@ for (const mobile of [false, true]) {
   });
 }
 
+for (const mobile of [false, true]) {
+  const viewport = mobile ? "mobile" : "desktop";
+  test(`models provider-import-validation-${viewport}`, async ({ page, api }, info) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const inventory = Array.from({ length: 8 }, (_, index) => ({
+      ...model(`inventory_validation_${index}`, `ui/subscription-model-${index}`),
+      input_price_usd_per_1m: undefined, output_price_usd_per_1m: undefined,
+      metadata: { pricing_status: "unverified", billing_mode: "subscription" },
+    }));
+    const fixture = install(api, inventory, [], { ...provider, type: "workbuddy_subscription" });
+    for (const item of inventory) api.define("PATCH", `/api/admin/provider-models/${item.id}`, request => {
+      expect(request.body).toMatchObject({ metadata: { pricing_status: "configured", billing_mode: "subscription" } });
+      Object.assign(fixture.storedInventory.find(model => model.id === item.id)!, request.body);
+      fixture.refresh();
+      return { json: fixture.storedInventory.find(model => model.id === item.id) };
+    });
+    api.define("POST", "/api/admin/models", request => {
+      expect(request.body).toMatchObject({ input_price_usd_per_1m: 0, output_price_usd_per_1m: 2 });
+      return fixture.create(request.body);
+    });
+    await page.goto("/models");
+    await page.getByRole("button", { name: "从 Provider 引入", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "从 Provider 引入", exact: true });
+    const submit = dialog.getByRole("button", { name: "引入所选模型", exact: true });
+    const confirm = dialog.getByRole("checkbox", { name: "确认所选订阅模型的按量成本为 0（订阅费用另行核算）", exact: true });
+    await expect(submit).toBeDisabled();
+    await dialog.getByRole("checkbox", { name: "全选可引入模型", exact: true }).check();
+    await expect(submit).toBeEnabled();
+    await expect(submit).toHaveAccessibleDescription(/还有 8 个所选模型的对外价格未填完整或无效。/);
+    await expect(confirm).toBeInViewport({ ratio: 1 });
+    await expect(submit).toBeInViewport({ ratio: 1 });
+    await capture(page, info, dialog, `provider-import-validation-selected-${viewport}`, "选中模型后显示价格缺项，订阅成本确认始终可见", "viewport");
+    await dialog.getByLabel("统一输入价格", { exact: true }).fill("0");
+    await dialog.getByLabel("统一输出价格", { exact: true }).fill("2");
+    await expect(dialog.getByText("填写统一价格后，请点击“应用到所选模型”；也可逐项填写。", { exact: true })).toBeVisible();
+    await dialog.getByLabel("搜索 Provider 模型", { exact: true }).fill("model-7");
+    await expect(dialog.getByRole("region", { name: inventory[0].upstream_model, exact: true })).toHaveCount(0);
+    await submit.click();
+    await expect(dialog.getByLabel("搜索 Provider 模型", { exact: true })).toHaveValue("");
+    const missingPrice = dialog.getByRole("region", { name: inventory[0].upstream_model, exact: true }).getByLabel("输入价格（USD / 1M tokens）", { exact: true });
+    await expect(missingPrice).toBeFocused();
+    await expect(missingPrice).toBeInViewport({ ratio: 1 });
+    await expect(missingPrice).toHaveValue("");
+    expect(api.calls.filter(call => call.method !== "GET"), "Unapplied shared prices must not publish or confirm costs").toHaveLength(0);
+    await capture(page, info, dialog, `provider-import-validation-focused-${viewport}`, "引入时自动定位搜索范围之外的缺失价格", "viewport");
+    await dialog.getByRole("button", { name: "应用到所选模型", exact: true }).click();
+    await expect(submit).toHaveAccessibleDescription(/请确认所选订阅模型的按量成本。/);
+    await submit.click();
+    await expect(confirm).toBeFocused();
+    await expect(confirm).not.toBeChecked();
+    expect(api.calls.filter(call => call.method !== "GET"), "Subscription cost confirmation must remain explicit").toHaveLength(0);
+    await confirm.check();
+    await submit.click();
+    await expect.poll(() => fixture.storedRoutes.length).toBe(inventory.length);
+    await expect(submit).toBeDisabled();
+    expect(api.calls.filter(call => call.method === "POST")).toHaveLength(inventory.length);
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(inventory.length);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Validation footer must not overflow the viewport").toBe(true);
+  });
+}
+
+test("models provider-import-rerank-malformed-optional-price", async ({ page, api }) => {
+  install(api, [{ ...first, modality: "rerank" }], []);
+  await page.goto("/models");
+  await page.getByRole("button", { name: "从 Provider 引入", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "从 Provider 引入", exact: true });
+  await dialog.getByRole("checkbox", { name: "全选可引入模型", exact: true }).check();
+  await dialog.getByLabel("统一输入价格", { exact: true }).fill("1");
+  await dialog.getByLabel("统一输出价格", { exact: true }).fill("2");
+  await dialog.getByRole("button", { name: "应用到所选模型", exact: true }).click();
+  const price = dialog.getByLabel("搜索单元价格 USD/次", { exact: true });
+  await price.pressSequentially("e");
+  await expect(price).toHaveValue("");
+  expect(await price.evaluate((element: HTMLInputElement) => element.validity.badInput), "Chromium must preserve a malformed numeric input rather than an empty optional price").toBe(true);
+  await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();
+  await expect(price).toBeFocused();
+  expect(api.calls.filter(call => call.method !== "GET"), "A malformed optional price must not create a model or confirm costs").toHaveLength(0);
+});
+
 test("models provider-import-subscription-partial-retry", async ({ page, api }, info) => {
   const subscriptionProvider: Provider = { ...provider, type: "workbuddy_subscription" };
   const inventory = [first, second].map(item => ({ ...item, input_price_usd_per_1m: undefined, output_price_usd_per_1m: undefined, metadata: { pricing_status: "unverified", billing_mode: "subscription", fixture_marker: "preserve" } }));
@@ -182,7 +261,10 @@ test("models provider-import-subscription-partial-retry", async ({ page, api }, 
   expect(api.calls.filter(call => call.method !== "GET")).toHaveLength(0);
   const confirm = dialog.getByRole("checkbox", { name: "确认所选订阅模型的按量成本为 0（订阅费用另行核算）", exact: true });
   await expect(confirm).not.toBeChecked();
-  await expect(dialog.getByRole("button", { name: "引入所选模型", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "引入所选模型", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();
+  await expect(confirm).toBeFocused();
+  expect(api.calls.filter(call => call.method !== "GET")).toHaveLength(0);
   await confirm.check();
   await capture(page, info, dialog, "provider-import-subscription-confirm", "订阅按量成本与对外价格分别确认", "viewport");
   await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();

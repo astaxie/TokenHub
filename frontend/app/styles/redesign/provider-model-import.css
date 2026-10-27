@@ -32,13 +32,16 @@
 .model-provider-import-row-fields input[readonly] { color: var(--muted); }
 .model-provider-import-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
 .model-provider-import-confirm { padding: 14px; border: 1px solid var(--border); border-radius: 10px; line-height: 1.6; }
-.model-provider-import-footer { flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--border); }
+.model-provider-import-footer { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--border); }
+.model-provider-import-footer .model-provider-import-confirm { padding: 0; border: 0; }
+.model-provider-import-validation { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.model-provider-import-footer-actions { display: flex; justify-content: flex-end; gap: 10px; }
 @media (max-width: 600px) {
   .provider-model-import-modal { width: calc(100vw - 16px); max-height: calc(100dvh - 24px); }
   .model-provider-import-header, .model-provider-import-footer { padding: 16px; }
   .model-provider-import-body { padding: 16px; }
   .model-provider-import-controls, .model-provider-import-row-fields, .model-provider-import-bulk { grid-template-columns: 1fr; }
   .model-provider-import-selection { align-items: flex-start; flex-direction: column; }
-  .model-provider-import-footer > button { flex: 1; }
+  .model-provider-import-footer-actions > button { flex: 1; min-width: 0; white-space: normal; }
   .model-provider-import-directory-actions { width: 100%; }
 }

@@ -26,6 +26,43 @@ async function selectAndPrice(user: ReturnType<typeof userEvent.setup>, input = 
 }
 
 describe("Provider model import dialog", () => {
+  it("explains missing prices and reveals the first invalid selected model before submitting", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    render(modal());
+    const user = userEvent.setup();
+    const submit = screen.getByRole("button", { name: "引入所选模型" });
+    expect(submit).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: "全选可引入模型" }));
+    expect(submit).toBeEnabled();
+    expect(submit).toHaveAccessibleDescription("还有 2 个所选模型的对外价格未填完整或无效。");
+    await user.type(screen.getByLabelText("搜索 Provider 模型"), "beta");
+    await user.click(submit);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("搜索 Provider 模型")).toHaveValue("");
+    expect(within(screen.getByRole("region", { name: "alpha" })).getByLabelText("输入价格（USD / 1M tokens）")).toHaveFocus();
+  });
+
+  it("requires bulk prices to be applied and ignores unused bulk staging fields on submit", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetch);
+    render(modal());
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: "alpha" }));
+    await user.type(screen.getByLabelText("统一输入价格"), "1");
+    await user.type(screen.getByLabelText("统一输出价格"), "2");
+    expect(screen.getByText("填写统一价格后，请点击“应用到所选模型”；也可逐项填写。")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "引入所选模型" }));
+    expect(fetch).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "应用到所选模型" }));
+    await user.clear(screen.getByLabelText("统一输入价格"));
+    await user.type(screen.getByLabelText("统一输入价格"), "-1");
+    await user.click(screen.getByRole("button", { name: "引入所选模型" }));
+    await screen.findByText("已引入，重试时自动跳过");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ input_price_usd_per_1m: 1, output_price_usd_per_1m: 2 });
+  });
+
   it("selects filtered callable models while preserving drafts and explaining conflicts", async () => {
     const data = fixture();
     data.models = [{ id: "old", name: "beta", family: "beta", modality: "chat", status: "active" }];
@@ -60,9 +97,14 @@ describe("Provider model import dialog", () => {
     render(modal(fixture(true), reload));
     const user = userEvent.setup();
     await selectAndPrice(user);
-    expect(screen.getByRole("button", { name: "引入所选模型" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "引入所选模型" })).toBeEnabled();
     const confirmation = screen.getByRole("checkbox", { name: "确认所选订阅模型的按量成本为 0（订阅费用另行核算）" });
     expect(confirmation).not.toBeChecked();
+    expect(confirmation.closest("footer")).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "引入所选模型" }));
+    expect(confirmation).toHaveFocus();
+    expect(calls).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "引入所选模型" })).toHaveAccessibleDescription("请确认所选订阅模型的按量成本。");
     await user.click(confirmation);
     await user.click(screen.getByRole("button", { name: "引入所选模型" }));
     await screen.findByText("目录刷新失败，已成功引入的模型不会重复提交。请关闭后刷新目录。");
@@ -106,12 +148,55 @@ describe("Provider model import dialog", () => {
     const data = fixture();
     data.providerModels = [{ ...data.providerModels[0], modality: "audio", metadata: { audio_price_usd_per_second: "4" } }];
     render(modal(data));
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
     await selectAndPrice(user);
     expect(screen.getByLabelText(/音频价格（USD \/ 秒）/)).toHaveValue(null);
-    expect(screen.getByRole("button", { name: "引入所选模型" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "引入所选模型" }));
+    expect(screen.getByLabelText(/音频价格（USD \/ 秒）/)).toHaveFocus();
+    expect(fetch).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText(/音频价格（USD \/ 秒）/), "0");
     expect(screen.getByRole("button", { name: "引入所选模型" })).toBeEnabled();
+  });
+
+  it("focuses an invalid optional rerank price without publishing any models", async () => {
+    const data = fixture();
+    data.providerModels = [{ ...data.providerModels[0], modality: "rerank" }];
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    render(modal(data));
+    const user = userEvent.setup();
+    await selectAndPrice(user);
+    await user.type(screen.getByLabelText("搜索单元价格 USD/次"), "-1");
+    await user.click(screen.getByRole("button", { name: "引入所选模型" }));
+    expect(screen.getByLabelText("搜索单元价格 USD/次")).toHaveFocus();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["collision", "unconfirmed cost"])("allows a selection blocked by %s after refresh to be removed", async (reason) => {
+    const data = fixture();
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const view = render(modal(data));
+    const user = userEvent.setup();
+    await selectAndPrice(user);
+    const updated = structuredClone(data);
+    if (reason === "collision") updated.models = [{ id: "external-alpha", name: "alpha", family: "alpha", modality: "chat", status: "active" }];
+    else updated.providerModels[0].metadata = { pricing_status: "unverified", catalog_price_reference: "true" };
+    view.rerender(modal(updated));
+    await user.type(screen.getByLabelText("搜索 Provider 模型"), "beta");
+    const submit = screen.getByRole("button", { name: "引入所选模型" });
+    expect(submit).toHaveAccessibleDescription("部分所选模型已不可引入，请取消选择后重试。");
+    await user.click(submit);
+    expect(fetch).not.toHaveBeenCalled();
+    const blocked = screen.getByRole("checkbox", { name: "alpha" });
+    expect(blocked).toHaveFocus();
+    expect(blocked).toBeEnabled();
+    await user.click(blocked);
+    expect(blocked).not.toBeChecked();
+    expect(blocked).toBeDisabled();
+    expect(submit).not.toHaveAttribute("aria-describedby");
   });
 
   it("restores focus on close and provides an empty provider path", async () => {
