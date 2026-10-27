@@ -51,6 +51,17 @@ func (s *GormStore) captureChatGPTSubscriptionCallback(ctx context.Context, stat
 		if secret.Callback != nil {
 			return NewHTTPError(http.StatusConflict, "subscription_oauth_callback_already_received", "Subscription OAuth callback was already received")
 		}
+		if !callback.Denied {
+			callback.ClientID, err = chatGPTSubscriptionCallbackClientID(secret.ClientID, callback.ClientID)
+			if err != nil {
+				return err
+			}
+			view := *s
+			view.db = tx
+			if err := view.bindChatGPTSubscriptionRegistration(ctx, secret.ActorID, secret.RegistrationID, secret.HostID, callback.ClientID, ""); err != nil {
+				return err
+			}
+		}
 		secret.Callback = &callback
 		encoded, err := json.Marshal(secret)
 		if err != nil {

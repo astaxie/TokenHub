@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -34,6 +35,9 @@ func chatGPTSubscriptionAutomaticRedirect(publicBase string) string {
 		if err != nil || port < 1 || port > 65535 {
 			return ""
 		}
+		target.Host = net.JoinHostPort("127.0.0.1", target.Port())
+	} else {
+		target.Host = "127.0.0.1"
 	}
 	target.Path = "/auth/callback"
 	return target.String()
@@ -53,7 +57,7 @@ func (s *Server) handleChatGPTSubscriptionCallback(w http.ResponseWriter, r *htt
 	query, err := url.ParseQuery(r.URL.RawQuery)
 	state, code, clientID, denied := query.Get("state"), query.Get("code"), query.Get("client_id"), query.Get("error")
 	if err != nil || len(query["state"]) != 1 || state == "" || len(state) > 256 || len(code) > 8192 || len(clientID) > 1024 || len(denied) > 256 || len(query["code"]) > 1 || len(query["client_id"]) > 1 || len(query["error"]) > 1 ||
-		(denied != "" && (code != "" || clientID != "")) || (denied == "" && (strings.TrimSpace(code) == "" || strings.TrimSpace(clientID) == "" || clientID == "dynamic_agent_client")) {
+		(denied != "" && (code != "" || clientID != "")) || (denied == "" && (strings.TrimSpace(code) == "" || clientID == "dynamic_agent_client")) {
 		chatGPTSubscriptionCallbackPage(w, http.StatusBadRequest)
 		return
 	}

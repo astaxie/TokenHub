@@ -87,3 +87,10 @@ func TestCompatibilityManifestTargetsLatestRegisteredMigration(t *testing.T) {
 		t.Fatalf("compatibility manifest %+v does not cover latest migration %d", manifest, latest)
 	}
 }
+
+func TestCompatibilityManifestRequiresSubscriptionOAuthTables(t *testing.T) {
+	manifest := CurrentCompatibilityManifest()
+	if manifest.MinCompatible < 10 {
+		t.Fatalf("minimum compatible schema = %d, want at least 10 for persistent OAuth registrations", manifest.MinCompatible)
+	}
+}

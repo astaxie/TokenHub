@@ -27,6 +27,7 @@ export type ProviderAccountOAuthResult = {
   state?: string;
   account_email?: string;
   account_id?: string;
+  user_id?: string;
   organization_id?: string;
   plan_type?: string;
   token_type?: string;
@@ -93,6 +94,7 @@ export function parseProviderAccountOAuthResult(source: string, allowGenericToke
     result.error = firstParam(params, marked ? ["provider_account_oauth_error", "oauth_error", "error"] : ["provider_account_oauth_error"]);
     result.account_email = firstParam(params, ["account_email", "email", "login", "username"]);
     result.account_id = firstParam(params, ["account_id", "sub", "user_id"]);
+    result.user_id = firstParam(params, ["user_id", "sub"]);
     result.organization_id = firstParam(params, ["organization_id", "org_id"]);
     result.plan_type = firstParam(params, ["plan_type", "plan"]);
     result.token_type = firstParam(params, ["token_type"]);

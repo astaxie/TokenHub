@@ -150,7 +150,7 @@ func TestChatGPTSubscriptionRetriesUnauthorizedAndListsAccountModels(t *testing.
 
 func TestChatGPTSubscriptionDynamicClientAuthorization(t *testing.T) {
 	verifier := strings.Repeat("v", 64)
-	address, err := ChatGPTSubscriptionAuthorizeURL("http://127.0.0.1:1455/auth/callback", "state", "nonce", verifier, "urn:uuid:fixture-host")
+	address, err := ChatGPTSubscriptionAuthorizeURL("http://127.0.0.1:1455/auth/callback", "state", "nonce", verifier, "urn:uuid:fixture-host", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestChatGPTSubscriptionDynamicClientAuthorization(t *testing.T) {
 	if query.Get("client_id") != "dynamic_agent_client" || query.Get("code_challenge") != openAICodeChallenge(verifier) || query.Get("nonce") != "nonce" || !strings.Contains(query.Get("scope"), chatGPTSubscriptionDirectScope) {
 		t.Fatalf("incorrect authorization parameters: %v", query)
 	}
-	if _, err := ChatGPTSubscriptionAuthorizeURL("https://attacker.invalid", "state", "nonce", verifier, "urn:uuid:fixture"); err == nil {
+	if _, err := ChatGPTSubscriptionAuthorizeURL("https://attacker.invalid", "state", "nonce", verifier, "urn:uuid:fixture", ""); err == nil {
 		t.Fatal("non-loopback callback was accepted")
 	}
 	claims := map[string]any{"iss": "https://auth.openai.com", "aud": "registered-client", "nonce": "nonce", "exp": time.Now().Add(time.Hour).Unix(), "sub": "user-1", "email": "account@example.test"}

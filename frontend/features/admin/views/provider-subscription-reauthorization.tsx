@@ -41,7 +41,7 @@ export function ProviderSubscriptionReauthorization({ api, actions, providerType
     {!resource ? <p>{tx("请在顶部账号列表中选择一个账号，再更新其凭据。")}</p> : <>
       <p>{resource.name}</p>
       {!open ? <button className="secondary-button" type="button" disabled={busy} onClick={() => { setOpen(true); setSaved(false); setError(""); }}>{tx("重新授权账号")}</button> : <>
-        {credentials ? <p role="status">{tx("新凭据已准备好，请保存以完成更新。")}</p> : <ProviderSubscriptionAuth api={api} actions={actions} providerType={providerType} disabled={busy} onCredentials={result => {
+        {credentials ? <p role="status">{tx("新凭据已准备好，请保存以完成更新。")}</p> : <ProviderSubscriptionAuth key={resource.id} api={api} actions={actions} providerType={providerType} resourceID={resource.id} disabled={busy} onCredentials={result => {
           if (!result.access_token?.trim() && !result.session_json?.trim()) throw new Error(tx("未在回调结果中识别到 Token。"));
           setCredentials(result); setError("");
         }} />}

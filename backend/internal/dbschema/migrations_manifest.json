@@ -76,6 +76,15 @@
       "checksum": "72a397ebe3eafb22fef5a41848d1ca83cbd8b30c3f7491e4db2cbc5005150090",
       "lock_timeout_seconds": 30,
       "statement_budget": 2
+    },
+    {
+      "version": 10,
+      "name": "add-subscription-oauth-registrations",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "6e711e07bffa5bda9d04679c54e2d82fa72766b0d83bb0d364778f4a8af35fa4",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 2
     }
   ]
 }

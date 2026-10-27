@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginActionDescriptor } from "../core/types";
-import { ProviderSubscriptionAuth, subscriptionCredentialValues } from "./provider-subscription-auth";
+import { ProviderSubscriptionAuth, subscriptionCredentialIdentity, subscriptionCredentialValues } from "./provider-subscription-auth";
+import { providerResourcePayload } from "../resources/payloads";
 
 const api = { baseURL: "http://localhost:8080", adminToken: "synthetic-admin" };
 function actions(opaque = false): PluginActionDescriptor[] {
@@ -267,8 +268,15 @@ describe("Subscription authorization concurrency", () => {
   });
 
   it("replaces previous account secrets when a new subscription is authorized", () => {
-    const original = { session_json: '{"access":"old-session"}', access_token: "old-access", refresh_token: "old-refresh", account_id: "old-account" };
+    const original = { session_json: '{"access":"old-session"}', access_token: "old-access", refresh_token: "old-refresh", account_id: "old-account", user_id: "old-subject" };
     const replacement = { ...original, ...subscriptionCredentialValues({ access_token: "new-access" }, true) };
-    expect(replacement).toMatchObject({ replace_credentials: "true", session_json: "", access_token: "new-access", refresh_token: "", account_id: "" });
+    expect(replacement).toMatchObject({ replace_credentials: "true", session_json: "", access_token: "new-access", refresh_token: "", account_id: "", user_id: "" });
+  });
+
+  it("saves the validated user subject separately from the provider account ID", () => {
+    const values = subscriptionCredentialValues({ access_token: "synthetic-access", client_id: "synthetic-client", user_id: "synthetic-user-subject", account_id: "synthetic-workspace" }, true);
+    const payload = providerResourcePayload({ resource_type: "chatgpt_subscription", ...values });
+    expect(payload.credentials).toMatchObject({ replace: true, access_token: "synthetic-access", client_id: "synthetic-client", user_id: "synthetic-user-subject", account_id: "synthetic-workspace" });
+    expect(subscriptionCredentialIdentity("chatgpt-subscription", "chatgpt-api", values)).not.toBe(subscriptionCredentialIdentity("chatgpt-subscription", "chatgpt-api", { ...values, user_id: "different-user-subject" }));
   });
 });

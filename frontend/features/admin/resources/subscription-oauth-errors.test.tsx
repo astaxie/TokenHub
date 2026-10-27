@@ -28,10 +28,10 @@ describe("Subscription OAuth exchange error guidance", () => {
   const locales: AppLanguage[] = ["zh-CN", "en", "ja", "ru"];
   it.each(locales)("localizes fixed errors in %s", language => {
     setActiveLanguage(language);
-    for (const code of ["subscription_oauth_code_rejected", "subscription_oauth_client_rejected", "subscription_oauth_exchange_failed", "subscription_oauth_authorization_denied"]) {
+    for (const code of ["subscription_oauth_code_rejected", "subscription_oauth_client_rejected", "subscription_oauth_exchange_failed", "subscription_oauth_authorization_denied", "subscription_oauth_registration_retry"]) {
       const message = subscriptionOAuthErrorMessage(code);
       expect(message).toBeTruthy();
-      if (language !== "zh-CN") expect(message).not.toContain("请重新打开授权");
+      if (language !== "zh-CN") expect(message).not.toMatch(/请重新打开授权|客户端注册已完成/);
     }
     for (const oauthReason of ["code_expired", "code_already_used", "pkce_verifier_mismatch", "redirect_uri_mismatch"]) {
       const message = subscriptionOAuthErrorMessage("subscription_oauth_code_rejected", { oauth_reason: oauthReason });
@@ -45,6 +45,12 @@ describe("Subscription OAuth exchange error guidance", () => {
     expect(subscriptionOAuthErrorMessage("subscription_oauth_client_rejected")).toContain("including its client_id parameter");
     expect(subscriptionOAuthErrorMessage("subscription_oauth_client_rejected")).not.toContain("secret");
     expect(subscriptionOAuthErrorMessage("provider_resource_reauthorization_required")).toBeUndefined();
+  });
+
+  it("explains a saved registration retry without claiming the authorization expired", async () => {
+    setActiveLanguage("zh-CN");
+    const response = new Response(JSON.stringify({ error: { code: "subscription_oauth_registration_retry", message: "private-upstream-body" } }), { status: 409 });
+    expect(await readAdminError(response, "fallback")).toBe("客户端注册已完成。请再次点击“打开授权”并完成登录，以继续连接账号。");
   });
 
   it.each<[AppLanguage, string]>([

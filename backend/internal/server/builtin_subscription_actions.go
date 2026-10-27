@@ -38,7 +38,7 @@ func registerBuiltinSubscriptionActions(server *Server, actions builtinActionReg
 					metadata["oauth_callback_fields"] = "client_id"
 					metadata["automatic_callback_supported"] = "true"
 				}
-				schema = actionObjectSchema(nil, map[string]string{"redirect_uri": "string", "return_url": "string", "organization_id": "string", "method_id": "string", "inputs": "object", "client_id": "string", "client_secret": "string", "github_host": "string", "automatic_callback": "boolean"})
+				schema = actionObjectSchema(nil, map[string]string{"redirect_uri": "string", "return_url": "string", "organization_id": "string", "method_id": "string", "inputs": "object", "client_id": "string", "client_secret": "string", "github_host": "string", "automatic_callback": "boolean", "registration_id": "string", "resource_id": "string"})
 			case "oauth.methods":
 				schema = actionObjectSchema(nil, nil)
 			case "oauth.cancel":

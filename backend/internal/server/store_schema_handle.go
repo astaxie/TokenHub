@@ -92,6 +92,7 @@ func SchemaMigrationRegistry() []dbschema.Migration {
 		jevResponseBindingMigration(),
 		mediaTaskBindingMigration(),
 		usageWindowIndexesMigration(),
+		subscriptionOAuthRegistrationMigration(),
 		{
 			Version:          2,
 			Name:             "add-granular-billing-columns-sqlite",

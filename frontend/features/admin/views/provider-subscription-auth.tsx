@@ -7,7 +7,7 @@ import { subscriptionAuthLabel } from "../i18n/subscription-auth-labels";
 import { supportsLocalSubscriptionCallback } from "../domain/provider-local-callback";
 
 type LoginMethod = { id: string; method_id?: string; label: string; type: string; prompts?: Array<{ key: string; label: string; type?: string; options?: Array<{ value: string; label: string }> }> };
-type LoginSession = { session_id: string; state: string; auth_url?: string; url?: string; flow?: string; user_code?: string; poll_interval?: number; expires_at?: string; instructions?: string; local_listener?: boolean; callback_mode?: string };
+type LoginSession = { session_id: string; state: string; registration_id?: string; auth_url?: string; url?: string; flow?: string; user_code?: string; poll_interval?: number; expires_at?: string; instructions?: string; local_listener?: boolean; callback_mode?: string };
 
 export function supportsSubscriptionAuthorization(actions: PluginActionDescriptor[], providerType: string) {
   return providerPluginActionForCapability(actions, providerType, "oauth.start")?.metadata?.subscription_auth === "true";
@@ -27,7 +27,7 @@ function subscriptionAuthorizationError(error: unknown) {
     : error.message;
 }
 
-const subscriptionCredentialKeys = ["session_json", "client_id", "client_secret", "access_token", "refresh_token", "id_token", "account_email", "account_id", "organization_id", "plan_type", "token_type", "expires_at", "scopes"] as const;
+const subscriptionCredentialKeys = ["session_json", "client_id", "client_secret", "access_token", "refresh_token", "id_token", "account_email", "account_id", "user_id", "organization_id", "plan_type", "token_type", "expires_at", "scopes"] as const;
 
 export function subscriptionCredentialIdentity(providerType: string, catalogID: string, values: Record<string, string>) {
   return JSON.stringify([providerType, catalogID, values.auth_type || "", values.resource_type || "", ...subscriptionCredentialKeys.map(key => values[key] || "")]);
@@ -41,12 +41,13 @@ export function subscriptionCredentialValues(result: ProviderAccountOAuthResult,
   return values;
 }
 
-export function ProviderSubscriptionAuth({ api, actions, providerType, disabled, organizationID, onCredentials }: {
+export function ProviderSubscriptionAuth({ api, actions, providerType, disabled, organizationID, resourceID, onCredentials }: {
   api: ApiContext;
   actions: PluginActionDescriptor[];
   providerType: string;
   disabled?: boolean;
   organizationID?: string;
+  resourceID?: string;
   onCredentials: (credentials: ProviderAccountOAuthResult) => void | Promise<void>;
 }) {
   const [methods, setMethods] = useState<LoginMethod[]>([]);
@@ -62,6 +63,7 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
   const [importedSession, setImportedSession] = useState("");
   const generation = useRef(0);
   const activeSession = useRef<LoginSession | null>(null);
+  const registrationID = useRef("");
   const onCredentialsRef = useRef(onCredentials);
   useEffect(() => { onCredentialsRef.current = onCredentials; }, [onCredentials]);
   const startAction = providerPluginActionForCapability(actions, providerType, "oauth.start");
@@ -73,14 +75,16 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
   useEffect(() => () => {
     const pending = activeSession.current;
     activeSession.current = null;
+    registrationID.current = "";
     exchangeInFlight.current = null;
     if (pending && cancelAction) void runProviderCapabilityAction(api, providerType, "oauth.cancel", cancelAction, { session_id: pending.session_id, state: pending.state }, tx("取消")).catch(() => {});
-  }, [api, cancelAction, providerType]);
+  }, [api, cancelAction, providerType, resourceID]);
 
-  function cancelSession() {
+  function cancelSession(clearRegistration = true) {
     const pending = activeSession.current;
     generation.current += 1;
     activeSession.current = null;
+    if (clearRegistration) registrationID.current = "";
     setSession(null); setCallback(""); setInputs({}); setBusy(false); setPolling(false); exchangeInFlight.current = null;
     if (pending && cancelAction) void runProviderCapabilityAction(api, providerType, "oauth.cancel", cancelAction, { session_id: pending.session_id, state: pending.state }, tx("取消")).catch(() => {});
   }
@@ -141,12 +145,13 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
     const current = generation.current;
     try {
       const automaticCallback = supportsLocalSubscriptionCallback(providerType, api.baseURL, typeof window === "undefined" ? undefined : window.location.href);
-      const result = await runProviderCapabilityAction<LoginSession & ProviderAccountOAuthResult>(api, providerType, "oauth.start", startAction, { method_id: methodID, inputs, key: inputs.key, organization_id: organizationID, redirect_uri: startAction.metadata?.oauth_redirect_uri, ...(automaticCallback ? { automatic_callback: true } : {}) }, tx("生成账号授权地址"));
+      const result = await runProviderCapabilityAction<LoginSession & ProviderAccountOAuthResult>(api, providerType, "oauth.start", startAction, { method_id: methodID, inputs, key: inputs.key, organization_id: organizationID, redirect_uri: startAction.metadata?.oauth_redirect_uri, ...(automaticCallback ? { automatic_callback: true } : {}), ...(providerType === "chatgpt-subscription" ? { resource_id: resourceID, ...(registrationID.current ? { registration_id: registrationID.current } : {}) } : {}) }, tx("生成账号授权地址"));
       if (generation.current !== current) {
         if (result.session_id && cancelAction) void runProviderCapabilityAction(api, providerType, "oauth.cancel", cancelAction, { session_id: result.session_id, state: result.state }, tx("取消")).catch(() => {});
         return;
       }
       setInputs({});
+      if (providerType === "chatgpt-subscription" && typeof result.registration_id === "string") registrationID.current = result.registration_id;
       if (result.session_json || result.access_token) { await onCredentialsRef.current(result); setComplete(true); return; }
       const authURL = result.auth_url || result.url || "";
       if (authURL && !validAuthorizationURL(authURL, result.local_listener)) throw new Error(tx("授权地址无效。"));
@@ -177,7 +182,7 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
       setCallback(""); setSession(null); setComplete(true);
     } catch (err) {
       if (generation.current === current) {
-        if (!opaqueSession && session.flow === "authorization_code") cancelSession();
+        if (!opaqueSession && session.flow === "authorization_code") cancelSession(false);
         setError(subscriptionAuthorizationError(err));
       }
     }
@@ -211,7 +216,7 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
       {session.user_code ? <p>{tx("设备授权码")} <strong>{session.user_code}</strong></p> : null}
       {session.flow === "auto" && session.callback_mode === "none" ? <p>{tx("请在供应商网页完成登录后返回这里。TokenHub 会自动回填账号凭据，无需粘贴授权码。回填后请保存账号资源。")}</p> : ["device_code", "auto"].includes(session.flow ?? "") ? <p>{tx("请在授权页面完成登录，TokenHub 会自动检查结果。")}</p> : null}
       {session.flow !== "device_code" && session.callback_mode !== "none" ? <label className="field"><span>{tx("回调结果")}</span><textarea value={callback} onChange={(event) => setCallback(event.target.value)} /><button className="secondary-button" type="button" disabled={busy || polling || !callback.trim()} onClick={() => { void exchange(); }}>{tx("完成授权")}</button></label> : null}
-      <button className="secondary-button" type="button" onClick={cancelSession}>{tx("取消")}</button>
+      <button className="secondary-button" type="button" onClick={() => cancelSession()}>{tx("取消")}</button>
     </div> : null}
     {opaqueSession ? <details><summary>{tx("导入订阅会话")}</summary><label className="field"><span>{tx("订阅会话 JSON")}</span><textarea value={importedSession} onChange={(event) => setImportedSession(event.target.value)} /><small>{tx("仅粘贴本人授权的完整会话 JSON；将加密保存，保存后不会再次显示。")}</small></label><button className="secondary-button" type="button" disabled={disabled || busy || Boolean(session) || !importedSession.trim()} onClick={() => { void importSession(); }}>{tx("导入订阅会话")}</button></details> : null}
     {complete ? <div role="status"><p>{tx("已回填账号 Token")}</p><p>{tx("账号凭据已回填，请保存账号资源以完成接入。")}</p></div> : null}

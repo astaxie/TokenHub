@@ -20,7 +20,7 @@ function setup(failSave = false, exchange?: Promise<ProviderAccountOAuthResult>)
     requests.push({ method, path, body });
     if (path.includes("provider-catalog")) return new Response(JSON.stringify({ data: catalog }));
     if (path.endsWith("oauth.methods")) return new Response(JSON.stringify({ data: { methods: [{ id: "token", label: "Synthetic token", type: "api", prompts: [{ key: "key", label: "Synthetic setup token" }] }] } }));
-    if (path.endsWith("oauth.exchange")) return new Response(JSON.stringify({ data: exchange ? await exchange : { access_token: "synthetic-replacement-token", catalog } }));
+    if (path.endsWith("oauth.exchange")) return new Response(JSON.stringify({ data: exchange ? await exchange : { access_token: "synthetic-replacement-token", user_id: "synthetic-subject", account_id: "synthetic-workspace", catalog } }));
     if (method === "PATCH" && path.endsWith("account_first")) {
       if (failSave) { failSave = false; return new Response(JSON.stringify({ error: { message: "Synthetic save failure" } }), { status: 503 }); }
       return new Response(JSON.stringify({ data: resources[0] }));
@@ -55,7 +55,7 @@ describe("Saved subscription account reauthorization", () => {
     const patch = requests.find(request => request.method === "PATCH")!;
     expect(patch.path).toBe("/api/admin/provider-resources/account_first");
     expect(Object.keys(patch.body!)).toEqual(["credentials"]);
-    expect(patch.body?.credentials).toMatchObject({ replace: true, access_token: "synthetic-replacement-token", session_json: "", email: "", account_id: "", refresh_token: "" });
+    expect(patch.body?.credentials).toMatchObject({ replace: true, access_token: "synthetic-replacement-token", session_json: "", email: "", account_id: "synthetic-workspace", user_id: "synthetic-subject", refresh_token: "" });
     expect(panel.getByText("账号凭据已更新。")).toBeVisible();
   });
 

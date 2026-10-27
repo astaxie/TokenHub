@@ -23,6 +23,8 @@ type subscriptionOAuthSecret struct {
 	ExpiresAt         time.Time                    `json:"expires_at"`
 	AutomaticCallback bool                         `json:"automatic_callback,omitempty"`
 	Callback          *chatGPTSubscriptionCallback `json:"callback,omitempty"`
+	RegistrationID    string                       `json:"registration_id,omitempty"`
+	HostID            string                       `json:"host_id,omitempty"`
 }
 
 func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinSubscriptionDefinition, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
@@ -35,6 +37,8 @@ func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinS
 		GitHubHost        string            `json:"github_host"`
 		Inputs            map[string]string `json:"inputs"`
 		AutomaticCallback bool              `json:"automatic_callback"`
+		RegistrationID    string            `json:"registration_id"`
+		ResourceID        string            `json:"resource_id"`
 	}
 	if len(invocation.Payload) > 0 && json.Unmarshal(invocation.Payload, &request) != nil {
 		return pluginmeta.ActionResult{}, NewHTTPError(400, "invalid_plugin_action_payload", "Plugin action payload is invalid")
@@ -86,12 +90,23 @@ func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinS
 				result["redirect_uri"] = callbackURL
 			}
 		}
-		host, hostErr := randomHex(16)
-		if hostErr != nil {
-			return pluginmeta.ActionResult{}, hostErr
+		registrations, supported := s.store.(chatGPTSubscriptionRegistrationStore)
+		if !supported {
+			return pluginmeta.ActionResult{}, NewHTTPError(503, "subscription_oauth_registration_unavailable", "ChatGPT API registration storage is unavailable")
 		}
-		hostID := "urn:uuid:" + host[:8] + "-" + host[8:12] + "-4" + host[13:16] + "-a" + host[17:20] + "-" + host[20:]
-		authURL, err = ChatGPTSubscriptionAuthorizeURL(session.RedirectURI, state, nonce, verifier, hostID)
+		var registration chatGPTSubscriptionRegistration
+		var registrationErr error
+		if resourceID := strings.TrimSpace(request.ResourceID); resourceID != "" {
+			registration, registrationErr = registrations.chatGPTSubscriptionRegistrationForResource(ctx, invocation.Actor.ID, strings.TrimSpace(request.RegistrationID), resourceID)
+		} else {
+			registration, registrationErr = registrations.chatGPTSubscriptionRegistration(ctx, invocation.Actor.ID, strings.TrimSpace(request.RegistrationID))
+		}
+		if registrationErr != nil {
+			return pluginmeta.ActionResult{}, registrationErr
+		}
+		secret.RegistrationID, secret.HostID, secret.ClientID = registration.ID, registration.HostID, registration.ClientID
+		result["registration_id"] = registration.ID
+		authURL, err = ChatGPTSubscriptionAuthorizeURL(session.RedirectURI, state, nonce, verifier, registration.HostID, registration.ClientID)
 	default:
 		secret.OrganizationID = firstNonEmpty(strings.TrimSpace(request.Inputs["organization_id"]), strings.TrimSpace(request.OrganizationID))
 		secret.ClientID, secret.ClientSecret, err = resolveGoogleSubscriptionOAuthClient(definition.providerType, request.MethodID,
@@ -155,6 +170,12 @@ func (s *Server) exchangeSubscriptionOAuth(ctx context.Context, definition built
 	if definition.providerType != ProviderGitHubCopilotSubscription && !automatic && strings.TrimSpace(request.Code) == "" {
 		return pluginmeta.ActionResult{}, NewHTTPError(400, "missing_oauth_code", "OAuth authorization code is required")
 	}
+	if definition.providerType == ProviderChatGPTSubscription && !automatic {
+		request.ClientID, err = chatGPTSubscriptionCallbackClientID(secret.ClientID, request.ClientID)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+	}
 	session, ok, err = s.store.ConsumeProviderAccountOAuthSession(request.SessionID, request.State)
 	if err != nil {
 		return pluginmeta.ActionResult{}, err
@@ -208,7 +229,24 @@ func (s *Server) exchangeSubscriptionOAuth(ctx context.Context, definition built
 		if !ok {
 			return pluginmeta.ActionResult{}, NewHTTPError(503, "provider_adapter_missing", "ChatGPT adapter is unavailable")
 		}
+		request.ClientID, err = chatGPTSubscriptionCallbackClientID(secret.ClientID, request.ClientID)
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
+		registrations, supported := s.store.(chatGPTSubscriptionRegistrationStore)
+		if !supported {
+			return pluginmeta.ActionResult{}, NewHTTPError(503, "subscription_oauth_registration_unavailable", "ChatGPT API registration storage is unavailable")
+		}
+		if err := registrations.bindChatGPTSubscriptionRegistration(ctx, secret.ActorID, secret.RegistrationID, secret.HostID, request.ClientID, ""); err != nil {
+			return pluginmeta.ActionResult{}, err
+		}
 		credentials, err = adapter.ExchangeAuthorization(ctx, ChatGPTSubscriptionAuthorization{Code: request.Code, ClientID: request.ClientID, Verifier: secret.Verifier, Nonce: secret.Nonce, RedirectURI: session.RedirectURI})
+		if err != nil && secret.ClientID == "" && AsHTTPError(err).Code == "subscription_oauth_code_rejected" {
+			return pluginmeta.ActionResult{}, NewHTTPError(409, "subscription_oauth_registration_retry", "ChatGPT API registration was saved, but its initial authorization code was rejected. Open authorization again to continue with the saved registration.")
+		}
+		if err == nil {
+			err = registrations.bindChatGPTSubscriptionRegistration(ctx, secret.ActorID, secret.RegistrationID, secret.HostID, request.ClientID, credentials.UserID)
+		}
 	default:
 		adapter, ok := resolveTypedAdapter[*GoogleSubscriptionAdapter](s.adapterRegistry, definition.providerType)
 		if !ok {

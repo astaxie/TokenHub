@@ -21,8 +21,8 @@ func TestChatGPTSubscriptionAutomaticCallbackRequiresConfiguredLoopbackAndOptIn(
 		automatic                  bool
 	}{
 		{"ipv4", "http://127.0.0.1:8080", "http://127.0.0.1:8080/auth/callback", true},
-		{"localhost", "http://localhost:8080/", "http://localhost:8080/auth/callback", true},
-		{"ipv6", "http://[::1]:8080", "http://[::1]:8080/auth/callback", true},
+		{"localhost", "http://localhost:8080/", "http://127.0.0.1:8080/auth/callback", true},
+		{"ipv6", "http://[::1]:8080", "http://127.0.0.1:8080/auth/callback", true},
 		{"opt_out", "http://127.0.0.1:8080", "", false},
 		{"remote", "https://tokenhub.example", "", true},
 		{"remote_http", "http://tokenhub.example:8080", "", true},
@@ -58,6 +58,7 @@ func TestChatGPTSubscriptionAutomaticCallbackRejectsMalformedAndForeignSessions(
 		{"code": {"private-code"}},
 		{"client_id": {"dynamic-client"}},
 		{"code": {"private-code"}, "client_id": {"dynamic_agent_client"}},
+		{"code": {"private-code"}, "client_id": {" issued-client "}},
 		{"code": {"private-code", "second-code"}, "client_id": {"dynamic-client"}},
 		{"code": {strings.Repeat("c", 8193)}, "client_id": {"dynamic-client"}},
 		{"code": {"private-code"}, "client_id": {strings.Repeat("c", 1025)}},

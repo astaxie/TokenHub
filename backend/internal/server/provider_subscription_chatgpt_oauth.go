@@ -13,22 +13,25 @@ import (
 	"time"
 )
 
-// ChatGPTSubscriptionAuthorizeURL builds the dynamic-client authorization URL.
+// ChatGPTSubscriptionAuthorizeURL builds an initial or returning authorization URL.
 // The caller owns one-time state, PKCE verifier and nonce storage and validation.
-func ChatGPTSubscriptionAuthorizeURL(redirectURI, state, nonce, verifier, hostID string) (string, error) {
+func ChatGPTSubscriptionAuthorizeURL(redirectURI, state, nonce, verifier, hostID, clientID string) (string, error) {
 	if !chatGPTSubscriptionRedirect(redirectURI) || state == "" || nonce == "" || len(verifier) < 43 || !strings.HasPrefix(hostID, "urn:uuid:") {
 		return "", NewHTTPError(400, "subscription_oauth_invalid", "ChatGPT API OAuth session is incomplete")
 	}
-	query := url.Values{"client_id": {"dynamic_agent_client"}, "agent_name_hint": {"TokenHub"}, "ext_agent_host_id": {hostID}, "response_type": {"code"},
+	query := url.Values{"client_id": {firstNonEmpty(clientID, "dynamic_agent_client")}, "ext_agent_host_id": {hostID}, "response_type": {"code"},
 		"redirect_uri": {redirectURI}, "resource": {chatGPTSubscriptionBaseURL}, "scope": {"openid profile email offline_access resource.invoke " + chatGPTSubscriptionDirectScope},
 		"state": {state}, "nonce": {nonce}, "code_challenge": {openAICodeChallenge(verifier)}, "code_challenge_method": {"S256"}}
+	if clientID == "" {
+		query.Set("agent_name_hint", "TokenHub")
+	}
 	return "https://auth.openai.com/api/accounts/authorize?" + query.Encode(), nil
 }
 
 func chatGPTSubscriptionRedirect(value string) bool {
 	u, err := url.Parse(value)
 	return err == nil && u.Scheme == "http" && u.User == nil && u.RawQuery == "" && u.Fragment == "" &&
-		(u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1")
+		u.Hostname() == "127.0.0.1" && u.Path == "/auth/callback"
 }
 
 type ChatGPTSubscriptionAuthorization struct {

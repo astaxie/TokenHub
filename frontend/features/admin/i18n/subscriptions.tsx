@@ -1,5 +1,6 @@
 export const subscriptionTranslations = {
   en: {
+  "客户端注册已完成。请再次点击“打开授权”并完成登录，以继续连接账号。": "Client registration is complete. Click “Open Authorization” again and finish signing in to continue connecting the account.",
   "本次授权未获同意。请重新打开授权，并在登录页同意所需权限。": "This authorization was not approved. Open authorization again and approve the required permissions on the sign-in page.",
   "Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。": "The Grok authorization is missing the api:access permission required for model requests. Edit this account, authorize it again with the required permission, then save the account.",
   "上游拒绝了本次注册的授权客户端。请重新打开授权并完成登录；仅在页面要求手动回填时，粘贴本次登录生成的完整回调地址（保留其中的 client_id 参数）。": "The provider rejected the authorization client registered for this attempt. Open authorization again and complete sign-in. Only if the page asks for a manual callback, paste the latest full callback URL from that sign-in, including its client_id parameter.",
@@ -75,6 +76,7 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth Client ID"
 },
   ja: {
+  "客户端注册已完成。请再次点击“打开授权”并完成登录，以继续连接账号。": "クライアントの登録が完了しました。もう一度「認可を開く」をクリックしてログインを完了し、アカウントの接続を続けてください。",
   "本次授权未获同意。请重新打开授权，并在登录页同意所需权限。": "今回の認可は承認されませんでした。認可を開き直し、ログインページで必要な権限に同意してください。",
   "Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。": "Grok の認可に、モデルの呼び出しに必要な api:access 権限がありません。このアカウントを編集し、必要な権限に同意して再認可した後、アカウントを保存してください。",
   "上游拒绝了本次注册的授权客户端。请重新打开授权并完成登录；仅在页面要求手动回填时，粘贴本次登录生成的完整回调地址（保留其中的 client_id 参数）。": "プロバイダーが今回登録された認可クライアントを拒否しました。認可を開き直してログインを完了してください。ページでコールバックの手動入力を求められた場合にのみ、client_id パラメーターを含む今回のログインで生成された最新のコールバック URL 全体を貼り付けてください。",
@@ -150,6 +152,7 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth クライアント ID"
 },
   ru: {
+  "客户端注册已完成。请再次点击“打开授权”并完成登录，以继续连接账号。": "Регистрация клиента завершена. Снова нажмите «Открыть авторизацию» и завершите вход, чтобы продолжить подключение аккаунта.",
   "本次授权未获同意。请重新打开授权，并在登录页同意所需权限。": "Эта авторизация не была одобрена. Откройте авторизацию снова и предоставьте необходимые разрешения на странице входа.",
   "Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。": "В авторизации Grok отсутствует разрешение api:access, необходимое для запросов к моделям. Отредактируйте этот аккаунт, повторно авторизуйте его с необходимым разрешением, затем сохраните аккаунт.",
   "上游拒绝了本次注册的授权客户端。请重新打开授权并完成登录；仅在页面要求手动回填时，粘贴本次登录生成的完整回调地址（保留其中的 client_id 参数）。": "Провайдер отклонил клиент авторизации, зарегистрированный для этой попытки. Откройте авторизацию снова и войдите в аккаунт. Только если страница запрашивает ручной ввод обратного вызова, вставьте последний полный URL обратного вызова, полученный при этом входе, включая параметр client_id.",
