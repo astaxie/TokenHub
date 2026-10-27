@@ -31,7 +31,16 @@ func (s *Server) applySemanticRouting(ctx context.Context, routed *RoutedCall, r
 	}
 	text, eligible := jevChatText(req)
 	_, scope := chatCompletionSessionIdentifier(headers, req)
+	geminiProviders := map[string]bool{}
+	for _, route := range routed.Routes {
+		if route.Provider.Type == ProviderGemini {
+			geminiProviders[route.Provider.ID] = true
+		}
+	}
 	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel) jevCompatibility {
+		if geminiProviders[model.ProviderID] && !slices.Contains(model.SupportedParameters, "store") {
+			model.SupportedParameters = append(slices.Clone(model.SupportedParameters), "store")
+		}
 		return jevChatCompatibility(model, req)
 	})
 }

@@ -6,6 +6,144 @@
   "display_name": "Moonshot AI (China)",
   "models": [
     {
+      "id": "kimi-k3.1-pro-highspeed",
+      "name": "Kimi K3.1 Pro Highspeed",
+      "display_name": "Kimi K3.1 Pro Highspeed",
+      "family": "kimi",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.kimi.com/docs/guide/kimi-k3-1-pro-quickstart",
+        "verified_at": "2026-10-28",
+        "availability": "active",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "sampling_note": "Fixed temperature=1, top_p=.95,n=1,penalties=0; omit.",
+        "vision_note": "Public image URLs unsupported; use base64 or ms://file-id.",
+        "output_note": "Default max_completion_tokens 131072; maximum 1048576 within the shared context.",
+        "catalog_reviewed_at": "2026-10-28",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "1048576",
+        "pricing_status": "unverified",
+        "access_region": "China",
+        "pricing_note": "China CNY reference rates; cache write rates depend on TTL and remain unverified. No currency conversion.",
+        "call_support": "unsupported",
+        "original_currency": "CNY",
+        "original_unit": "per_million_tokens",
+        "original_prices": "{\"input\":26,\"output\":136,\"cache_read\":1.3}",
+        "pricing_source": "https://platform.kimi.com/",
+        "support_note": "Catalog only until image, video, thinking and continuation contracts have been verified for this model."
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 1048576
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "kimi",
+      "last_updated": "2026-10-28",
+      "supported_parameters": [
+        "max_completion_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kimi-k3.1-pro",
+      "name": "Kimi K3.1 Pro",
+      "display_name": "Kimi K3.1 Pro",
+      "family": "kimi",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://platform.kimi.com/docs/guide/kimi-k3-1-pro-quickstart",
+        "verified_at": "2026-10-28",
+        "availability": "active",
+        "reasoning_effort_options": "low,high,max",
+        "thinking_can_disable": "false",
+        "sampling_note": "Fixed temperature=1, top_p=.95,n=1,penalties=0; omit.",
+        "vision_note": "Public image URLs unsupported; use base64 or ms://file-id.",
+        "output_note": "Default max_completion_tokens 131072; maximum 1048576 within the shared context.",
+        "catalog_reviewed_at": "2026-10-28",
+        "lifecycle_status": "active",
+        "reasoning_effort_default": "max",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions",
+        "max_output_tokens": "1048576",
+        "pricing_status": "unverified",
+        "access_region": "China",
+        "pricing_note": "China CNY reference rates; cache write rates depend on TTL and remain unverified. No currency conversion.",
+        "call_support": "unsupported",
+        "original_currency": "CNY",
+        "original_unit": "per_million_tokens",
+        "original_prices": "{\"input\":13,\"output\":68,\"cache_read\":1.3}",
+        "pricing_source": "https://platform.kimi.com/",
+        "support_note": "Catalog only until image, video, thinking and continuation contracts have been verified for this model."
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 1048576
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "tool_call": true,
+      "temperature": false,
+      "category": "kimi",
+      "last_updated": "2026-10-28",
+      "supported_parameters": [
+        "max_completion_tokens"
+      ],
+      "endpoints": "chat/completions",
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      ]
+    },
+    {
       "id": "kimi-k2.6",
       "name": "Kimi K2.6",
       "family": "kimi-k2",
@@ -60,7 +198,13 @@
           "visibility": "summary"
         }
       },
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "new_user_restriction_date": "2026-10-31",
+        "lifecycle_source": "https://platform.kimi.com/docs/models",
+        "lifecycle_note": "Newly registered users lose access from October 31; existing users are unaffected by this restriction. The K2 series is planned for retirement at the end of December 2026; no exact cutoff time is published.",
+        "catalog_reviewed_at": "2026-10-28"
+      }
     },
     {
       "id": "kimi-k2.5",
@@ -425,6 +569,12 @@
           "default_enabled": true,
           "mode": "fixed"
         }
+      },
+      "metadata": {
+        "new_user_restriction_date": "2026-10-31",
+        "lifecycle_source": "https://platform.kimi.com/docs/models",
+        "lifecycle_note": "Newly registered users lose access from October 31; existing users are unaffected by this restriction. The K2 series is planned for retirement at the end of December 2026; no exact cutoff time is published.",
+        "catalog_reviewed_at": "2026-10-28"
       }
     },
     {
@@ -517,12 +667,15 @@
         "spec_source": "https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart",
         "output_note": "32768 is documented default max_tokens, not verified hard output limit.",
         "pricing_status": "unverified",
-        "catalog_reviewed_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-28",
         "lifecycle_status": "active",
         "reasoning_supported": "true",
         "endpoints": "chat/completions",
         "access_region": "China",
-        "pricing_note": "China prices remain unverified; global USD prices do not apply."
+        "pricing_note": "China prices remain unverified; global USD prices do not apply.",
+        "new_user_restriction_date": "2026-10-31",
+        "lifecycle_source": "https://platform.kimi.com/docs/models",
+        "lifecycle_note": "Newly registered users lose access from October 31; existing users are unaffected by this restriction. The K2 series is planned for retirement at the end of December 2026; no exact cutoff time is published."
       },
       "limit": {
         "context": 256000

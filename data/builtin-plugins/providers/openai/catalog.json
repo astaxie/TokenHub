@@ -5,6 +5,125 @@
   "display_name": "OpenAI",
   "models": [
     {
+      "id": "gpt-6.1-terra",
+      "name": "GPT-6.1 Terra",
+      "display_name": "GPT-6.1 Terra",
+      "family": "gpt",
+      "type": "chat",
+      "attachment": true,
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "structured_output": true,
+      "temperature": false,
+      "knowledge": "2026-06-01",
+      "last_updated": "2026-10-28",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false,
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "cost": {
+        "input": 1,
+        "output": 5,
+        "cache_read": 0.05,
+        "cache_write": 1.25,
+        "tiers": [
+          {
+            "input": 2,
+            "output": 7.5,
+            "cache_read": 0.1,
+            "cache_write": 2.5,
+            "tier": {
+              "type": "context",
+              "size": 272000
+            }
+          }
+        ]
+      },
+      "extra_capabilities": {
+        "reasoning": {
+          "supported": true,
+          "default_enabled": true,
+          "mode": "effort",
+          "effort": "medium",
+          "effort_options": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "visibility": "hidden"
+        }
+      },
+      "endpoints": "responses,chat/completions",
+      "description": "Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters are unsupported while reasoning is enabled.",
+      "metadata": {
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6.1-terra",
+        "verified_at": "2026-10-28",
+        "availability": "active",
+        "catalog_reviewed_at": "2026-10-28",
+        "lifecycle_status": "active",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "responses,chat/completions",
+        "max_output_tokens": "128000",
+        "reference_token_prices": "{\"input\":1,\"output\":5,\"cache_read\":0.05,\"cache_write\":1.25,\"tiers\":[{\"input\":2,\"output\":7.5,\"cache_read\":0.1,\"cache_write\":2.5,\"tier\":{\"type\":\"context\",\"size\":272000}}]}",
+        "pricing_status": "unverified",
+        "catalog_price_reference": "true",
+        "pricing_note": "Standard rates per million tokens; above 272000 input tokens input/cache rates double and output increases by 50%. The cache write rate is for 30-minute retention; 12-hour writes cost $2.50 per million before tier adjustments. Fast, Batch, Flex and regional rates differ. Confirm rates before publishing."
+      },
+      "category": "openai",
+      "supported_parameters": [
+        "max_tokens",
+        "max_output_tokens",
+        "max_completion_tokens",
+        "tool_choice",
+        "parallel_tool_calls",
+        "text",
+        "include",
+        "truncation",
+        "service_tier",
+        "safety_identifier",
+        "prompt_cache_options",
+        "prompt_cache_retention",
+        "max_tool_calls",
+        "stream_options",
+        "store"
+      ],
+      "request_parameter_profile": "openai-chat-responses-v1",
+      "reasoning_effort_default": "medium",
+      "sampling_requires_reasoning_effort": "none",
+      "chat_tools_requires_reasoning_effort": "unsupported",
+      "release_date": "2026-10-26"
+    },
+    {
       "id": "gpt-live-transcribe",
       "name": "gpt-live-transcribe",
       "display_name": "gpt-live-transcribe",

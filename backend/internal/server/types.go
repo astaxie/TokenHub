@@ -967,6 +967,7 @@ type ChatCompletionRequest struct {
 	PromptCacheKey any `json:"prompt_cache_key,omitempty"`
 	User           any `json:"user,omitempty"`
 	raw            map[string]json.RawMessage
+	geminiStore    *bool
 }
 
 // UnmarshalJSON keeps provider-specific message fields so compatible upstreams

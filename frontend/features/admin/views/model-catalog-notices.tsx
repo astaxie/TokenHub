@@ -45,6 +45,7 @@ export function ModelCatalogNotices({ metadata }: { metadata?: Record<string, st
   else if (shutdownDate) messages.push(formatTranslationTemplate(tx("官方停用日期：{date}（时区未公布）"), { date: formatDate(shutdownDate) }));
   if (redirectDate) messages.push(formatTranslationTemplate(tx("计划重定向日期：{date}（时区未公布）"), { date: formatDate(redirectDate) }));
   if (newUserDate) messages.push(formatTranslationTemplate(tx("新用户访问限制日期：{date}（时区未公布）"), { date: formatDate(newUserDate) }));
+  if (metadata.regional_lifecycle_status === "retiring") messages.push(formatTranslationTemplate(tx("部分地域已公告停用：{regions}；请核对部署地域。"), { regions: regions(metadata.lifecycle_regions) }));
   if (metadata.regional_lifecycle_status === "legacy") messages.push(formatTranslationTemplate(tx("部分地域已进入 Legacy：{regions}；请核对部署地域。"), { regions: regions(metadata.lifecycle_regions) }));
   if (regionalEol) messages.push(formatTranslationTemplate(tx("上述地域停用日期：{date}（时区未公布）"), { date: formatDate(regionalEol) }));
   if (metadata.replacement_model) messages.push(formatTranslationTemplate(tx("替代型号：{model}"), { model: metadata.replacement_model }));

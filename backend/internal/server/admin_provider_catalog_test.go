@@ -607,7 +607,9 @@ func TestAdminKimiCodingTemplateImportsOfficialModels(t *testing.T) {
 	expectedModels := map[string]string{
 		"k3":                        "kimi-k3",
 		"k3-256k":                   "kimi-k3-256k",
-		"kimi-for-coding":           "kimi-k2.7-code",
+		"k3.1-pro":                  "k3.1-pro",
+		"k3.1-pro-highspeed":        "k3.1-pro-highspeed",
+		"kimi-for-coding":           "kimi-for-coding",
 		"kimi-for-coding-highspeed": "kimi-k2.7-code-highspeed",
 	}
 	if len(catalogPayload.Data.Models) != len(expectedModels) {
@@ -628,7 +630,7 @@ func TestAdminKimiCodingTemplateImportsOfficialModels(t *testing.T) {
 		"status":          "active",
 		"healthy":         true,
 		"model_category":  "kimi",
-		"selected_models": []string{"k3", "k3-256k", "kimi-for-coding", "kimi-for-coding-highspeed"},
+		"selected_models": []string{"k3", "k3-256k", "k3.1-pro", "k3.1-pro-highspeed", "kimi-for-coding", "kimi-for-coding-highspeed"},
 	}, "")
 	if createResp.Code != http.StatusCreated {
 		t.Fatalf("expected Kimi provider creation, got %d: %s", createResp.Code, createResp.Body)

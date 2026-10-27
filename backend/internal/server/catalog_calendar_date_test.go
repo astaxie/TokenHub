@@ -65,3 +65,20 @@ func TestCalendarDatePolicyBlocksOnlyNewRoutesAndClearsWithdrawnDates(t *testing
 		t.Fatal("date overlay retained stale dates or changed saved inventory")
 	}
 }
+
+func TestRegionalAdvisoryRefreshesExistingInventoryWithoutGlobalRetirement(t *testing.T) {
+	provider := Provider{ID: "p", Options: map[string]string{"catalog_id": "enterprise"}}
+	original := ProviderModel{ProviderID: "p", UpstreamModel: "model", Status: StatusActive, Metadata: map[string]string{"source": "local-provider-catalog"}}
+	current := map[string]string{"lifecycle_status": "active", "regional_lifecycle_status": "retiring", "regional_eol_date": "2026-10-31", "lifecycle_regions": `["Guangzhou"]`}
+	effective := (catalogAdvisoryIndex{"enterprise": {"model": current}}).apply(provider, original)
+	if effective.Metadata["regional_eol_date"] != "2026-10-31" || effective.Metadata["lifecycle_regions"] != `["Guangzhou"]` || catalogModelRetired(effective.Metadata, time.Now()) {
+		t.Fatalf("wrong scoped advisory: %+v", effective.Metadata)
+	}
+	if original.Metadata["regional_eol_date"] != "" {
+		t.Fatal("stored inventory was mutated")
+	}
+	other := (catalogAdvisoryIndex{}).apply(Provider{ID: "p", Options: map[string]string{"catalog_id": "other"}}, effective)
+	if other.Metadata["regional_eol_date"] != "" || other.Metadata["lifecycle_regions"] != "" {
+		t.Fatalf("regional advisory leaked: %+v", other.Metadata)
+	}
+}
