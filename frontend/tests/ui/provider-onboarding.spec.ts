@@ -1,6 +1,7 @@
 import type { AdapterDescriptor, PluginDescriptor, Provider, ProviderCatalogEntry, ProviderResource } from "../../features/admin/core/types";
 import { test, expect, capture } from "./harness";
 import { fixedTime } from "./fixtures/shell";
+import { subscriptionBrandIcons } from "./fixtures/subscription-brand-icons";
 import type { MockAPI } from "./network";
 
 const direct: ProviderCatalogEntry = { id: "ui-direct", name: "UI Direct Service", display_name: "UI Direct Service", type: "openai_compatible", base_url: "https://api.example.test/v1", categories: ["openai"], models_count: 2, source: "ui-fixture" };
@@ -98,6 +99,48 @@ function installProviderFixtures(api: MockAPI, state: string) {
     });
   }
   return () => releaseConnection?.();
+}
+
+for (const variant of ["desktop-light", "desktop-dark", "mobile-light"] as const) {
+  test(`provider-onboarding subscription-brand-icons ${variant}`, async ({ page, api }, testInfo) => {
+    const mobile = variant.startsWith("mobile");
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    installProviderFixtures(api, "catalog-filters");
+    api.replaceResponse("GET", "/api/admin/provider-catalog", { data: [direct, ...subscriptionBrandIcons.map(item => item.entry), subscription] });
+    api.replaceResponse("GET", "/api/admin/provider-adapters", { data: [...adapters, ...subscriptionBrandIcons.map(({ entry }): AdapterDescriptor => ({ type: entry.type, capabilities: ["chat"], provider_policy: { supports_custom_headers: false, credentials_scope: "resource" } }))] });
+    await page.goto("/providers");
+    if (variant.endsWith("dark")) await page.getByRole("button", { name: "切换主题", exact: true }).click();
+    await expect(page.locator(".app-shell")).toHaveAttribute("data-theme", variant.endsWith("dark") ? "dark" : "light");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    await editor.getByRole("group", { name: "供应商分类" }).getByRole("button", { name: /^订阅与账号/ }).click();
+    expect(subscriptionBrandIcons).toHaveLength(35);
+    const group = editor.locator(".provider-onboarding-group").filter({ has: page.getByRole("heading", { name: "订阅与账号", exact: true }) });
+    const cards = group.locator(".provider-onboarding-card");
+    await expect(cards).toHaveCount(36);
+    for (const { entry, source } of subscriptionBrandIcons) {
+      const card = cards.filter({ has: page.getByText(entry.name, { exact: true }) });
+      await expect(card).toHaveCount(1);
+      const icon = card.locator(".provider-onboarding-card-icon img");
+      await expect(icon).toHaveAttribute("src", source);
+      await expect.poll(() => icon.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0), { message: `${entry.name} must load its local brand artwork` }).toBe(true);
+      await expect(card.locator(".provider-onboarding-card-icon.fallback")).toHaveCount(0);
+    }
+    await expect(cards.filter({ hasText: "UI Subscription" }).locator(".provider-onboarding-card-icon.fallback")).toHaveCount(1);
+    const segmentSize = mobile ? 3 : 9;
+    const segmentStarts = mobile ? [0, 15, 33] : [0, 9, 18, 27];
+    for (const start of segmentStarts) {
+      const first = cards.nth(start);
+      const last = cards.nth(Math.min(start + segmentSize - 1, 35));
+      await last.scrollIntoViewIfNeeded();
+      await first.scrollIntoViewIfNeeded();
+      await expect(first).toBeInViewport({ ratio: 1 });
+      await expect(last).toBeInViewport({ ratio: 1 });
+      await capture(page, testInfo, group, `subscription-brand-icons-${variant}-${start + 1}`, "订阅与账号：按品牌显示本地图标", "viewport");
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Brand cards must not overflow the viewport").toBe(true);
+    expect(api.calls.filter(call => call.method !== "GET"), "Browsing brand icons must not write account data").toHaveLength(0);
+  });
 }
 
 for (const viewport of ["desktop", "mobile"] as const) {
