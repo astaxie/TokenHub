@@ -1262,7 +1262,7 @@ export function ProviderUpsertModal({
                         <span>{tx("账号 OAuth 授权")}</span>
                         <div className="field-action-row">
                           <input readOnly value={accountOAuthRedirectURI} />
-                          <button className="secondary-button" onClick={requestProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
+                          <button className="button provider-authorization-button" onClick={requestProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
                             <Send size={14} />
                             {tx(accountOAuthBusy ? "授权中" : "打开授权")}
                           </button>

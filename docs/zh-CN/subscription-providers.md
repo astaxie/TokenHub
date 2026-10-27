@@ -24,8 +24,8 @@ TokenHub 集成了固定版本 Magpie 清单中的 6 个启用的内置账户 Pr
 | OpenAI Codex | `openai_codex` | 现有 Codex OAuth 或显式账户导入 | Responses 及现有兼容转换 |
 | GitHub Copilot | `github-copilot-subscription` | GitHub 设备码 | Chat 和 Responses |
 | ChatGPT API | `chatgpt-subscription` | Sign in with ChatGPT，或显式导入 token | 使用直接 API token 的 Responses；独立于 Codex 后端 |
-| Gemini CLI | `gemini_cli_subscription` | 管理员提供桌面客户端配置的 Google 浏览器 OAuth | 通过 Code Assist 提供 Chat |
-| Antigravity | `antigravity_subscription` | 管理员提供桌面客户端配置的 Google 浏览器 OAuth | 通过 Code Assist 提供 Chat |
+| Gemini CLI | `gemini_cli_subscription` | 使用内置桌面客户端配置的 Google 浏览器 OAuth，可选自定义配置 | 通过 Code Assist 提供 Chat |
+| Antigravity | `antigravity_subscription` | 使用内置桌面客户端配置的 Google 浏览器 OAuth，可选自定义配置 | 通过 Code Assist 提供 Chat |
 
 全部 29 个社区集成对外提供 **Chat**，在上游模型支持时包含流式输出和调用方定义的工具。内部采用 Chat、Anthropic、Responses 或 Gemini 协议，不代表对外增加 Responses、Embedding 或媒体接口。下表每项还支持显式会话 JSON 导入；Kimi Work 仅支持此方式。
 
@@ -92,9 +92,9 @@ Copilot 和社区 Chat 请求路由到 Responses 模型时，会保留 `temperat
 
 Gemini CLI 和 Antigravity 将代理认证失败与连接超时保留为出口故障，不会惩罚有效账号。GCP 的 token 刷新和模型发现会区分临时上游故障、限流和凭据被拒绝。ChatGPT、Gemini CLI 和 Antigravity 的 token 刷新同样保留临时故障的上游状态和有效重试等待时间，包括绑定账号的限流。
 
-Gemini CLI 和 Antigravity 登录时，需要在登录表单中显式填写获所选 Provider 批准的桌面应用 **OAuth client ID 与 client secret**。它们是账户登录字段，不是环境变量；TokenHub 不内置共享 Google OAuth 客户端凭据。客户端配置随账户凭据加密保存，供 token 刷新使用。任意 Google OAuth 桌面客户端即使可以认证 Google 用户，也可能没有对应 Code Assist 或 Antigravity 服务的使用资格。使用前应取得获准的配置，并确认账户具备上游访问资格。
+Gemini CLI 和 Antigravity 默认选择 **Google 账号（默认）**，直接点击蓝色的 **打开授权** 即可，无需填写 client ID 或 client secret。每个 Provider 使用各自公开的桌面应用 OAuth 配置；这些应用参数本身不能授权账号，用户仍需登录 Google 并授权。只有需要自定义客户端时，才选择 **自定义 Google OAuth（高级）** 并填写完整的 client ID/secret，缺少其中一项会被拒绝。所选配置绑定到加密的授权会话，并随账号保存供 token 刷新使用；已有账号保留原来的客户端配置。
 
-Google 账号需要显式指定 Cloud 项目时，请在连接或重新授权的可选登录字段中填写项目 ID。所选项目随新凭据保存；重新授权不会自动复制旧账号的项目。
+Google 账号如果需要指定 Cloud 项目，可选择 **Google 账号（指定 Cloud 项目）**，只填写项目 ID，继续使用内置客户端配置。自定义客户端方式也支持项目 ID。项目随新凭据保存，重新授权时不会自动沿用旧账号的项目。完成 Google 登录后，将回调 URL 粘贴到 TokenHub，凭据回填后保存账号。账号资格和模型访问权限仍由上游服务决定。
 
 Antigravity 工具参数会转换为其支持的 OpenAPI schema 子集，支持本地引用和可空字段；递归、外部、无法解析或展开过大的 schema 会在推理前返回 HTTP 400。Gemini CLI 保留现有的 JSON Schema 处理方式。
 

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestGoogleSubscriptionActionsRequireAndProtectClientCredentials(t *testing.T) {
+func TestGoogleSubscriptionActionsRequireAndProtectCustomClientCredentials(t *testing.T) {
 	for _, definition := range builtinSubscriptionDefinitions() {
 		if definition.providerType != providerGeminiCLISubscription && definition.providerType != providerAntigravitySubscription {
 			continue
@@ -22,7 +22,18 @@ func TestGoogleSubscriptionActionsRequireAndProtectClientCredentials(t *testing.
 			if methods.Code != http.StatusOK || !strings.Contains(methods.Body, `"key":"client_secret"`) || !strings.Contains(methods.Body, `"key":"client_id"`) || !strings.Contains(methods.Body, `"key":"organization_id"`) {
 				t.Fatalf("Google OAuth client prompts are unavailable: %s", methods.Body)
 			}
-			missing := doJSON(t, server.Handler(), http.MethodPost, path+"oauth.start", map[string]any{"resource_type": definition.resourceType}, "dev_admin_token")
+			var catalog struct {
+				Data struct {
+					Methods []struct {
+						ID      string           `json:"id"`
+						Prompts []map[string]any `json:"prompts"`
+					} `json:"methods"`
+				} `json:"data"`
+			}
+			if json.Unmarshal([]byte(methods.Body), &catalog) != nil || len(catalog.Data.Methods) != 3 || catalog.Data.Methods[0].ID != "google" || len(catalog.Data.Methods[0].Prompts) != 0 || catalog.Data.Methods[1].ID != "google_project" || len(catalog.Data.Methods[1].Prompts) != 1 || catalog.Data.Methods[2].ID != "oauth_client" || len(catalog.Data.Methods[2].Prompts) != 3 {
+				t.Fatal("Google sign-in should default to a prompt-free account method and retain custom configuration")
+			}
+			missing := doJSON(t, server.Handler(), http.MethodPost, path+"oauth.start", map[string]any{"resource_type": definition.resourceType, "method_id": "oauth_client"}, "dev_admin_token")
 			if missing.Code != http.StatusBadRequest || !strings.Contains(missing.Body, "google_subscription_oauth_client_required") {
 				t.Fatal("Google authorization accepted a missing OAuth client")
 			}

@@ -18,7 +18,7 @@ func (a *GoogleSubscriptionAdapter) DefaultOAuthRedirectURI() string {
 	return "http://127.0.0.1:8085/oauth2callback"
 }
 
-// GoogleSubscriptionAuthorizeURL uses an administrator-provided OAuth client.
+// GoogleSubscriptionAuthorizeURL uses the OAuth client resolved for this session.
 // The caller owns one-time state storage and callback validation.
 func GoogleSubscriptionAuthorizeURL(providerType, redirectURI, state, verifier, clientID string) (string, error) {
 	if (providerType != providerGeminiCLISubscription && providerType != providerAntigravitySubscription) || state == "" || !googleSubscriptionOAuthInput(redirectURI, verifier) {

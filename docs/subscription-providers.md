@@ -24,8 +24,8 @@ The six native integrations use these TokenHub provider types. “Chat” means 
 | OpenAI Codex | `openai_codex` | Existing Codex OAuth or explicit account import | Responses and existing compatibility bridges |
 | GitHub Copilot | `github-copilot-subscription` | GitHub device code | Chat and Responses |
 | ChatGPT API | `chatgpt-subscription` | Sign in with ChatGPT, or explicit token import | Responses using a direct API token; separate from the Codex backend |
-| Gemini CLI | `gemini_cli_subscription` | Google browser OAuth with administrator-supplied desktop-client configuration | Chat through Code Assist |
-| Antigravity | `antigravity_subscription` | Google browser OAuth with administrator-supplied desktop-client configuration | Chat through Code Assist |
+| Gemini CLI | `gemini_cli_subscription` | Google browser OAuth with built-in desktop-client defaults and optional custom configuration | Chat through Code Assist |
+| Antigravity | `antigravity_subscription` | Google browser OAuth with built-in desktop-client defaults and optional custom configuration | Chat through Code Assist |
 
 All 29 community integrations expose **Chat**, including streaming and caller-defined tools where supported by the upstream model. Their internal Chat, Anthropic, Responses, or Gemini wire format does not add public Responses, embeddings, or media support. Every row also supports explicit session JSON import; this is the only connection path for Kimi Work.
 
@@ -92,9 +92,9 @@ Copilot and community Chat requests routed to Responses models retain `temperatu
 
 Gemini CLI and Antigravity keep proxy authentication failures and connection timeouts classified as egress failures, so they do not penalize a valid account. GCP token refresh and model discovery keep temporary upstream failures and rate limits distinct from rejected credentials. ChatGPT, Gemini CLI, and Antigravity token refresh also preserve transient upstream status and valid retry delays, including account-bound rate limits.
 
-For Gemini CLI and Antigravity, explicitly supply the **OAuth client ID and client secret** of a desktop application approved for the selected provider in the login prompts. These are account login fields, not environment variables; TokenHub does not ship shared Google OAuth client credentials. The client configuration is retained with the encrypted account credentials for refresh. An arbitrary Google OAuth desktop client may authenticate a Google user yet lack eligibility for the provider's Code Assist or Antigravity service. Obtain an approved configuration and confirm the account's upstream eligibility before use.
+For Gemini CLI and Antigravity, select **Google account (default)** and click the blue **Open authorization** button. No client ID or client secret is required: each provider uses its own public installed-app OAuth configuration. These application parameters do not authorize an account; the user still signs in to Google and grants access. Select **Custom Google OAuth (advanced)** to use a complete custom client ID/secret pair. Partial overrides are rejected. The selected pair is bound to the encrypted authorization session and saved account for token refresh; existing accounts retain their own client configuration.
 
-If the Google account requires an explicit Cloud project, enter its project ID in the optional login prompt when connecting or reauthorizing. The selected project is stored with the new credentials; reauthorization does not copy the previous account’s project automatically.
+If a Google account needs an explicit Cloud project, select **Google account with Cloud project (advanced)** and enter only the project ID; it uses the same built-in client configuration. The custom-client method also accepts a project ID. The selected project is saved with the new credentials and is not silently inherited from an old account during reauthorization. Complete Google sign-in, paste the callback URL into TokenHub, and save the account after credentials are filled. Account eligibility and model access are still determined by the upstream service.
 
 Antigravity tool parameters are projected to its supported OpenAPI schema subset. Local references and nullable fields are supported; recursive, external, unresolved, or excessively expanded schemas are rejected with HTTP 400 before inference. Gemini CLI retains its existing JSON Schema handling.
 

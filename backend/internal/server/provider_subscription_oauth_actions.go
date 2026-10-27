@@ -25,6 +25,7 @@ type subscriptionOAuthSecret struct {
 
 func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinSubscriptionDefinition, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 	var request struct {
+		MethodID       string            `json:"method_id"`
 		RedirectURI    string            `json:"redirect_uri"`
 		OrganizationID string            `json:"organization_id"`
 		ClientID       string            `json:"client_id"`
@@ -82,10 +83,10 @@ func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinS
 		authURL, err = ChatGPTSubscriptionAuthorizeURL(session.RedirectURI, state, nonce, verifier, hostID)
 	default:
 		secret.OrganizationID = firstNonEmpty(strings.TrimSpace(request.Inputs["organization_id"]), strings.TrimSpace(request.OrganizationID))
-		secret.ClientID = strings.TrimSpace(firstNonEmpty(request.ClientID, request.Inputs["client_id"]))
-		secret.ClientSecret = strings.TrimSpace(firstNonEmpty(request.ClientSecret, request.Inputs["client_secret"]))
-		if !googleSubscriptionClientCredentialsValid(secret.ClientID, secret.ClientSecret) {
-			return pluginmeta.ActionResult{}, googleSubscriptionClientCredentialsRequired()
+		secret.ClientID, secret.ClientSecret, err = resolveGoogleSubscriptionOAuthClient(definition.providerType, request.MethodID,
+			firstNonEmpty(request.ClientID, request.Inputs["client_id"]), firstNonEmpty(request.ClientSecret, request.Inputs["client_secret"]))
+		if err != nil {
+			return pluginmeta.ActionResult{}, err
 		}
 		authURL, err = GoogleSubscriptionAuthorizeURL(definition.providerType, session.RedirectURI, state, verifier, secret.ClientID)
 	}

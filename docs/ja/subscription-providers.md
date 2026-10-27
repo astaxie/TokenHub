@@ -24,8 +24,8 @@ TokenHub は、固定版 Magpie の有効な組み込みアカウント Provider
 | OpenAI Codex | `openai_codex` | 既存の Codex OAuth または明示的なアカウントインポート | Responses と既存の互換変換 |
 | GitHub Copilot | `github-copilot-subscription` | GitHub デバイスコード | Chat と Responses |
 | ChatGPT API | `chatgpt-subscription` | Sign in with ChatGPT、または明示的な token インポート | 直接 API token を使う Responses。Codex バックエンドとは別経路 |
-| Gemini CLI | `gemini_cli_subscription` | 管理者がデスクトップクライアント設定を指定する Google ブラウザー OAuth | Code Assist 経由の Chat |
-| Antigravity | `antigravity_subscription` | 管理者がデスクトップクライアント設定を指定する Google ブラウザー OAuth | Code Assist 経由の Chat |
+| Gemini CLI | `gemini_cli_subscription` | 内蔵のデスクトップクライアント設定を使う Google ブラウザー OAuth（カスタム設定も可能） | Code Assist 経由の Chat |
+| Antigravity | `antigravity_subscription` | 内蔵のデスクトップクライアント設定を使う Google ブラウザー OAuth（カスタム設定も可能） | Code Assist 経由の Chat |
 
 コミュニティ統合の全 29 件は **Chat** を公開し、上流モデルが対応する場合はストリーミングと呼び出し元定義のツールを利用できます。内部の Chat、Anthropic、Responses、Gemini 形式は、公開 Responses、埋め込み、メディア API の追加を意味しません。全項目で明示的なセッション JSON インポートも利用できます。Kimi Work はインポートのみ対応します。
 
@@ -92,9 +92,9 @@ Copilot とコミュニティの Chat リクエストを Responses モデルへ�
 
 Gemini CLI と Antigravity は、プロキシ認証の失敗と接続タイムアウトを出口通信の障害として扱い、有効なアカウントにペナルティを与えません。GCP の token 更新とモデル取得では、一時的な上流障害やレート制限を認証情報の拒否と区別します。ChatGPT、Gemini CLI、Antigravity の token 更新でも、アカウントに固定したリクエストのレート制限を含め、一時的な上流ステータスと有効な再試行待機時間を保持します。
 
-Gemini CLI と Antigravity では、選択した Provider が承認したデスクトップアプリの **OAuth client ID と client secret** をログインフォームに明示的に入力してください。環境変数ではなくアカウントのログイン項目です。TokenHub は共有の Google OAuth クライアント認証情報を同梱しません。クライアント設定は token 更新のためアカウント認証情報とともに暗号化して保存します。任意の Google OAuth デスクトップクライアントで Google ユーザーを認証できても、対象の Code Assist や Antigravity サービスの利用資格がない場合があります。承認された設定を取得し、アカウントの上流サービス利用資格を確認してから使用してください。
+Gemini CLI と Antigravity では、**Google アカウント（標準）** を選び、青い **認可を開く** ボタンを押します。client ID や client secret の入力は不要です。各 Provider に対応する公開のデスクトップアプリ用 OAuth 設定を使用します。このアプリ設定だけではアカウントは認可されず、ユーザーによる Google ログインと同意が必要です。独自の設定が必要な場合は **カスタム Google OAuth（詳細設定）** を選び、client ID と client secret の両方を入力してください。片方だけの指定は拒否されます。設定は暗号化した認可セッションに固定され、token 更新用にアカウントとともに保存されます。既存のアカウントは以前のクライアント設定を保持します。
 
-Google アカウントで Cloud プロジェクトの明示が必要な場合、接続時または再認可時の任意ログイン項目にプロジェクト ID を入力してください。選択したプロジェクトは新しい認証情報とともに保存します。再認可時に以前のアカウントのプロジェクトを自動では引き継ぎません。
+Cloud プロジェクトの指定が必要な Google アカウントでは、**Google アカウント（Cloud プロジェクトを指定）** を選び、プロジェクト ID のみを入力します。クライアントは内蔵設定を使用します。カスタムクライアント方式でもプロジェクト ID を指定できます。プロジェクトは新しい認証情報とともに保存され、再認可時に旧アカウントの値を自動で引き継ぎません。Google ログイン後にコールバック URL を TokenHub に貼り付け、認証情報が入力されたらアカウントを保存してください。アカウント資格とモデルへのアクセスは上流サービスが判断します。
 
 Antigravity のツール引数は、対応する OpenAPI schema のサブセットへ変換されます。ローカル参照と nullable フィールドに対応し、再帰参照、外部参照、未解決の参照、過大な展開は推論前に HTTP 400 で拒否します。Gemini CLI の既存の JSON Schema 処理は維持されます。
 

@@ -3,9 +3,9 @@ import { test, expect, capture } from "./harness";
 import type { MockAPI } from "./network";
 
 function installReauthorization(api: MockAPI, googleProject = false) {
-  const provider: Provider = { id: "prv_ui_reauthorization", name: "UI Subscription Reauthorization", type: "ui_subscription", status: "active", healthy: true, priority: 1, options: { catalog_id: "ui-subscription" } };
+  const provider: Provider = { id: "prv_ui_reauthorization", name: "UI Subscription Reauthorization", type: googleProject ? "antigravity_subscription" : "ui_subscription", status: "active", healthy: true, priority: 1, options: { catalog_id: "ui-subscription" } };
   const catalog: ProviderCatalogEntry = { id: "ui-subscription", name: provider.name, display_name: provider.name, type: provider.type, source: "ui-fixture", models_count: 0, models: [] };
-  const resource: ProviderResource = { id: "account_ui_reauthorization", provider_id: provider.id, name: "UI Existing Account", resource_type: "ui_account", status: "active", healthy: true, priority: 7, weight: 25, credential_summary: { account_email: "old@example.invalid", account_id: "old-identity", auth_type: "oauth", oauth_reauthorization_required: "true" } };
+  const resource: ProviderResource = { id: "account_ui_reauthorization", provider_id: provider.id, name: "UI Existing Account", resource_type: googleProject ? "antigravity_account" : "ui_account", status: "active", healthy: true, priority: 7, weight: 25, credential_summary: { account_email: "old@example.invalid", account_id: "old-identity", auth_type: "oauth", oauth_reauthorization_required: "true" } };
   const pluginID = "test.ui-reauthorization";
   const actions: PluginActionDescriptor[] = ["oauth.methods", "oauth.start", "oauth.exchange", "oauth.cancel"].map(capability => ({ plugin_id: pluginID, action_id: capability, capability, subject: provider.type, kind: "mutate", metadata: { subscription_auth: "true", subscription_session_json: googleProject ? "false" : "true", provider_resource_type: resource.resource_type } }));
   api.respond("GET", "/api/admin/providers", { data: [provider] });
@@ -22,8 +22,8 @@ function installReauthorization(api: MockAPI, googleProject = false) {
   api.define("GET", "/api/admin/audit/requests", () => ({ json: { data: [], pagination: { page: 1, page_size: 20, total: 0, total_pages: 0 }, summary: { all: 0, ok: 0, error: 0, average_latency_ms: 0 } } }), query => {
     expect(Object.fromEntries(query)).toEqual({ page: "1", page_size: "20", status: "all", q: "" });
   });
-  const projectLabel = "Google Cloud project ID (optional; required for some accounts)";
-  api.respond("POST", `/api/admin/provider-actions/${provider.type}/oauth.methods`, { data: { methods: googleProject ? [{ id: "oauth_client", label: "Google OAuth client", type: "oauth", prompts: [{ key: "client_id", label: "Google OAuth client ID", type: "text" }, { key: "client_secret", label: "Google OAuth client secret", type: "password" }, { key: "organization_id", label: projectLabel, type: "text" }] }] : [] } });
+  const projectLabel = "Google Cloud 项目 ID（可选，部分账号需要）";
+  api.respond("POST", `/api/admin/provider-actions/${provider.type}/oauth.methods`, { data: { methods: googleProject ? [{ id: "google", label: "Google account", type: "oauth" }, { id: "google_project", label: "Google account with Cloud project (advanced)", type: "oauth", prompts: [{ key: "organization_id", label: "Google Cloud project ID (optional; required for some accounts)", type: "text" }] }, { id: "oauth_client", label: "Custom Google OAuth client (advanced)", type: "oauth", prompts: [{ key: "client_id", label: "Google OAuth client ID", type: "text" }, { key: "client_secret", label: "Google OAuth client secret", type: "password" }, { key: "organization_id", label: "Google Cloud project ID (optional; required for some accounts)", type: "text" }] }] : [] } });
   if (googleProject) api.define("POST", `/api/admin/provider-actions/${provider.type}/oauth.start`, input => {
     expect(input.body).toEqual({ resource_type: resource.resource_type, method_id: "oauth_client", inputs: { client_id: "synthetic-client", client_secret: "synthetic-secret", organization_id: "replacement-cloud-project" } });
     return { json: { data: { session_id: "synthetic-google-session", state: "synthetic-state", flow: "authorization_code", auth_url: "https://auth.example.test/login" } } };
@@ -84,9 +84,12 @@ for (const mobile of [false, true]) test(`subscription Google reauthorization ac
   await editor.getByRole("combobox", { name: "账号列表" }).selectOption(resource.id);
   const panel = editor.getByRole("region", { name: "更新订阅账号凭据" });
   await panel.getByRole("button", { name: "重新授权账号", exact: true }).click();
+  await expect(panel.getByRole("combobox", { name: "登录方式", exact: true })).toHaveValue("google");
+  await expect(panel.getByLabel(projectLabel, { exact: true })).toHaveCount(0);
+  await panel.getByRole("combobox", { name: "登录方式", exact: true }).selectOption("oauth_client");
   await expect(panel.getByLabel(projectLabel, { exact: true })).toHaveValue("");
-  await panel.getByLabel("Google OAuth client ID", { exact: true }).fill("synthetic-client");
-  await panel.getByLabel("Google OAuth client secret", { exact: true }).fill("synthetic-secret");
+  await panel.getByLabel("Google OAuth 客户端 ID", { exact: true }).fill("synthetic-client");
+  await panel.getByLabel("Google OAuth 客户端密钥", { exact: true }).fill("synthetic-secret");
   await panel.getByLabel(projectLabel, { exact: true }).fill("replacement-cloud-project");
   await panel.getByLabel(projectLabel, { exact: true }).scrollIntoViewIfNeeded();
   await capture(page, testInfo, panel, `subscription-google-project-${mobile ? "mobile" : "desktop"}`, "订阅账号：重新授权时指定 Cloud 项目", "viewport");

@@ -128,7 +128,13 @@ for (const viewport of ["desktop", "mobile"] as const) {
     const editor = page.locator("form.provider-modal");
     await editor.getByRole("button", { name: /UI Subscription/ }).click();
     const auth = editor.locator("div.provider-account-auth-wide");
-    await auth.getByRole("button", { name: "打开授权", exact: true }).click();
+    const openAuthorization = auth.getByRole("button", { name: "打开授权", exact: true });
+    await expect(openAuthorization).toBeEnabled();
+    await openAuthorization.scrollIntoViewIfNeeded();
+    await expect(openAuthorization).toBeInViewport({ ratio: 1 });
+    expect((await openAuthorization.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await capture(page, testInfo, auth, `subscription-browser-ready-${viewport}`, "订阅授权：蓝色主按钮作为首要操作", "viewport");
+    await openAuthorization.click();
     await expect(auth.getByText("请在供应商网页完成登录后返回这里。TokenHub 会自动回填账号凭据，无需粘贴授权码。回填后请保存账号资源。", { exact: true })).toBeVisible();
     await expect(auth.getByLabel("回调结果", { exact: true })).toHaveCount(0);
     await expect.poll(() => api.calls.filter(call => call.path.endsWith("oauth.exchange")).length).toBeGreaterThan(0);

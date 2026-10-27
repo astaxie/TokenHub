@@ -85,11 +85,11 @@ func TestGoogleSubscriptionOAuthRejectsUntrustedInputAndIdentity(t *testing.T) {
 	}
 }
 
-func TestGoogleSubscriptionRequiresExplicitOAuthClientCredentials(t *testing.T) {
+func TestGoogleSubscriptionTokenOperationsRequireResolvedOAuthClientCredentials(t *testing.T) {
 	verifier := strings.Repeat("v", 43)
 	for _, clientID := range []string{"", " ", strings.Repeat("x", 4097)} {
 		if _, err := GoogleSubscriptionAuthorizeURL(providerGeminiCLISubscription, "http://localhost/callback", "state", verifier, clientID); AsHTTPError(err).Code != "google_subscription_oauth_client_required" {
-			t.Fatal("authorization accepted a missing or invalid administrator client")
+			t.Fatal("authorization accepted a missing or invalid resolved client")
 		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -100,11 +100,11 @@ func TestGoogleSubscriptionRequiresExplicitOAuthClientCredentials(t *testing.T) 
 	adapter := googleSubscriptionTestAdapter(server, providerGeminiCLISubscription)
 	for _, credentials := range []ProviderResourceCredentials{{}, {ClientID: "synthetic-client-id"}, {ClientSecret: "synthetic-client-secret"}, {ClientID: "synthetic-client-id", ClientSecret: strings.Repeat("x", 16385)}} {
 		if _, err := adapter.ExchangeAuthorization(context.Background(), "code", verifier, adapter.DefaultOAuthRedirectURI(), credentials.ClientID, credentials.ClientSecret); AsHTTPError(err).Code != "google_subscription_oauth_client_required" {
-			t.Fatal("exchange accepted a missing or invalid administrator client")
+			t.Fatal("exchange accepted a missing or invalid resolved client")
 		}
 		credentials.RefreshToken = "synthetic-refresh"
 		if _, err := adapter.refresh(context.Background(), credentials); AsHTTPError(err).Code != "google_subscription_oauth_client_required" {
-			t.Fatal("refresh accepted a missing or invalid administrator client")
+			t.Fatal("refresh accepted a missing or invalid saved client")
 		}
 	}
 }

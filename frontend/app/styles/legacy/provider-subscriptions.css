@@ -1,3 +1,26 @@
+.button.provider-authorization-button {
+  min-height: 46px;
+  height: auto;
+  min-width: 160px;
+  max-width: 100%;
+  padding: 11px 22px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.button.provider-authorization-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .provider-account-auth-wide > .provider-authorization-button {
+    width: 100%;
+  }
+}
+
 .provider-checkin-card .provider-quota-card-head {
   align-items: flex-start;
   flex-wrap: wrap;

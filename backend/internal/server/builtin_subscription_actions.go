@@ -65,7 +65,11 @@ func (s *Server) executeBuiltinSubscriptionAction(ctx context.Context, definitio
 		if definition.providerType == ProviderGitHubCopilotSubscription {
 			return pluginmeta.ActionResult{Data: map[string]any{"methods": []any{map[string]any{"id": "github_device", "label": "GitHub device authorization", "type": "oauth", "prompts": []any{map[string]any{"key": "github_host", "label": "GitHub host (blank for github.com, or enterprise.ghe.com)", "type": "text"}}}}}}, nil
 		}
-		return pluginmeta.ActionResult{Data: map[string]any{"methods": []any{map[string]any{"id": "oauth_client", "label": "Google OAuth client", "type": "oauth", "prompts": []any{map[string]any{"key": "client_id", "label": "Google OAuth client ID", "type": "text"}, map[string]any{"key": "client_secret", "label": "Google OAuth client secret", "type": "password"}, map[string]any{"key": "organization_id", "label": "Google Cloud project ID (optional; required for some accounts)", "type": "text"}}}}}}, nil
+		return pluginmeta.ActionResult{Data: map[string]any{"methods": []any{
+			map[string]any{"id": "google", "label": "Google account", "type": "oauth"},
+			map[string]any{"id": "google_project", "label": "Google account with Cloud project (advanced)", "type": "oauth", "prompts": []any{map[string]any{"key": "organization_id", "label": "Google Cloud project ID (optional; required for some accounts)", "type": "text"}}},
+			map[string]any{"id": "oauth_client", "label": "Custom Google OAuth client (advanced)", "type": "oauth", "prompts": []any{map[string]any{"key": "client_id", "label": "Google OAuth client ID", "type": "text"}, map[string]any{"key": "client_secret", "label": "Google OAuth client secret", "type": "password"}, map[string]any{"key": "organization_id", "label": "Google Cloud project ID (optional; required for some accounts)", "type": "text"}}},
+		}}}, nil
 	}
 	if capability == "oauth.start" {
 		return s.startSubscriptionOAuth(ctx, definition, invocation)

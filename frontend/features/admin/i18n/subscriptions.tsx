@@ -1,5 +1,11 @@
 export const subscriptionTranslations = {
   en: {
+  "Google 账号（默认）": "Google account (default)",
+  "Google 账号（指定 Cloud 项目）": "Google account with Cloud project (advanced)",
+  "自定义 Google OAuth（高级）": "Custom Google OAuth (advanced)",
+  "Google OAuth 客户端 ID": "Google OAuth client ID",
+  "Google OAuth 客户端密钥": "Google OAuth client secret",
+  "Google Cloud 项目 ID（可选，部分账号需要）": "Google Cloud project ID (optional; required for some accounts)",
   "更新订阅账号凭据": "Update subscription credentials",
   "重新登录或导入会话，保存后替换所选账号的旧凭据；调度配置保持不变。": "Sign in again or import a session, then save to replace the selected account's credentials. Scheduling settings are preserved.",
   "请在顶部账号列表中选择一个账号，再更新其凭据。": "Select one account from the list above before updating its credentials.",
@@ -59,6 +65,12 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth Client ID"
 },
   ja: {
+  "Google 账号（默认）": "Google アカウント（標準）",
+  "Google 账号（指定 Cloud 项目）": "Google アカウント（Cloud プロジェクトを指定）",
+  "自定义 Google OAuth（高级）": "カスタム Google OAuth（詳細設定）",
+  "Google OAuth 客户端 ID": "Google OAuth クライアント ID",
+  "Google OAuth 客户端密钥": "Google OAuth クライアントシークレット",
+  "Google Cloud 项目 ID（可选，部分账号需要）": "Google Cloud プロジェクト ID（一部のアカウントで必要）",
   "更新订阅账号凭据": "サブスクリプションの認証情報を更新",
   "重新登录或导入会话，保存后替换所选账号的旧凭据；调度配置保持不变。": "再ログインまたはセッションの取り込み後に保存すると、選択したアカウントの認証情報が置き換わります。スケジューリング設定は維持されます。",
   "请在顶部账号列表中选择一个账号，再更新其凭据。": "認証情報を更新する前に、上部の一覧からアカウントを 1 つ選択してください。",
@@ -116,5 +128,13 @@ export const subscriptionTranslations = {
   "账号凭据已回填，请保存账号资源以完成接入。": "認証情報が入力されました。アカウントリソースを保存して接続を完了してください。",
   "完成授权": "認可を完了する",
   "OAuth Client ID": "OAuth クライアント ID"
+},
+  ru: {
+  "Google 账号（默认）": "Аккаунт Google (по умолчанию)",
+  "Google 账号（指定 Cloud 项目）": "Аккаунт Google с проектом Cloud (дополнительно)",
+  "自定义 Google OAuth（高级）": "Свой клиент Google OAuth (дополнительно)",
+  "Google OAuth 客户端 ID": "ID клиента Google OAuth",
+  "Google OAuth 客户端密钥": "Секрет клиента Google OAuth",
+  "Google Cloud 项目 ID（可选，部分账号需要）": "ID проекта Google Cloud (необязательно; требуется для некоторых аккаунтов)"
 }
 };
