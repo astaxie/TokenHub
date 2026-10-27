@@ -2,17 +2,19 @@ import type { PluginActionDescriptor, Provider, ProviderCatalogEntry, ProviderRe
 import { test, expect, capture } from "./harness";
 import type { MockAPI } from "./network";
 
-function installReauthorization(api: MockAPI, googleProject = false) {
+function installReauthorization(api: MockAPI, googleProject = false, multipleAccounts = false) {
   const provider: Provider = { id: "prv_ui_reauthorization", name: "UI Subscription Reauthorization", type: googleProject ? "antigravity_subscription" : "ui_subscription", status: "active", healthy: true, priority: 1, options: { catalog_id: "ui-subscription" } };
   const catalog: ProviderCatalogEntry = { id: "ui-subscription", name: provider.name, display_name: provider.name, type: provider.type, source: "ui-fixture", models_count: 0, models: [] };
   const resource: ProviderResource = { id: "account_ui_reauthorization", provider_id: provider.id, name: "UI Existing Account", resource_type: googleProject ? "antigravity_account" : "ui_account", status: "active", healthy: true, priority: 7, weight: 25, credential_summary: { account_email: "old@example.invalid", account_id: "old-identity", auth_type: "oauth", oauth_reauthorization_required: "true" } };
+  const resources: ProviderResource[] = multipleAccounts ? [resource, { ...resource, id: "account_ui_other", name: "UI Other Account", credential_summary: { auth_type: "oauth", account_email: "other@example.invalid" } }] : [resource];
   const pluginID = "test.ui-reauthorization";
   const actions: PluginActionDescriptor[] = ["oauth.methods", "oauth.start", "oauth.exchange", "oauth.cancel"].map(capability => ({ plugin_id: pluginID, action_id: capability, capability, subject: provider.type, kind: "mutate", metadata: { subscription_auth: "true", subscription_session_json: googleProject ? "false" : "true", provider_resource_type: resource.resource_type } }));
+  actions.push({ plugin_id: pluginID, action_id: "probe.run", capability: "probe.run", subject: provider.type, kind: "mutate", metadata: { provider_resource_type: resource.resource_type } });
   api.respond("GET", "/api/admin/providers", { data: [provider] });
-  api.define("GET", "/api/admin/provider-resources", () => ({ json: { data: [resource] } }));
+  api.define("GET", "/api/admin/provider-resources", () => ({ json: { data: resources } }));
   api.respond("GET", "/api/admin/provider-catalog", { data: [catalog] });
   api.define("GET", "/api/admin/provider-catalog/ui-subscription", () => ({ json: { data: catalog } }), query => {
-    expect([{}, { resource_id: resource.id }]).toContainEqual(Object.fromEntries(query));
+    expect([{}, ...resources.map(account => ({ resource_id: account.id }))]).toContainEqual(Object.fromEntries(query));
   });
   api.respond("GET", "/api/admin/provider-adapters", { data: [{ type: provider.type, capabilities: ["chat", "oauth"], provider_policy: { credentials_scope: "resource", api_key_required: false, supports_custom_headers: false } }] });
   api.respond("GET", "/api/admin/plugins", { data: [{ id: pluginID, name: provider.name, version: "1", source: "built_in", kinds: ["provider"], placements: [], capabilities: [{ kind: "provider_resource_type", name: resource.resource_type, subject: provider.type }] }] });
@@ -44,7 +46,7 @@ function installReauthorization(api: MockAPI, googleProject = false) {
     resource.credential_summary = { auth_type: "oauth" };
     return { json: { data: resource } };
   });
-  return { provider, resource, projectLabel };
+  return { provider, resource, resources, projectLabel };
 }
 
 for (const mobile of [false, true]) test(`subscription reauthorization replaces only the selected account credentials ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
@@ -54,9 +56,11 @@ for (const mobile of [false, true]) test(`subscription reauthorization replaces 
   await page.getByRole("row").filter({ hasText: provider.name }).getByRole("button", { name: "编辑", exact: true }).click();
   const editor = page.locator(".provider-modal");
   const panel = editor.getByRole("region", { name: "更新订阅账号凭据" });
-  await expect(panel).toContainText("请在顶部账号列表中选择一个账号，再更新其凭据。");
-  await editor.getByRole("combobox", { name: "账号列表" }).selectOption(resource.id);
-  await panel.getByRole("button", { name: "重新授权账号", exact: true }).click();
+  await expect(editor.getByRole("combobox", { name: "账号列表" })).toHaveValue(resource.id);
+  await expect(panel).toContainText("账号 Token 已过期或会话已失效，请重新登录后保存新凭据。");
+  await expect(panel.getByRole("button", { name: "重新登录", exact: true })).toBeVisible();
+  await capture(page, testInfo, panel, `subscription-reauthorization-expired-${mobile ? "mobile" : "desktop"}`, "订阅账号：编辑过期账号可直接重新登录", "viewport");
+  await panel.getByRole("button", { name: "重新登录", exact: true }).click();
   await panel.getByText("导入订阅会话", { exact: true }).first().click();
   await panel.getByLabel(/^订阅会话 JSON/).fill('{"access":"synthetic-import"}');
   await panel.getByRole("button", { name: "导入订阅会话", exact: true }).click();
@@ -71,6 +75,11 @@ for (const mobile of [false, true]) test(`subscription reauthorization replaces 
   expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(2);
   await panel.evaluate(el => el.scrollIntoView({ block: "center" }));
   await capture(page, testInfo, panel, `subscription-reauthorization-saved-${mobile ? "mobile" : "desktop"}`, "订阅账号：新凭据已保存", "viewport");
+  await panel.getByRole("button", { name: "测试账号", exact: true }).click();
+  await expect(editor.getByRole("tab", { name: "高级", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(editor.getByRole("combobox", { name: "账号列表" })).toHaveValue(resource.id);
+  await expect(editor.getByRole("heading", { name: "真实请求测试", exact: true })).toBeVisible();
+  expect(api.calls.filter(call => call.path.endsWith("probe.run"))).toHaveLength(0);
 });
 
 for (const mobile of [false, true]) test(`subscription Google reauthorization accepts an explicit Cloud project ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
@@ -83,7 +92,7 @@ for (const mobile of [false, true]) test(`subscription Google reauthorization ac
   const editor = page.locator(".provider-modal");
   await editor.getByRole("combobox", { name: "账号列表" }).selectOption(resource.id);
   const panel = editor.getByRole("region", { name: "更新订阅账号凭据" });
-  await panel.getByRole("button", { name: "重新授权账号", exact: true }).click();
+  await panel.getByRole("button", { name: "重新登录", exact: true }).click();
   await expect(panel.getByRole("combobox", { name: "登录方式", exact: true })).toHaveValue("google");
   await expect(panel.getByLabel(projectLabel, { exact: true })).toHaveCount(0);
   await panel.getByRole("combobox", { name: "登录方式", exact: true }).selectOption("oauth_client");
@@ -99,4 +108,23 @@ for (const mobile of [false, true]) test(`subscription Google reauthorization ac
   await panel.getByRole("button", { name: "保存新账号凭据", exact: true }).click();
   await expect(panel.getByRole("status")).toHaveText("账号凭据已更新。");
   expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+});
+
+for (const mobile of [false, true]) test(`subscription reauthorization selects an expired account directly ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
+  if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+  const { provider, resource } = installReauthorization(api, false, true);
+  await page.goto("/providers");
+  await page.getByRole("row").filter({ hasText: provider.name }).getByRole("button", { name: "编辑", exact: true }).click();
+  const editor = page.locator(".provider-modal");
+  const panel = editor.getByRole("region", { name: "更新订阅账号凭据" });
+  await expect(editor.getByRole("combobox", { name: "账号列表" })).toHaveValue("all");
+  await expect(panel.getByRole("button", { name: "重新登录：UI Existing Account", exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "重新登录：UI Other Account", exact: true })).toBeVisible();
+  await capture(page, testInfo, panel, `subscription-reauthorization-select-${mobile ? "mobile" : "desktop"}`, "订阅账号：直接选择需要重新登录的账号", "viewport");
+  await panel.getByRole("button", { name: "重新登录：UI Existing Account", exact: true }).click();
+  await expect(editor.getByRole("combobox", { name: "账号列表" })).toHaveValue(resource.id);
+  await expect(panel.getByRole("button", { name: "打开授权", exact: true })).toBeVisible();
+  await expect(panel).toContainText("账号 Token 已过期或会话已失效，请重新登录后保存新凭据。");
+  await expect(panel.getByRole("button", { name: "保存新账号凭据", exact: true })).toBeDisabled();
+  expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(0);
 });

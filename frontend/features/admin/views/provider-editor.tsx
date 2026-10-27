@@ -163,7 +163,14 @@ export function ProviderUpsertModal({
   const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
   const [accountConfirmationError, setAccountConfirmationError] = useState("");
   const [deleteAccountConfirmation, setDeleteAccountConfirmation] = useState("");
-  const [selectedAccountID, setSelectedAccountID] = useState(editingAccountProvider ? "all" : "");
+  const accountResources = useMemo(
+    () => resources.filter((resource) =>
+      isProviderAccountResourceTypeForData({ plugins, providerAdapters }, provider?.type ?? values.type, resource.resource_type) && (mode === "create" || resource.provider_id === provider?.id),
+    ),
+    [mode, plugins, provider?.id, provider?.type, providerAdapters, resources, values.type],
+  );
+  const [selectedAccountID, setSelectedAccountID] = useState(editingAccountProvider ? accountResources.length === 1 ? accountResources[0].id : "all" : "");
+  const [reauthorizationTarget, setReauthorizationTarget] = useState({ id: "", revision: 0 });
   const [accountCatalogs, setAccountCatalogs] = useState<Record<string, ProviderCatalogEntry>>({});
   const [accountCatalogErrors, setAccountCatalogErrors] = useState<Record<string, string>>({});
   const [accountCatalogLoading, setAccountCatalogLoading] = useState(false);
@@ -184,12 +191,6 @@ export function ProviderUpsertModal({
   const existingRouteModels = useMemo(
     () => new Set(routes.filter((route) => provider && route.provider_id === provider.id).map((route) => route.model_name)),
     [provider, routes],
-  );
-  const accountResources = useMemo(
-    () => resources.filter((resource) =>
-      isProviderAccountResourceTypeForData({ plugins, providerAdapters }, provider?.type ?? values.type, resource.resource_type) && (mode === "create" || resource.provider_id === provider?.id),
-    ),
-    [mode, plugins, provider?.id, provider?.type, providerAdapters, resources, values.type],
   );
   const usesAccountCatalog = credentialMode === "account_integration" || editingAccountProvider;
   const selectedAccountResources = useMemo(() => selectedAccountID === "all" ? accountResources : accountResources.filter((resource) => resource.id === selectedAccountID), [accountResources, selectedAccountID]);
@@ -755,6 +756,21 @@ export function ProviderUpsertModal({
     }
   }
 
+  function openSubscriptionLogin(resourceID: string) {
+    setSelectedAccountID(resourceID); setEditTab("connect");
+    setReauthorizationTarget(current => ({ id: resourceID, revision: current.revision + 1 }));
+    requestAnimationFrame(() => modalRef.current?.querySelector(".provider-subscription-reauthorization")?.scrollIntoView?.({ block: "start" }));
+  }
+
+  function openSubscriptionAccountTest() {
+    setEditTab("advanced");
+    requestAnimationFrame(() => {
+      const panel = modalRef.current?.querySelector<HTMLElement>(".provider-resource-probe-panel");
+      panel?.scrollIntoView?.({ block: "start" });
+      panel?.querySelector<HTMLElement>("select, textarea, button")?.focus();
+    });
+  }
+
   async function subscriptionCredentialsSaved() {
     accountCredentialRevision.current += 1;
     setAccountCatalogs({}); setAccountCatalogErrors({});
@@ -1107,6 +1123,7 @@ export function ProviderUpsertModal({
                   value={selectedAccountID}
                   onChange={(event) => {
                     setSelectedAccountID(event.target.value);
+                    setReauthorizationTarget(current => ({ ...current, id: "" }));
                     setModelQuery("");
                     setSelectedModels({});
                   }}
@@ -1333,8 +1350,9 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "edit" && editTab === "connect" ? (
-              <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} />
-                {editingAccountProvider && values.type === provider?.type ? <ProviderSubscriptionReauthorization key={`${values.type}:${selectedAccountID}`} api={api} actions={pluginActions} providerType={values.type} resource={selectedAccountID === "all" ? undefined : selectedAccountResources[0]} onSaved={subscriptionCredentialsSaved} /> : null}
+              <>
+                {editingAccountProvider && values.type === provider?.type ? <ProviderSubscriptionReauthorization key={`${values.type}:${selectedAccountID}:${reauthorizationTarget.revision}`} api={api} actions={pluginActions} providerType={values.type} resources={accountResources} resource={selectedAccountID === "all" ? undefined : selectedAccountResources[0]} initiallyOpen={reauthorizationTarget.id === selectedAccountID} onSelectAccount={openSubscriptionLogin} onTest={providerResourceSelectionSupportsAction(pluginActions, values.type, selectedAccountResources, "probe.run") ? openSubscriptionAccountTest : undefined} onSaved={subscriptionCredentialsSaved} /> : null}
+                <ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} />
                 {provider && !editingAccountProvider && !accountProviderTypesFromPlugins(plugins, providerAdapters).includes(provider.type) ? <ProviderAPIKeyPool api={api} provider={provider} resources={resources} onSaved={onAccountsChanged ?? onSaved} /> : null}</>
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
@@ -1374,7 +1392,7 @@ export function ProviderUpsertModal({
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
-                            <ProviderAccountTokenRenewal api={api} pluginActions={pluginActions} providerType={values.type} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} />
+                            <ProviderAccountTokenRenewal api={api} pluginActions={pluginActions} providerType={values.type} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} onReauthorize={values.type === provider?.type && supportsSubscriptionAuthorization(pluginActions, values.type) ? () => openSubscriptionLogin(resource.id) : undefined} />
                             {resource.status === "active" ? (
                               <button
                                 className="secondary-button provider-account-disable-button"

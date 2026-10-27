@@ -141,7 +141,7 @@ describe("ChatGPT registration retry", () => {
 
   it("binds saved ChatGPT reauthorization to the selected account and resets its retry registration on selection change", async () => {
     const { requests, rerender, element } = setup(({ capability }) => capability === "oauth.start" ? session : retry(), chatgpt, true);
-    fireEvent.click(screen.getByRole("button", { name: "重新授权账号" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新登录" }));
     await enableClock();
     await start();
     expect(requests.filter(request => request.capability === "oauth.start").at(-1)?.body.resource_id).toBe("synthetic-first-account");
@@ -150,7 +150,7 @@ describe("ChatGPT registration retry", () => {
     expect(requests.filter(request => request.capability === "oauth.start").at(-1)?.body).toMatchObject({ resource_id: "synthetic-first-account", registration_id: registrationID });
     await act(async () => { rerender(element(chatgpt, "synthetic-second-account")); });
     expect(screen.queryByRole("button", { name: "打开授权" })).not.toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "重新授权账号" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "重新登录" })); });
     await start();
     const nextStart = requests.filter(request => request.capability === "oauth.start").at(-1)?.body;
     expect(nextStart?.resource_id).toBe("synthetic-second-account");
@@ -159,7 +159,7 @@ describe("ChatGPT registration retry", () => {
 
   it("does not add ChatGPT resource binding to a saved worker account", async () => {
     const { requests } = setup(() => session, worker, true);
-    fireEvent.click(screen.getByRole("button", { name: "重新授权账号" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新登录" }));
     await enableClock();
     await start();
     const request = requests.find(request => request.capability === "oauth.start")?.body;

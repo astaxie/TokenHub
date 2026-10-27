@@ -109,7 +109,7 @@ for (const mobile of [false, true]) for (const outcome of ["completed", "denied 
     await page.getByRole("row").filter({ hasText: "ChatGPT API" }).getByRole("button", { name: "编辑", exact: true }).click();
     await editor.getByRole("combobox", { name: "账号列表" }).selectOption("rsrc_ui_chatgpt");
     const panel = editor.getByRole("region", { name: "更新订阅账号凭据" });
-    await panel.getByRole("button", { name: "重新授权账号", exact: true }).click();
+    await panel.getByRole("button", { name: "重新登录", exact: true }).click();
     await panel.getByRole("button", { name: "打开授权", exact: true }).click();
     await expect(panel.getByText("请在供应商网页完成登录后返回这里。TokenHub 会自动回填账号凭据，无需粘贴授权码。回填后请保存账号资源。", { exact: true })).toBeVisible();
     completeCallback();

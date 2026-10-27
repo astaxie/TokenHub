@@ -54,3 +54,33 @@
   font-size: 11px;
   line-height: 1.5;
 }
+
+.provider-subscription-reauthorization {
+  scroll-margin-block: 16px;
+}
+
+.provider-subscription-login-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.provider-subscription-login-account > div {
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.provider-subscription-login-account .provider-quota-error {
+  margin: 6px 0 0;
+}
+
+@media (max-width: 640px) {
+  .provider-subscription-login-account > .button,
+  .provider-subscription-reauthorization > .provider-authorization-button {
+    width: 100%;
+  }
+}

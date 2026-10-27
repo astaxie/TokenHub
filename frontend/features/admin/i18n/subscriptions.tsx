@@ -1,5 +1,10 @@
 export const subscriptionTranslations = {
   en: {
+  "重新登录": "Sign in again",
+  "重新登录：{name}": "Sign in again: {name}",
+  "请选择要重新登录的订阅账号。": "Choose the subscription account to sign in again.",
+  "账号 Token 已过期或会话已失效，请重新登录后保存新凭据。": "The account token has expired or its session is no longer valid. Sign in again and save the new credentials.",
+  "可测试此账号，确认新 Token 可用并恢复账号健康状态。": "Test this account to verify the new token and restore its health status.",
   "客户端注册已完成。请再次点击“打开授权”并完成登录，以继续连接账号。": "Client registration is complete. Click “Open Authorization” again and finish signing in to continue connecting the account.",
   "本次授权未获同意。请重新打开授权，并在登录页同意所需权限。": "This authorization was not approved. Open authorization again and approve the required permissions on the sign-in page.",
   "Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。": "The Grok authorization is missing the api:access permission required for model requests. Edit this account, authorize it again with the required permission, then save the account.",
@@ -76,6 +81,11 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth Client ID"
 },
   ja: {
+  "重新登录": "再ログイン",
+  "重新登录：{name}": "再ログイン：{name}",
+  "请选择要重新登录的订阅账号。": "再ログインするサブスクリプションアカウントを選択してください。",
+  "账号 Token 已过期或会话已失效，请重新登录后保存新凭据。": "アカウントのトークンまたはセッションが失効しています。再ログインして新しい認証情報を保存してください。",
+  "可测试此账号，确认新 Token 可用并恢复账号健康状态。": "このアカウントをテストして新しいトークンを確認し、正常な状態に戻すことができます。",
   "客户端注册已完成。请再次点击“打开授权”并完成登录，以继续连接账号。": "クライアントの登録が完了しました。もう一度「認可を開く」をクリックしてログインを完了し、アカウントの接続を続けてください。",
   "本次授权未获同意。请重新打开授权，并在登录页同意所需权限。": "今回の認可は承認されませんでした。認可を開き直し、ログインページで必要な権限に同意してください。",
   "Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。": "Grok の認可に、モデルの呼び出しに必要な api:access 権限がありません。このアカウントを編集し、必要な権限に同意して再認可した後、アカウントを保存してください。",

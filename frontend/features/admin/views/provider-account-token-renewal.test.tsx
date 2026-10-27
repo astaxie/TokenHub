@@ -68,6 +68,32 @@ describe("ProviderAccountTokenRenewal", () => {
     expect(screen.queryByRole("button", { name: "续租 Token" })).not.toBeInTheDocument();
   });
 
+  it("offers sign-in for an expired account even without a refresh action", async () => {
+    const user = userEvent.setup();
+    const onReauthorize = vi.fn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ProviderAccountTokenRenewal api={{ baseURL: "http://localhost:8080", adminToken: "synthetic-session" }} pluginActions={[]} providerType="workbuddy_subscription" resource={{ ...resource, credential_summary: { token_expires_at: "2000-01-01T00:00:00Z" } }} onRenewed={vi.fn()} onReauthorize={onReauthorize} />);
+    expect(screen.queryByRole("button", { name: "续租 Token" })).not.toBeInTheDocument();
+    expect(screen.getByText("账号 Token 已过期或会话已失效，请重新登录后保存新凭据。")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "重新登录：Codex Account" }));
+    expect(onReauthorize).toHaveBeenCalledOnce();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the sign-in action available after a failed refresh", async () => {
+    const user = userEvent.setup();
+    const onReauthorize = vi.fn();
+    const onRenewed = vi.fn();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { message: "Synthetic expired refresh grant" } }), { status: 409 })));
+    render(<ProviderAccountTokenRenewal api={{ baseURL: "http://localhost:8080", adminToken: "synthetic-session" }} pluginActions={[{ plugin_id: "test.refresh", action_id: "credentials.refresh", kind: "mutate", capability: "credentials.refresh", subject: "kimi_subscription" }]} providerType="kimi_subscription" resource={resource} onRenewed={onRenewed} onReauthorize={onReauthorize} />);
+    await user.click(screen.getByRole("button", { name: "续租 Token" }));
+    expect(await screen.findByText("Synthetic expired refresh grant")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "重新登录：Codex Account" }));
+    expect(onReauthorize).toHaveBeenCalledOnce();
+    expect(onRenewed).not.toHaveBeenCalled();
+  });
+
   it("shows a provider-neutral reauthorization notice", () => {
     render(
       <ProviderAccountTokenRenewal
@@ -85,7 +111,7 @@ describe("ProviderAccountTokenRenewal", () => {
       />,
     );
 
-    expect(screen.getByText("账号会话已失效，请重新进行账号授权。")).toBeInTheDocument();
+    expect(screen.getByText("账号 Token 已过期或会话已失效，请重新登录后保存新凭据。")).toBeInTheDocument();
     expect(screen.queryByText(/OpenAI\/Codex/)).not.toBeInTheDocument();
   });
 });
