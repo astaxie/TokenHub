@@ -139,10 +139,11 @@ func (s *claudeSubscriptionSignIn) launch(ctx context.Context, executable string
 		} else if !s.consumed {
 			s.credentials = string(credentials)
 		}
-		close(s.done)
 		if s.consumed {
 			s.adapter.removeSignIn(s)
 		}
+		// Shutdown waits on done, so consumed slots must be removed first.
+		close(s.done)
 		s.mu.Unlock()
 		s.cancel()
 	}()
