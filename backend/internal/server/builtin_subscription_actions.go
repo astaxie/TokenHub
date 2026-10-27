@@ -36,8 +36,9 @@ func registerBuiltinSubscriptionActions(server *Server, actions builtinActionReg
 				}
 				if definition.providerType == ProviderChatGPTSubscription {
 					metadata["oauth_callback_fields"] = "client_id"
+					metadata["automatic_callback_supported"] = "true"
 				}
-				schema = actionObjectSchema(nil, map[string]string{"redirect_uri": "string", "return_url": "string", "organization_id": "string", "method_id": "string", "inputs": "object", "client_id": "string", "client_secret": "string", "github_host": "string"})
+				schema = actionObjectSchema(nil, map[string]string{"redirect_uri": "string", "return_url": "string", "organization_id": "string", "method_id": "string", "inputs": "object", "client_id": "string", "client_secret": "string", "github_host": "string", "automatic_callback": "boolean"})
 			case "oauth.methods":
 				schema = actionObjectSchema(nil, nil)
 			case "oauth.cancel":

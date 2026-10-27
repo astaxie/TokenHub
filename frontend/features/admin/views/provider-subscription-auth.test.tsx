@@ -77,7 +77,7 @@ describe("Subscription authorization", () => {
     fireEvent.click(screen.getByRole("button", { name: "完成授权" }));
     await screen.findByRole("alert");
     expect(screen.getByRole("button", { name: "打开授权" })).toBeEnabled();
-    expect(screen.getByRole("alert")).toHaveTextContent("授权码已失效、已被使用或与本次授权不匹配。请重新打开授权，完成登录后粘贴本次完整回调地址。");
+    expect(screen.getByRole("alert")).toHaveTextContent("授权码已失效、已被使用或与本次授权不匹配。请重新打开授权并完成登录；仅在页面要求手动回填时，粘贴本次登录生成的完整回调地址。");
     expect(screen.queryByLabelText("回调结果")).not.toBeInTheDocument();
     expect(onCredentials).not.toHaveBeenCalled();
     expect(requests.filter(request => request.capability === "oauth.cancel")).toEqual([{ capability: "oauth.cancel", body: { resource_type: "test_account", session_id: "session-1", state: "state-1" } }]);

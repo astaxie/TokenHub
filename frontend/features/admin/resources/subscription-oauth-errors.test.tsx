@@ -22,13 +22,13 @@ describe("Subscription OAuth exchange error guidance", () => {
 
   it.each([undefined, null, "code_expired", { oauth_reason: "private-unknown-reason" }, { oauth_reason: ["code_expired"] }])("keeps unknown or malformed details out of the error message", details => {
     setActiveLanguage("zh-CN");
-    expect(subscriptionOAuthErrorMessage("subscription_oauth_code_rejected", details)).toBe("授权码已失效、已被使用或与本次授权不匹配。请重新打开授权，完成登录后粘贴本次完整回调地址。");
+    expect(subscriptionOAuthErrorMessage("subscription_oauth_code_rejected", details)).toBe("授权码已失效、已被使用或与本次授权不匹配。请重新打开授权并完成登录；仅在页面要求手动回填时，粘贴本次登录生成的完整回调地址。");
   });
 
   const locales: AppLanguage[] = ["zh-CN", "en", "ja", "ru"];
   it.each(locales)("localizes fixed errors in %s", language => {
     setActiveLanguage(language);
-    for (const code of ["subscription_oauth_code_rejected", "subscription_oauth_client_rejected", "subscription_oauth_exchange_failed"]) {
+    for (const code of ["subscription_oauth_code_rejected", "subscription_oauth_client_rejected", "subscription_oauth_exchange_failed", "subscription_oauth_authorization_denied"]) {
       const message = subscriptionOAuthErrorMessage(code);
       expect(message).toBeTruthy();
       if (language !== "zh-CN") expect(message).not.toContain("请重新打开授权");
@@ -45,5 +45,18 @@ describe("Subscription OAuth exchange error guidance", () => {
     expect(subscriptionOAuthErrorMessage("subscription_oauth_client_rejected")).toContain("including its client_id parameter");
     expect(subscriptionOAuthErrorMessage("subscription_oauth_client_rejected")).not.toContain("secret");
     expect(subscriptionOAuthErrorMessage("provider_resource_reauthorization_required")).toBeUndefined();
+  });
+
+  it.each<[AppLanguage, string]>([
+    ["zh-CN", "仅在页面要求手动回填时"],
+    ["en", "Only if the page asks for a manual callback"],
+    ["ja", "手動入力を求められた場合にのみ"],
+    ["ru", "Только если страница запрашивает ручной ввод"],
+  ])("makes manual callback instructions conditional in %s", (language, condition) => {
+    setActiveLanguage(language);
+    expect(subscriptionOAuthErrorMessage("subscription_oauth_client_rejected")).toContain(condition);
+    for (const oauthReason of [undefined, "code_expired", "code_already_used", "pkce_verifier_mismatch", "redirect_uri_mismatch"]) {
+      expect(subscriptionOAuthErrorMessage("subscription_oauth_code_rejected", { oauth_reason: oauthReason })).toContain(condition);
+    }
   });
 });

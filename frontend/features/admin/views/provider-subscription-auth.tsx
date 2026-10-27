@@ -4,6 +4,7 @@ import { parseProviderAccountOAuthResult, type ProviderAccountOAuthResult } from
 import { providerPluginActionForCapability, runProviderCapabilityAction } from "../resources/provider-model-config";
 import { tx } from "../i18n/runtime";
 import { subscriptionAuthLabel } from "../i18n/subscription-auth-labels";
+import { supportsLocalSubscriptionCallback } from "../domain/provider-local-callback";
 
 type LoginMethod = { id: string; method_id?: string; label: string; type: string; prompts?: Array<{ key: string; label: string; type?: string; options?: Array<{ value: string; label: string }> }> };
 type LoginSession = { session_id: string; state: string; auth_url?: string; url?: string; flow?: string; user_code?: string; poll_interval?: number; expires_at?: string; instructions?: string; local_listener?: boolean; callback_mode?: string };
@@ -139,7 +140,8 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
     setBusy(true); setError(""); setComplete(false);
     const current = generation.current;
     try {
-      const result = await runProviderCapabilityAction<LoginSession & ProviderAccountOAuthResult>(api, providerType, "oauth.start", startAction, { method_id: methodID, inputs, key: inputs.key, organization_id: organizationID, redirect_uri: startAction.metadata?.oauth_redirect_uri }, tx("生成账号授权地址"));
+      const automaticCallback = supportsLocalSubscriptionCallback(providerType, api.baseURL, typeof window === "undefined" ? undefined : window.location.href);
+      const result = await runProviderCapabilityAction<LoginSession & ProviderAccountOAuthResult>(api, providerType, "oauth.start", startAction, { method_id: methodID, inputs, key: inputs.key, organization_id: organizationID, redirect_uri: startAction.metadata?.oauth_redirect_uri, ...(automaticCallback ? { automatic_callback: true } : {}) }, tx("生成账号授权地址"));
       if (generation.current !== current) {
         if (result.session_id && cancelAction) void runProviderCapabilityAction(api, providerType, "oauth.cancel", cancelAction, { session_id: result.session_id, state: result.state }, tx("取消")).catch(() => {});
         return;

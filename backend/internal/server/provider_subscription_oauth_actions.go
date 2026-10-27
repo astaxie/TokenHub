@@ -10,28 +10,31 @@ import (
 )
 
 type subscriptionOAuthSecret struct {
-	ActorID        string    `json:"actor_id"`
-	Verifier       string    `json:"verifier,omitempty"`
-	Nonce          string    `json:"nonce,omitempty"`
-	OrganizationID string    `json:"organization_id,omitempty"`
-	ClientID       string    `json:"client_id,omitempty"`
-	ClientSecret   string    `json:"client_secret,omitempty"`
-	GitHubHost     string    `json:"github_host,omitempty"`
-	DeviceCode     string    `json:"device_code,omitempty"`
-	Interval       int       `json:"interval,omitempty"`
-	NextPollAt     time.Time `json:"next_poll_at,omitempty"`
-	ExpiresAt      time.Time `json:"expires_at"`
+	ActorID           string                       `json:"actor_id"`
+	Verifier          string                       `json:"verifier,omitempty"`
+	Nonce             string                       `json:"nonce,omitempty"`
+	OrganizationID    string                       `json:"organization_id,omitempty"`
+	ClientID          string                       `json:"client_id,omitempty"`
+	ClientSecret      string                       `json:"client_secret,omitempty"`
+	GitHubHost        string                       `json:"github_host,omitempty"`
+	DeviceCode        string                       `json:"device_code,omitempty"`
+	Interval          int                          `json:"interval,omitempty"`
+	NextPollAt        time.Time                    `json:"next_poll_at,omitempty"`
+	ExpiresAt         time.Time                    `json:"expires_at"`
+	AutomaticCallback bool                         `json:"automatic_callback,omitempty"`
+	Callback          *chatGPTSubscriptionCallback `json:"callback,omitempty"`
 }
 
 func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinSubscriptionDefinition, invocation pluginmeta.ActionInvocation) (pluginmeta.ActionResult, error) {
 	var request struct {
-		MethodID       string            `json:"method_id"`
-		RedirectURI    string            `json:"redirect_uri"`
-		OrganizationID string            `json:"organization_id"`
-		ClientID       string            `json:"client_id"`
-		ClientSecret   string            `json:"client_secret"`
-		GitHubHost     string            `json:"github_host"`
-		Inputs         map[string]string `json:"inputs"`
+		MethodID          string            `json:"method_id"`
+		RedirectURI       string            `json:"redirect_uri"`
+		OrganizationID    string            `json:"organization_id"`
+		ClientID          string            `json:"client_id"`
+		ClientSecret      string            `json:"client_secret"`
+		GitHubHost        string            `json:"github_host"`
+		Inputs            map[string]string `json:"inputs"`
+		AutomaticCallback bool              `json:"automatic_callback"`
 	}
 	if len(invocation.Payload) > 0 && json.Unmarshal(invocation.Payload, &request) != nil {
 		return pluginmeta.ActionResult{}, NewHTTPError(400, "invalid_plugin_action_payload", "Plugin action payload is invalid")
@@ -75,6 +78,14 @@ func (s *Server) startSubscriptionOAuth(ctx context.Context, definition builtinS
 		result["flow"], result["user_code"], result["poll_interval"] = "device_code", authorization.UserCode, secret.Interval
 		result["expires_at"] = secret.ExpiresAt.Format(time.RFC3339)
 	case ProviderChatGPTSubscription:
+		if callbackURL := chatGPTSubscriptionAutomaticRedirect(s.config.PublicBaseURL); request.AutomaticCallback && callbackURL != "" {
+			if _, supported := s.store.(chatGPTSubscriptionCallbackStore); supported {
+				secret.AutomaticCallback = true
+				session.RedirectURI = callbackURL
+				result["flow"], result["callback_mode"], result["poll_interval"] = "auto", "none", 2
+				result["redirect_uri"] = callbackURL
+			}
+		}
 		host, hostErr := randomHex(16)
 		if hostErr != nil {
 			return pluginmeta.ActionResult{}, hostErr
@@ -137,7 +148,11 @@ func (s *Server) exchangeSubscriptionOAuth(ctx context.Context, definition built
 	if definition.providerType == ProviderGitHubCopilotSubscription && time.Now().Before(secret.NextPollAt) {
 		return subscriptionOAuthPending("pending", secret.Interval), nil
 	}
-	if definition.providerType != ProviderGitHubCopilotSubscription && strings.TrimSpace(request.Code) == "" {
+	automatic := definition.providerType == ProviderChatGPTSubscription && secret.AutomaticCallback
+	if automatic && secret.Callback == nil {
+		return subscriptionOAuthPending("pending", 2), nil
+	}
+	if definition.providerType != ProviderGitHubCopilotSubscription && !automatic && strings.TrimSpace(request.Code) == "" {
 		return pluginmeta.ActionResult{}, NewHTTPError(400, "missing_oauth_code", "OAuth authorization code is required")
 	}
 	session, ok, err = s.store.ConsumeProviderAccountOAuthSession(request.SessionID, request.State)
@@ -180,6 +195,15 @@ func (s *Server) exchangeSubscriptionOAuth(ctx context.Context, definition built
 			return subscriptionOAuthPending(status, secret.Interval), nil
 		}
 	case ProviderChatGPTSubscription:
+		if secret.AutomaticCallback {
+			if secret.Callback == nil {
+				return pluginmeta.ActionResult{}, invalid
+			}
+			if secret.Callback.Denied {
+				return pluginmeta.ActionResult{}, NewHTTPError(409, "subscription_oauth_authorization_denied", "ChatGPT API authorization was cancelled or denied. Start authorization again.")
+			}
+			request.Code, request.ClientID = secret.Callback.Code, secret.Callback.ClientID
+		}
 		adapter, ok := resolveTypedAdapter[*ChatGPTSubscriptionAdapter](s.adapterRegistry, definition.providerType)
 		if !ok {
 			return pluginmeta.ActionResult{}, NewHTTPError(503, "provider_adapter_missing", "ChatGPT adapter is unavailable")

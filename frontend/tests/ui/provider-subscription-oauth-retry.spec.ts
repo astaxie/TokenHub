@@ -56,7 +56,7 @@ for (const mobile of [false, true]) test(`subscription native OAuth rejected cal
   await auth.getByRole("button", { name: "打开授权", exact: true }).click();
   await auth.getByRole("textbox", { name: /^回调结果/ }).fill("http://localhost:1455/auth/callback?code=code-1&state=state-1&client_id=client-1");
   await auth.getByRole("button", { name: "完成授权", exact: true }).click();
-  await expect(auth.getByRole("alert")).toHaveText("授权码已被使用。请重新打开授权，完成登录后粘贴新生成的完整回调地址。");
+  await expect(auth.getByRole("alert")).toHaveText("授权码已被使用。请重新打开授权并完成登录；仅在页面要求手动回填时，粘贴本次登录生成的完整回调地址。");
   await expect(auth.getByRole("button", { name: "打开授权", exact: true })).toBeEnabled();
   await expect(auth.getByRole("textbox", { name: /^回调结果/ })).toHaveCount(0);
   await expect.poll(() => api.calls.filter(call => call.path.endsWith("oauth.cancel")).length).toBe(1);
