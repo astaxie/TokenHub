@@ -137,12 +137,14 @@ for (const mobile of [false, true]) {
     await expect.poll(() => fixture.storedRoutes.length).toBe(2);
     expect(api.calls.filter(call => call.method === "POST").map(call => (call.body as Model).name).sort()).toEqual([first.upstream_model, second.upstream_model].sort());
     expect(fixture.storedModels.find(item => item.name === existing.name)).toEqual(existing);
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("status").scrollIntoViewIfNeeded();
-    await capture(page, info, dialog, `provider-import-results-${viewport}`, "逐项显示模型引入结果", "viewport");
+    await expect(dialog).toHaveCount(0);
+    const directory = page.locator(".model-directory-table");
+    const importedModel = directory.getByText(first.upstream_model, { exact: true }).first();
+    await expect(importedModel).toBeVisible();
+    await expect(directory.getByText(second.upstream_model, { exact: true }).first()).toBeVisible();
+    await importedModel.scrollIntoViewIfNeeded();
+    await capture(page, info, directory, `provider-import-results-${viewport}`, "全部引入成功后自动关闭弹窗并显示更新后的模型目录", "viewport");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Import controls must not overflow the viewport").toBe(true);
-    await dialog.getByRole("button", { name: "关闭", exact: true }).last().click();
-    await expect(page.locator(".model-directory-table").getByText(first.upstream_model, { exact: true }).first()).toBeVisible();
   });
 }
 
@@ -212,11 +214,12 @@ for (const mobile of [false, true]) {
     expect(api.calls.filter(call => call.method !== "GET"), "Checking cost confirmation must not submit automatically").toHaveLength(0);
     await submit.click();
     await expect.poll(() => fixture.storedRoutes.length).toBe(inventory.length);
-    await expect(submit).toBeDisabled();
-    const result = dialog.locator("footer").getByRole("status");
-    await expect(result).toHaveText("本次已引入 8 个模型，失败 0 个；重试仅处理未成功的模型。");
-    await expect(result).toBeInViewport({ ratio: 1 });
-    await capture(page, info, dialog, `provider-import-validation-result-${viewport}`, "长模型列表引入完成后，底部始终显示成功结果", "viewport");
+    await expect(dialog).toHaveCount(0);
+    const directory = page.locator(".model-directory-table");
+    const importedModel = directory.getByText(inventory[0].upstream_model, { exact: true }).first();
+    await expect(importedModel).toBeVisible();
+    await importedModel.scrollIntoViewIfNeeded();
+    await capture(page, info, directory, `provider-import-validation-result-${viewport}`, "批量引入成功后自动返回更新后的模型目录", "viewport");
     expect(api.calls.filter(call => call.method === "POST")).toHaveLength(inventory.length);
     expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(inventory.length);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Validation footer must not overflow the viewport").toBe(true);
@@ -296,6 +299,10 @@ test("models provider-import-subscription-partial-retry", async ({ page, api }, 
   await capture(page, info, dialog, "provider-import-partial-failure", "部分引入成功：保留输入并允许只重试失败项", "viewport");
   await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();
   await expect.poll(() => fixture.storedRoutes.length).toBe(2);
+  await expect(dialog).toHaveCount(0);
+  const directory = page.locator(".model-directory-table");
+  await expect(directory.getByText(first.upstream_model, { exact: true }).first()).toBeVisible();
+  await expect(directory.getByText(second.upstream_model, { exact: true }).first()).toBeVisible();
   expect(api.calls.filter(call => call.method === "POST").map(call => (call.body as Model).name)).toEqual([first.upstream_model, second.upstream_model, second.upstream_model]);
   for (const item of inventory) expect(api.calls.filter(call => call.method === "PATCH" && call.path.endsWith(item.id))).toHaveLength(1);
 });

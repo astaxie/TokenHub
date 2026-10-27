@@ -26,6 +26,40 @@ async function selectAndPrice(user: ReturnType<typeof userEvent.setup>, input = 
 }
 
 describe("Provider model import dialog", () => {
+  it("closes after every selected model is imported and the directory refresh finishes", async () => {
+    let finishReload: () => void = () => undefined;
+    const reload = vi.fn(() => new Promise<void>((resolve) => { finishReload = resolve; }));
+    const close = vi.fn();
+    const fetch = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetch);
+    render(modal(fixture(), reload, close));
+    const user = userEvent.setup();
+    await selectAndPrice(user);
+    await user.click(screen.getByRole("button", { name: "引入所选模型" }));
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
+    await act(async () => finishReload());
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps successful imports visible if the directory refresh fails", async () => {
+    const reload = vi.fn().mockRejectedValue(new Error("Synthetic refresh failure"));
+    const close = vi.fn();
+    const fetch = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetch);
+    render(modal(fixture(), reload, close));
+    const user = userEvent.setup();
+    await selectAndPrice(user);
+    await user.click(screen.getByRole("button", { name: "引入所选模型" }));
+    await screen.findByText("目录刷新失败，已成功引入的模型不会重复提交。请关闭后刷新目录。");
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "false");
+    expect(screen.getAllByText("已引入，重试时自动跳过")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "引入所选模型" })).toBeDisabled();
+  });
+
   it("explains missing prices and reveals the first invalid selected model before submitting", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
@@ -95,7 +129,8 @@ describe("Provider model import dialog", () => {
       return new Response("{}", { status: 200 });
     }));
     const reload = vi.fn().mockRejectedValueOnce(new Error("Synthetic refresh failure")).mockResolvedValue(undefined);
-    render(modal(fixture(true), reload));
+    const close = vi.fn();
+    render(modal(fixture(true), reload, close));
     const user = userEvent.setup();
     await selectAndPrice(user);
     expect(screen.getByRole("button", { name: "引入所选模型" })).toBeEnabled();
@@ -116,6 +151,7 @@ describe("Provider model import dialog", () => {
     expect(calls).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "引入所选模型" }));
     await screen.findByText("目录刷新失败，已成功引入的模型不会重复提交。请关闭后刷新目录。");
+    expect(close).not.toHaveBeenCalled();
     expect(screen.getByRole("status").closest("footer")).not.toBeNull();
     expect(screen.getByText("目录刷新失败，已成功引入的模型不会重复提交。请关闭后刷新目录。").closest("footer")).not.toBeNull();
     expect(within(screen.getByRole("region", { name: "alpha" })).getByText("已引入，重试时自动跳过")).toBeVisible();
@@ -123,6 +159,7 @@ describe("Provider model import dialog", () => {
     expect(screen.queryByRole("checkbox", { name: /确认所选订阅模型/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "引入所选模型" }));
     await waitFor(() => expect(screen.getAllByText("已引入，重试时自动跳过")).toHaveLength(2));
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
     expect(calls.filter((call) => call.method === "PATCH")).toEqual([
       { path: "/api/admin/provider-models/alpha", method: "PATCH", body: { metadata: { billing_mode: "subscription", pricing_status: "configured", custom_note: "preserve" } } },
       { path: "/api/admin/provider-models/beta", method: "PATCH", body: { metadata: { billing_mode: "subscription", pricing_status: "configured", custom_note: "preserve" } } },

@@ -120,7 +120,10 @@ export function ProviderModelImportModal({ api, data, onReload, onClose, onOpenP
       }
     }
     setNotice(formatTranslationTemplate(tx("本次已引入 {success} 个模型，失败 {failed} 个；重试仅处理未成功的模型。"), { success: number(succeeded), failed: number(failed) }));
-    try { await onReload(); }
+    try {
+      await onReload();
+      if (failed === 0) onClose();
+    }
     catch { setError(tx("目录刷新失败，已成功引入的模型不会重复提交。请关闭后刷新目录。")); }
     finally { setBusy(false); pendingSubmit.current = false; }
   }
