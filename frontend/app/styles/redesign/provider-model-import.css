@@ -1,5 +1,7 @@
-.model-provider-import-directory-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.model-governance-empty-state + .model-provider-import-directory-actions { justify-content: center; margin-top: 16px; }
+.model-provider-import-directory-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: max-content; max-width: 100%; align-items: stretch; gap: 8px; flex-shrink: 0; }
+.model-provider-import-directory-actions > button { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.model-provider-import-directory-actions > button > svg { flex-shrink: 0; }
+.model-governance-empty-action + .model-provider-import-directory-actions { margin-top: 12px; }
 .provider-model-import-modal { display: flex; flex-direction: column; width: min(900px, calc(100vw - 32px)); max-width: 900px; max-height: calc(100dvh - 48px); padding: 0; overflow: hidden; }
 .model-provider-import-header { flex-shrink: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 24px 16px; border-bottom: 1px solid var(--border); }
 .model-provider-import-header h2 { margin: 0 0 8px; font-size: 20px; }

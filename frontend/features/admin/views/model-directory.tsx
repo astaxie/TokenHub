@@ -79,33 +79,33 @@ export function ModelDirectoryView({
   }
 
   const empty = !loading && publishedModels.length === 0;
+  const creationActions = !readOnly ? (
+    <div className="model-provider-import-directory-actions">
+      <button className="button" disabled={loading} onClick={onCreateModel} type="button"><Plus size={16} />{tx("新建对外模型")}</button>
+      <button className="secondary-button" disabled={loading} onClick={() => setImportOpen(true)} type="button">{tx("从 Provider 引入")}</button>
+    </div>
+  ) : null;
   return <>
     <DataSection title={config.eyebrow}>
-      {empty ? <>
+      {empty ? (
         <ModelGovernanceEmptyState
           stage={readOnly || hasImportedProviderModels ? "models" : "providers"}
           title={readOnly ? "当前没有可见模型" : hasImportedProviderModels ? "还没有对外模型" : "先引入可用的 Provider 模型"}
           description={readOnly ? "请联系管理员发布模型并授予 API Key 访问范围。" : hasImportedProviderModels
             ? "从已引入的 Provider 模型批量生成同名对外模型，或从内置目录新建自定义映射。"
             : "先在 Provider 渠道添加上游服务并选择要引入的模型；Provider 模型价格用于记录真实成本与审计。"}
-          actionLabel={readOnly ? undefined : hasImportedProviderModels ? "从 Provider 引入" : "前往 Provider 渠道"}
-          onAction={readOnly ? undefined : hasImportedProviderModels ? () => setImportOpen(true) : onOpenProviders}
+          actionLabel={!readOnly && !hasImportedProviderModels ? "前往 Provider 渠道" : undefined}
+          onAction={!readOnly && !hasImportedProviderModels ? onOpenProviders : undefined}
+          actions={creationActions}
         />
-        {!readOnly ? <div className="model-provider-import-directory-actions">
-          {!hasImportedProviderModels ? <button className="secondary-button" type="button" onClick={() => setImportOpen(true)}>{tx("从 Provider 引入")}</button> : null}
-          <button className="secondary-button" type="button" onClick={onCreateModel}>{tx("新建对外模型")}</button>
-        </div> : null}
-      </> : (
+      ) : (
       <div className="model-directory">
         <header className="model-management-header">
           <div>
             <h2>{tx("对外模型目录")}</h2>
             <span>{tx("这里的模型和价格面向客户端统一生效，不随实际命中的 Provider 改变。")}</span>
           </div>
-          {!readOnly ? <div className="model-provider-import-directory-actions">
-            <button className="secondary-button" type="button" disabled={loading} onClick={() => setImportOpen(true)}>{tx("从 Provider 引入")}</button>
-            <button className="button" onClick={onCreateModel} type="button"><Plus size={16} />{tx("新建对外模型")}</button>
-          </div> : null}
+          {creationActions}
         </header>
 
         {notice ? <div className="inline-notice success"><CircleCheck size={15} />{notice}</div> : null}

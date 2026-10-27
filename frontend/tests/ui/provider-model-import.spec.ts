@@ -49,6 +49,60 @@ function install(api: MockAPI, inventory: ProviderModel[], models: Model[] = [re
   return { create, refresh, storedModels, storedInventory, storedRoutes };
 }
 
+for (const state of ["empty", "populated", "no-provider"] as const) {
+  for (const viewport of [
+    { name: "desktop", width: 1440, height: 1000 },
+    { name: "mobile", width: 390, height: 844 },
+  ]) {
+    test(`models provider-import-adjacent-actions-${state}-${viewport.name}`, async ({ page, api }, info) => {
+      await page.setViewportSize(viewport);
+      const fixture = install(api, state === "no-provider" ? [] : [first], state === "populated" ? [existing] : []);
+      if (state === "populated") {
+        fixture.storedRoutes.push({ id: "route_import_ui_existing", model_name: existing.name, provider_id: provider.id, provider_model: first.upstream_model, priority: 1, weight: 100, status: "active" });
+        fixture.refresh();
+      } else if (state === "no-provider") {
+        const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
+        api.replaceResponse("GET", "/api/admin/overview", { ...overview, models: [], providers: [] });
+      }
+      await page.goto("/models");
+      const create = page.getByRole("button", { name: "新建对外模型", exact: true });
+      const importModels = page.getByRole("button", { name: "从 Provider 引入", exact: true });
+      await expect(create).toBeEnabled();
+      await expect(importModels).toBeEnabled();
+      const actions = create.locator("..");
+      await expect(actions.getByRole("button", { name: "从 Provider 引入", exact: true })).toHaveCount(1);
+      for (const width of viewport.name === "mobile" ? [320, viewport.width] : [viewport.width]) {
+        await page.setViewportSize({ width, height: viewport.height });
+        await create.scrollIntoViewIfNeeded();
+        await expect.poll(() => actions.evaluate(element => {
+          const buttons = Array.from(element.querySelectorAll<HTMLButtonElement>(":scope > button"));
+          const bounds = buttons.map(button => button.getBoundingClientRect());
+          return {
+            count: bounds.length,
+            sameRow: bounds.length === 2 && Math.abs(bounds[0].top - bounds[1].top) <= 1,
+            separated: bounds.length === 2 && bounds[0].right <= bounds[1].left,
+            inViewport: bounds.every(rect => rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight),
+          };
+        }), { message: "Create and Provider import must remain adjacent, non-overlapping, and reachable" }).toEqual({ count: 2, sameRow: true, separated: true, inViewport: true });
+      }
+      if (state === "empty" || state === "populated" && viewport.name === "mobile") {
+        await capture(page, info, actions, `provider-import-adjacent-${state}-${viewport.name}`, "模型目录：新建与 Provider 引入并排显示", "viewport");
+      }
+      await create.click();
+      const createDialog = page.getByRole("dialog", { name: "新建对外模型", exact: true });
+      await expect(createDialog).toBeVisible();
+      await createDialog.getByRole("button", { name: "取消", exact: true }).click();
+      await expect(createDialog).toHaveCount(0);
+      await importModels.click();
+      const importDialog = page.getByRole("dialog", { name: "从 Provider 引入", exact: true });
+      await expect(importDialog).toBeVisible();
+      await importDialog.getByRole("button", { name: "关闭", exact: true }).last().click();
+      await expect(importDialog).toHaveCount(0);
+      expect(api.calls.every(call => call.method === "GET"), "Opening creation controls must not persist models").toBe(true);
+    });
+  }
+}
+
 for (const mobile of [false, true]) {
   const viewport = mobile ? "mobile" : "desktop";
   test(`models provider-import-one-to-one-${viewport}`, async ({ page, api }, info) => {
