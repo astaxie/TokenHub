@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -68,17 +69,15 @@ func TestSubscriptionWorkerSanitizesRetryHeaders(t *testing.T) {
 			transport := subscriptionWorkerTransport{adapter: &SubscriptionWorkerAdapter{Definition: subscriptionWorkerDefinition{"cursor", "Cursor"}}, process: process, resourceID: "account", model: subscriptionWorkerModel{ID: "model", Protocol: "chat"}}
 			request, _ := http.NewRequest(http.MethodPost, "https://subscription.tokenhub.invalid", strings.NewReader(`{}`))
 			response, err := transport.RoundTrip(request)
-			if err != nil {
-				t.Fatal(err)
+			if response != nil || err == nil || AsHTTPError(err).UpstreamStatus != http.StatusTooManyRequests {
+				t.Fatalf("Rate limit lost its classification: %v", err)
 			}
-			defer response.Body.Close()
-			if _, err := io.Copy(io.Discard, response.Body); err != nil {
-				t.Fatal(err)
-			}
-			if response.Header.Get("X-Private-Token") != "" || strings.Contains(response.Header.Get("Retry-After"), "synthetic-secret") {
+			output := httptest.NewRecorder()
+			errorResponseHeaders(output, err)
+			if output.Header().Get("X-Private-Token") != "" || strings.Contains(output.Header().Get("Retry-After"), "synthetic-secret") || strings.Contains(err.Error(), "synthetic-secret") {
 				t.Fatal("unsanitized upstream error headers were retained")
 			}
-			delay := parseRetryAfter(response.Header.Get("Retry-After"))
+			delay := parseRetryAfter(output.Header().Get("Retry-After"))
 			if retry == "synthetic-secret" && delay != 0 || retry != "synthetic-secret" && (delay < 88*time.Second || delay > 90*time.Second) {
 				t.Fatalf("invalid retry header normalization: %v", delay)
 			}

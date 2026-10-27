@@ -3,7 +3,7 @@ import type { ProviderAccountOAuthResult } from "../core/session";
 import type { ApiContext, PluginActionDescriptor, ProviderResource } from "../core/types";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerResourcePayload, readAdminError } from "../resources/payloads";
-import { ProviderSubscriptionAuth, subscriptionCredentialValues, supportsSubscriptionAuthorization } from "./provider-subscription-auth";
+import { ProviderSubscriptionAuth, subscriptionCredentialValues, supportsSubscriptionReauthorization } from "./provider-subscription-auth";
 
 export function subscriptionAccountNeedsLogin(resource: ProviderResource) {
   const expiresAt = Date.parse(resource.credential_summary?.token_expires_at ?? "");
@@ -42,7 +42,7 @@ export function ProviderSubscriptionReauthorization({ api, actions, providerType
     } finally { setBusy(false); }
   }
 
-  if (!supportsSubscriptionAuthorization(actions, providerType)) return null;
+  if (!supportsSubscriptionReauthorization(actions, providerType)) return null;
   return <section className="provider-edit-section provider-subscription-reauthorization" aria-label={tx("更新订阅账号凭据")} onKeyDown={event => {
     if (event.key === "Enter" && event.target instanceof HTMLInputElement) event.preventDefault();
   }}>

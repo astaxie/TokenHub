@@ -4,23 +4,30 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 )
 
-func checkGoogleSubscriptionResponse(response *http.Response, accessToken string) error {
+func checkGoogleSubscriptionResponse(response *http.Response) error {
 	if response.StatusCode < http.StatusBadRequest {
 		return nil
 	}
 	defer response.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(response.Body, providerErrorBodyPrefix))
-	var body struct {
-		Error map[string]any `json:"error"`
-	}
-	if json.Unmarshal(data, &body) == nil {
-		if err := googleSubscriptionLocationFailure(response.StatusCode, body.Error); err != nil {
-			return err
+	if response.StatusCode == http.StatusForbidden {
+		// Only a 403 body can refine the failure classification. Decode one
+		// bounded object without waiting for EOF, and cap the entire inspection
+		// so a stalled or trickling diagnostic cannot delay route failover.
+		timer := time.AfterFunc(time.Second, func() { _ = response.Body.Close() })
+		defer timer.Stop()
+		var body struct {
+			Error map[string]any `json:"error"`
+		}
+		if json.NewDecoder(io.LimitReader(response.Body, providerErrorBodyPrefix)).Decode(&body) == nil {
+			if err := googleSubscriptionLocationFailure(response.StatusCode, body.Error); err != nil {
+				return err
+			}
 		}
 	}
-	return newProviderHTTPError(response.StatusCode, response.Header, redactProviderErrorSecrets(data, Provider{APIKey: accessToken}))
+	return newProviderHTTPError(response.StatusCode, response.Header, nil)
 }
 
 func googleSubscriptionLocationFailure(status int, detail map[string]any) error {

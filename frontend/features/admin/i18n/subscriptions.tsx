@@ -1,5 +1,6 @@
 export const subscriptionTranslations = {
   en: {
+  "授权完成后，即使 localhost 页面显示无法访问，也请复制地址栏中的完整 callback URL 粘贴到这里。": "After authorization, copy the full callback URL from the browser address bar and paste it here, even if the localhost page cannot open.",
   "重新登录": "Sign in again",
   "重新登录：{name}": "Sign in again: {name}",
   "请选择要重新登录的订阅账号。": "Choose the subscription account to sign in again.",
@@ -81,6 +82,7 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth Client ID"
 },
   ja: {
+  "授权完成后，即使 localhost 页面显示无法访问，也请复制地址栏中的完整 callback URL 粘贴到这里。": "認可後、localhost ページを開けない場合も、ブラウザーのアドレスバーから完全な callback URL をコピーしてここに貼り付けてください。",
   "重新登录": "再ログイン",
   "重新登录：{name}": "再ログイン：{name}",
   "请选择要重新登录的订阅账号。": "再ログインするサブスクリプションアカウントを選択してください。",

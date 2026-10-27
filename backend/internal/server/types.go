@@ -390,6 +390,8 @@ type ProviderResourceCredentials struct {
 	Email          string `json:"email,omitempty"`
 	OrganizationID string `json:"organization_id,omitempty"`
 	PlanType       string `json:"plan_type,omitempty"`
+
+	resourceSnapshot *ProviderResource
 }
 
 type ProviderResourceBulkResult struct {

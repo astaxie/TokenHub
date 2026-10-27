@@ -10,8 +10,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
-	"time"
 )
 
 type subscriptionWorkerTransport struct {
@@ -94,8 +92,7 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 		defer close(done)
 		defer cancel()
 		received := false
-		failedStatus := false
-		var signInErr error
+		var responseErr error
 		_, invokeErr := t.process.invoke(ctx, command, func(event subscriptionWorkerEvent) error {
 			switch event.Event {
 			case "response":
@@ -103,7 +100,6 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 					return errors.New("subscription runtime returned an invalid response")
 				}
 				received = true
-				failedStatus = event.Status < 200 || event.Status >= 300
 				// Node serializes lowercase header names; Go's Header.Get and Del
 				// require canonical map keys for content handling and retry policy.
 				responseHeaders := http.Header{}
@@ -113,37 +109,27 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 					}
 				}
 				responseHeaders.Del("X-Magpie-Sign-In")
-				if failedStatus {
-					signInErr = subscriptionWorkerSignInError(event.Status, event.SignIn, responseHeaders)
-					if signInErr != nil {
-						// The trusted adapter has already classified this failure.
-						// Stop the worker and its upstream body without waiting for
-						// discarded error bytes; account release still drains saves.
-						return signInErr
+				if event.Status < 200 || event.Status >= 300 {
+					responseErr = subscriptionWorkerSignInError(event.Status, event.SignIn, responseHeaders)
+					if responseErr == nil {
+						responseErr = newProviderHTTPError(event.Status, responseHeaders, []byte(`{"error":{"message":"Subscription upstream request failed","type":"subscription_upstream_error"}}`))
 					}
-					retry := parseRetryAfter(responseHeaders.Get("Retry-After"))
-					responseHeaders = http.Header{"Content-Type": []string{"application/json"}}
-					// Retain the retry delay without forwarding arbitrary upstream
-					// headers or exposing their unsanitized values.
-					if retry > 0 {
-						responseHeaders.Set("Retry-After", strconv.FormatInt(int64((retry-1)/time.Second)+1, 10))
-					}
+					// Status and trusted adapter metadata fully classify the error.
+					// Stop its discarded body now; account release still drains saves.
+					return responseErr
 				}
 				responseHeaders.Del("Content-Length")
 				responseHeaders.Del("Content-Encoding")
 				var body io.ReadCloser = &subscriptionWorkerBody{PipeReader: reader, cancel: cancel, done: done}
-				if t.stream && !failedStatus && !subscriptionJSONContentType(responseHeaders) {
+				if t.stream && !subscriptionJSONContentType(responseHeaders) {
 					body = newSubscriptionErrorStream(body, secrets.provider, 0)
-				} else if !failedStatus {
+				} else {
 					body = &subscriptionWorkerJSONBody{body: body, secrets: secrets}
 				}
 				ready <- responseResult{response: &http.Response{StatusCode: event.Status, Status: strconv.Itoa(event.Status) + " " + http.StatusText(event.Status), Header: responseHeaders, Body: body, Request: req}}
 			case "chunk":
 				if !received {
 					return errors.New("subscription runtime returned data before headers")
-				}
-				if failedStatus {
-					return nil
 				}
 				chunk, decodeErr := base64.StdEncoding.DecodeString(event.Data)
 				if decodeErr != nil || len(chunk) > 1<<20 {
@@ -154,12 +140,12 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 			}
 			return nil
 		})
-		if signInErr != nil {
+		if responseErr != nil {
 			if invokeErr != nil {
-				signInErr = invokeErr
+				responseErr = invokeErr
 			}
-			ready <- responseResult{err: signInErr}
-			_ = writer.CloseWithError(signInErr)
+			ready <- responseResult{err: responseErr}
+			_ = writer.CloseWithError(responseErr)
 			return
 		}
 		if !received {
@@ -169,9 +155,6 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 			ready <- responseResult{err: invokeErr}
 			_ = writer.CloseWithError(invokeErr)
 			return
-		}
-		if failedStatus && invokeErr == nil {
-			_, invokeErr = io.Copy(writer, strings.NewReader(`{"error":{"message":"Subscription upstream request failed","type":"subscription_upstream_error"}}`))
 		}
 		_ = writer.CloseWithError(invokeErr)
 	}()

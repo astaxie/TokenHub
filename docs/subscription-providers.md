@@ -86,6 +86,8 @@ During explicit credential replacement, omitted connection overrides, health sta
 
 For an expired token or invalid subscription session, edit the provider and use the blue **Sign in again** button at the top of the **Connection** tab. A single account is selected automatically; with multiple accounts, choose **Sign in again** beside the account to update. The account's token-renewal controls also offer this entry even when no refresh token is available. Complete sign-in or import, then choose **Save new account credentials**. This replaces only that account's credential snapshot and preserves its account ID, routes, and scheduling settings. After saving, **Test account** opens the existing test panel; it does not send an inference request until you explicitly run the test. Switching the selected account cancels pending authorization and discards unsaved credentials.
 
+OpenAI Codex accounts also support **Sign in again** in the existing account editor. Complete the browser login, then paste the full `localhost:1455/auth/callback` URL when prompted, even if that callback page cannot open; save the new credentials onto the selected account.
+
 Grok device authorization now requests the `api:access` scope needed for inference. Accounts saved or imported before this change may lack that permission even when model discovery succeeds. If `grok_api_scope_missing` appears, edit the saved Grok account, choose **Sign in again**, complete device authorization, and **Save new account credentials**; deleting and recreating the account is unnecessary. Refreshing the old grant cannot add consent for the missing scope. Test the account after saving: model and inference access still depend on the upstream plan and account eligibility.
 
 Native Copilot and ChatGPT HTTP errors preserve the upstream status and valid `Retry-After` delay for routing; credential and model errors use the normal account and model failover behavior.
@@ -179,6 +181,10 @@ After a native token refresh returns new credentials, TokenHub continues saving 
 Native token refresh, including background renewal, also validates the original account identity and replacement generation before returning or saving its result. Moving, replacing, or recreating an account invalidates an in-flight refresh even when the token values are unchanged; an old failure cannot mark the new account for reauthorization. The final credential/state write also checks the current provider type atomically, including native renewal, plugin refresh, and session rotation.
 
 The bundled worker is trusted application code, not an arbitrary-code sandbox. Direct HTTP/HTTPS and subprocess creation are disabled; supported upstream fetches pass through the Go transport's destination and network protections. Provider-specific domain restrictions apply, including refusal of arbitrary Factory enterprise hostnames. Cursor uses the upstream HTTP/1 RunSSE fallback. Valid upstream retry delays remain available to routing after error responses are sanitized; private error headers and credential values are not forwarded.
+
+Explicit reauthorization or deleting and recreating an account invalidates retained workers, credential writes, and parked Claude tool continuations, even when the replacement contains identical token values.
+
+Subscription inference failures are classified from their status and trusted adapter metadata without waiting for discarded error bodies. Google regional-eligibility and Grok missing-scope diagnostics inspect at most 4 KiB for up to one second; an incomplete diagnostic falls back to the HTTP status.
 
 When a bundled adapter reports that the saved account credentials should be retained, its HTTP 401/403 response is treated as a temporary failure instead of broken credentials. An explicit expired sign-in still requires reauthorization. Only trusted adapter metadata can make this distinction; upstream headers cannot override it.
 

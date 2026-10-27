@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net"
@@ -33,6 +31,7 @@ type claudeSubscriptionRun struct {
 	resourceID, scope, originalSession, root, configDir, token string
 	caller, model, accessToken                                 string
 	providerID                                                 string
+	credentialSnapshot                                         *ProviderResource
 	continuationHash                                           [32]byte
 	tools                                                      []claudeSubscriptionTool
 	history                                                    []ChatMessage
@@ -239,14 +238,12 @@ func (r *claudeSubscriptionRun) persist(ctx context.Context) error {
 	if r.adapter.SaveSession == nil {
 		return NewHTTPError(503, "claude_subscription_session_store_unavailable", "Updated Claude Code credentials could not be saved")
 	}
-	if err := r.adapter.SaveSession(ctx, r.resourceID, providerClaudeSubscription, r.originalSession, string(raw)); err != nil {
+	if err := r.adapter.SaveSession(providerSessionPersistenceContext(ctx, r.credentialSnapshot), r.resourceID, providerClaudeSubscription, r.originalSession, string(raw)); err != nil {
 		return err
 	}
 	r.mu.Lock()
 	r.originalSession = string(raw)
-	binding, _ := json.Marshal([]string{r.resourceID, r.caller, r.accessToken, r.originalSession, r.model})
-	sum := sha256.Sum256(binding)
-	r.scope = hex.EncodeToString(sum[:])
+	r.scope = claudeSubscriptionScope(r.resourceID, r.caller, r.accessToken, r.originalSession, r.model, r.credentialSnapshot)
 	r.mu.Unlock()
 	return nil
 }

@@ -627,6 +627,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			return NewHTTPError(409, "provider_resource_changed", "Provider resource no longer belongs to the selected subscription adapter")
 		}
 		creds := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
+		captureProviderCredentialSnapshot(leaseCtx, resource)
 		authentication := creds
 		refreshRegistration, refreshSupported := s.providerCredentialRefreshRegistration(provider)
 		if !refreshSupported || !s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) {

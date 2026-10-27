@@ -36,18 +36,23 @@ async function missingAPIScope(response) {
   const reader = response.clone().body.getReader();
   const chunks = [];
   let size = 0;
+  let timer;
+  const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve({ expired: true }), 1000); });
   try {
     for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
+      const { value, done, expired } = await Promise.race([reader.read(), deadline]);
+      if (expired || done) return false;
       size += value.length;
       if (size > 4096) return false;
       chunks.push(value);
+      // A complete diagnostic is enough; waiting for EOF would let a failed
+      // response block inference even though its status is already known.
+      let body;
+      try { body = JSON.parse(Buffer.concat(chunks, size).toString()); } catch { continue; }
+      return body?.code === "permission-denied" && body.error === "OAuth2 token missing required scope: api:access";
     }
-    let body;
-    try { body = JSON.parse(Buffer.concat(chunks, size).toString()); } catch { return false; }
-    return body?.code === "permission-denied" && body.error === "OAuth2 token missing required scope: api:access";
   } finally {
+    clearTimeout(timer);
     // A tee branch's cancellation waits for its sibling. Preserve the original
     // response for ordinary failures without waiting for that caller to read it.
     void reader.cancel().catch(() => {});

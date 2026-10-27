@@ -1,4 +1,4 @@
-import { ProviderSubscriptionAuth, subscriptionCredentialIdentity, subscriptionCredentialValues, supportsSubscriptionAuthorization } from "./provider-subscription-auth";
+import { ProviderSubscriptionAuth, subscriptionCredentialIdentity, subscriptionCredentialValues, supportsSubscriptionAuthorization, supportsSubscriptionReauthorization } from "./provider-subscription-auth";
 import { ProviderSubscriptionReauthorization } from "./provider-subscription-reauthorization";
 import { ModelCatalogNotices } from "./model-catalog-notices";
 import { preserveRetrievalCatalog } from "../domain/retrieval-settings";
@@ -1392,7 +1392,7 @@ export function ProviderUpsertModal({
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
-                            <ProviderAccountTokenRenewal api={api} pluginActions={pluginActions} providerType={values.type} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} onReauthorize={values.type === provider?.type && supportsSubscriptionAuthorization(pluginActions, values.type) ? () => openSubscriptionLogin(resource.id) : undefined} />
+                            <ProviderAccountTokenRenewal api={api} pluginActions={pluginActions} providerType={values.type} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} onReauthorize={values.type === provider?.type && supportsSubscriptionReauthorization(pluginActions, values.type) ? () => openSubscriptionLogin(resource.id) : undefined} />
                             {resource.status === "active" ? (
                               <button
                                 className="secondary-button provider-account-disable-button"

@@ -242,16 +242,11 @@ func TestSubscriptionWorkerRedactsUpstreamErrorBody(t *testing.T) {
 	transport := subscriptionWorkerTransport{adapter: a, process: p, resourceID: "account", model: subscriptionWorkerModel{ID: "model", Protocol: "chat"}}
 	request, _ := http.NewRequest(http.MethodPost, "https://subscription.tokenhub.invalid", strings.NewReader(`{}`))
 	response, err := transport.RoundTrip(request)
-	if err != nil {
-		t.Fatal(err)
+	if response != nil || err == nil || AsHTTPError(err).UpstreamStatus != http.StatusUnauthorized || providerErrorDisposition(err) != ProviderErrorAuthBroken {
+		t.Fatalf("Credential rejection lost its classification: %v", err)
 	}
-	defer response.Body.Close()
-	data, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(data, []byte("secret")) || response.Header.Get("Authorization") != "" {
-		t.Fatalf("Leaked upstream credentials: %s", data)
+	if strings.Contains(err.Error(), "secret") {
+		t.Fatalf("Leaked upstream credentials: %v", err)
 	}
 }
 

@@ -149,8 +149,9 @@ func (a *SubscriptionWorkerAdapter) account(ctx context.Context, provider Provid
 		caller = NewID("probe")
 	}
 	sum := sha256.Sum256([]byte(caller))
-	process, release, err := a.Pool.acquire(ctx, a.Definition.ID+":"+id+":"+hex.EncodeToString(sum[:]), credentials.SessionJSON, func(ctx context.Context, previous, next string) error {
-		return a.SaveSession(ctx, id, a.Definition.providerType(), previous, next)
+	poolKey := a.Definition.ID + ":" + id + ":" + hex.EncodeToString(sum[:]) + ":" + providerCredentialSnapshotKey(credentials.resourceSnapshot)
+	process, release, err := a.Pool.acquire(ctx, poolKey, credentials.SessionJSON, func(ctx context.Context, previous, next string) error {
+		return a.SaveSession(providerSessionPersistenceContext(ctx, credentials.resourceSnapshot), id, a.Definition.providerType(), previous, next)
 	})
 	if err != nil {
 		unlock()

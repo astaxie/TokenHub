@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"strings"
@@ -124,8 +123,7 @@ func (a *ClaudeSubscriptionAdapter) complete(ctx context.Context, provider Provi
 	if len(tools) > 0 && caller == "" {
 		return Usage{}, NewHTTPError(400, "subscription_caller_required", "Claude tool requests require an authenticated caller")
 	}
-	scopeRaw, _ := json.Marshal([]string{provider.Options["resource_id"], caller, credentials.AccessToken, credentials.SessionJSON, model})
-	scope := sha256.Sum256(scopeRaw)
+	scope := claudeSubscriptionScope(provider.Options["resource_id"], caller, credentials.AccessToken, credentials.SessionJSON, model, credentials.resourceSnapshot)
 	names := make([]string, len(tools))
 	for i, tool := range tools {
 		names[i] = tool.OriginalName
@@ -146,9 +144,9 @@ func (a *ClaudeSubscriptionAdapter) complete(ctx context.Context, provider Provi
 	resultMessages := claudeSubscriptionResults(request.Messages)
 	var run *claudeSubscriptionRun
 	if len(resultMessages) > 0 {
-		run, err = a.resume(hex.EncodeToString(scope[:]), continuationHash, request, resultMessages)
+		run, err = a.resume(scope, continuationHash, request, resultMessages)
 	} else {
-		run, err = a.start(ctx, provider, model, credentials, hex.EncodeToString(scope[:]), continuationHash, tools, request)
+		run, err = a.start(ctx, provider, model, credentials, scope, continuationHash, tools, request)
 	}
 	if err != nil {
 		return Usage{}, err

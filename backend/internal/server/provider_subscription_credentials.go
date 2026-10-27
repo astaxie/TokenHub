@@ -21,6 +21,9 @@ func (s *GormStore) ReplaceProviderSession(ctx context.Context, resourceID, prov
 		if err := s.db.WithContext(leaseCtx).First(&resource, "id = ?", resourceID).Error; err != nil {
 			return notFound(err, "provider_resource_not_found", "Provider resource not found")
 		}
+		if expected, ok := leaseCtx.Value(providerCredentialRefreshPersistenceKey{}).(ProviderResource); ok && !sameProviderAccountSnapshot(resource, expected) {
+			return NewHTTPError(409, "provider_credentials_changed", "Account credentials changed during the request; retry with the current account")
+		}
 		var provider Provider
 		if err := s.db.WithContext(leaseCtx).First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
 			return err

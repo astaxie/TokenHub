@@ -2,9 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 )
 
@@ -38,9 +35,8 @@ func (r *claudeSubscriptionRun) launchWithLease(requestCtx context.Context, prov
 			credentials = fresh
 			r.originalSession = fresh.SessionJSON
 			r.accessToken = fresh.AccessToken
-			binding, _ := json.Marshal([]string{r.resourceID, r.caller, r.accessToken, r.originalSession, r.model})
-			sum := sha256.Sum256(binding)
-			r.scope = hex.EncodeToString(sum[:])
+			r.credentialSnapshot = fresh.resourceSnapshot
+			r.scope = claudeSubscriptionScope(r.resourceID, r.caller, r.accessToken, r.originalSession, r.model, r.credentialSnapshot)
 			if fresh.SessionJSON != "" {
 				err = validateClaudeSubscriptionSession(fresh.SessionJSON)
 			} else if fresh.AccessToken == "" {

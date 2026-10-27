@@ -9,7 +9,13 @@ type providerCredentialBindingKey struct{}
 // including when a queued request resumes after an administrator moves an account.
 func providerCredentialLoaderForType(store Store, providerType string) func(context.Context, string, bool) (ProviderResourceCredentials, error) {
 	return func(ctx context.Context, resourceID string, force bool) (ProviderResourceCredentials, error) {
-		return store.RefreshProviderResourceCredentials(context.WithValue(ctx, providerCredentialBindingKey{}, providerType), resourceID, force)
+		snapshot := &ProviderResource{}
+		ctx = context.WithValue(ctx, providerCredentialSnapshotCaptureKey{}, snapshot)
+		credentials, err := store.RefreshProviderResourceCredentials(context.WithValue(ctx, providerCredentialBindingKey{}, providerType), resourceID, force)
+		if err == nil && snapshot.ID != "" {
+			credentials.resourceSnapshot = snapshot
+		}
+		return credentials, err
 	}
 }
 

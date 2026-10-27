@@ -290,7 +290,7 @@ func (a *GoogleSubscriptionAdapter) request(ctx context.Context, base, method st
 		}
 		return nil, NewHTTPError(502, "google_subscription_request_failed", "Google subscription request failed")
 	}
-	if err = checkGoogleSubscriptionResponse(response, creds.AccessToken); err != nil {
+	if err = checkGoogleSubscriptionResponse(response); err != nil {
 		return nil, err
 	}
 	if stream {
