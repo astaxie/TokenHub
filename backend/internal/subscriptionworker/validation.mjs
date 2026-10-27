@@ -129,6 +129,10 @@ export function validateAuth(provider, value, boundHost) {
 }
 
 export function publicError(error) {
+  if (error?.code === "grok_api_scope_missing") {
+    return { code: "grok_api_scope_missing", status: 409, upstream_status: 403,
+      message: "Grok authorization is missing the api:access permission required for inference. Reauthorize this account and save the updated credentials." };
+  }
   if (error?.code === "workbuddy_authorization_failed") {
     return { code: error.code, message: "WorkBuddy authorization did not complete", status: 400,
       ...(["state", "token", "account"].includes(error.stage) ? { stage: error.stage } : {}),

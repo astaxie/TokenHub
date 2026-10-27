@@ -805,6 +805,8 @@ export async function readAdminError(resp: Response, fallback: string) {
 
 function localizedAdminErrorCode(code?: string) {
   switch (code) {
+    case "grok_api_scope_missing":
+      return tx("Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。");
     case "google_subscription_location_unsupported":
       return tx("Google 订阅服务不支持当前请求所在地区。请检查账号的地区资格以及 TokenHub 服务器的网络出口地区。");
     case "provider_model_retired":

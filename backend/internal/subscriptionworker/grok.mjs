@@ -6,7 +6,7 @@ import { _internal } from "./vendor/grok/index.mjs";
 const CLIENT = "b1a00492-073a-47ea-816f-4c329264a828";
 const AUTH = "https://auth.x.ai/oauth2";
 const BASE = "https://cli-chat-proxy.grok.com/v1";
-const SCOPE = "openid profile email offline_access grok-cli:access";
+const SCOPE = "openid profile email offline_access grok-cli:access api:access";
 const LEAD = 5 * 60 * 1000;
 
 async function form(path, values) {
@@ -29,6 +29,30 @@ function tokenAuth(data, previous = {}) {
 function headers(access) {
   return { Authorization: `Bearer ${access}`, "x-grok-client-version": "1.0.41", "x-xai-token-auth": "xai-grok-cli",
     "x-grok-client-identifier": "grok-shell", "x-grok-client-mode": "headless", "User-Agent": "grok-shell/1.0.41", "content-type": "application/json" };
+}
+
+async function missingAPIScope(response) {
+  if (response.status !== 403 || !response.body) return false;
+  const reader = response.clone().body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 4096) return false;
+      chunks.push(value);
+    }
+    let body;
+    try { body = JSON.parse(Buffer.concat(chunks, size).toString()); } catch { return false; }
+    return body?.code === "permission-denied" && body.error === "OAuth2 token missing required scope: api:access";
+  } finally {
+    // A tee branch's cancellation waits for its sibling. Preserve the original
+    // response for ordinary failures without waiting for that caller to read it.
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 
 export async function createGrokProvider({ client, magpie }) {
@@ -64,6 +88,10 @@ export async function createGrokProvider({ client, magpie }) {
       await response.body?.cancel();
       auth = await current(getAuth, true);
       response = await request(auth);
+    }
+    if (await missingAPIScope(response)) {
+      await response.body.cancel();
+      throw Object.assign(new Error("Grok authorization is missing API access"), { code: "grok_api_scope_missing", status: 409 });
     }
     return response;
   }

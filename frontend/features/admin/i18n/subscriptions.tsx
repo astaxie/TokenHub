@@ -1,5 +1,6 @@
 export const subscriptionTranslations = {
   en: {
+  "Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。": "The Grok authorization is missing the api:access permission required for model requests. Edit this account, authorize it again with the required permission, then save the account.",
   "上游拒绝了本次注册的授权客户端。请重新打开授权，并粘贴最新的完整回调地址（保留其中的 client_id 参数）。": "The provider rejected the authorization client registered for this attempt. Open authorization again and paste the latest full callback URL, including its client_id parameter.",
   "未能完成账号授权换取凭据。请重新打开授权后再试；若仍失败，请检查账号访问资格和服务器连接。": "Could not exchange the account authorization for credentials. Open authorization again and retry; if it still fails, check the account's access eligibility and server connection.",
   "授权码已过期。请重新打开授权，完成登录后及时粘贴最新的完整回调地址。": "The authorization code has expired. Open authorization again, complete sign-in, and promptly paste the latest full callback URL.",
@@ -73,6 +74,7 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth Client ID"
 },
   ja: {
+  "Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。": "Grok の認可に、モデルの呼び出しに必要な api:access 権限がありません。このアカウントを編集し、必要な権限に同意して再認可した後、アカウントを保存してください。",
   "上游拒绝了本次注册的授权客户端。请重新打开授权，并粘贴最新的完整回调地址（保留其中的 client_id 参数）。": "プロバイダーが今回登録された認可クライアントを拒否しました。認可を開き直し、client_id パラメーターを含む最新のコールバック URL 全体を貼り付けてください。",
   "未能完成账号授权换取凭据。请重新打开授权后再试；若仍失败，请检查账号访问资格和服务器连接。": "アカウントの認可を認証情報に交換できませんでした。認可を開き直して再試行してください。引き続き失敗する場合は、アカウントの利用資格とサーバー接続を確認してください。",
   "授权码已过期。请重新打开授权，完成登录后及时粘贴最新的完整回调地址。": "認可コードの有効期限が切れました。認可を開き直してログインを完了し、最新のコールバック URL 全体を速やかに貼り付けてください。",
@@ -146,6 +148,7 @@ export const subscriptionTranslations = {
   "OAuth Client ID": "OAuth クライアント ID"
 },
   ru: {
+  "Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。": "В авторизации Grok отсутствует разрешение api:access, необходимое для запросов к моделям. Отредактируйте этот аккаунт, повторно авторизуйте его с необходимым разрешением, затем сохраните аккаунт.",
   "上游拒绝了本次注册的授权客户端。请重新打开授权，并粘贴最新的完整回调地址（保留其中的 client_id 参数）。": "Провайдер отклонил клиент авторизации, зарегистрированный для этой попытки. Откройте авторизацию снова и вставьте последний полный URL обратного вызова, включая параметр client_id.",
   "未能完成账号授权换取凭据。请重新打开授权后再试；若仍失败，请检查账号访问资格和服务器连接。": "Не удалось обменять авторизацию аккаунта на учётные данные. Откройте авторизацию снова и повторите попытку; если ошибка повторится, проверьте право доступа аккаунта и подключение сервера.",
   "授权码已过期。请重新打开授权，完成登录后及时粘贴最新的完整回调地址。": "Срок действия кода авторизации истёк. Откройте авторизацию снова, войдите в аккаунт и сразу вставьте последний полный URL обратного вызова.",

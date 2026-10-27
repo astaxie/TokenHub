@@ -372,6 +372,11 @@ type subscriptionWorkerFailure struct {
 func subscriptionWorkerInvocationError(failure *subscriptionWorkerFailure) error {
 	status := http.StatusBadGateway
 	if failure != nil {
+		if failure.Code == "grok_api_scope_missing" {
+			err := NewHTTPError(http.StatusConflict, "grok_api_scope_missing", "Grok authorization is missing the api:access permission required for inference. Reauthorize this account and save the updated credentials.")
+			err.UpstreamStatus = http.StatusForbidden
+			return &ProviderInvocationError{Err: err, Disposition: ProviderErrorAuthBroken}
+		}
 		if failure.Code == "workbuddy_authorization_failed" {
 			return subscriptionAuthorizationFailureDetails(failure)
 		}
