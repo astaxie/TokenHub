@@ -157,8 +157,17 @@ func (a *SubscriptionWorkerAdapter) account(ctx context.Context, provider Provid
 		return nil, nil, "", err
 	}
 	return process, func() {
-		if ephemeral {
+		// Transport cancellation can return before invoke observes its context.
+		// Let that invocation settle before checking whether shutdown must drain.
+		process.callGate <- struct{}{}
+		defer func() { <-process.callGate }()
+		if ephemeral || ctx.Err() != nil {
 			process.cancel()
+		}
+		if process.ctx.Err() != nil {
+			// The reader drains already-emitted rotations before closing done.
+			// Keep both account locks until their bounded persistence finishes.
+			<-process.done
 		}
 		release()
 		unlock()

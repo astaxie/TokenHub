@@ -38,6 +38,10 @@ func (a *SubscriptionWorkerAdapter) chat(ctx context.Context, provider Provider,
 	if err != nil {
 		return nil, Usage{}, err
 	}
+	model, err = selectSubscriptionWorkerReasoning(model, request)
+	if err != nil {
+		return nil, Usage{}, err
+	}
 	streamOnlyChat := model.Protocol == "chat" && (a.Definition.ID == "workbuddy" || a.Definition.ID == "workbuddy-ai")
 	codec, proxy, err := a.codec(process, id, model, model.Protocol == "responses" || streamOnlyChat)
 	if err != nil {
@@ -91,6 +95,10 @@ func (a *SubscriptionWorkerAdapter) chatStream(ctx context.Context, provider Pro
 		return Usage{}, err
 	}
 	model, err := a.workerModel(ctx, process, id, modelID)
+	if err != nil {
+		return Usage{}, err
+	}
+	model, err = selectSubscriptionWorkerReasoning(model, request)
 	if err != nil {
 		return Usage{}, err
 	}

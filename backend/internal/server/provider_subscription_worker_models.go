@@ -10,12 +10,13 @@ import (
 )
 
 type subscriptionWorkerModel struct {
-	ID       string                     `json:"id"`
-	Name     string                     `json:"name"`
-	Protocol string                     `json:"protocol"`
-	Fallback bool                       `json:"-"`
-	Variants map[string]json.RawMessage `json:"variants"`
-	API      struct {
+	ID        string                     `json:"id"`
+	Name      string                     `json:"name"`
+	Protocol  string                     `json:"protocol"`
+	Fallback  bool                       `json:"-"`
+	Variants  map[string]json.RawMessage `json:"variants"`
+	reasoning *subscriptionWorkerReasoningSetting
+	API       struct {
 		ID  string `json:"id"`
 		URL string `json:"url"`
 		NPM string `json:"npm"`
@@ -162,17 +163,10 @@ func subscriptionWorkerModelMetadata(model subscriptionWorkerModel) map[string]s
 	return metadata
 }
 
-// A subscription can serve non-Claude models over Messages. Honor its explicit
-// effort declarations rather than limiting it to Anthropic's model families.
 func subscriptionWorkerReasoningEfforts(model subscriptionWorkerModel) map[string]bool {
 	efforts := map[string]bool{}
-	for _, raw := range model.Variants {
-		var variant struct {
-			ReasoningEffort string `json:"reasoningEffort"`
-		}
-		if json.Unmarshal(raw, &variant) == nil && strings.TrimSpace(variant.ReasoningEffort) != "" {
-			efforts[strings.TrimSpace(variant.ReasoningEffort)] = true
-		}
+	for effort := range subscriptionWorkerReasoningSettings(model) {
+		efforts[effort] = true
 	}
 	return efforts
 }

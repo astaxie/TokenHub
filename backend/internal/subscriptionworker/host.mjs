@@ -186,6 +186,10 @@ export function createHost({ scope, emit, relayCallback }) {
     if (protocol === "anthropic") headers.set("anthropic-version", "2023-06-01");
     const response = await (loader.fetch || globalThis.fetch)(url, { method: "POST", headers, body: text, signal: scope.getStore().controller.signal });
     if (account.saveError) { await response.body?.cancel(); throw account.saveError; }
+    if (!response.ok && scope.getStore().egressError) {
+      await response.body?.cancel();
+      throw scope.getStore().egressError;
+    }
     await emit({ id: command.id, event: "response", status: response.status, headers: headerObject(response.headers) });
     if (response.body) {
       const reader = response.body.getReader();
@@ -328,10 +332,11 @@ export function createHost({ scope, emit, relayCallback }) {
     if (typeof command.id !== "string" || !command.id || command.id.length > 256) return;
     const controller = new AbortController();
     active.set(command.id, controller);
+    const context = { id: command.id, operation: command.operation, resourceID: command.resource_id || "catalog", provider: command.provider, controller };
     try {
-      const result = await scope.run({ id: command.id, operation: command.operation, resourceID: command.resource_id || "catalog", provider: command.provider, controller }, () => operation(command));
+      const result = await scope.run(context, () => operation(command));
       if (command.operation !== "fetch") await emit({ id: command.id, event: "result", result });
-    } catch (error) { await emit({ id: command.id, event: "error", error: publicError(error) }); }
+    } catch (error) { await emit({ id: command.id, event: "error", error: publicError(error, context) }); }
     finally { active.delete(command.id); }
   }
 

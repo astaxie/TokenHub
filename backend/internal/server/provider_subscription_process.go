@@ -161,7 +161,8 @@ func (p *subscriptionWorkerProcess) read(output io.Reader) {
 				select {
 				case ch <- event:
 				case <-p.ctx.Done():
-					return
+					// Drain stdout after shutdown: a later buffered auth.update
+					// may hold the only current refresh token.
 				}
 			}
 		}
@@ -204,7 +205,12 @@ func (p *subscriptionWorkerProcess) updateAuth(event subscriptionWorkerEvent) {
 			if saveCtx == nil {
 				saveCtx = p.ctx
 			}
+			// The upstream has already rotated its token. A disconnected caller
+			// must not discard that rotation; account release waits for this
+			// bounded save and the store still rejects concurrent replacement.
+			saveCtx, cancel := context.WithTimeout(context.WithoutCancel(saveCtx), 10*time.Second)
 			err = p.saveAuth(saveCtx, previous, next)
+			cancel()
 		}
 		if err != nil {
 			ack["error"] = "credential_persistence_failed"

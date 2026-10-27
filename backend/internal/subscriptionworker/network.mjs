@@ -93,6 +93,7 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
     try {
       if (message.operation === "network.response") {
         if (state.controller) throw new Error("duplicate network response");
+        state.context.egressError = null;
         const headers = toHeaders(message.headers);
         headers.delete("content-encoding");
         headers.delete("content-length");
@@ -130,7 +131,14 @@ export function createNetworkRelay(scope, emit, { maxResponseBytes = 64 * 1024 *
         state.controller?.close();
         end();
       } else if (message.operation === "network.error") {
-        throw failure(message.error, "Subscription upstream network request failed", message.status ?? 502);
+        const error = failure(message.error, "Subscription upstream network request failed", message.status ?? 502);
+        // Some pinned adapters catch fetch errors and manufacture an HTTP
+        // response. Keep guarded transport failures in the command context so
+        // that conversion cannot turn a shared proxy fault into account blame.
+        if (["provider_proxy_config_error", "provider_proxy_connect_failed", "provider_proxy_auth_failed", "provider_proxy_timeout"].includes(message.error)) {
+          state.context.egressError = error;
+        }
+        throw error;
       }
     } catch (error) {
       state.reject(error);

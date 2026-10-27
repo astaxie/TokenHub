@@ -174,7 +174,7 @@ func (s *Server) compatibleChatRoutes(routed RoutedCall, req ChatCompletionReque
 		}
 		return compatible, firstErr
 	}
-	return compatible, nil
+	return s.bindClaudeSubscriptionContinuation(compatible, claudeSubscriptionChatResultIDs(req))
 }
 
 func (s *Server) anthropicGatewayAffinity(

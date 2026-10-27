@@ -53,6 +53,9 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 	if json.Unmarshal(data, &payload) != nil || payload == nil {
 		return nil, NewHTTPError(400, "subscription_body_invalid", "Subscription inference requires a JSON object")
 	}
+	if err := applySubscriptionWorkerReasoning(payload, t.model); err != nil {
+		return nil, err
+	}
 	sessionID := subscriptionWorkerSessionID(req.Context(), payload)
 	if _, exists := payload["prompt_cache_key"]; exists {
 		payload["prompt_cache_key"], _ = json.Marshal(sessionID)

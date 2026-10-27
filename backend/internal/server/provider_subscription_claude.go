@@ -44,6 +44,7 @@ type ClaudeSubscriptionAdapter struct {
 
 type claudeSubscriptionEvent struct {
 	Text         string
+	Reasoning    string
 	Calls        []map[string]any
 	Usage        Usage
 	FinishReason string
@@ -52,11 +53,12 @@ type claudeSubscriptionEvent struct {
 }
 
 func (a *ClaudeSubscriptionAdapter) Chat(ctx context.Context, provider Provider, model string, request ChatCompletionRequest) (any, Usage, error) {
-	text := ""
+	text, reasoning := "", ""
 	var calls []map[string]any
 	finish := "stop"
 	usage, err := a.complete(ctx, provider, model, request, func(event claudeSubscriptionEvent) error {
 		text += event.Text
+		reasoning += event.Reasoning
 		calls = append(calls, event.Calls...)
 		if event.FinishReason != "" {
 			finish = event.FinishReason
@@ -67,11 +69,14 @@ func (a *ClaudeSubscriptionAdapter) Chat(ctx context.Context, provider Provider,
 		return nil, usage, err
 	}
 	message := map[string]any{"role": "assistant", "content": text}
+	if reasoning != "" {
+		message["reasoning_content"] = reasoning
+	}
 	if len(calls) > 0 {
 		message["tool_calls"] = calls
 		finish = "tool_calls"
 	}
-	return map[string]any{"id": NewID("chatcmpl"), "object": "chat.completion", "created": time.Now().Unix(), "model": model, "choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finish}}, "usage": map[string]any{"prompt_tokens": usage.PromptTokens, "completion_tokens": usage.CompletionTokens, "total_tokens": usage.TotalTokens}}, usage, nil
+	return map[string]any{"id": NewID("chatcmpl"), "object": "chat.completion", "created": time.Now().Unix(), "model": model, "choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finish}}, "usage": openAIChatUsageObject(usage)}, usage, nil
 }
 
 func (a *ClaudeSubscriptionAdapter) ChatStream(ctx context.Context, provider Provider, model string, request ChatCompletionRequest, w io.Writer) (Usage, error) {
@@ -80,6 +85,9 @@ func (a *ClaudeSubscriptionAdapter) ChatStream(ctx context.Context, provider Pro
 	usage, err := a.complete(ctx, provider, model, request, func(event claudeSubscriptionEvent) error {
 		if event.FinishReason != "" {
 			finish = event.FinishReason
+		}
+		if err := encoder.EmitReasoning(event.Reasoning); err != nil {
+			return err
 		}
 		if err := encoder.EmitText(event.Text); err != nil {
 			return err

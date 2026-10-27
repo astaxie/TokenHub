@@ -23,7 +23,7 @@ func (r *claudeSubscriptionRun) emit(event claudeSubscriptionEvent) bool {
 func (r *claudeSubscriptionRun) readOutput(output io.Reader) {
 	scanner := bufio.NewScanner(output)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
-	partial := false
+	partial, partialReasoning := false, false
 	usageReported := Usage{}
 	messageUsage := make(map[string]Usage)
 	messageID := ""
@@ -85,6 +85,15 @@ func (r *claudeSubscriptionRun) readOutput(output io.Reader) {
 						}
 					}
 				}
+				if delta["type"] == "thinking_delta" {
+					thinking, _ := delta["thinking"].(string)
+					if thinking != "" {
+						partialReasoning = true
+						if !r.emit(claudeSubscriptionEvent{Reasoning: thinking}) {
+							return
+						}
+					}
+				}
 			}
 		case "assistant":
 			message, _ := item["message"].(map[string]any)
@@ -97,23 +106,29 @@ func (r *claudeSubscriptionRun) readOutput(output io.Reader) {
 				id = messageID
 			}
 			usage := accountUsage(id, anthropicUsage(message))
-			var text strings.Builder
-			if !partial {
-				for _, value := range content {
-					block, _ := value.(map[string]any)
-					if block["type"] == "text" {
+			var text, reasoning strings.Builder
+			for _, value := range content {
+				block, _ := value.(map[string]any)
+				switch block["type"] {
+				case "text":
+					if !partial {
 						part, _ := block["text"].(string)
 						text.WriteString(part)
 					}
+				case "thinking":
+					if !partialReasoning {
+						part, _ := block["thinking"].(string)
+						reasoning.WriteString(part)
+					}
 				}
 			}
-			partial = false
+			partial, partialReasoning = false, false
 			calls, err := r.registerCalls(content)
 			if messageOpen {
 				pendingCalls = append(pendingCalls, calls...)
 				calls = nil
 			}
-			if !r.emit(claudeSubscriptionEvent{Text: text.String(), Calls: calls, Usage: usage, Err: err}) || err != nil {
+			if !r.emit(claudeSubscriptionEvent{Text: text.String(), Reasoning: reasoning.String(), Calls: calls, Usage: usage, Err: err}) || err != nil {
 				return
 			}
 		case "result":

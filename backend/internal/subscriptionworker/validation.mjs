@@ -128,7 +128,8 @@ export function validateAuth(provider, value, boundHost) {
   return structuredClone(value);
 }
 
-export function publicError(error) {
+export function publicError(error, context) {
+  if (context?.account?.saveError) return publicError(context.account.saveError);
   if (error?.code === "grok_api_scope_missing") {
     return { code: "grok_api_scope_missing", status: 409, upstream_status: 403,
       message: "Grok authorization is missing the api:access permission required for inference. Reauthorize this account and save the updated credentials." };
@@ -143,6 +144,9 @@ export function publicError(error) {
     "provider_not_supported", "operation_not_supported", "method_not_supported", "invalid_upstream", "invalid_request", "invalid_session",
     "callback_not_allowed", "credential_save_failed", "request_cancelled", "body_too_large", "model_not_found", "protocol_mismatch",
     "provider_proxy_config_error", "provider_proxy_connect_failed", "provider_proxy_auth_failed", "provider_proxy_timeout"]);
+  // Recover only generic adapter wrappers. Explicit validation, authorization,
+  // and persistence errors retain their own meaning after an auxiliary failure.
+  if (!safe.has(error?.code) && !Number.isInteger(error?.status) && error?.signIn !== "expired" && context?.egressError) return publicError(context.egressError);
   const code = safe.has(error?.code) ? error.code : "subscription_operation_failed";
   return { code, message: safe.has(error?.code) ? error.message : "The subscription provider request failed. Check the account and upstream connection.",
     ...(Number.isInteger(error?.status) ? { status: error.status } : {}),

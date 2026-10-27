@@ -70,6 +70,12 @@ func TestOpenDesignAnthropicModelPreservesAdvertisedReasoningEffort(t *testing.T
 					} else {
 						_, _, err = adapter.Chat(ctx, provider, "glm-5.3-flash", request)
 					}
+					if effort == "ultra" {
+						if err == nil || AsHTTPError(err).Status != http.StatusBadRequest || AsHTTPError(err).Code != "unsupported_reasoning_effort" {
+							t.Fatalf("unsupported effort was not rejected: %v", err)
+						}
+						return
+					}
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -77,7 +83,7 @@ func TestOpenDesignAnthropicModelPreservesAdvertisedReasoningEffort(t *testing.T
 					defer mu.Unlock()
 					config, _ := fetched["output_config"].(map[string]any)
 					var expected any
-					if effort != "" && effort != "ultra" {
+					if effort != "" {
 						expected = effort
 					}
 					if fetched["model"] != "glm-5.3-flash" || config["effort"] != expected {

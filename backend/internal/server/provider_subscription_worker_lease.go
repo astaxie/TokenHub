@@ -22,7 +22,39 @@ func (a *SubscriptionWorkerAdapter) withAccountLease(ctx context.Context, provid
 	if id == "" || a.RunClusterOperation == nil {
 		return operation(ctx)
 	}
-	return a.RunClusterOperation(ctx, "subscription-account:"+id, operation)
+	// Cancellation stops acquisition and the operation, but the acquired lease
+	// keeps renewing while account release drains and saves received rotations.
+	leaseCtx, cancelLease := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelLease()
+	stopWaiting := context.AfterFunc(ctx, cancelLease)
+	defer stopWaiting()
+	err = a.RunClusterOperation(leaseCtx, "subscription-account:"+id, func(heldCtx context.Context) error {
+		if !stopWaiting() && ctx.Err() != nil {
+			return ctx.Err()
+		}
+		operationBase := heldCtx
+		deadline, hasDeadline := ctx.Deadline()
+		if hasDeadline {
+			var cancelDeadline context.CancelFunc
+			operationBase, cancelDeadline = context.WithDeadline(heldCtx, deadline)
+			defer cancelDeadline()
+		}
+		operationCtx, cancelOperation := context.WithCancelCause(operationBase)
+		defer cancelOperation(nil)
+		stopOperation := context.AfterFunc(ctx, func() {
+			// Let the deadline timer preserve DeadlineExceeded in Err(), rather
+			// than turning a timeout into explicit caller cancellation.
+			if !hasDeadline || ctx.Err() != context.DeadlineExceeded {
+				cancelOperation(context.Cause(ctx))
+			}
+		})
+		defer stopOperation()
+		return operation(operationCtx)
+	})
+	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 func (a *SubscriptionWorkerAdapter) Chat(ctx context.Context, provider Provider, model string, request ChatCompletionRequest) (any, Usage, error) {

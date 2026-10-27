@@ -70,7 +70,7 @@ func (s *Server) compatibleAnthropicRoutes(routed RoutedCall, req anthropicMessa
 		}
 		return compatible, firstErr
 	}
-	return compatible, nil
+	return s.bindClaudeSubscriptionContinuation(compatible, claudeSubscriptionAnthropicResultIDs(req))
 }
 
 func (s *Server) validateAnthropicRouteCompatibility(call CallContext, route RouteSelection, req anthropicMessagesRequest) error {

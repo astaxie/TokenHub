@@ -32,6 +32,7 @@ type claudeSubscriptionRun struct {
 	adapter                                                    *ClaudeSubscriptionAdapter
 	resourceID, scope, originalSession, root, configDir, token string
 	caller, model, accessToken                                 string
+	providerID                                                 string
 	continuationHash                                           [32]byte
 	tools                                                      []claudeSubscriptionTool
 	history                                                    []ChatMessage
@@ -74,7 +75,7 @@ func (a *ClaudeSubscriptionAdapter) start(ctx context.Context, provider Provider
 	resourceID := provider.Options["resource_id"]
 	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Minute)
 	caller, _ := ctx.Value(subscriptionCallerKey{}).(string)
-	run := &claudeSubscriptionRun{caller: caller, model: model, accessToken: credentials.AccessToken, adapter: a, resourceID: resourceID, scope: scope, originalSession: credentials.SessionJSON, continuationHash: continuationHash, tools: tools, history: append([]ChatMessage(nil), request.Messages...), ctx: runCtx, cancel: cancel, exited: make(chan struct{}), cleanupDone: make(chan struct{}), events: make(chan claudeSubscriptionEvent, 128), waiting: make(map[string]*claudeSubscriptionPending), internal: make(map[string]*claudeSubscriptionPending), busy: true}
+	run := &claudeSubscriptionRun{caller: caller, model: model, accessToken: credentials.AccessToken, providerID: provider.ID, adapter: a, resourceID: resourceID, scope: scope, originalSession: credentials.SessionJSON, continuationHash: continuationHash, tools: tools, history: append([]ChatMessage(nil), request.Messages...), ctx: runCtx, cancel: cancel, exited: make(chan struct{}), cleanupDone: make(chan struct{}), events: make(chan claudeSubscriptionEvent, 128), waiting: make(map[string]*claudeSubscriptionPending), internal: make(map[string]*claudeSubscriptionPending), busy: true}
 	a.mu.Lock()
 	if a.runs == nil {
 		a.runs = make(map[string]*claudeSubscriptionRun)
