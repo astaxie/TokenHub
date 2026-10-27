@@ -689,6 +689,7 @@ func (a GeminiAdapter) Responses(ctx context.Context, provider Provider, provide
 		Messages:        []ChatMessage{{Role: "user", Content: req.Input}},
 		MaxTokens:       req.MaxTokens,
 		ReasoningEffort: responsesReasoningEffort(req),
+		geminiStore:     req.Store,
 	}
 	resp, usage, err := a.Chat(ctx, provider, providerModel, chatReq)
 	if err != nil {

@@ -4,6 +4,78 @@
 # First-party entries reviewed: 2026-10-16. See per-model metadata for scope and sources.
 version: 1
 models:
+  - name: gpt-6.1-terra
+    title: GPT-6.1 Terra
+    description: Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters
+      are unsupported while reasoning is enabled.
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 1050000
+    input_price_usd_per_1m: 1
+    output_price_usd_per_1m: 5
+    cache_read_price_usd_per_1m: 0.05
+    cache_write_price_usd_per_1m: 1.25
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    - structured_outputs
+    supported_parameters:
+    - tools
+    - response_format
+    - reasoning
+    - reasoning_effort
+    - image_input
+    - max_tokens
+    - max_completion_tokens
+    - max_output_tokens
+    - tool_choice
+    - parallel_tool_calls
+    - text
+    - include
+    - truncation
+    - service_tier
+    - safety_identifier
+    - prompt_cache_options
+    - prompt_cache_retention
+    - max_tool_calls
+    - stream_options
+    - store
+    metadata:
+      source: tokenhub-standard-catalog
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-6.1-terra
+      provider_catalog_id: openai
+      provider_model_id: gpt-6.1-terra
+      request_parameter_profile: "openai-chat-responses-v1"
+      reasoning_effort_default: "medium"
+      sampling_requires_reasoning_effort: "none"
+      chat_tools_requires_reasoning_effort: "unsupported"
+      endpoints: responses,chat/completions
+      max_output_tokens: '128000'
+      knowledge_cutoff: '2026-06-01'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      reasoning_effort_options: none,low,medium,high,xhigh,max
+      verified_at: '2026-10-28'
+      tool_call_note: Tool calling requires Responses; Chat Completions supports requests without tools.
+      sampling_note: Sampling parameters are unsupported while reasoning is enabled.
+      pricing_note: Short-context Standard reference rates only. Above 272000 input tokens, input/cache rates double
+        and output rates increase by 50%. Confirm applicable rates or constrain input length before publishing; tier
+        notes do not configure billing.
+      cache_write_note: Reference cache-write rate is for 30-minute retention; 12-hour writes cost $2.50 per million before long-context adjustments.
+      catalog_reviewed_at: '2026-10-28'
+      availability: active
+      pricing_status: unverified
+      catalog_price_reference: 'true'
+      lifecycle_status: active
+      reference_token_prices: '{"input":1,"output":5,"cache_read":0.05,"cache_write":1.25,"tiers":[{"input":2,"output":7.5,"cache_read":0.1,"cache_write":2.5,"tier":{"type":"context","size":272000}}]}'
   - name: gpt-6.1-sol
     title: GPT-6.1 Sol
     description: Tool calling requires Responses; Chat Completions supports requests without tools. Sampling parameters
@@ -1722,9 +1794,8 @@ models:
       upstream_source: https://docs.mistral.ai/models/mistral-large-4-0
       verified_at: '2026-10-10'
       availability: preview
-      pricing_note: USD per million tokens, launch promotion 50% off for two weeks from October 6. List rates input 1.36, output
-        4.18, cached input 0.14; exact promotion end instant not published.
-      pricing_source: https://docs.mistral.ai/resources/changelogs
+      pricing_note: Current Standard USD per million tokens input 1.36, output 4.18, cached input 0.14; account terms may differ.
+      pricing_source: https://docs.mistral.ai/models/mistral-large-4-0
       list_prices_usd_per_million_tokens: '{"input":1.36,"output":4.18,"cache_read":0.14}'
       reasoning_effort_options: none,high
       reasoning_source: https://docs.mistral.ai/studio/conversations/reasoning
@@ -1734,7 +1805,7 @@ models:
       lifecycle_status: active
       reasoning_supported: 'true'
       endpoints: chat/completions
-      reference_token_prices: '{"input":0.68,"output":2.09,"cache_read":0.07}'
+      reference_token_prices: '{"input":1.36,"output":4.18,"cache_read":0.14}'
       pricing_status: unverified
       source: tokenhub-standard-catalog
       provider_catalog_id: mistral
@@ -9895,3 +9966,53 @@ models:
       provider_catalog_id: openai
       provider_model_id: gpt-4.1-mini-2025-04-14
       max_output_tokens: '32768'
+  - name: kimi-k3.1-pro
+    title: Kimi K3.1 Pro
+    category: kimi
+    family: kimi
+    modality: chat
+    context_window: 1048576
+    input_modalities: [text, image, video]
+    output_modalities: [text]
+    capabilities: [chat, vision, video_input, reasoning, tools]
+    supported_parameters: [max_completion_tokens, reasoning]
+    metadata:
+      source: tokenhub-standard-catalog
+      provider_catalog_id: moonshot-ai
+      provider_model_id: kimi-k3.1-pro
+      upstream_source: https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart
+      verified_at: '2026-10-28'
+      catalog_reviewed_at: '2026-10-28'
+      availability: active
+      lifecycle_status: active
+      call_support: unsupported
+      call_support_note: Catalog only until the native model contract is verified.
+      reasoning_effort_options: low,high,max
+      max_output_tokens: '1048576'
+      output_note: Default 131072; maximum 1048576 within the shared context.
+      pricing_status: unverified
+      pricing_source: https://platform.kimi.ai/
+      pricing_note: Global USD per million tokens input 2, output 10, cache hit 0.20; cache write depends on TTL.
+  - name: qwen-audio-3.1-realtime-flash
+    title: Qwen Audio 3.1 Realtime Flash
+    category: alibaba
+    family: qwen
+    modality: chat
+    context_window: 262144
+    input_modalities: [text, audio]
+    output_modalities: [text, audio]
+    capabilities: [chat]
+    metadata:
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba
+      provider_model_id: qwen-audio-3.1-realtime-flash
+      upstream_source: https://www.alibabacloud.com/help/en/model-studio/newly-released-models
+      verified_at: '2026-10-28'
+      catalog_reviewed_at: '2026-10-28'
+      availability: active
+      lifecycle_status: active
+      call_support: unsupported
+      call_support_note: Native realtime session protocol is not implemented by the chat adapter.
+      native_endpoints: WebSocket,WebRTC,AOQ
+      pricing_status: unverified
+      pricing_note: Separate text and audio rates depend on account and deployment region.

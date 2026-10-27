@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -28,6 +29,15 @@ func buildGeminiRequest(providerModel string, req ChatCompletionRequest) (map[st
 	}
 
 	payload := map[string]any{"contents": contents}
+	if req.geminiStore != nil {
+		payload["store"] = *req.geminiStore
+	} else if raw, ok := req.raw["store"]; ok && string(raw) != "null" {
+		var store bool
+		if err := json.Unmarshal(raw, &store); err != nil {
+			return nil, unsupportedCapabilityError("Gemini requires store to be a boolean")
+		}
+		payload["store"] = store
+	}
 	if len(systemParts) > 0 {
 		// System guidance belongs in the top-level systemInstruction. Folding it
 		// into a user turn changes how the model weighs it.

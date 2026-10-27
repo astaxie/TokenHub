@@ -458,7 +458,14 @@
         "output": 8192
       },
       "display_name": "Compound",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "shutdown_date": "2026-09-21",
+        "shutdown_time_note": "Published decommission date; exact time is not specified.",
+        "lifecycle_source": "https://console.groq.com/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-28"
+      }
     },
     {
       "id": "groq/compound-mini",
@@ -486,7 +493,14 @@
         "output": 8192
       },
       "display_name": "Compound Mini",
-      "type": "chat"
+      "type": "chat",
+      "metadata": {
+        "lifecycle_status": "retired",
+        "shutdown_date": "2026-09-21",
+        "shutdown_time_note": "Published decommission date; exact time is not specified.",
+        "lifecycle_source": "https://console.groq.com/docs/deprecations",
+        "catalog_reviewed_at": "2026-10-28"
+      }
     },
     {
       "id": "qwen/qwen3-32b",

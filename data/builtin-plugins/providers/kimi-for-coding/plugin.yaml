@@ -27,7 +27,7 @@ capabilities:
       base_url: "https://api.kimi.com/coding/v1"
       doc_url: "https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html"
       categories: []
-      models_count: 4
+      models_count: 6
 permissions:
   network:
     allow: []

@@ -26,7 +26,7 @@ capabilities:
       base_url: ""
       doc_url: "https://platform.openai.com/docs/models"
       categories: []
-      models_count: 65
+      models_count: 66
 permissions:
   network:
     allow: []

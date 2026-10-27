@@ -6,6 +6,37 @@
   "display_name": "alibaba-cn",
   "models": [
     {
+      "id": "qwen-audio-3.1-realtime-flash",
+      "name": "Qwen Audio 3.1 Realtime Flash",
+      "display_name": "Qwen Audio 3.1 Realtime Flash",
+      "family": "qwen",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "limit": {
+        "context": 262144
+      },
+      "metadata": {
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/newly-released-models",
+        "verified_at": "2026-10-28",
+        "catalog_reviewed_at": "2026-10-28",
+        "availability": "active",
+        "call_support": "unsupported",
+        "call_support_note": "Native realtime session protocol is not implemented by the chat adapter.",
+        "pricing_status": "unverified",
+        "pricing_note": "Multimodal realtime pricing has separate text and audio units; verify the account and region.",
+        "native_endpoints": "WebSocket,WebRTC,AOQ"
+      }
+    },
+    {
       "id": "qwen3.8-livetranslate-flash-realtime",
       "name": "Qwen3.8 LiveTranslate Flash Realtime",
       "display_name": "Qwen3.8 LiveTranslate Flash Realtime",

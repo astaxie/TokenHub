@@ -1027,7 +1027,7 @@
       "endpoints": "chat/completions",
       "metadata": {
         "verified_at": "2026-10-16",
-        "catalog_reviewed_at": "2026-10-16",
+        "catalog_reviewed_at": "2026-10-28",
         "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
         "lifecycle_status": "active",
         "pricing_status": "unverified",
@@ -1038,7 +1038,12 @@
         "pricing_source": "https://cloud.tencent.com/document/product/1823/130659",
         "pricing_note": "Subscription points are not USD per-token prices. Regional, model and time-window deductions differ; confirm configured upstream costs before publication.",
         "access_requirement": "Requires the named subscription plan and a permitted account; listing is not account entitlement.",
-        "usage_scope": "Enterprise subscription; region-specific model access and key permissions apply."
+        "usage_scope": "Enterprise subscription; region-specific model access and key permissions apply.",
+        "regional_lifecycle_status": "retiring",
+        "regional_lifecycle_regions": "Guangzhou",
+        "regional_shutdown_date": "2026-10-31",
+        "regional_lifecycle_note": "Guangzhou enterprise professional plan only; Singapore has no corresponding retirement notice. Exact time is not specified.",
+        "lifecycle_source": "https://cloud.tencent.com/document/product/1823/130659"
       },
       "last_updated": "2026-10-16"
     },
