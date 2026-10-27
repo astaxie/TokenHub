@@ -65,6 +65,43 @@ describe("Subscription authorization", () => {
     expect(requests.at(-1)?.body).toMatchObject({ state: "server-state", code: "worker-code", callback_url: "http://localhost:4567/?code=worker-code&state=worker-state" });
   });
 
+  it("restarts native authorization after a rejected single-use callback", async () => {
+    let starts = 0, exchanges = 0;
+    const { requests, onCredentials } = setup(({ capability }) => {
+      if (capability === "oauth.start") return { ...session, session_id: `session-${++starts}`, state: `state-${starts}` };
+      if (++exchanges === 1) return new Response(JSON.stringify({ error: { code: "subscription_oauth_code_rejected", message: "Synthetic rejected authorization code" } }), { status: 502 });
+      return { access_token: "fresh-account-token" };
+    });
+    await start();
+    fireEvent.change(await screen.findByLabelText("回调结果"), { target: { value: "http://localhost:1455/auth/callback?code=old-code&state=state-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "完成授权" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "打开授权" })).toBeEnabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("授权码已失效、已被使用或与本次授权不匹配。请重新打开授权，完成登录后粘贴本次完整回调地址。");
+    expect(screen.queryByLabelText("回调结果")).not.toBeInTheDocument();
+    expect(onCredentials).not.toHaveBeenCalled();
+    expect(requests.filter(request => request.capability === "oauth.cancel")).toEqual([{ capability: "oauth.cancel", body: { resource_type: "test_account", session_id: "session-1", state: "state-1" } }]);
+    await start();
+    expect(await screen.findByLabelText("回调结果")).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("回调结果"), { target: { value: "http://localhost:1455/auth/callback?code=fresh-code&state=state-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "完成授权" }));
+    await waitFor(() => expect(onCredentials).toHaveBeenCalledExactlyOnceWith({ access_token: "fresh-account-token" }));
+    expect(requests.filter(request => request.capability === "oauth.exchange").at(-1)?.body).toMatchObject({ session_id: "session-2", state: "state-2", code: "fresh-code" });
+  });
+
+  it("keeps an opaque worker callback session available for correction", async () => {
+    const { requests } = setup(({ capability }) => capability === "oauth.start" ? session : new Response(JSON.stringify({ error: { message: "Synthetic worker callback failure" } }), { status: 400 }), true);
+    await start();
+    fireEvent.change(await screen.findByLabelText("回调结果"), { target: { value: "worker-code" } });
+    fireEvent.click(screen.getByRole("button", { name: "完成授权" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Synthetic worker callback failure");
+    expect(screen.getByRole("button", { name: "打开授权" })).toBeDisabled();
+    expect(screen.getByLabelText("回调结果")).toHaveValue("worker-code");
+    expect(screen.getByRole("button", { name: "完成授权" })).toBeEnabled();
+    expect(requests.filter(request => request.capability === "oauth.cancel")).toHaveLength(0);
+  });
+
   it("imports the rotated credentials and catalog together without browser storage", async () => {
     const result = { session_json: '{"refresh":"synthetic-new"}', catalog: { id: "synthetic", models: [{ id: "synthetic-model" }] } };
     const storage = vi.spyOn(Storage.prototype, "setItem");
@@ -190,6 +227,27 @@ describe("Subscription authorization", () => {
 });
 
 describe("Subscription authorization concurrency", () => {
+  it("ignores a rejected native exchange after a new session has started", async () => {
+    let reject!: (error: Error) => void;
+    let starts = 0;
+    const { requests, onCredentials } = setup(({ capability }) => capability === "oauth.start"
+      ? { ...session, session_id: `session-${++starts}` }
+      : new Promise((_resolve, rejectExchange) => { reject = rejectExchange; }));
+    await start();
+    fireEvent.change(await screen.findByLabelText("回调结果"), { target: { value: "old-code" } });
+    fireEvent.click(screen.getByRole("button", { name: "完成授权" }));
+    await waitFor(() => expect(reject).toBeDefined());
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await start();
+    fireEvent.change(await screen.findByLabelText("回调结果"), { target: { value: "new-code" } });
+    await act(async () => { reject(new Error("Stale exchange failure")); });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("回调结果")).toHaveValue("new-code");
+    expect(screen.getByRole("button", { name: "打开授权" })).toBeDisabled();
+    expect(requests.filter(request => request.capability === "oauth.cancel")).toHaveLength(1);
+    expect(onCredentials).not.toHaveBeenCalled();
+  });
+
   it("retains a completed poll while a manual callback is waiting", async () => {
     let complete!: (value: unknown) => void;
     const { requests, onCredentials } = setup(({ capability }) => capability === "oauth.start"

@@ -173,7 +173,12 @@ export function ProviderSubscriptionAuth({ api, actions, providerType, disabled,
       activeSession.current = null;
       await onCredentialsRef.current(result);
       setCallback(""); setSession(null); setComplete(true);
-    } catch (err) { if (generation.current === current) setError(subscriptionAuthorizationError(err)); }
+    } catch (err) {
+      if (generation.current === current) {
+        if (!opaqueSession && session.flow === "authorization_code") cancelSession();
+        setError(subscriptionAuthorizationError(err));
+      }
+    }
     finally { if (exchangeInFlight.current === operation) exchangeInFlight.current = null; if (generation.current === current) setBusy(false); }
   }
 

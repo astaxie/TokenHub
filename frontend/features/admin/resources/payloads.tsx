@@ -2,6 +2,7 @@ import { retrievalSettings, validEmbeddingSpaces } from "../domain/retrieval-set
 import { rerankOptions } from "../domain/provider-rerank-options";
 import { embeddingOptions } from "../domain/provider-embedding-options";
 import { providerBlockedAddressMessage } from "./provider-network-errors";
+import { subscriptionOAuthErrorMessage } from "./subscription-oauth-errors";
 import { appRole } from "../core/navigation";
 import { clearSavedSession } from "../core/session";
 import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ApprovalRequest, authExpiredEventName, type FieldConfig, type Project, type ProviderCatalogModel, type ProviderResource, type ResourceConfig, type UserImportResult } from "../core/types";
@@ -792,7 +793,7 @@ export async function readAdminError(resp: Response, fallback: string) {
   if (!body) return resp.status === 403 ? permissionDeniedMessage(fallback) : `${fallback} (${resp.status})`;
   try {
     const parsed = JSON.parse(body) as { error?: { code?: string; message?: string; details?: unknown }; message?: string };
-    const localized = providerBlockedAddressMessage(parsed.error?.code, parsed.error?.details) ?? localizedAdminErrorCode(parsed.error?.code);
+    const localized = providerBlockedAddressMessage(parsed.error?.code, parsed.error?.details) ?? subscriptionOAuthErrorMessage(parsed.error?.code, parsed.error?.details) ?? localizedAdminErrorCode(parsed.error?.code);
     if (localized) return localized;
     if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("账号会话已失效，请重新进行账号授权。");
     if (resp.status === 403) return permissionDeniedMessage(fallback);

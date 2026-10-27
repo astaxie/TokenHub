@@ -88,6 +88,8 @@ For existing subscription accounts, open the provider editor, select one account
 
 Native Copilot and ChatGPT HTTP errors preserve the upstream status and valid `Retry-After` delay for routing; credential and model errors use the normal account and model failover behavior.
 
+For ChatGPT API browser authorization, a rejected authorization-code exchange is reported separately from an expired saved account. A failed manual exchange clears the one-time session and callback, enabling **Open authorization** again. Start a fresh authorization and promptly paste the latest complete callback URL, including `client_id`; do not reuse an old code. This manual flow does not start a listener at `localhost:1455`, so a browser connection-refused page there is expected when no listener is running and does not by itself mean authorization failed.
+
 Copilot and community Chat requests routed to Responses models retain `temperature`, `top_p`, `user`, and `service_tier`, including explicit zero values, subject to the selected model's support. For Factory, an explicit `service_tier: "priority"` can select the model's Fast variant. Gemini CLI and Antigravity retain reported usage from terminal error events and classify upstream authorization, quota, and transient failures for routing.
 
 Gemini CLI and Antigravity keep proxy authentication failures and connection timeouts classified as egress failures, so they do not penalize a valid account. GCP token refresh and model discovery keep temporary upstream failures and rate limits distinct from rejected credentials. ChatGPT, Gemini CLI, and Antigravity token refresh also preserve transient upstream status and valid retry delays, including account-bound rate limits.

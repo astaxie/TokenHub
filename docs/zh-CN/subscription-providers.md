@@ -88,6 +88,8 @@ WorkBuddy 的 Chat 接口要求流式请求。供应商测试和非流式 Chat A
 
 原生 Copilot 和 ChatGPT 的 HTTP 错误保留上游状态码及有效的 `Retry-After` 等待时间，供路由使用；凭据和模型错误沿用正常的账号与模型故障转移行为。
 
+ChatGPT API 浏览器授权会区分本次授权码交换被拒绝与已保存账号凭据过期。手动交换失败后，会清除一次性会话和回调内容，重新启用 **打开授权**。请重新发起授权，完成登录后及时粘贴最新的完整回调 URL，保留 `client_id` 参数，不要复用旧授权码。此手动流程不会在 `localhost:1455` 启动监听器；没有监听器时，浏览器显示连接被拒绝是预期现象，本身不代表授权失败。
+
 Copilot 和社区 Chat 请求路由到 Responses 模型时，会保留 `temperature`、`top_p`、`user` 和 `service_tier`，包括显式零值，具体支持取决于所选模型。对于 Factory，显式 `service_tier: "priority"` 可选择模型的 Fast 变体。Gemini CLI 和 Antigravity 会保留终止错误事件报告的用量，并将上游授权、额度和临时故障分类后交给路由处理。
 
 Gemini CLI 和 Antigravity 将代理认证失败与连接超时保留为出口故障，不会惩罚有效账号。GCP 的 token 刷新和模型发现会区分临时上游故障、限流和凭据被拒绝。ChatGPT、Gemini CLI 和 Antigravity 的 token 刷新同样保留临时故障的上游状态和有效重试等待时间，包括绑定账号的限流。
