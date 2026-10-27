@@ -609,7 +609,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 	}
 
 	var result ProviderResourceCredentials
-	err := s.withClusterLease(ctx, "credential-refresh:"+resourceID, func(leaseCtx context.Context) error {
+	err := s.withNativeCredentialRefreshLease(ctx, resourceID, func(leaseCtx, heldCtx context.Context) error {
 		s.mu.Lock()
 		var resource ProviderResource
 		if err := s.db.WithContext(leaseCtx).First(&resource, "id = ?", resourceID).Error; err != nil {
@@ -687,7 +687,12 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			return err
 		}
 
-		return s.withClusterLease(leaseCtx, providerResourceMutationLeaseName(resourceID), func(mutationCtx context.Context) error {
+		// A completed token exchange may already have spent the previous refresh
+		// token. Save its result even if the caller disconnects at that boundary.
+		cleanupCtx, cancelCleanup := context.WithTimeout(heldCtx, 10*time.Second)
+		defer cancelCleanup()
+		cleanupCtx = providerCredentialRefreshContext(cleanupCtx, provider.Type, resource)
+		return s.withClusterLease(cleanupCtx, providerResourceMutationLeaseName(resourceID), func(mutationCtx context.Context) error {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			var current ProviderResource

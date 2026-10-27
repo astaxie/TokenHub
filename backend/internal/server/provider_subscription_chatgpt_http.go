@@ -37,7 +37,9 @@ func subscriptionHTTP(ctx context.Context, client *http.Client, req *http.Reques
 		return resp, nil
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+	// The status and headers fully determine this failure. Do not wait for a
+	// discarded error body: streaming clients have no total request deadline,
+	// and the response's idle guard is installed only after this function.
 	message := fmt.Sprintf("Subscription upstream returned HTTP %d", resp.StatusCode)
 	if resp.StatusCode < http.StatusBadRequest {
 		failure := NewHTTPError(http.StatusBadGateway, "subscription_upstream_error", message)
