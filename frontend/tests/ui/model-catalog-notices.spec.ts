@@ -11,6 +11,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       { ...common, name: "ui-preview-model", metadata: { source: "tokenhub-standard-catalog", availability: "preview", call_support: "unsupported", pricing_status: "unverified" } },
       { ...common, name: "ui-calendar-date", metadata: { source: "tokenhub-standard-catalog", lifecycle_status: "deprecated", shutdown_date: "2026-11-18", new_user_restriction_date: "2026-10-19" } },
       { ...common, name: "ui-future-redirect", metadata: { source: "tokenhub-standard-catalog", lifecycle_status: "redirected", redirect_date: "2026-10-19" } },
+      { ...common, name: "ui-regional-retiring", metadata: { source: "tokenhub-standard-catalog", regional_lifecycle_status: "retiring", lifecycle_regions: '["Guangzhou"]', regional_eol_date: "2026-10-31" } },
       { ...common, name: "ui-regional-legacy", metadata: { source: "tokenhub-standard-catalog", regional_lifecycle_status: "legacy", lifecycle_regions: '["us-east-1"]', regional_eol_date: "2027-03-30" } },
     ];
     api.replaceResponse("GET", "/api/admin/overview", { ...overview, models, providers: [{ id: "p", name: "UI Provider", type: "mock", priority: 1, status: "active" }] });
@@ -28,6 +29,9 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await expect(editor.getByText("官方停用日期：2026年11月18日（时区未公布）")).toBeVisible();
     await expect(editor.getByText("新用户访问限制日期：2026年10月19日（时区未公布）")).toBeVisible();
     await capture(page, info, editor, `catalog-calendar-${viewport.width}`, "模型目录保留日期精度与访问限制", "viewport");
+    await editor.getByText("部分地域已公告停用：Guangzhou；请核对部署地域。").scrollIntoViewIfNeeded();
+    await expect(editor.getByText("上述地域停用日期：2026年10月31日（时区未公布）")).toBeVisible();
+    await capture(page, info, editor, `catalog-retiring-${viewport.width}`, "模型目录提示指定地域的停用日期", "viewport");
     await editor.getByText("部分地域已进入 Legacy：us-east-1；请核对部署地域。").scrollIntoViewIfNeeded();
     await expect(editor.getByText("上述地域停用日期：2027年3月30日（时区未公布）")).toBeVisible();
     await expect(editor.getByText("此别名已公告重定向计划，请核对实际服务型号。")).toBeAttached();
