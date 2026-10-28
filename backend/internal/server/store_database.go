@@ -347,6 +347,7 @@ func newStoreWithDialect(databaseURL string, config Config, publishHeartbeat boo
 		analyticsDB:                  analyticsDB,
 		mu:                           &sync.Mutex{},
 		leaseHeartbeats:              &sync.Map{},
+		nativeRefreshes:              &nativeCredentialRefreshLifecycle{},
 		heartbeatState:               new(atomic.Int32),
 		heartbeatStop:                &instanceHeartbeatStopper{},
 		instanceHeartbeatID:          instanceHeartbeatID,
@@ -492,6 +493,7 @@ func backfillQuotaBucketAttribution(db *gorm.DB) error {
 
 // Close releases every database pool owned by the store.
 func (s *GormStore) Close() error {
+	s.nativeRefreshes.stop(true)
 	var closeErr error
 	if s.heartbeatStop != nil {
 		s.heartbeatStop.Stop()

@@ -9,11 +9,16 @@ import (
 // Caller cancellation stops acquisition and upstream work. Once acquired, the
 // refresh lease keeps renewing through bounded persistence of a received token.
 func (s *GormStore) withNativeCredentialRefreshLease(ctx context.Context, resourceID string, operation func(context.Context, context.Context) error) error {
+	ctx, finish, err := s.nativeRefreshes.begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer finish()
 	leaseCtx, cancelLease := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelLease()
 	stopWaiting := context.AfterFunc(ctx, cancelLease)
 	defer stopWaiting()
-	err := s.withClusterLease(leaseCtx, "credential-refresh:"+resourceID, func(heldCtx context.Context) error {
+	err = s.withClusterLease(leaseCtx, "credential-refresh:"+resourceID, func(heldCtx context.Context) error {
 		if !stopWaiting() && ctx.Err() != nil {
 			return ctx.Err()
 		}

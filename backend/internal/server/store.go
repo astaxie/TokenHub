@@ -309,6 +309,7 @@ type GormStore struct {
 	readDB              *gorm.DB
 	mu                  *sync.Mutex
 	leaseHeartbeats     *sync.Map
+	nativeRefreshes     *nativeCredentialRefreshLifecycle
 	lastUsed            *lastUsedThrottle
 	modelLabels         *modelLabelCache
 	secretKey           string

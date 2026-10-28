@@ -174,6 +174,7 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		Timeout:       providerCatalogUpstreamTimeout,
 	}
 	if gormStore, ok := store.(*GormStore); ok {
+		gormStore.nativeRefreshes.resume()
 		gormStore.providerProxyPolicy = providerProxyPolicy
 	}
 	providerRuntime := newBuiltinProviderRuntime(builtinProviderRuntimeDependencies{
