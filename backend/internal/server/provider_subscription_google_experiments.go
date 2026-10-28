@@ -66,6 +66,8 @@ func (a *GoogleSubscriptionAdapter) flags(ctx context.Context, p Provider, creds
 		}
 	} else if ctx.Err() != nil {
 		return flags, ctx.Err()
+	} else if guarded := providerEgressFailure(err); guarded != nil {
+		return flags, guarded
 	}
 	// Gemini CLI defaults to disabled experiments if the optional API fails.
 	if a.accountState != nil {

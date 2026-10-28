@@ -157,6 +157,9 @@ func (a *GoogleSubscriptionAdapter) loadProject(ctx context.Context, p Provider,
 		AllowedTiers []googleSubscriptionTier    `json:"allowedTiers"`
 	}
 	if err := a.call(ctx, base, "loadCodeAssist", creds, loadRequest, &loaded); err != nil {
+		if guarded := providerEgressFailure(err); guarded != nil {
+			return googleSubscriptionProject{}, guarded
+		}
 		if a.antigravity() && wanted != "" && ctx.Err() == nil {
 			return googleSubscriptionProject{ID: wanted}, nil
 		}

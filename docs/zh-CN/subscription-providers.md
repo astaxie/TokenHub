@@ -138,6 +138,8 @@ Copilot 的模型协议和 Auto 缓存绑定账号凭据。更换凭据会加载
 
 Gemini CLI 读取账户实验标志，在推理前将展示的模型 ID 映射为账户实际使用的上游 ID。手动指定项目不会跳过 Code Assist 的资格校验和开通。Antigravity 工具 schema 同时补齐上游要求的空数组元素 schema。
 
+Google 项目加载或实验配置获取遇到共享代理故障或出站策略拒绝时，会立即停止操作，不会将失败缓存为有效项目或已关闭的实验，也不会惩罚账号。连接恢复后，下一次请求会重新获取配置；普通可选接口的回退行为保持可用。
+
 GCP AI 需要 Google 桌面 OAuth client ID/secret、项目 ID 或编号，以及 Vertex 区域（默认 `global`）。也可通过专用导入方式粘贴包含 `client_id`、`client_secret`、`refresh_token` 的 `authorized_user` ADC JSON。TokenHub 验证项目访问权限、保存可刷新的凭据，并从 Vertex 发现 Gemini 文本模型。不导入服务账号 JSON、文件路径、宿主机 gcloud 配置或浏览器会话。项目需启用 Vertex AI 并授予该用户访问权限。没有接入 GCP Cloud Console 优惠金页面抓取，因此不会显示虚构的剩余优惠金额。
 
 Cursor 团队账户可在导入的会话 JSON 中显式填写正整数 `teamId`。团队请求头与用量查询绑定该资源，TokenHub 不读取宿主机当前选择的 Cursor 团队。

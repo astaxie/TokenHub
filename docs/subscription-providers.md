@@ -138,6 +138,8 @@ Copilot model protocol and Auto caches are bound to the account credentials. Rep
 
 Gemini CLI reads account experiment flags and maps advertised model IDs to the account's wire IDs before inference. Providing a project does not bypass Code Assist eligibility/onboarding. Antigravity tool schemas also supply empty array-item schemas where required by the upstream API.
 
+Shared proxy or outbound-policy failures during Google project loading or experiment discovery stop the operation immediately. They are not cached as a successful project or disabled experiments, and do not penalize the account. The next request retries discovery after connectivity is restored; ordinary optional-API fallback remains available.
+
 For GCP AI, supply a Google desktop OAuth client ID/secret, a project ID or number, and a Vertex location (default `global`). Alternatively paste an `authorized_user` ADC JSON object containing `client_id`, `client_secret`, and `refresh_token` through its import method. TokenHub verifies project access, stores refreshable credentials, and discovers Gemini text models using Vertex. Service-account JSON, file paths, host gcloud profiles, and browser sessions are not imported. Enable Vertex AI and grant the user access to the chosen project. GCP Cloud Console promotional credit scraping is not included, so no fabricated remaining-credit value is shown.
 
 Cursor team accounts can include an explicit positive numeric `teamId` in their imported session JSON. Team headers and usage queries remain bound to that resource; TokenHub does not read the host's selected Cursor team.
