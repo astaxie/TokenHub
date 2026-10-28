@@ -87,6 +87,7 @@ func (a *CopilotSubscriptionAdapter) resolveAuto(ctx context.Context, provider P
 func (a *CopilotSubscriptionAdapter) selectAuto(ctx context.Context, provider Provider, prompt string, models []ProviderCatalogModel, refused map[string]bool) (copilotSubscriptionAutoSession, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	var selectionErr error
 	for _, path := range []string{"/auto", "/models/session"} {
 		var payload any = map[string]string{"prompt": prompt, "tier": "balance"}
 		if path == "/models/session" {
@@ -97,9 +98,18 @@ func (a *CopilotSubscriptionAdapter) selectAuto(ctx context.Context, provider Pr
 			if ctx.Err() != nil {
 				return copilotSubscriptionAutoSession{}, ctx.Err()
 			}
+			if guarded := providerEgressFailure(err); guarded != nil {
+				return copilotSubscriptionAutoSession{}, guarded
+			}
 			failure := AsHTTPError(err)
 			if failure != nil && (failure.UpstreamStatus == 401 || failure.Status == 401) {
 				return copilotSubscriptionAutoSession{}, err
+			}
+			// Chooser endpoints are optional, so legacy/manual fallback remains
+			// available. An outage or rate limit is not evidence of no entitlement.
+			disposition := providerErrorDisposition(err)
+			if disposition == ProviderErrorTransientSame || disposition == ProviderErrorQuotaExhausted || disposition == "" && failure != nil && failure.Status >= 500 {
+				selectionErr = err
 			}
 			continue
 		}
@@ -109,7 +119,14 @@ func (a *CopilotSubscriptionAdapter) selectAuto(ctx context.Context, provider Pr
 			Available []string        `json:"available_models"`
 			ExpiresAt int64           `json:"expires_at"`
 		}
-		if subscriptionDecode(response, &result) != nil || result.Token == "" {
+		if err := subscriptionDecode(response, &result); err != nil {
+			if ctx.Err() != nil {
+				return copilotSubscriptionAutoSession{}, ctx.Err()
+			}
+			selectionErr = err
+			continue
+		}
+		if result.Token == "" {
 			continue
 		}
 		var pick struct {
@@ -157,6 +174,9 @@ func (a *CopilotSubscriptionAdapter) selectAuto(ctx context.Context, provider Pr
 			endpoints := strings.Split(item.Metadata["supported_endpoints"], ",")
 			return copilotSubscriptionAutoSession{Model: item.ID, Endpoint: copilotAutoEndpoint(endpoints), ExpiresAt: time.Now().Add(10 * time.Minute), SupportsResponses: slices.Contains(endpoints, "/responses")}, nil
 		}
+	}
+	if selectionErr != nil {
+		return copilotSubscriptionAutoSession{}, selectionErr
 	}
 	return copilotSubscriptionAutoSession{}, NewHTTPError(400, "copilot_auto_unavailable", "Copilot did not offer an Auto selection or an available model for this account")
 }

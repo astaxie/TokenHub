@@ -132,6 +132,8 @@ In a multi-instance deployment, keep an authorization flow's start, polling, exc
 
 Copilot supports `auto`, including plans whose regular model list is empty. The upstream chooser selects the model and protocol before inference; explicit Responses requests require a Responses-capable selection. For enterprise managed users, enter the approved `github_host` (`<tenant>.ghe.com`) during device authorization. The host is encrypted with the account and determines its authorization, session, and API destinations.
 
+Copilot model discovery preserves the upstream maximum output-token limit for imported-model budget validation. Auto selection retains successful legacy and catalog fallbacks. If no selection succeeds, upstream rate limits and temporary failures keep their original status and retry delay. Shared proxy failures stop selection immediately and remain transport failures, without penalizing the account.
+
 Copilot model protocol and Auto caches are bound to the account credentials. Replacing credentials loads the new account’s routes; a discovery response still in flight for the previous account cannot overwrite them. Each inference request keeps the account used for its model selection.
 
 Gemini CLI reads account experiment flags and maps advertised model IDs to the account's wire IDs before inference. Providing a project does not bypass Code Assist eligibility/onboarding. Antigravity tool schemas also supply empty array-item schemas where required by the upstream API.

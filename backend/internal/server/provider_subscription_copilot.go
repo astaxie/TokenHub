@@ -448,7 +448,7 @@ func (a *CopilotSubscriptionAdapter) ResourceModels(ctx context.Context, provide
 		} else if remote.Billing != nil && !remote.Billing.Premium {
 			priority = "3"
 		}
-		models = append(models, ProviderCatalogModel{ID: remote.ID, Name: remote.ID, DisplayName: firstNonEmpty(remote.Name, remote.ID), Type: "chat", ContextWindow: remote.Capabilities.Limits.Context,
+		models = append(models, ProviderCatalogModel{ID: remote.ID, Name: remote.ID, DisplayName: firstNonEmpty(remote.Name, remote.ID), Type: "chat", ContextWindow: remote.Capabilities.Limits.Context, MaxOutputTokens: max(0, remote.Capabilities.Limits.Output),
 			Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"supported_endpoints": strings.Join(endpoints, ","), "source": "github-copilot-live", "auto_fallback_priority": priority}})
 	}
 	models = append(models, ProviderCatalogModel{ID: "auto", Name: "auto", DisplayName: "Copilot Auto", Type: "chat", Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"source": "github-copilot-auto", "supported_endpoints": "/chat/completions"}})
