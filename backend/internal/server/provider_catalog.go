@@ -796,7 +796,7 @@ func customProviderModelFields(raw any) (string, string, string, string) {
 	case string:
 		return item, item, "", ""
 	case map[string]any:
-		id := firstNonEmpty(catalogStringField(item, "id"), catalogStringField(item, "name"), catalogStringField(item, "model"))
+		id := firstNonEmpty(catalogStringField(item, "id"), catalogStringField(item, "name"), catalogStringField(item, "model"), catalogStringField(item, "slug"))
 		displayName := firstNonEmpty(catalogStringField(item, "display_name"), catalogStringField(item, "name"), id)
 		return id, displayName, catalogStringField(item, "object"), catalogStringField(item, "owned_by")
 	default:
