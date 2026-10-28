@@ -75,7 +75,9 @@ func (a *ClaudeSubscriptionAdapter) ResourceModels(ctx context.Context, provider
 func claudeSubscriptionCatalog() ProviderCatalogEntry {
 	models := []ProviderCatalogModel{}
 	for _, alias := range []string{"sonnet", "opus", "haiku", "fable"} {
-		models = append(models, ProviderCatalogModel{ID: alias, Name: alias, DisplayName: "Claude " + alias, Type: "chat", Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"source": "claude-code-model-aliases", "availability": "checked-by-cli-at-runtime"}})
+		// Tool values retain CLI-specific validation; sampling and response
+		// format controls are unavailable through this subprocess adapter.
+		models = append(models, ProviderCatalogModel{ID: alias, Name: alias, DisplayName: "Claude " + alias, Type: "chat", Capabilities: []string{"chat", "streaming", "tools"}, SupportedParameters: []string{"tools", "tool_choice", "parallel_tool_calls", "max_tokens", "max_completion_tokens", "reasoning_effort"}, Metadata: map[string]string{"source": "claude-code-model-aliases", "availability": "checked-by-cli-at-runtime"}})
 	}
 	return subscriptionCatalog(providerClaudeSubscription, "Claude Code Subscription", "", "claude-code-model-aliases", "", models)
 }

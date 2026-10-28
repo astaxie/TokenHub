@@ -449,9 +449,9 @@ func (a *CopilotSubscriptionAdapter) ResourceModels(ctx context.Context, provide
 			priority = "3"
 		}
 		models = append(models, ProviderCatalogModel{ID: remote.ID, Name: remote.ID, DisplayName: firstNonEmpty(remote.Name, remote.ID), Type: "chat", ContextWindow: remote.Capabilities.Limits.Context, MaxOutputTokens: max(0, remote.Capabilities.Limits.Output),
-			Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"supported_endpoints": strings.Join(endpoints, ","), "source": "github-copilot-live", "auto_fallback_priority": priority}})
+			Capabilities: []string{"chat", "streaming", "tools"}, SupportedParameters: copilotSubscriptionParameters(endpoints), Metadata: map[string]string{"supported_endpoints": strings.Join(endpoints, ","), "source": "github-copilot-live", "auto_fallback_priority": priority}})
 	}
-	models = append(models, ProviderCatalogModel{ID: "auto", Name: "auto", DisplayName: "Copilot Auto", Type: "chat", Capabilities: []string{"chat", "streaming", "tools"}, Metadata: map[string]string{"source": "github-copilot-auto", "supported_endpoints": "/chat/completions"}})
+	models = append(models, ProviderCatalogModel{ID: "auto", Name: "auto", DisplayName: "Copilot Auto", Type: "chat", Capabilities: []string{"chat", "streaming", "tools"}, SupportedParameters: subscriptionCodecParameters("auto", true, true), Metadata: map[string]string{"source": "github-copilot-auto", "supported_endpoints": "/chat/completions"}})
 	a.cacheModelRoutes(copilotSubscriptionAccountKey(resource.ID, creds), models)
 	return subscriptionCatalog(ProviderGitHubCopilotSubscription, "GitHub Copilot Subscription", copilotSubscriptionBaseURL, "github-copilot-live", "", models), resp.StatusCode, nil
 }

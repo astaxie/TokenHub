@@ -94,6 +94,8 @@ Grok 设备码授权现在会申请推理所需的 `api:access` 权限。此前�
 
 ChatGPT API 模型发现会将各模型声明的推理强度同时保留在账号测试和网关目录元数据中。导入后，Playground 的可选项和路由校验会遵循这些声明，拒绝不支持的强度。导入前刷新 Provider 模型列表，即可获取最新声明。
 
+ChatGPT API、Copilot、Claude Code、Gemini CLI、Antigravity 以及随应用打包的订阅适配器会按实际适配器和上游协议声明支持的请求参数。导入后的模型可参与支持的函数工具、输出上限及其他控制参数的 Jev 路由，不再因缺少声明而被排除。不支持的参数仍不可用，例如 ChatGPT API 不声明输出上限和采样参数，Claude Code 不声明采样和结构化输出。具体模型和参数取值的限制仍然生效。刷新 Provider 模型列表并导入当前声明，即可更新已保存模型的能力信息。
+
 浏览器界面和后端 API 均使用本地 HTTP 回环地址，且后端配置的公开地址支持此流程时，ChatGPT API 会自动回填凭据。点击 **打开授权**，完成登录后返回 TokenHub，等待凭据回填，再保存账号。本地流程直接回到正在运行的 TokenHub 后端，无需复制回调 URL，也不需要单独启动 `localhost:1455` 监听器。
 
 如果 ChatGPT API 提示客户端注册已完成、需要再次登录，请在同一编辑器中再次点击 **打开授权**。TokenHub 会保留已签发的客户端身份，并使用新的 state、nonce 和 PKCE 参数开始新授权，不会重复兑换被拒绝的授权码。请勿将本次重试与添加另一个账号混用。网关的安装身份在重启后保持不变，注册重试仍绑定到发起操作的管理员。协议说明见 OpenAI 的[注册与登录文档](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)。

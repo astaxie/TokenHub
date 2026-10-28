@@ -122,7 +122,13 @@ func googleSubscriptionModel(id, name string) ProviderCatalogModel {
 	} else if strings.HasPrefix(id, "gpt") {
 		category = "openai"
 	}
-	return ProviderCatalogModel{ID: id, Name: name, DisplayName: name, Category: category, Type: "chat", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, Capabilities: []string{"chat", "tool_call"}}
+	// Declare only controls encoded by buildGeminiRequest. Antigravity also
+	// lists non-Gemini models, whose reasoning effort cannot use thinkingConfig.
+	parameters := []string{"tools", "tool_choice", "parallel_tool_calls", "max_tokens", "max_completion_tokens", "temperature", "top_p", "stop"}
+	if _, supported := geminiThinkingConfig(id, "high"); supported {
+		parameters = append(parameters, "reasoning_effort")
+	}
+	return ProviderCatalogModel{ID: id, Name: name, DisplayName: name, Category: category, Type: "chat", InputModalities: []string{"text"}, OutputModalities: []string{"text"}, Capabilities: []string{"chat", "tool_call"}, SupportedParameters: parameters}
 }
 
 func (a *GoogleSubscriptionAdapter) DefaultProbeRequest() ProviderProbeRequest {

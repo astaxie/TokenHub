@@ -225,7 +225,9 @@ func (a *ChatGPTSubscriptionAdapter) ResourceModels(ctx context.Context, provide
 			}
 		}
 		models = append(models, ProviderCatalogModel{ID: remote.Slug, Name: remote.Slug, DisplayName: firstNonEmpty(remote.Name, remote.Slug), Type: "chat", InputModalities: remote.Input, ContextWindow: remote.Context,
-			OutputModalities: []string{"text"}, Capabilities: []string{"chat", "streaming", "tools"}, SupportedParameters: []string{"reasoning_effort", "reasoning"}, Metadata: map[string]string{"source": "chatgpt-api-live", "supported_reasoning_levels": strings.Join(levels, ","), "reasoning_effort_options": strings.Join(levels, ","), "supported_endpoints": "/responses"}})
+			OutputModalities: []string{"text"}, Capabilities: []string{"chat", "streaming", "tools"},
+			SupportedParameters: []string{"reasoning_effort", "reasoning", "tools", "tool_choice", "parallel_tool_calls", "response_format", "text", "include"},
+			Metadata:            map[string]string{"source": "chatgpt-api-live", "supported_reasoning_levels": strings.Join(levels, ","), "reasoning_effort_options": strings.Join(levels, ","), "supported_endpoints": "/responses"}})
 	}
 	if len(models) == 0 {
 		return ProviderCatalogEntry{}, resp.StatusCode, NewHTTPError(502, "subscription_models_empty", "ChatGPT API returned no available models")

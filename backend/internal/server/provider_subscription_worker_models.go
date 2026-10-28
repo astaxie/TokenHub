@@ -98,6 +98,7 @@ func (a *SubscriptionWorkerAdapter) catalog(models []subscriptionWorkerModel) Pr
 			continue
 		}
 		item := ProviderCatalogModel{ID: model.ID, Name: firstNonEmpty(model.Name, model.ID), Type: "chat", ContextWindow: model.Limit.Context, MaxOutputTokens: model.Limit.Output, Metadata: subscriptionWorkerModelMetadata(model)}
+		item.SupportedParameters = a.modelParameters(model)
 		if model.Fallback {
 			source = "subscription-account-fallback"
 		}
@@ -166,6 +167,11 @@ func subscriptionWorkerModelMetadata(model subscriptionWorkerModel) map[string]s
 func subscriptionWorkerReasoningEfforts(model subscriptionWorkerModel) map[string]bool {
 	efforts := map[string]bool{}
 	for effort := range subscriptionWorkerReasoningSettings(model) {
+		if model.Protocol == "gemini" {
+			if _, encoded := geminiThinkingConfig(model.ID, effort); !encoded {
+				continue
+			}
+		}
 		efforts[effort] = true
 	}
 	return efforts
