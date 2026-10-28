@@ -105,16 +105,16 @@ func TestIntegrationServiceCatalogProbeFailureDoesNotLatchProviderUnhealthy(t *t
 	}))
 	defer upstream.Close()
 
-	app := newTestServer()
-	provider := app.store.AddProvider(Provider{
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
 		ID: "prv_catalog_error", Name: "Catalog Error", Type: ProviderOpenAICompatible,
 		BaseURL: upstream.URL, Status: StatusActive, Healthy: true,
 	})
-	service := NewIntegrationService(app.store, app.adapterRegistry, upstream.Client())
+	service := NewIntegrationService(store, NewAdapterRegistry(), upstream.Client())
 	if _, err := service.TestProvider(context.Background(), provider.ID); err == nil {
 		t.Fatal("test provider error = nil, want empty catalog error")
 	}
-	updated, ok := app.store.GetProvider(provider.ID)
+	updated, ok := store.GetProvider(provider.ID)
 	if !ok {
 		t.Fatal("provider disappeared after catalog probe")
 	}
