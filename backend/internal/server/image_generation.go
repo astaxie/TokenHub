@@ -573,7 +573,6 @@ func (s *Server) enqueueImageJob(work imageJobWork) error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	defer s.shutdownProviderRuntimes()
 	// The instance heartbeat stays published until every database worker has
 	// stopped: contract preflight must keep seeing this instance through the
 	// drain, on every exit path.
@@ -585,6 +584,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// drain the image queue is bad, failing to drain it and silently discarding
 	// every buffered trace is worse.
 	defer s.shutdownTracing()
+	defer s.shutdownProviderRuntimes()
 	s.responseWorkerStop.Do(func() {
 		s.responseCancel()
 	})

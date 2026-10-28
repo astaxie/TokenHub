@@ -31,6 +31,7 @@ type subscriptionWorkerPool struct {
 	start     func(*http.Client, string, func(context.Context, string, string) error) (*subscriptionWorkerProcess, error)
 	stop      chan struct{}
 	closed    bool
+	closeDone chan struct{}
 }
 
 func newSubscriptionWorkerPool(client *http.Client) *subscriptionWorkerPool {
@@ -128,10 +129,13 @@ func (p *subscriptionWorkerPool) acquire(ctx context.Context, key, auth string, 
 func (p *subscriptionWorkerPool) Close() {
 	p.mu.Lock()
 	if p.closed {
+		done := p.closeDone
 		p.mu.Unlock()
+		<-done
 		return
 	}
 	p.closed = true
+	p.closeDone = make(chan struct{})
 	close(p.stop)
 	processes := make([]*subscriptionWorkerProcess, 0, len(p.entries))
 	for _, entry := range p.entries {
@@ -140,14 +144,12 @@ func (p *subscriptionWorkerPool) Close() {
 	}
 	p.entries = map[string]*subscriptionWorkerLease{}
 	p.mu.Unlock()
-	deadline := time.NewTimer(3 * time.Second)
-	defer deadline.Stop()
+	defer close(p.closeDone)
+	// Cancellation terminates each child, but its stdout reader can still be
+	// persisting a received token under the separate ten-second save deadline.
+	// Every caller must wait for that cleanup before retiring the database host.
 	for _, process := range processes {
-		select {
-		case <-process.done:
-		case <-deadline.C:
-			return
-		}
+		<-process.done
 	}
 }
 
