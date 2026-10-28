@@ -18,7 +18,7 @@ func (s *Server) streamCodexAsAnthropic(
 	headers http.Header,
 	writer io.Writer,
 ) (Usage, error) {
-	upstream, err := anthropicToCodexResponsesRequest(req)
+	upstream, err := anthropicToBridgedResponsesRequest(route.Provider.Type, req)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -45,7 +45,7 @@ func (s *Server) streamCodexAsChat(
 	headers http.Header,
 	writer io.Writer,
 ) (Usage, error) {
-	upstream, err := chatToCodexResponsesRequest(req)
+	upstream, err := chatToBridgedResponsesRequest(route.Provider.Type, req)
 	if err != nil {
 		return Usage{}, err
 	}

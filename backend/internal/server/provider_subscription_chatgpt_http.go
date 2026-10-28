@@ -44,7 +44,7 @@ func subscriptionHTTP(ctx context.Context, client *http.Client, req *http.Reques
 	if resp.StatusCode < http.StatusBadRequest {
 		failure := NewHTTPError(http.StatusBadGateway, "subscription_upstream_error", message)
 		failure.UpstreamStatus = resp.StatusCode
-		return nil, &ProviderInvocationError{Err: failure, Disposition: ProviderErrorTransientSame}
+		return nil, &ProviderInvocationError{Err: failure, Disposition: ProviderErrorTransientSame, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 	// Keep standard route classification and parsed retry metadata without
 	// exposing provider bodies or copying private headers to the caller.

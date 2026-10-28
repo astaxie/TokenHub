@@ -94,7 +94,15 @@ Grok 设备码授权现在会申请推理所需的 `api:access` 权限。此前�
 
 ChatGPT API 模型发现会将各模型声明的推理强度同时保留在账号测试和网关目录元数据中。导入后，Playground 的可选项和路由校验会遵循这些声明，拒绝不支持的强度。导入前刷新 Provider 模型列表，即可获取最新声明。
 
-ChatGPT API、Copilot、Claude Code、Gemini CLI、Antigravity 以及随应用打包的订阅适配器会按实际适配器和上游协议声明支持的请求参数。导入后的模型可参与支持的函数工具、输出上限及其他控制参数的 Jev 路由，不再因缺少声明而被排除。不支持的参数仍不可用，例如 ChatGPT API 不声明输出上限和采样参数，Claude Code 不声明采样和结构化输出。具体模型和参数取值的限制仍然生效。刷新 Provider 模型列表并导入当前声明，即可更新已保存模型的能力信息。
+ChatGPT API、Copilot、Claude Code、Gemini CLI、Antigravity 以及随应用打包的订阅适配器会按实际适配器和上游协议声明支持的请求参数。导入后的模型可参与支持的函数工具、输出上限及其他控制参数的 Jev 路由，不再因缺少声明而被排除。不支持的参数仍不可用，例如 ChatGPT API 不声明输出上限和采样参数，Claude Code 不声明采样和结构化输出。具体模型和参数取值的限制仍然生效。重新加载目录和保存 Provider 不会更新已导入库存或已有对外模型的能力声明。「从 Provider 引入」用于创建新的对外模型名称，不能更新已有名称。
+
+已有模型可通过经过认证的管理员 API 仅更新已核实的能力声明：
+
+1. 读取 `GET /api/admin/provider-catalog/{catalog_id}?resource_id={account_id}`，找到匹配的上游模型 ID。使用其完整、准确的 `supported_parameters` 列表，以及目录声明的推理元数据，包括存在时的 `reasoning_effort_options`、`reasoning_effort_supported`、`reasoning_default` 和 `supported_reasoning_levels`。不要根据其他供应商的相似模型名推断支持情况。
+2. 从 `GET /api/admin/provider-models?provider_id={provider_id}` 读取当前库存。向 `PATCH /api/admin/provider-models/{id}` 仅提交 `supported_parameters` 和 `metadata`。以当前记录的元数据为基础，用新目录的值替换推理声明字段、移除已失效的推理字段，同时保留其他元数据。
+3. 读取 `GET /api/admin/models`，检查使用该库存的对外模型和路由。向相应对外模型的 `PATCH /api/admin/models/{url_encoded_name}` 同样仅提交 `supported_parameters` 和合并后的推理元数据。扩大某个别名的对外能力范围前，先核对它的所有路由。
+
+这些局部更新会保留未提交的价格、状态、上下文限制和路由设置；合并元数据时也要保留已配置的输出上限等无关字段。完整重新导入库存会替换 Provider 模型记录，包括价格和状态，因此不能将其当作仅更新元数据的操作。更新后检查 Playground 选项，并测试有代表性的路由请求。
 
 浏览器界面和后端 API 均使用本地 HTTP 回环地址，且后端配置的公开地址支持此流程时，ChatGPT API 会自动回填凭据。点击 **打开授权**，完成登录后返回 TokenHub，等待凭据回填，再保存账号。本地流程直接回到正在运行的 TokenHub 后端，无需复制回调 URL，也不需要单独启动 `localhost:1455` 监听器。
 
@@ -104,9 +112,9 @@ ChatGPT API、Copilot、Claude Code、Gemini CLI、Antigravity 以及随应用�
 
 远程部署及其他配置继续使用手动回调流程。请及时粘贴最新的完整回调 URL，保留 `client_id` 参数，不要复用旧授权码。没有 `localhost:1455` 监听器时，浏览器显示连接被拒绝是预期现象，本身不代表授权失败。本次授权码交换被拒绝与已保存账号凭据过期会分别提示。手动交换失败后，会清除一次性会话和回调内容，重新启用 **打开授权**；请重新发起授权后再试。
 
-ChatGPT 和 Copilot 根据上游状态码和响应头分类失败，并立即关闭丢弃的错误响应体。错误响应体未结束不会拖延凭据刷新、重试或路由失败处理。
+ChatGPT 和 Copilot 根据上游状态码和响应头分类失败，并立即关闭丢弃的错误响应体。被拒绝的跳转保留上游状态码和有效的 `Retry-After` 等待时间，不跟随跳转，也不读取其正文。错误响应体未结束不会拖延凭据刷新、重试或路由失败处理。
 
-Copilot 和社区 Chat 请求路由到 Responses 模型时，会保留 `temperature`、`top_p`、`user` 和 `service_tier`，包括显式零值，具体支持取决于所选模型。对于 Factory，显式 `service_tier: "priority"` 可选择模型的 Fast 变体。Gemini CLI 和 Antigravity 会保留终止错误事件报告的用量，并将上游授权、额度和临时故障分类后交给路由处理。
+Copilot 和社区 Chat 请求路由到 Responses 模型时，会保留 `temperature`、`top_p`、`user` 和 `service_tier`，包括显式零值，具体支持取决于所选模型。对于 Factory，显式 `service_tier: "priority"` 可选择模型的 Fast 变体。Copilot 和社区适配器将 Chat 转换为 Responses 时，未填写或留空的 `reasoning_effort` 会保留上游模型的默认值。ChatGPT API 的 Chat 和 Anthropic Messages 兼容转换也会在调用方未指定强度或 thinking 控制时省略隐式强度。显式指定的强度及 Anthropic thinking/budget 映射保持不变；真正的 Codex 继续使用原有默认值。Gemini CLI 和 Antigravity 会保留终止错误事件报告的用量，并将上游授权、额度和临时故障分类后交给路由处理。
 
 Gemini CLI 和 Antigravity 将代理认证失败与连接超时保留为出口故障，不会惩罚有效账号。GCP 的 token 刷新和模型发现会区分临时上游故障、限流和凭据被拒绝。ChatGPT、Gemini CLI 和 Antigravity 的 token 刷新同样保留临时故障的上游状态和有效重试等待时间，包括绑定账号的限流。
 

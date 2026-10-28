@@ -18,7 +18,7 @@ func (s *Server) executeCodexAnthropicMessages(
 	req anthropicMessagesRequest,
 	headers http.Header,
 ) (map[string]any, Usage, error) {
-	upstream, err := anthropicToCodexResponsesRequest(req)
+	upstream, err := anthropicToBridgedResponsesRequest(route.Provider.Type, req)
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -105,7 +105,7 @@ func (s *Server) executeCodexChatRoute(
 	req ChatCompletionRequest,
 	headers http.Header,
 ) (any, Usage, error) {
-	upstream, err := chatToCodexResponsesRequest(req)
+	upstream, err := chatToBridgedResponsesRequest(route.Provider.Type, req)
 	if err != nil {
 		return nil, Usage{}, err
 	}

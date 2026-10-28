@@ -14,7 +14,7 @@ import (
 
 func TestNativeSubscriptionRejectsStatusWithoutWaitingForErrorBody(t *testing.T) {
 	for _, copilot := range []bool{false, true} {
-		for _, status := range []int{http.StatusFound, http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		for _, status := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
 			t.Run(fmt.Sprintf("copilot_%t/status_%d", copilot, status), func(t *testing.T) {
 				closed := make(chan struct{})
 				open := nativeSubscriptionStatusFixture(t, copilot, func(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +39,11 @@ func TestNativeSubscriptionRejectsStatusWithoutWaitingForErrorBody(t *testing.T)
 				if !errors.As(err, &failure) {
 					t.Fatalf("Failure lost its routing classification: %v", err)
 				}
-				if status >= http.StatusBadRequest && (failure.Disposition != classifyProviderStatus(status).disposition || failure.RetryAfter != 7*time.Second) {
+				disposition := ProviderErrorTransientSame
+				if status >= http.StatusBadRequest {
+					disposition = classifyProviderStatus(status).disposition
+				}
+				if failure.Disposition != disposition || failure.RetryAfter != 7*time.Second {
 					t.Fatalf("Failure lost its status or retry delay: %+v", failure)
 				}
 				select {
