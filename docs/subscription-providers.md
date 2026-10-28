@@ -92,6 +92,8 @@ Grok device authorization now requests the `api:access` scope needed for inferen
 
 Native Copilot and ChatGPT HTTP errors preserve the upstream status and valid `Retry-After` delay for routing; credential and model errors use the normal account and model failover behavior.
 
+ChatGPT API model discovery retains each model's declared reasoning efforts in both account-test and gateway catalog metadata. Importing these models preserves the available Playground options and lets routing reject unsupported efforts. Refresh the Provider's model list before importing to pick up the latest declaration.
+
 ChatGPT API fills credentials automatically when the browser interface and backend API use local HTTP loopback addresses and the backend's configured public address supports this flow. Click **Open authorization**, finish signing in, return to TokenHub, wait for the credentials to appear, and save the account. This local flow returns to the running TokenHub backend; no callback URL needs to be copied and no separate listener at `localhost:1455` is required.
 
 If ChatGPT API reports that client registration is complete and another sign-in is needed, click **Open authorization** again in the same editor. TokenHub retains the issued client identity and starts a new authorization with fresh state, nonce, and PKCE values; it never resends the rejected code. Keep this attempt separate from adding another account. The gateway persists its installation identity across restarts, and registration retries remain bound to the administrator who started them. See OpenAI's [registration and sign-in protocol](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).

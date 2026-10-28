@@ -92,6 +92,8 @@ Grok 设备码授权现在会申请推理所需的 `api:access` 权限。此前�
 
 原生 Copilot 和 ChatGPT 的 HTTP 错误保留上游状态码及有效的 `Retry-After` 等待时间，供路由使用；凭据和模型错误沿用正常的账号与模型故障转移行为。
 
+ChatGPT API 模型发现会将各模型声明的推理强度同时保留在账号测试和网关目录元数据中。导入后，Playground 的可选项和路由校验会遵循这些声明，拒绝不支持的强度。导入前刷新 Provider 模型列表，即可获取最新声明。
+
 浏览器界面和后端 API 均使用本地 HTTP 回环地址，且后端配置的公开地址支持此流程时，ChatGPT API 会自动回填凭据。点击 **打开授权**，完成登录后返回 TokenHub，等待凭据回填，再保存账号。本地流程直接回到正在运行的 TokenHub 后端，无需复制回调 URL，也不需要单独启动 `localhost:1455` 监听器。
 
 如果 ChatGPT API 提示客户端注册已完成、需要再次登录，请在同一编辑器中再次点击 **打开授权**。TokenHub 会保留已签发的客户端身份，并使用新的 state、nonce 和 PKCE 参数开始新授权，不会重复兑换被拒绝的授权码。请勿将本次重试与添加另一个账号混用。网关的安装身份在重启后保持不变，注册重试仍绑定到发起操作的管理员。协议说明见 OpenAI 的[注册与登录文档](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)。
