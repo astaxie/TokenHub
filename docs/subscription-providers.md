@@ -90,6 +90,8 @@ OpenAI Codex accounts also support **Sign in again** in the existing account edi
 
 Grok device authorization now requests the `api:access` scope needed for inference. Accounts saved or imported before this change may lack that permission even when model discovery succeeds. If `grok_api_scope_missing` appears, edit the saved Grok account, choose **Sign in again**, complete device authorization, and **Save new account credentials**; deleting and recreating the account is unnecessary. Refreshing the old grant cannot add consent for the missing scope. Test the account after saving: model and inference access still depend on the upstream plan and account eligibility.
 
+Grok token renewal continues working when the upstream retains or omits the refresh token. Each access-token revision can be renewed again; retries after HTTP 401 use the latest saved credentials. Duplicate refreshes of the same credential snapshot share their result, and failed renewals remain retryable.
+
 Native Copilot and ChatGPT HTTP errors preserve the upstream status and valid `Retry-After` delay for routing; credential and model errors use the normal account and model failover behavior.
 
 ChatGPT API model discovery retains each model's declared reasoning efforts in both account-test and gateway catalog metadata. Importing these models preserves the available Playground options and lets routing reject unsupported efforts. Refresh the Provider's model list before importing to pick up the latest declaration.

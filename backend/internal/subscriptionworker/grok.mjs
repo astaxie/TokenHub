@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { createHash } from "node:crypto";
 import { _internal } from "./vendor/grok/index.mjs";
 
 // xAI's public discovery document advertises these device and refresh grants.
@@ -61,20 +62,21 @@ async function missingAPIScope(response) {
 }
 
 export async function createGrokProvider({ client, magpie }) {
-  let renewal;
   const renewed = new Map();
   async function refresh(auth) {
     if (!auth.refresh) throw Object.assign(new Error("Grok session must be authorized again"), { signIn: "expired" });
-    if (renewed.has(auth.refresh)) return renewed.get(auth.refresh);
-    if (renewal) return renewal;
-    renewal = (async () => {
+    // Deduplicate the consumed credential revision, not the refresh token:
+    // providers may retain that token while issuing new access tokens.
+    const revision = createHash("sha256").update(JSON.stringify(auth)).digest("hex");
+    if (renewed.has(revision)) return renewed.get(revision);
+    if (renewed.size >= 16) renewed.clear();
+    const renewal = (async () => {
       const { response, data } = await form("/token", { grant_type: "refresh_token", client_id: CLIENT, refresh_token: auth.refresh });
       if (!response.ok) throw Object.assign(new Error("Grok token renewal failed"), { signIn: data.error === "invalid_grant" ? "expired" : "kept" });
-      const next = tokenAuth(data, auth);
-      renewed.set(auth.refresh, next);
-      return next;
+      return tokenAuth(data, auth);
     })();
-    try { return await renewal; } finally { renewal = null; }
+    renewed.set(revision, renewal);
+    try { return await renewal; } catch (error) { renewed.delete(revision); throw error; }
   }
   async function current(getAuth, force = false) {
     let auth = await getAuth();
@@ -91,7 +93,7 @@ export async function createGrokProvider({ client, magpie }) {
     let response = await request(auth);
     if (response.status === 401 && auth.refresh) {
       await response.body?.cancel();
-      auth = await current(getAuth, true);
+      auth = await current(() => auth, true);
       response = await request(auth);
     }
     if (await missingAPIScope(response)) {
