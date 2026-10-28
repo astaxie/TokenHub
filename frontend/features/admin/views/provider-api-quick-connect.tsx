@@ -110,6 +110,7 @@ export function ProviderAPIQuickConnect({
   modelQuery,
   selectedModelCount,
   selectedModels,
+  modelSelectionControl,
   activeTab,
   values,
   onModelQueryChange,
@@ -133,6 +134,7 @@ export function ProviderAPIQuickConnect({
   modelQuery: string;
   selectedModelCount: number;
   selectedModels: Record<string, boolean>;
+  modelSelectionControl?: ReactNode;
   activeTab: "connect" | "models" | "advanced";
   values: Record<string, string>;
   onModelQueryChange: (value: string) => void;
@@ -310,6 +312,7 @@ export function ProviderAPIQuickConnect({
                   <Search size={14} />
                   <input value={modelQuery} onChange={(event) => onModelQueryChange(event.target.value)} placeholder={tx("搜索模型、能力、参数")} />
                 </div>
+                {modelSelectionControl}
                 <button className="secondary-button" onClick={onReloadModels} type="button"><RefreshCw size={14} />{tx("重新加载")}</button>
               </div>
               <div className="provider-quick-model-list">

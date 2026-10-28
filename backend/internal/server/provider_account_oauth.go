@@ -378,11 +378,23 @@ func (s *Server) exchangeOpenAIAccountOAuth(ctx context.Context, req providerAcc
 }
 
 func (s *Server) prepareRouteForUpstream(ctx context.Context, route RouteSelection) (RouteSelection, error) {
-	supportChecker, ok := s.store.(providerNativeCredentialRefreshSupportChecker)
-	if route.Resource == nil || !ok || !supportChecker.SupportsNativeProviderResourceCredentialRefresh(*route.Resource) {
+	if route.Resource == nil {
 		return route, nil
 	}
-	creds, err := s.store.RefreshProviderResourceCredentials(ctx, routeResourceID(route), false)
+	// Account adapters own their credential/session lifecycle even when they
+	// have no native refresh handler. Bind the router's selected account first.
+	if s.store.IsProviderAccountResourceType(route.Provider.Type, route.Resource.ResourceType) {
+		route.Provider.Options = cloneStringMap(route.Provider.Options)
+		if route.Provider.Options == nil {
+			route.Provider.Options = map[string]string{}
+		}
+		route.Provider.Options["resource_id"] = routeResourceID(route)
+	}
+	supportChecker, ok := s.store.(providerNativeCredentialRefreshSupportChecker)
+	if !ok || !supportChecker.SupportsNativeProviderResourceCredentialRefresh(*route.Resource) {
+		return route, nil
+	}
+	creds, err := providerCredentialLoaderForType(s.store, route.Provider.Type)(ctx, routeResourceID(route), false)
 	if err != nil {
 		return route, err
 	}

@@ -2,6 +2,7 @@ import { retrievalSettings, validEmbeddingSpaces } from "../domain/retrieval-set
 import { rerankOptions } from "../domain/provider-rerank-options";
 import { embeddingOptions } from "../domain/provider-embedding-options";
 import { providerBlockedAddressMessage } from "./provider-network-errors";
+import { subscriptionOAuthErrorMessage } from "./subscription-oauth-errors";
 import { appRole } from "../core/navigation";
 import { clearSavedSession } from "../core/session";
 import { type AdminResource, type AdminUser, type ApiContext, type APIKey, type AppData, type ApprovalRequest, authExpiredEventName, type FieldConfig, type Project, type ProviderCatalogModel, type ProviderResource, type ResourceConfig, type UserImportResult } from "../core/types";
@@ -77,12 +78,17 @@ export function providerResourcePayload(values: Record<string, string>, data?: A
   const authType = values.auth_type?.trim();
   const credentials = isAccountResource
     ? {
+        ...(values.replace_credentials === "true" ? { replace: true } : {}),
         ...(authType ? { auth_type: authType } : {}),
+        session_json: values.session_json,
+        client_id: values.client_id,
+        client_secret: values.client_secret,
         access_token: values.access_token,
         refresh_token: values.refresh_token,
         id_token: values.id_token,
         email: values.account_email,
         account_id: values.account_id,
+        user_id: values.user_id,
         organization_id: values.organization_id,
         plan_type: values.plan_type,
         token_type: values.token_type,
@@ -117,7 +123,7 @@ export function providerResourceUpdatePayload(values: Record<string, string>, da
   const isAccountResource = providerResourceValuesAreAccount(values, data);
   if (isAccountResource && !values.access_token?.trim()) delete payload.api_key;
   if (!isAccountResource && !values.api_key?.trim()) delete payload.api_key;
-  if (isAccountResource && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim()) {
+  if (isAccountResource && values.replace_credentials !== "true" && !values.access_token?.trim() && !values.refresh_token?.trim() && !values.id_token?.trim() && !values.session_json?.trim() && !values.client_id?.trim() && !values.client_secret?.trim()) {
     delete payload.credentials;
   }
   return payload;
@@ -160,12 +166,17 @@ export function providerResourceToForm(item: ProviderResource, providerOptions?:
     name: item.name,
     resource_type: item.resource_type,
     auth_type: summary.auth_type || item.options?.auth_type || "",
+    replace_credentials: "false",
+    session_json: "",
+    client_id: "",
+    client_secret: "",
     access_token: "",
     refresh_token: "",
     id_token: "",
     api_key: "",
     account_email: summary.account_email || "",
     account_id: summary.account_id || "",
+    user_id: summary.user_id || "",
     organization_id: summary.organization_id || "",
     plan_type: summary.plan_type || "",
     token_type: summary.token_type || "",
@@ -784,7 +795,7 @@ export async function readAdminError(resp: Response, fallback: string) {
   if (!body) return resp.status === 403 ? permissionDeniedMessage(fallback) : `${fallback} (${resp.status})`;
   try {
     const parsed = JSON.parse(body) as { error?: { code?: string; message?: string; details?: unknown }; message?: string };
-    const localized = providerBlockedAddressMessage(parsed.error?.code, parsed.error?.details) ?? localizedAdminErrorCode(parsed.error?.code);
+    const localized = providerBlockedAddressMessage(parsed.error?.code, parsed.error?.details) ?? subscriptionOAuthErrorMessage(parsed.error?.code, parsed.error?.details) ?? localizedAdminErrorCode(parsed.error?.code);
     if (localized) return localized;
     if (parsed.error?.code === "provider_resource_reauthorization_required") return tx("账号会话已失效，请重新进行账号授权。");
     if (resp.status === 403) return permissionDeniedMessage(fallback);
@@ -796,6 +807,10 @@ export async function readAdminError(resp: Response, fallback: string) {
 
 function localizedAdminErrorCode(code?: string) {
   switch (code) {
+    case "grok_api_scope_missing":
+      return tx("Grok 授权缺少模型调用所需的 api:access 权限。请编辑此账号，重新授权并同意所需权限，然后保存账号。");
+    case "google_subscription_location_unsupported":
+      return tx("Google 订阅服务不支持当前请求所在地区。请检查账号的地区资格以及 TokenHub 服务器的网络出口地区。");
     case "provider_model_retired":
       return tx("请选择未停用的上游模型后再发布新线路。");
     case "provider_model_price_required":

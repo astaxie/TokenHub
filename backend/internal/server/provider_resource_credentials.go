@@ -12,6 +12,7 @@ const (
 	providerResourceReauthorizationRequiredOption = "oauth_reauthorization_required"
 	openAIAccountReauthorizationRequiredOption    = providerResourceReauthorizationRequiredOption
 	providerAccountCredentialSourceFallback       = "provider_account"
+	providerCredentialReplacementGenerationOption = "credential_replacement_generation"
 )
 
 var providerAccountProtectedOptions = []string{
@@ -33,12 +34,25 @@ var providerAccountProtectedOptions = []string{
 	codexResourceModelsETagOption,
 	codexResourceModelCatalogOption,
 	providerResourceReauthorizationRequiredOption,
+	providerCredentialReplacementGenerationOption,
+}
+
+func providerCredentialReplacementGeneration(options map[string]string) int64 {
+	if options == nil {
+		return 0
+	}
+	generation, err := strconv.ParseInt(strings.TrimSpace(options[providerCredentialReplacementGenerationOption]), 10, 64)
+	if err != nil || generation < 0 {
+		return 0
+	}
+	return generation
 }
 
 func (s *GormStore) prepareProviderResourceForCreate(providerType string, resource *ProviderResource) {
 	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
+	stripProviderResourceCredentialOptions(resource.Options)
 	if !s.providerResourceCredentialInputOptional(providerType, resource.ResourceType) && !providerResourceCredentialInputPresent(*resource) {
 		return
 	}
@@ -53,6 +67,7 @@ func (s *GormStore) prepareProviderResourceForUpdate(providerType string, resour
 	if resource == nil || !s.IsProviderAccountResourceType(providerType, resource.ResourceType) {
 		return
 	}
+	stripProviderResourceCredentialOptions(resource.Options)
 	if !s.providerResourceCredentialInputOptional(providerType, resource.ResourceType) && !providerResourceCredentialInputPresent(patch) {
 		return
 	}
@@ -339,6 +354,10 @@ func (s *GormStore) mergeProviderAccountCredentials(providerType string, resourc
 		creds = *resource.Credentials
 	}
 	if patch != nil && patch.Credentials != nil {
+		if patch.Credentials.Replace {
+			creds = ProviderResourceCredentials{}
+			resetProviderAccountCredentials(resource)
+		}
 		mergeProviderResourceCredentials(&creds, *patch.Credentials)
 	}
 	if strings.TrimSpace(creds.AccessToken) == "" && resource.APIKey != "" && !strings.HasPrefix(resource.APIKey, "enc:v1:") {
@@ -372,7 +391,9 @@ func openAIAccountAuthenticationPatch(creds *ProviderResourceCredentials) bool {
 	return strings.TrimSpace(creds.AccessToken) != "" ||
 		strings.TrimSpace(creds.RefreshToken) != "" ||
 		strings.TrimSpace(creds.IDToken) != "" ||
-		strings.TrimSpace(creds.ClientID) != ""
+		strings.TrimSpace(creds.ClientID) != "" ||
+		strings.TrimSpace(creds.ClientSecret) != "" ||
+		strings.TrimSpace(creds.SessionJSON) != ""
 }
 
 func openAIAccountAuthenticationEqual(left ProviderResourceCredentials, right ProviderResourceCredentials) bool {
@@ -384,7 +405,9 @@ func providerResourceAuthenticationEqual(left ProviderResourceCredentials, right
 		strings.TrimSpace(left.AccessToken) == strings.TrimSpace(right.AccessToken) &&
 		strings.TrimSpace(left.RefreshToken) == strings.TrimSpace(right.RefreshToken) &&
 		strings.TrimSpace(left.IDToken) == strings.TrimSpace(right.IDToken) &&
-		strings.TrimSpace(left.ClientID) == strings.TrimSpace(right.ClientID)
+		strings.TrimSpace(left.ClientID) == strings.TrimSpace(right.ClientID) &&
+		strings.TrimSpace(left.ClientSecret) == strings.TrimSpace(right.ClientSecret) &&
+		strings.TrimSpace(left.SessionJSON) == strings.TrimSpace(right.SessionJSON)
 }
 
 func mergeRefreshedProviderResourceCredentials(
@@ -392,11 +415,13 @@ func mergeRefreshedProviderResourceCredentials(
 	current ProviderResourceCredentials,
 	refreshed ProviderResourceCredentials,
 ) ProviderResourceCredentials {
+	current.SessionJSON = firstNonEmpty(refreshed.SessionJSON, current.SessionJSON)
 	current.AuthType = firstNonEmpty(refreshed.AuthType, current.AuthType)
 	current.AccessToken = firstNonEmpty(refreshed.AccessToken, current.AccessToken)
 	current.RefreshToken = firstNonEmpty(refreshed.RefreshToken, current.RefreshToken)
 	current.IDToken = firstNonEmpty(refreshed.IDToken, current.IDToken)
 	current.ClientID = firstNonEmpty(refreshed.ClientID, current.ClientID)
+	current.ClientSecret = firstNonEmpty(refreshed.ClientSecret, current.ClientSecret)
 	if current.Scopes == original.Scopes {
 		current.Scopes = firstNonEmpty(refreshed.Scopes, current.Scopes)
 	}
@@ -423,9 +448,11 @@ func mergeRefreshedProviderResourceCredentials(
 }
 
 func hasProviderResourceCredentialSecret(creds ProviderResourceCredentials) bool {
-	return strings.TrimSpace(creds.RefreshToken) != "" ||
+	return strings.TrimSpace(creds.SessionJSON) != "" ||
+		strings.TrimSpace(creds.RefreshToken) != "" ||
 		strings.TrimSpace(creds.IDToken) != "" ||
 		strings.TrimSpace(creds.ClientID) != "" ||
+		strings.TrimSpace(creds.ClientSecret) != "" ||
 		strings.TrimSpace(creds.Scopes) != "" ||
 		strings.TrimSpace(creds.TokenType) != "" ||
 		strings.TrimSpace(creds.ExpiresAt) != ""
@@ -433,10 +460,12 @@ func hasProviderResourceCredentialSecret(creds ProviderResourceCredentials) bool
 
 func (s *GormStore) encryptProviderResourceCredentialBlob(creds ProviderResourceCredentials) string {
 	secret := map[string]string{}
+	addNonEmpty(secret, "session_json", creds.SessionJSON)
 	addNonEmpty(secret, "auth_type", creds.AuthType)
 	addNonEmpty(secret, "refresh_token", creds.RefreshToken)
 	addNonEmpty(secret, "id_token", creds.IDToken)
 	addNonEmpty(secret, "client_id", creds.ClientID)
+	addNonEmpty(secret, "client_secret", creds.ClientSecret)
 	addNonEmpty(secret, "scopes", creds.Scopes)
 	addNonEmpty(secret, "token_type", creds.TokenType)
 	addNonEmpty(secret, "expires_at", creds.ExpiresAt)
@@ -456,25 +485,33 @@ func applyOpenAIAccountOptions(options map[string]string, creds ProviderResource
 	applyProviderAccountOptions(options, ProviderResourceOpenAISubscription, creds)
 }
 
-func applyProviderAccountOptions(options map[string]string, resourceType string, creds ProviderResourceCredentials) {
-	if options == nil {
-		return
-	}
+func stripProviderResourceCredentialOptions(options map[string]string) {
 	for _, key := range []string{
 		"access_token",
 		"refresh_token",
 		"id_token",
 		"api_key",
 		"credential_blob",
+		"session_json",
+		"client_secret",
 	} {
 		delete(options, key)
 	}
+}
+
+func applyProviderAccountOptions(options map[string]string, resourceType string, creds ProviderResourceCredentials) {
+	if options == nil {
+		return
+	}
+	stripProviderResourceCredentialOptions(options)
 	options["credential_source"] = firstNonEmpty(strings.TrimSpace(resourceType), providerAccountCredentialSourceFallback)
 	options["auth_type"] = firstNonEmpty(creds.AuthType, options["auth_type"], "oauth")
-	if strings.TrimSpace(creds.RefreshToken) != "" {
-		options["has_refresh_token"] = "true"
-	} else if options["has_refresh_token"] == "" {
-		options["has_refresh_token"] = "false"
+	if !applySubscriptionWorkerRefreshSummary(options, resourceType, creds.SessionJSON) {
+		if strings.TrimSpace(creds.RefreshToken) != "" {
+			options["has_refresh_token"] = "true"
+		} else if options["has_refresh_token"] == "" {
+			options["has_refresh_token"] = "false"
+		}
 	}
 	setOptionIfValue(options, "token_expires_at", creds.ExpiresAt)
 	setOptionIfValue(options, "account_id", creds.AccountID)
@@ -548,6 +585,8 @@ func (s *GormStore) redactProviderResourceSecrets(providerType string, resource 
 	resource.APIKey = ""
 	resource.CredentialBlob = ""
 	resource.Credentials = nil
+	resource.Options = cloneStringMap(resource.Options)
+	stripProviderResourceCredentialOptions(resource.Options)
 	resource.CredentialSummary = s.providerResourceCredentialSummary(providerType, *resource)
 }
 
@@ -558,6 +597,8 @@ func redactProviderResourceSecrets(resource *ProviderResource) {
 	resource.APIKey = ""
 	resource.CredentialBlob = ""
 	resource.Credentials = nil
+	resource.Options = cloneStringMap(resource.Options)
+	stripProviderResourceCredentialOptions(resource.Options)
 	resource.CredentialSummary = providerResourceCredentialSummary(*resource)
 }
 
@@ -568,7 +609,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 	}
 
 	var result ProviderResourceCredentials
-	err := s.withClusterLease(ctx, "credential-refresh:"+resourceID, func(leaseCtx context.Context) error {
+	err := s.withNativeCredentialRefreshLease(ctx, resourceID, func(leaseCtx, heldCtx context.Context) error {
 		s.mu.Lock()
 		var resource ProviderResource
 		if err := s.db.WithContext(leaseCtx).First(&resource, "id = ?", resourceID).Error; err != nil {
@@ -580,7 +621,13 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			s.mu.Unlock()
 			return notFound(err, "provider_not_found", "Provider not found")
 		}
+		if expected, _ := leaseCtx.Value(providerCredentialBindingKey{}).(string); expected != "" &&
+			(provider.Type != expected || !s.IsProviderAccountResourceType(provider.Type, resource.ResourceType)) {
+			s.mu.Unlock()
+			return NewHTTPError(409, "provider_resource_changed", "Provider resource no longer belongs to the selected subscription adapter")
+		}
 		creds := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
+		captureProviderCredentialSnapshot(leaseCtx, resource)
 		authentication := creds
 		refreshRegistration, refreshSupported := s.providerCredentialRefreshRegistration(provider)
 		if !refreshSupported || !s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) {
@@ -609,6 +656,7 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 		}
 		s.mu.Unlock()
 
+		leaseCtx = providerCredentialRefreshContext(leaseCtx, provider.Type, resource)
 		refreshed, err := refreshRegistration.Refresh(leaseCtx, creds)
 		if err != nil {
 			if httpErr := AsHTTPError(err); httpErr != nil && httpErr.Code == "provider_resource_reauthorization_required" {
@@ -618,6 +666,9 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 					var current ProviderResource
 					if loadErr := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; loadErr != nil {
 						return loadErr
+					}
+					if err := s.validateProviderCredentialRefreshSnapshot(mutationCtx, current, resource); err != nil {
+						return err
 					}
 					if !s.supportsNativeProviderResourceCredentialRefresh(provider, current) ||
 						!refreshRegistration.AuthenticationEqual(s.providerResourceCredentialsForRuntimeForProvider(provider.Type, current), authentication) {
@@ -637,12 +688,20 @@ func (s *GormStore) RefreshProviderResourceCredentials(ctx context.Context, reso
 			return err
 		}
 
-		return s.withClusterLease(leaseCtx, providerResourceMutationLeaseName(resourceID), func(mutationCtx context.Context) error {
+		// A completed token exchange may already have spent the previous refresh
+		// token. Save its result even if the caller disconnects at that boundary.
+		cleanupCtx, cancelCleanup := context.WithTimeout(heldCtx, 10*time.Second)
+		defer cancelCleanup()
+		cleanupCtx = providerCredentialRefreshContext(cleanupCtx, provider.Type, resource)
+		return s.withClusterLease(cleanupCtx, providerResourceMutationLeaseName(resourceID), func(mutationCtx context.Context) error {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			var current ProviderResource
 			if err := s.db.WithContext(mutationCtx).First(&current, "id = ?", resourceID).Error; err != nil {
 				return notFound(err, "provider_resource_not_found", "Provider resource not found")
+			}
+			if err := s.validateProviderCredentialRefreshSnapshot(mutationCtx, current, resource); err != nil {
+				return err
 			}
 			if !s.supportsNativeProviderResourceCredentialRefresh(provider, current) {
 				result = refreshed
@@ -743,11 +802,13 @@ func (s *GormStore) providerResourceCredentialsForRuntimeForProvider(providerTyp
 }
 
 func mergeProviderResourceCredentials(target *ProviderResourceCredentials, source ProviderResourceCredentials) {
+	target.SessionJSON = firstNonEmpty(source.SessionJSON, target.SessionJSON)
 	target.AuthType = firstNonEmpty(source.AuthType, target.AuthType)
 	target.AccessToken = firstNonEmpty(source.AccessToken, target.AccessToken)
 	target.RefreshToken = firstNonEmpty(source.RefreshToken, target.RefreshToken)
 	target.IDToken = firstNonEmpty(source.IDToken, target.IDToken)
 	target.ClientID = firstNonEmpty(source.ClientID, target.ClientID)
+	target.ClientSecret = firstNonEmpty(source.ClientSecret, target.ClientSecret)
 	target.Scopes = firstNonEmpty(source.Scopes, target.Scopes)
 	target.TokenType = firstNonEmpty(source.TokenType, target.TokenType)
 	target.ExpiresAt = firstNonEmpty(source.ExpiresAt, target.ExpiresAt)

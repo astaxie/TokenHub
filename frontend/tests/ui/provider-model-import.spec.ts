@@ -1,0 +1,344 @@
+import type { Model, ModelRoute, Provider, ProviderModel } from "../../features/admin/core/types";
+import { test, expect, capture } from "./harness";
+import { shellResponses, user } from "./fixtures/shell";
+import type { MockAPI } from "./network";
+
+const provider: Provider = { id: "provider_import_ui", name: "UI Import Provider", type: "mock", priority: 1, status: "active", healthy: true };
+const model = (id: string, upstream: string): ProviderModel => ({
+  id, provider_id: provider.id, upstream_model: upstream, status: "active", call_supported: true,
+  category: "custom", family: "ui", modality: "chat", context_window: 32000,
+  input_price_usd_per_1m: 3, output_price_usd_per_1m: 6, capabilities: ["chat", "tools"],
+  supported_parameters: ["temperature"], metadata: { pricing_status: "configured" },
+});
+const first = model("inventory_import_ui_a", "ui/vendor-chat-a:fast");
+const second = model("inventory_import_ui_b", "ui/vendor-chat-b");
+const conflict = model("inventory_import_ui_existing", "ui-already-public");
+const unsupported = { ...model("inventory_import_ui_unsupported", "ui-unsupported"), call_supported: false };
+const inactive = { ...model("inventory_import_ui_inactive", "ui-inactive"), status: "disabled" };
+const existing: Model = { id: "external_import_ui_existing", name: conflict.upstream_model, family: "ui", modality: "chat", status: "active", input_price_usd_per_1m: 99, metadata: { directory_role: "external" } };
+const reference: Model = { id: "reference_import_ui", name: first.upstream_model, family: "ui", modality: "chat", status: "active", metadata: { source: "tokenhub-standard-catalog" } };
+
+function install(api: MockAPI, inventory: ProviderModel[], models: Model[] = [reference, existing], selectedProvider = provider) {
+  const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
+  const storedModels = structuredClone(models);
+  const storedInventory = structuredClone(inventory);
+  const storedRoutes: ModelRoute[] = [];
+  api.respond("GET", "/api/admin/routing-rules", { data: storedRoutes });
+  api.respond("GET", "/api/admin/provider-catalog", { data: [] });
+  function refresh() {
+    api.replaceResponse("GET", "/api/admin/overview", { ...overview, models: storedModels, providers: [selectedProvider] });
+    api.replaceResponse("GET", "/api/admin/provider-models", { data: storedInventory });
+    api.replaceResponse("GET", "/api/admin/routing-rules", { data: storedRoutes });
+  }
+  refresh();
+  function create(body: unknown) {
+    const request = body as Model & { create_only: boolean; routes: ModelRoute[] };
+    const source = storedInventory.find(item => item.upstream_model === request.name);
+    expect(source, "Published names must equal imported upstream IDs").toBeDefined();
+    expect(request).toMatchObject({ create_only: true, name: source!.upstream_model, modality: "chat", family: "ui", context_window: 32000, status: "active", capabilities: ["chat", "tools"] });
+    expect(request.routes).toHaveLength(1);
+    expect(request.routes[0]).toMatchObject({ provider_id: selectedProvider.id, provider_model: source!.upstream_model, status: "active", weight: 100, project_scope: "all" });
+    const created: Model = { ...request, id: `external_${source!.id}`, metadata: { ...request.metadata, directory_role: "external" } };
+    const index = storedModels.findIndex(item => item.name === request.name);
+    if (index >= 0) storedModels[index] = created;
+    else storedModels.push(created);
+    storedRoutes.push({ ...request.routes[0], id: `route_${source!.id}`, model_name: request.name, priority: 1 });
+    refresh();
+    return { status: 201, json: created };
+  }
+  return { create, refresh, storedModels, storedInventory, storedRoutes };
+}
+
+for (const state of ["empty", "populated", "no-provider"] as const) {
+  for (const viewport of [
+    { name: "desktop", width: 1440, height: 1000 },
+    { name: "mobile", width: 390, height: 844 },
+  ]) {
+    test(`models provider-import-adjacent-actions-${state}-${viewport.name}`, async ({ page, api }, info) => {
+      await page.setViewportSize(viewport);
+      const fixture = install(api, state === "no-provider" ? [] : [first], state === "populated" ? [existing] : []);
+      if (state === "populated") {
+        fixture.storedRoutes.push({ id: "route_import_ui_existing", model_name: existing.name, provider_id: provider.id, provider_model: first.upstream_model, priority: 1, weight: 100, status: "active" });
+        fixture.refresh();
+      } else if (state === "no-provider") {
+        const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
+        api.replaceResponse("GET", "/api/admin/overview", { ...overview, models: [], providers: [] });
+      }
+      await page.goto("/models");
+      const create = page.getByRole("button", { name: "新建对外模型", exact: true });
+      const importModels = page.getByRole("button", { name: "从 Provider 引入", exact: true });
+      await expect(create).toBeEnabled();
+      await expect(importModels).toBeEnabled();
+      const actions = create.locator("..");
+      await expect(actions.getByRole("button", { name: "从 Provider 引入", exact: true })).toHaveCount(1);
+      for (const width of viewport.name === "mobile" ? [320, viewport.width] : [viewport.width]) {
+        await page.setViewportSize({ width, height: viewport.height });
+        await create.scrollIntoViewIfNeeded();
+        await expect.poll(() => actions.evaluate(element => {
+          const buttons = Array.from(element.querySelectorAll<HTMLButtonElement>(":scope > button"));
+          const bounds = buttons.map(button => button.getBoundingClientRect());
+          return {
+            count: bounds.length,
+            sameRow: bounds.length === 2 && Math.abs(bounds[0].top - bounds[1].top) <= 1,
+            separated: bounds.length === 2 && bounds[0].right <= bounds[1].left,
+            inViewport: bounds.every(rect => rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight),
+          };
+        }), { message: "Create and Provider import must remain adjacent, non-overlapping, and reachable" }).toEqual({ count: 2, sameRow: true, separated: true, inViewport: true });
+      }
+      if (state === "empty" || state === "populated" && viewport.name === "mobile") {
+        await capture(page, info, actions, `provider-import-adjacent-${state}-${viewport.name}`, "模型目录：新建与 Provider 引入并排显示", "viewport");
+      }
+      await create.click();
+      const createDialog = page.getByRole("dialog", { name: "新建对外模型", exact: true });
+      await expect(createDialog).toBeVisible();
+      await createDialog.getByRole("button", { name: "取消", exact: true }).click();
+      await expect(createDialog).toHaveCount(0);
+      await importModels.click();
+      const importDialog = page.getByRole("dialog", { name: "从 Provider 引入", exact: true });
+      await expect(importDialog).toBeVisible();
+      await importDialog.getByRole("button", { name: "关闭", exact: true }).last().click();
+      await expect(importDialog).toHaveCount(0);
+      expect(api.calls.every(call => call.method === "GET"), "Opening creation controls must not persist models").toBe(true);
+    });
+  }
+}
+
+for (const mobile of [false, true]) {
+  const viewport = mobile ? "mobile" : "desktop";
+  test(`models provider-import-one-to-one-${viewport}`, async ({ page, api }, info) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const fixture = install(api, [first, second, conflict, unsupported, inactive]);
+    api.define("POST", "/api/admin/models", request => {
+      expect(request.body).toMatchObject({ input_price_usd_per_1m: 1, output_price_usd_per_1m: 2 });
+      return fixture.create(request.body);
+    });
+    await page.goto("/models");
+    await page.getByRole("button", { name: "从 Provider 引入", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "从 Provider 引入", exact: true });
+    await expect(dialog).toBeFocused();
+    await dialog.getByRole("combobox", { name: "选择 Provider", exact: true }).selectOption(provider.id);
+    await expect(dialog.getByRole("checkbox", { name: first.upstream_model, exact: true })).toBeEnabled();
+    await expect(dialog.getByRole("checkbox", { name: conflict.upstream_model, exact: true })).toBeDisabled();
+    await expect(dialog.getByRole("checkbox", { name: unsupported.upstream_model, exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("checkbox", { name: inactive.upstream_model, exact: true })).toHaveCount(0);
+    await dialog.getByRole("checkbox", { name: second.upstream_model, exact: true }).check();
+    await dialog.getByLabel("搜索 Provider 模型", { exact: true }).fill("chat-a");
+    await dialog.getByRole("checkbox", { name: "全选可引入模型", exact: true }).check();
+    await dialog.getByLabel("搜索 Provider 模型", { exact: true }).fill("");
+    await expect(dialog.getByRole("checkbox", { name: first.upstream_model, exact: true })).toBeChecked();
+    await expect(dialog.getByRole("checkbox", { name: second.upstream_model, exact: true })).toBeChecked();
+    await capture(page, info, dialog, `provider-import-selection-${viewport}`, "从现有 Provider 选择模型：同名冲突不可覆盖", "viewport");
+    await dialog.getByLabel("统一输入价格", { exact: true }).fill("1");
+    await dialog.getByLabel("统一输出价格", { exact: true }).fill("2");
+    await dialog.getByRole("button", { name: "应用到所选模型", exact: true }).click();
+    await dialog.getByRole("region", { name: second.upstream_model, exact: true }).getByLabel("输出价格（USD / 1M tokens）", { exact: true }).scrollIntoViewIfNeeded();
+    await capture(page, info, dialog, `provider-import-pricing-${viewport}`, "批量设置对外价格并预览一一对应模型", "viewport");
+    await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();
+    await expect.poll(() => fixture.storedRoutes.length).toBe(2);
+    expect(api.calls.filter(call => call.method === "POST").map(call => (call.body as Model).name).sort()).toEqual([first.upstream_model, second.upstream_model].sort());
+    expect(fixture.storedModels.find(item => item.name === existing.name)).toEqual(existing);
+    await expect(dialog).toHaveCount(0);
+    const directory = page.locator(".model-directory-table");
+    const importedModel = directory.getByText(first.upstream_model, { exact: true }).first();
+    await expect(importedModel).toBeVisible();
+    await expect(directory.getByText(second.upstream_model, { exact: true }).first()).toBeVisible();
+    await importedModel.scrollIntoViewIfNeeded();
+    await capture(page, info, directory, `provider-import-results-${viewport}`, "全部引入成功后自动关闭弹窗并显示更新后的模型目录", "viewport");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Import controls must not overflow the viewport").toBe(true);
+  });
+}
+
+for (const mobile of [false, true]) {
+  const viewport = mobile ? "mobile" : "desktop";
+  test(`models provider-import-validation-${viewport}`, async ({ page, api }, info) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const inventory = Array.from({ length: 8 }, (_, index) => ({
+      ...model(`inventory_validation_${index}`, `ui/subscription-model-${index}`),
+      input_price_usd_per_1m: undefined, output_price_usd_per_1m: undefined,
+      metadata: { pricing_status: "unverified", billing_mode: "subscription" },
+    }));
+    const fixture = install(api, inventory, [], { ...provider, type: "workbuddy_subscription" });
+    for (const item of inventory) api.define("PATCH", `/api/admin/provider-models/${item.id}`, request => {
+      expect(request.body).toMatchObject({ metadata: { pricing_status: "configured", billing_mode: "subscription" } });
+      Object.assign(fixture.storedInventory.find(model => model.id === item.id)!, request.body);
+      fixture.refresh();
+      return { json: fixture.storedInventory.find(model => model.id === item.id) };
+    });
+    api.define("POST", "/api/admin/models", request => {
+      expect(request.body).toMatchObject({ input_price_usd_per_1m: 0, output_price_usd_per_1m: 2 });
+      return fixture.create(request.body);
+    });
+    await page.goto("/models");
+    await page.getByRole("button", { name: "从 Provider 引入", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "从 Provider 引入", exact: true });
+    const submit = dialog.getByRole("button", { name: "引入所选模型", exact: true });
+    const confirm = dialog.getByRole("checkbox", { name: "确认所选订阅模型的按量成本为 0（订阅费用另行核算）", exact: true });
+    await expect(submit).toBeDisabled();
+    await dialog.getByRole("checkbox", { name: "全选可引入模型", exact: true }).check();
+    await expect(submit).toBeEnabled();
+    await expect(submit).toHaveAccessibleDescription(/还有 8 个所选模型的对外价格未填完整或无效。/);
+    await expect(confirm).toBeInViewport({ ratio: 1 });
+    await expect(submit).toBeInViewport({ ratio: 1 });
+    await capture(page, info, dialog, `provider-import-validation-selected-${viewport}`, "选中模型后显示价格缺项，订阅成本确认始终可见", "viewport");
+    await dialog.getByLabel("统一输入价格", { exact: true }).fill("0");
+    await dialog.getByLabel("统一输出价格", { exact: true }).fill("2");
+    await expect(dialog.getByText("填写统一价格后，请点击“应用到所选模型”；也可逐项填写。", { exact: true })).toBeVisible();
+    await dialog.getByLabel("搜索 Provider 模型", { exact: true }).fill("model-7");
+    await expect(dialog.getByRole("region", { name: inventory[0].upstream_model, exact: true })).toHaveCount(0);
+    await submit.click();
+    await expect(dialog.getByLabel("搜索 Provider 模型", { exact: true })).toHaveValue("");
+    const missingPrice = dialog.getByRole("region", { name: inventory[0].upstream_model, exact: true }).getByLabel("输入价格（USD / 1M tokens）", { exact: true });
+    await expect(missingPrice).toBeFocused();
+    await expect(missingPrice).toBeInViewport({ ratio: 1 });
+    await expect(missingPrice).toHaveValue("");
+    await expect(dialog.getByRole("alert")).toHaveText("尚未引入：还有 8 个所选模型的对外价格未填完整或无效。");
+    await expect(dialog.getByRole("alert")).toBeInViewport({ ratio: 1 });
+    expect(api.calls.filter(call => call.method !== "GET"), "Unapplied shared prices must not publish or confirm costs").toHaveLength(0);
+    await capture(page, info, dialog, `provider-import-validation-focused-${viewport}`, "引入时自动定位搜索范围之外的缺失价格", "viewport");
+    await dialog.getByRole("button", { name: "应用到所选模型", exact: true }).click();
+    await expect(submit).toHaveAccessibleDescription(/请确认所选订阅模型的按量成本。/);
+    await submit.click();
+    await expect(confirm).toBeFocused();
+    await expect(confirm).not.toBeChecked();
+    const confirmationError = "尚未引入：请勾选上方的订阅成本确认，再次点击“引入所选模型”。";
+    await expect(dialog.getByRole("alert")).toHaveText(confirmationError);
+    await expect(dialog.getByRole("alert")).toBeInViewport({ ratio: 1 });
+    await expect(confirm).toHaveAttribute("aria-invalid", "true");
+    await expect(confirm).toHaveAccessibleDescription(confirmationError);
+    await expect(submit).toHaveAccessibleDescription(confirmationError);
+    expect(api.calls.filter(call => call.method !== "GET"), "Subscription cost confirmation must remain explicit").toHaveLength(0);
+    await capture(page, info, dialog, `provider-import-confirmation-required-${viewport}`, "点击引入后明确提示成本尚未确认，保留已填价格", "viewport");
+    await confirm.check();
+    await expect(dialog.getByRole("alert")).toHaveCount(0);
+    await expect(confirm).not.toHaveAttribute("aria-invalid", "true");
+    expect(api.calls.filter(call => call.method !== "GET"), "Checking cost confirmation must not submit automatically").toHaveLength(0);
+    await submit.click();
+    await expect.poll(() => fixture.storedRoutes.length).toBe(inventory.length);
+    await expect(dialog).toHaveCount(0);
+    const directory = page.locator(".model-directory-table");
+    const importedModel = directory.getByText(inventory[0].upstream_model, { exact: true }).first();
+    await expect(importedModel).toBeVisible();
+    await importedModel.scrollIntoViewIfNeeded();
+    await capture(page, info, directory, `provider-import-validation-result-${viewport}`, "批量引入成功后自动返回更新后的模型目录", "viewport");
+    expect(api.calls.filter(call => call.method === "POST")).toHaveLength(inventory.length);
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(inventory.length);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Validation footer must not overflow the viewport").toBe(true);
+  });
+}
+
+test("models provider-import-rerank-malformed-optional-price", async ({ page, api }) => {
+  install(api, [{ ...first, modality: "rerank" }], []);
+  await page.goto("/models");
+  await page.getByRole("button", { name: "从 Provider 引入", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "从 Provider 引入", exact: true });
+  await dialog.getByRole("checkbox", { name: "全选可引入模型", exact: true }).check();
+  await dialog.getByLabel("统一输入价格", { exact: true }).fill("1");
+  await dialog.getByLabel("统一输出价格", { exact: true }).fill("2");
+  await dialog.getByRole("button", { name: "应用到所选模型", exact: true }).click();
+  const price = dialog.getByLabel("搜索单元价格 USD/次", { exact: true });
+  await price.pressSequentially("e");
+  await expect(price).toHaveValue("");
+  expect(await price.evaluate((element: HTMLInputElement) => element.validity.badInput), "Chromium must preserve a malformed numeric input rather than an empty optional price").toBe(true);
+  await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();
+  await expect(price).toBeFocused();
+  expect(api.calls.filter(call => call.method !== "GET"), "A malformed optional price must not create a model or confirm costs").toHaveLength(0);
+});
+
+test("models provider-import-subscription-partial-retry", async ({ page, api }, info) => {
+  const subscriptionProvider: Provider = { ...provider, type: "workbuddy_subscription" };
+  const inventory = [first, second].map(item => ({ ...item, input_price_usd_per_1m: undefined, output_price_usd_per_1m: undefined, metadata: { pricing_status: "unverified", billing_mode: "subscription", fixture_marker: "preserve" } }));
+  const fixture = install(api, inventory, [], subscriptionProvider);
+  for (const item of inventory) {
+    api.define("PATCH", `/api/admin/provider-models/${item.id}`, request => {
+      expect(request.body).toMatchObject({ metadata: { pricing_status: "configured", billing_mode: "subscription", fixture_marker: "preserve" } });
+      Object.assign(fixture.storedInventory.find(model => model.id === item.id)!, request.body);
+      fixture.refresh();
+      return { json: fixture.storedInventory.find(model => model.id === item.id) };
+    });
+  }
+  let failSecond = true;
+  let release: () => void = () => {};
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  api.define("POST", "/api/admin/models", async request => {
+    const payload = request.body as Model;
+    expect(payload).toMatchObject({ input_price_usd_per_1m: 0, output_price_usd_per_1m: 0 });
+    if (payload.name === first.upstream_model) await pending;
+    if (payload.name === second.upstream_model && failSecond) {
+      failSecond = false;
+      return { status: 503, json: { error: { message: "Synthetic temporary publication failure" } } };
+    }
+    return fixture.create(request.body);
+  });
+  await page.goto("/models");
+  await page.getByRole("button", { name: "从 Provider 引入", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "从 Provider 引入", exact: true });
+  await dialog.getByRole("combobox", { name: "选择 Provider", exact: true }).selectOption(provider.id);
+  await dialog.getByRole("checkbox", { name: "全选可引入模型", exact: true }).check();
+  await dialog.getByLabel("统一输入价格", { exact: true }).fill("0");
+  await dialog.getByLabel("统一输出价格", { exact: true }).fill("0");
+  await dialog.getByRole("button", { name: "应用到所选模型", exact: true }).click();
+  expect(api.calls.filter(call => call.method !== "GET")).toHaveLength(0);
+  const confirm = dialog.getByRole("checkbox", { name: "确认所选订阅模型的按量成本为 0（订阅费用另行核算）", exact: true });
+  await expect(confirm).not.toBeChecked();
+  await expect(dialog.getByRole("button", { name: "引入所选模型", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();
+  await expect(confirm).toBeFocused();
+  expect(api.calls.filter(call => call.method !== "GET")).toHaveLength(0);
+  await confirm.check();
+  await capture(page, info, dialog, "provider-import-subscription-confirm", "订阅按量成本与对外价格分别确认", "viewport");
+  await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();
+  await expect.poll(() => api.calls.filter(call => call.method === "POST").length).toBe(1);
+  await expect(dialog.getByRole("combobox", { name: "选择 Provider", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "关闭", exact: true }).last()).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  release();
+  await expect(dialog.getByText(/Synthetic temporary publication failure/)).toBeVisible();
+  await dialog.getByText(/Synthetic temporary publication failure/).scrollIntoViewIfNeeded();
+  await expect(dialog).toBeVisible();
+  await capture(page, info, dialog, "provider-import-partial-failure", "部分引入成功：保留输入并允许只重试失败项", "viewport");
+  await dialog.getByRole("button", { name: "引入所选模型", exact: true }).click();
+  await expect.poll(() => fixture.storedRoutes.length).toBe(2);
+  await expect(dialog).toHaveCount(0);
+  const directory = page.locator(".model-directory-table");
+  await expect(directory.getByText(first.upstream_model, { exact: true }).first()).toBeVisible();
+  await expect(directory.getByText(second.upstream_model, { exact: true }).first()).toBeVisible();
+  expect(api.calls.filter(call => call.method === "POST").map(call => (call.body as Model).name)).toEqual([first.upstream_model, second.upstream_model, second.upstream_model]);
+  for (const item of inventory) expect(api.calls.filter(call => call.method === "PATCH" && call.path.endsWith(item.id))).toHaveLength(1);
+});
+
+test.describe("models provider-import-read-only", () => {
+  test.use({ sessionUser: { ...user, role: "user" } });
+  test("hides publication controls for a regular user", async ({ page, api }) => {
+    install(api, [first]);
+    await page.goto("/models");
+    await expect(page.getByRole("heading", { name: "对外模型目录", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "从 Provider 引入", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "新建对外模型", exact: true })).toHaveCount(0);
+    expect(api.calls.every(call => call.method === "GET")).toBe(true);
+  });
+});
+
+for (const locale of [
+  { language: "en" as const, title: "Import from Provider", all: "Select all importable models", input: "Shared input price", output: "Shared output price", apply: "Apply to selected models", submit: "Import selected models" },
+  { language: "ja" as const, title: "Provider から取り込む", all: "取り込み可能なモデルをすべて選択", input: "共通入力価格", output: "共通出力価格", apply: "選択したモデルに適用", submit: "選択したモデルを取り込む" },
+]) {
+  test.describe(`models provider-import-localized-${locale.language}`, () => {
+    test.use({ sessionLanguage: locale.language });
+    test("keeps localized mobile pricing controls usable", async ({ page, api }, info) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      install(api, [first], []);
+      await page.goto("/models");
+      await page.getByRole("button", { name: locale.title, exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: locale.title, exact: true });
+      await dialog.getByRole("checkbox", { name: locale.all, exact: true }).check();
+      await dialog.getByLabel(locale.input, { exact: true }).fill("1");
+      await dialog.getByLabel(locale.output, { exact: true }).fill("2");
+      await dialog.getByRole("button", { name: locale.apply, exact: true }).click();
+      await expect(dialog.getByRole("button", { name: locale.submit, exact: true })).toBeEnabled();
+      await dialog.getByRole("region", { name: first.upstream_model, exact: true }).scrollIntoViewIfNeeded();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await capture(page, info, dialog, `provider-import-${locale.language}-mobile`, "多语言手机端模型映射与价格预览", "viewport");
+    });
+  });
+}

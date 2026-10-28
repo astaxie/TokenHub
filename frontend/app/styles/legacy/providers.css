@@ -110,6 +110,10 @@
   font-weight: 720;
 }
 
+.provider-model-head {
+  flex-wrap: wrap;
+}
+
 .provider-model-head > div:first-child {
   display: flex;
   align-items: baseline;
@@ -1314,6 +1318,8 @@
 
 .provider-model-tools .secondary-button {
   height: 30px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .provider-model-list {

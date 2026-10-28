@@ -251,14 +251,14 @@ func (s *GormStore) DeleteProvider(id string) error {
 		if err := tx.First(&provider, "id = ?", id).Error; err != nil {
 			return notFound(err, "provider_not_found", "Provider not found")
 		}
+		var resourceIDs []string
+		if err := tx.Model(&ProviderResource{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("provider_id = ?", id).Order("id").Pluck("id", &resourceIDs).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("provider_id = ?", id).Delete(&ModelRoute{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("provider_id = ?", id).Delete(&ProviderModel{}).Error; err != nil {
-			return err
-		}
-		var resourceIDs []string
-		if err := tx.Model(&ProviderResource{}).Where("provider_id = ?", id).Pluck("id", &resourceIDs).Error; err != nil {
 			return err
 		}
 		if len(resourceIDs) > 0 {
@@ -306,6 +306,9 @@ func (s *GormStore) SetProviderHealth(providerID string, healthy bool) (Provider
 }
 
 func (s *GormStore) AddProviderResource(resource ProviderResource) (ProviderResource, error) {
+	if err := validateProviderResourceSession(resource.Credentials); err != nil {
+		return ProviderResource{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -485,21 +488,10 @@ func clearProviderImageCapabilityOptions(options map[string]string, profiles []p
 	}
 }
 
-func updateExistingProviderResourceColumns(db *gorm.DB, resource *ProviderResource, columns ...string) error {
-	result := db.Model(&ProviderResource{}).
-		Where("id = ?", resource.ID).
-		Select(columns).
-		Updates(resource)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return NewHTTPError(http.StatusNotFound, "provider_resource_not_found", "Provider resource not found")
-	}
-	return nil
-}
-
 func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error) {
+	if err := validateProviderResourceSession(patch.Credentials); err != nil {
+		return ProviderResource{}, err
+	}
 	var updated ProviderResource
 	err := s.withClusterLease(context.Background(), providerResourceMutationLeaseName(id), func(leaseCtx context.Context) error {
 		var updateErr error
@@ -509,9 +501,7 @@ func (s *GormStore) UpdateProviderResource(id string, patch ProviderResource) (P
 	return updated, err
 }
 
-func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch ProviderResource) (ProviderResource, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *GormStore) updateProviderResourceLocked(ctx context.Context, id string, patch ProviderResource) (ProviderResource, error) {
 	db := s.db.WithContext(ctx)
 
 	if err := validateSystemPromptTransformOptions(patch.Options); err != nil {
@@ -521,6 +511,10 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 	if err := db.First(&resource, "id = ?", id).Error; err != nil {
 		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
 	}
+	retainCredentialReplacementSettings(&patch, resource)
+	// Credential replacement clears protected options, so retain the prior
+	// generation before preparing the new credential snapshot.
+	credentialReplacementGeneration := providerCredentialReplacementGeneration(resource.Options)
 	before := resource
 	var beforeProvider Provider
 	if err := db.First(&beforeProvider, "id = ?", before.ProviderID).Error; err != nil {
@@ -609,6 +603,12 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 	}
 	resource.UpdatedAt = time.Now().UTC()
 	s.prepareProviderResourceForUpdate(provider.Type, &resource, patch)
+	if patch.Credentials != nil && patch.Credentials.Replace && s.IsProviderAccountResourceType(provider.Type, resource.ResourceType) {
+		if resource.Options == nil {
+			resource.Options = map[string]string{}
+		}
+		resource.Options[providerCredentialReplacementGenerationOption] = strconv.FormatInt(credentialReplacementGeneration+1, 10)
+	}
 	afterCredentials := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
 	imageCapabilityProfiles := mergeProviderImageCapabilityRouteProfiles(
 		beforeImageCapabilityProfiles,
@@ -639,6 +639,12 @@ func (s *GormStore) updateProviderResource(ctx context.Context, id string, patch
 			"headers", "sensitive_headers", "options", "credential_blob", "updated_at",
 		); err != nil {
 			return err
+		}
+		if patch.Credentials != nil && patch.Credentials.Replace {
+			if err := tx.Model(&ProviderResourceObservation{}).Where("resource_id = ?", resource.ID).
+				Updates(map[string]any{"quota_snapshot": "", "quota_fetched_at": nil}).Error; err != nil {
+				return err
+			}
 		}
 		if len(changedImageCapabilityProfiles) == 0 {
 			return nil
@@ -704,6 +710,44 @@ func (s *GormStore) UpdateProviderResourceOptions(id string, options map[string]
 	return updated, err
 }
 
+func (s *GormStore) UpdateProviderResourceOptionsIfCurrent(ctx context.Context, id string, options map[string]string, expected ProviderResource) (ProviderResource, error) {
+	var updated ProviderResource
+	err := s.withClusterLease(ctx, providerResourceMutationLeaseName(id), func(leaseCtx context.Context) error {
+		var updateErr error
+		updated, updateErr = s.updateProviderResourceOptionsIfCurrent(leaseCtx, id, options, expected)
+		return updateErr
+	})
+	return updated, err
+}
+
+func (s *GormStore) updateProviderResourceOptionsIfCurrent(ctx context.Context, id string, options map[string]string, expected ProviderResource) (ProviderResource, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ctx = context.WithValue(ctx, providerCredentialRefreshPersistenceKey{}, expected)
+	db := s.db.WithContext(ctx)
+	var resource ProviderResource
+	if err := db.First(&resource, "id = ?", id).Error; err != nil {
+		return ProviderResource{}, notFound(err, "provider_resource_not_found", "Provider resource not found")
+	}
+	if !sameProviderAccountSnapshot(resource, expected) {
+		return ProviderResource{}, NewHTTPError(http.StatusConflict, "provider_resource_changed", "Provider resource changed during the model request")
+	}
+	if resource.Options == nil {
+		resource.Options = map[string]string{}
+	}
+	for key, value := range options {
+		resource.Options[key] = value
+	}
+	stripProviderResourceCredentialOptions(resource.Options)
+	resource.UpdatedAt = time.Now().UTC()
+	if err := updateExistingProviderResourceColumns(db, &resource, "options", "updated_at"); err != nil {
+		return ProviderResource{}, err
+	}
+	s.maskProviderResourceHeaderConfig(&resource)
+	redactProviderResourceSecrets(&resource)
+	return resource, nil
+}
+
 func (s *GormStore) updateProviderResourceOptions(ctx context.Context, id string, options map[string]string) (ProviderResource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -719,6 +763,7 @@ func (s *GormStore) updateProviderResourceOptions(ctx context.Context, id string
 	for key, value := range options {
 		resource.Options[key] = value
 	}
+	stripProviderResourceCredentialOptions(resource.Options)
 	resource.UpdatedAt = time.Now().UTC()
 	if err := updateExistingProviderResourceColumns(db, &resource, "options", "updated_at"); err != nil {
 		return ProviderResource{}, err
@@ -734,7 +779,7 @@ func (s *GormStore) DeleteProviderResource(id string) error {
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		var resource ProviderResource
-		if err := tx.First(&resource, "id = ?", id).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&resource, "id = ?", id).Error; err != nil {
 			return notFound(err, "provider_resource_not_found", "Provider resource not found")
 		}
 		var provider Provider

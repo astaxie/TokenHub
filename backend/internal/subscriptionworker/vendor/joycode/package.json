@@ -1,0 +1,31 @@
+{
+  "name": "@magpie-community/opencode-joycode-auth",
+  "version": "0.1.1",
+  "description": "OpenCode provider plugin: JoyCode (JD Cloud JoyCoder IDE credits)",
+  "type": "module",
+  "main": "./index.mjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/magpie-community/plugins.git",
+    "directory": "packages/joycode"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "files": [
+    "index.mjs",
+    "README.md",
+    "CHANGELOG.md",
+    "icon.png"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "joycode"
+  ],
+  "license": "MIT",
+  "magpie": {
+    "maxConcurrency": 4,
+    "icon": "data:image/png;base64,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"
+  }
+}

@@ -85,8 +85,10 @@ func newCodexCompatibilityRouteTestServerForProvider(t *testing.T, providerType 
 	}
 	mustCodexSubscriptionAdapterForTest(t, server).MaxRequestRetries = 1
 	if providerType != ProviderOpenAICodex {
+		bridge := *mustCodexSubscriptionAdapterForTest(t, server)
+		bridge.RefreshCredentials = providerCredentialLoaderForType(store, providerType)
 		adapter := &codexBridgeTestAdapter{
-			CodexSubscriptionAdapter: mustCodexSubscriptionAdapterForTest(t, server),
+			CodexSubscriptionAdapter: &bridge,
 			providerType:             providerType,
 		}
 		descriptor := providerPluginDescriptorWithRouteProtocol(

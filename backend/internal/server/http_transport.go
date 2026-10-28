@@ -270,7 +270,7 @@ func isSensitiveAuditKey(key string) bool {
 	switch normalized {
 	case "authorization", "apikey", "apitoken", "accesstoken", "refreshtoken", "clientsecret", "secretkey", "password", "token", "secret",
 		"bottoken", "telegrambottoken", "whatsappaccesstoken", "smtppassword", "signsecret", "dingtalksecret", "webhookurl", "url",
-		"idtoken", "oauthtoken", "sessiontoken", "credentialblob", "privatekey", "cookie", "setcookie":
+		"idtoken", "oauthtoken", "sessiontoken", "sessionjson", "credentialblob", "privatekey", "cookie", "setcookie":
 		return true
 	default:
 		return strings.Contains(normalized, "authorization") || strings.Contains(normalized, "password") || strings.Contains(normalized, "secret")

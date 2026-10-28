@@ -1,0 +1,21 @@
+schema_version: 2
+id: "tokenhub.provider.gemini-cli"
+name: "Gemini CLI"
+version: 1.0.0
+summary: "Connect a Google account to Gemini CLI Code Assist."
+description: "Connect a Google account to Gemini CLI Code Assist."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "gemini_cli_subscription"
+distribution:
+  license: Apache-2.0
+kinds: ["provider"]
+placement: []
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

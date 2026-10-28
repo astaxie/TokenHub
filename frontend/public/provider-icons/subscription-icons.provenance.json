@@ -1,0 +1,461 @@
+{
+  "schema_version": 1,
+  "scope": "Brand assets for all 35 built-in subscription and account provider identities. Regional variants share their product icon.",
+  "notes": [
+    "Codex and Claude Code use the product-specific icons declared by the upstream agent integrations.",
+    "QwenWork uses the Qwen brand icon; its package does not declare a separate product icon.",
+    "Embedded plugin icons are decoded without artwork changes. Assets are served locally; runtime requests do not contact icon sources.",
+    "Provider names and logos remain trademarks of their respective owners. Repository licenses do not grant trademark rights."
+  ],
+  "providers": [
+    {
+      "upstream_id": "antigravity",
+      "file": "antigravity-color.svg"
+    },
+    {
+      "upstream_id": "chatgpt-api",
+      "file": "openai.svg"
+    },
+    {
+      "upstream_id": "claude",
+      "file": "claudecode-color.svg"
+    },
+    {
+      "upstream_id": "codex",
+      "file": "codex-color.svg"
+    },
+    {
+      "upstream_id": "copilot",
+      "file": "githubcopilot.svg"
+    },
+    {
+      "upstream_id": "gemini",
+      "file": "geminicli-color.svg"
+    },
+    {
+      "upstream_id": "autoclaw",
+      "file": "autoclaw.svg"
+    },
+    {
+      "upstream_id": "autoclaw-cn",
+      "file": "autoclaw.svg"
+    },
+    {
+      "upstream_id": "cline",
+      "file": "cline.svg"
+    },
+    {
+      "upstream_id": "codearts",
+      "file": "codearts.svg"
+    },
+    {
+      "upstream_id": "commandcode-plan",
+      "file": "commandcode.svg"
+    },
+    {
+      "upstream_id": "cursor",
+      "file": "cursor.svg"
+    },
+    {
+      "upstream_id": "devin",
+      "file": "devin.svg"
+    },
+    {
+      "upstream_id": "factory",
+      "file": "factory.svg"
+    },
+    {
+      "upstream_id": "gcp-ai",
+      "file": "gcp-ai.png"
+    },
+    {
+      "upstream_id": "grok",
+      "file": "xai.svg"
+    },
+    {
+      "upstream_id": "joycode",
+      "file": "joycode.png"
+    },
+    {
+      "upstream_id": "kimi-work",
+      "file": "kimi-work.png"
+    },
+    {
+      "upstream_id": "kiro",
+      "file": "kiro-color.svg"
+    },
+    {
+      "upstream_id": "mimo-app",
+      "file": "mimocode.svg"
+    },
+    {
+      "upstream_id": "minimax-code",
+      "file": "minimax-color.svg"
+    },
+    {
+      "upstream_id": "minimax-code-global",
+      "file": "minimax-color.svg"
+    },
+    {
+      "upstream_id": "nous-portal",
+      "file": "nousresearch.svg"
+    },
+    {
+      "upstream_id": "opendesign",
+      "file": "opendesign.svg"
+    },
+    {
+      "upstream_id": "qoder",
+      "file": "qoder.svg"
+    },
+    {
+      "upstream_id": "qoder-cn",
+      "file": "qoder.svg"
+    },
+    {
+      "upstream_id": "qwenwork",
+      "file": "qwen-color.svg"
+    },
+    {
+      "upstream_id": "qwenwork-enterprise",
+      "file": "qwen-color.svg"
+    },
+    {
+      "upstream_id": "raccoon",
+      "file": "raccoon.png"
+    },
+    {
+      "upstream_id": "trae-cn",
+      "file": "trae.svg"
+    },
+    {
+      "upstream_id": "trae-global",
+      "file": "trae.svg"
+    },
+    {
+      "upstream_id": "workbuddy",
+      "file": "workbuddy-color.svg"
+    },
+    {
+      "upstream_id": "workbuddy-ai",
+      "file": "workbuddy-color.svg"
+    },
+    {
+      "upstream_id": "zcode",
+      "file": "zcode.png"
+    },
+    {
+      "upstream_id": "zed",
+      "file": "zed.svg"
+    }
+  ],
+  "assets": [
+    {
+      "file": "antigravity-color.svg",
+      "sha256": "652128cf55a28bb958563ee372d0bd00208d9e6fd446f523f77aafd811eef8ca",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/antigravity-color.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "autoclaw.svg",
+      "sha256": "9268901982a8f02bbaec89f9906bced864c925c9478825d6fd021da960ab9d75",
+      "source": {
+        "repository": "https://github.com/magpie-community/plugins",
+        "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
+        "path": "packages/autoclaw/package.json",
+        "field": "magpie.icon",
+        "encoding": "percent-encoded"
+      },
+      "source_license": "MIT; see LICENSE-community-icons"
+    },
+    {
+      "file": "claudecode-color.svg",
+      "sha256": "670b3d8d749d0815ad8f7e62a59d51cb5e2053cb19403f3541a8aed7036a877f",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/claudecode-color.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "cline.svg",
+      "sha256": "9003d2cdce82b016147b732abb4def60af55c348ba2cea2ba0b69a3c7d159b19",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/cline.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "codearts.svg",
+      "sha256": "33fdbde9f5f8ea57f07203572dd987397da99daf4d101e15ef52b81473463e95",
+      "source": {
+        "repository": "https://github.com/magpie-community/plugins",
+        "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
+        "path": "packages/codearts/package.json",
+        "field": "magpie.icon",
+        "encoding": "base64"
+      },
+      "source_license": "MIT; see LICENSE-community-icons"
+    },
+    {
+      "file": "codex-color.svg",
+      "sha256": "4a2f43ce46b5b6e3722c95088f88d26ef91e6a8c2e598e70642a1c54367386e4",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/codex-color.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "commandcode.svg",
+      "sha256": "472cf8f2f7a62ca5ee79e146aa7cb8ac34b26ae33446e5fd32572d7206540f34",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/commandcode.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "cursor.svg",
+      "sha256": "0cb51bddf264ae108926fd554c063ef40fc1aac3c5c921ddb39ad184e4e5d0ef",
+      "source": {
+        "url": "https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/cursor.svg",
+        "package": "@lobehub/icons-static-svg",
+        "version": "1.94.0"
+      },
+      "source_license": "MIT; existing TokenHub asset"
+    },
+    {
+      "file": "devin.svg",
+      "sha256": "8d197b0c31522517ffa896cd4a1ee65719eb73bff9eb9bbf7edf64db6b1a573d",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/devin.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "factory.svg",
+      "sha256": "6a502c844029a326e77aff6554210629ee3e735d81ae42d2b98be0eb20c48bf3",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/factory.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "gcp-ai.png",
+      "sha256": "e6786befba0594198155098853e31442163d9577a35f8079f62953ed1b8d7f6e",
+      "source": {
+        "repository": "https://github.com/magpie-community/plugins",
+        "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
+        "path": "packages/gcp-ai/package.json",
+        "field": "magpie.icon",
+        "encoding": "base64"
+      },
+      "source_license": "MIT; see LICENSE-community-icons"
+    },
+    {
+      "file": "geminicli-color.svg",
+      "sha256": "c2f54ebaa4c3b9191c6a07f7b0c66bc78e4abe486003dc564469cf650672663e",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/geminicli-color.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "githubcopilot.svg",
+      "sha256": "bbc7fddc13448236e5edea8c399d2072dc40aa5da5bca07f7a2f412405c500a3",
+      "source": {
+        "url": "https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/githubcopilot.svg",
+        "package": "@lobehub/icons-static-svg",
+        "version": "1.94.0"
+      },
+      "source_license": "MIT; existing TokenHub asset"
+    },
+    {
+      "file": "joycode.png",
+      "sha256": "a6526695b11f6cd71ea4868cae118afb6aa245628a271479a5daf85e92c921af",
+      "source": {
+        "repository": "https://github.com/magpie-community/plugins",
+        "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
+        "path": "packages/joycode/package.json",
+        "field": "magpie.icon",
+        "encoding": "base64"
+      },
+      "source_license": "MIT; see LICENSE-community-icons"
+    },
+    {
+      "file": "kimi-work.png",
+      "sha256": "c8c47b874ca4901b27b1be8112b7c710e2ac14cfbcca494fcffd96ab44f6db7c",
+      "source": {
+        "repository": "https://github.com/magpie-community/plugins",
+        "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
+        "path": "packages/kimi-work/package.json",
+        "field": "magpie.icon",
+        "encoding": "base64"
+      },
+      "source_license": "MIT; see LICENSE-community-icons"
+    },
+    {
+      "file": "kiro-color.svg",
+      "sha256": "4eae4d6e818da7342c32c7d443ab7c97b93c544db9af379d5b5bf7f0a3127d66",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/kiro-color.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "mimocode.svg",
+      "sha256": "a1cf318ef84e3bba3d22886150ca45f0865ed339b3d25e858223b51db692e93d",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/mimocode.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "minimax-color.svg",
+      "sha256": "7f7187fa6d9b341ac5f22f6c5a970523afb439dc45566d64eb4f4b9b604d6b01",
+      "source": {
+        "url": "https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/minimax-color.svg",
+        "package": "@lobehub/icons-static-svg",
+        "version": "1.94.0"
+      },
+      "source_license": "MIT; existing TokenHub asset"
+    },
+    {
+      "file": "nousresearch.svg",
+      "sha256": "4dc3c7cdf13d2f0bdf16b872d76293f048010a00f580df68a85e1f9c4e500e5d",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/nousresearch.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "openai.svg",
+      "sha256": "a595df6b423920c67a7f8f73c063e4bfb72d415948097b6cac063a2366bb5186",
+      "source": {
+        "url": "https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/openai.svg",
+        "package": "@lobehub/icons-static-svg",
+        "version": "1.94.0"
+      },
+      "source_license": "MIT; existing TokenHub asset"
+    },
+    {
+      "file": "opendesign.svg",
+      "sha256": "e5e330a7a8f080b0d305f268fe8d62157d1e82571f8dd8dbd2456aa8cca9e95b",
+      "source": {
+        "url": "https://open-design.ai/favicon.svg",
+        "retrieved_on": "2026-10-27",
+        "reference": {
+          "repository": "https://github.com/magpie-community/plugins",
+          "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
+          "path": "packages/opendesign/package.json",
+          "field": "magpie.icon"
+        }
+      },
+      "source_license": "Official brand asset; no separate license declared by the asset URL"
+    },
+    {
+      "file": "qoder.svg",
+      "sha256": "f8503aacc41a58e723430488d082f6730c8a6a9ffecdd0a00c522e6bcdb4abb9",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/qoder.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "qwen-color.svg",
+      "sha256": "77f5768c66d08ce1d3d14e73373975c1bc0454be88c81523ddd0ffd7e2974029",
+      "source": {
+        "url": "https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/qwen-color.svg",
+        "package": "@lobehub/icons-static-svg",
+        "version": "1.94.0"
+      },
+      "source_license": "MIT; existing TokenHub asset"
+    },
+    {
+      "file": "raccoon.png",
+      "sha256": "40acbfb132ea045853d5b0625cb015bc208c0f99866fb26a4d71bf28ef342648",
+      "source": {
+        "repository": "https://github.com/magpie-community/plugins",
+        "commit": "5c9b7a413756c2b4f139290047085075c83eb3e8",
+        "path": "packages/raccoon/package.json",
+        "field": "magpie.icon",
+        "encoding": "base64"
+      },
+      "source_license": "MIT; see LICENSE-community-icons"
+    },
+    {
+      "file": "trae.svg",
+      "sha256": "59ef6255dfce52d4b1e77aff4e1b4ee3cda71cda735b4fb45575e9874a1c11f6",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/trae.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "workbuddy-color.svg",
+      "sha256": "ade134028e69e03453bff956059a0e7f23c7341a0295f16994cecd8d03fc2fd4",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/workbuddy-color.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "xai.svg",
+      "sha256": "89eb7de9f0d02a41cfecd9109e253d7fd3529e27467dee4254faa67f3ac21451",
+      "source": {
+        "url": "https://unpkg.com/@lobehub/icons-static-svg@1.94.0/icons/xai.svg",
+        "package": "@lobehub/icons-static-svg",
+        "version": "1.94.0"
+      },
+      "source_license": "MIT; existing TokenHub asset"
+    },
+    {
+      "file": "zcode.png",
+      "sha256": "df3aba17ddb55b9cfb21f1f30d11fde7ea93d3193c40b3d6433cf684af942b99",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/zcode.png"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    },
+    {
+      "file": "zed.svg",
+      "sha256": "f0529485410560c5be58f724330c4f61d84537c4ffc1a5099b3bd58062efd58c",
+      "source": {
+        "repository": "https://github.com/yetone/magpie",
+        "commit": "d580537201938b9f510070a213e09b46479e53ad",
+        "path": "internal/gui/assets/icons/zed.svg"
+      },
+      "source_license": "MIT; see LICENSE-upstream-icons"
+    }
+  ]
+}

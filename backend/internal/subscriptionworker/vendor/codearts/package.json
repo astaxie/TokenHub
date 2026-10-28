@@ -1,0 +1,34 @@
+{
+  "name": "@magpie-community/opencode-codearts-auth",
+  "version": "0.2.1",
+  "description": "Huawei Cloud CodeArts (码道) in OpenCode and magpie: its models through Huawei Cloud OAuth sign-in, signed requests, credit usage and the daily check-in (unofficial)",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "bun test"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "magpie",
+    "codearts",
+    "huaweicloud",
+    "oauth"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/magpie-community/plugins.git",
+    "directory": "packages/codearts"
+  },
+  "magpie": {
+    "maxConcurrency": 3,
+    "icon": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjQ0YwQTJDIiByb2xlPSJpbWciIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48dGl0bGU+SHVhd2VpPC90aXRsZT48cGF0aCBkPSJNMy42NyA2LjE0UzEuODIgNy45MSAxLjcyIDkuNzh2LjM1Yy4wOCAxLjUxIDEuMjIgMi40IDEuMjIgMi40IDEuODMgMS43OSA2LjI2IDQuMDQgNy4zIDQuNTUgMCAwIC4wNi4wMy4xLS4wMWwuMDItLjA0di0uMDRDNy41MiAxMC44IDMuNjcgNi4xNCAzLjY3IDYuMTR6TTkuNjUgMTguNmMtLjAyLS4wOC0uMS0uMDgtLjEtLjA4bC03LjM4LjI2Yy44IDEuNDMgMi4xNSAyLjUzIDMuNTYgMi4yLjk2LS4yNSAzLjE2LTEuNzggMy44OC0yLjMuMDYtLjA1LjA0LS4wOS4wNC0uMDl6bS4wOC0uNzhDNi40OSAxNS42My4yMSAxMi4yOC4yMSAxMi4yOGMtLjE1LjQ2LS4yLjktLjIxIDEuM3YuMDdjMCAxLjA3LjQgMS44Mi40IDEuODIuOCAxLjY5IDIuMzQgMi4yIDIuMzQgMi4yLjcuMyAxLjQuMzEgMS40LjMxLjEyLjAyIDQuNCAwIDUuNTQgMCAuMDUgMCAuMDgtLjA1LjA4LS4wNXYtLjA2YzAtLjAzLS4wMy0uMDUtLjAzLS4wNXpNOS4wNiAzLjE5YTMuNDIgMy40MiAwIDAwLTIuNTcgMy4xNXYuNDFjLjAzLjYuMTYgMS4wNS4xNiAxLjA1LjY2IDIuOSAzLjg2IDcuNjUgNC41NSA4LjY1LjA1LjA1LjEuMDMuMS4wM2EuMS4xIDAgMDAuMDYtLjFjMS4wNi0xMC42LTEuMTEtMTMuNDItMS4xMS0xMy40Mi0uMzIuMDItMS4xOS4yMy0xLjE5LjIzem04LjI5OSAyLjI3cy0uNDktMS44LTIuNDQtMi4yOGMwIDAtLjU3LS4xNC0xLjE3LS4yMiAwIDAtMi4xOCAyLjgxLTEuMTIgMTMuNDMuMDEuMDcuMDYuMDguMDYuMDguMDcuMDMuMS0uMDMuMS0uMDMuNzItMS4wMyAzLjktNS43NiA0LjU1LTguNjQgMCAwIC4zNi0xLjQuMDItMi4zNHptLTIuOTIgMTMuMDdzLS4wNyAwLS4wOS4wNWMwIDAtLjAxLjA3LjAzLjEuNy41MSAyLjg1IDIgMy44OCAyLjMgMCAwIC4xNi4wNS40My4wNmguMTRjLjY5LS4wMiAxLjktLjM3IDMtMi4yNmwtNy40LS4yNXptNy44My04LjQxYy4xNC0yLjA2LTEuOTQtMy45Ny0xLjk0LTMuOTggMCAwLTMuODUgNC42Ni02LjY3IDEwLjggMCAwLS4wMy4wOC4wMi4xM2wuMDQuMDFoLjA2YzEuMDYtLjUzIDUuNDYtMi43NyA3LjI4LTQuNTQgMCAwIDEuMTUtLjkzIDEuMjEtMi40MnptMS41MiAyLjE0cy02LjI4IDMuMzctOS41MiA1LjU1YzAgMC0uMDUuMDQtLjAzLjExIDAgMCAuMDMuMDYuMDcuMDYgMS4xNiAwIDUuNTYgMCA1LjY3LS4wMiAwIDAgLjU3LS4wMiAxLjI3LS4yOSAwIDAgMS41Ni0uNSAyLjM3LTIuMjcgMCAwIC43My0xLjQ1LjE3LTMuMTR6Ii8+PC9zdmc+"
+  }
+}

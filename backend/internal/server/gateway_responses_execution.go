@@ -27,7 +27,7 @@ func (s *Server) executeRoutedResponsesContext(ctx context.Context, incoming htt
 		}
 		resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, incoming)
 		if providerResourceModelUnsupportedError(err) {
-			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+			s.removeProviderResourceModel(ctx, route)
 		}
 		return resp, usage, err
 	})

@@ -59,7 +59,7 @@ func (s *Server) executeRoutedPlaygroundChat(r *http.Request, routed RoutedCall,
 			}
 			resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstreamReq, r.Header)
 			if providerResourceModelUnsupportedError(err) {
-				s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+				s.removeProviderResourceModel(ctx, route)
 			}
 			return resp, usage, err
 		}

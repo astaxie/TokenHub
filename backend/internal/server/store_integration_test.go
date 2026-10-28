@@ -53,7 +53,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 		}
 
 		// Clean up.
-		defer store.DeleteProject(created.ID)
+		defer func() { _ = store.DeleteProject(created.ID) }()
 	})
 
 	t.Run("CreateAndValidateAPIKey", func(t *testing.T) {
@@ -63,7 +63,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 			Name:   "API Key Test Project",
 			Status: StatusActive,
 		})
-		defer store.DeleteProject(project.ID)
+		defer func() { _ = store.DeleteProject(project.ID) }()
 
 		// Create an API key.
 		key := APIKey{
@@ -92,7 +92,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 		}
 
 		// Clean up.
-		defer store.DeleteAPIKey(created.ID)
+		defer func() { _ = store.DeleteAPIKey(created.ID) }()
 	})
 
 	t.Run("AdminUserAuthentication", func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create admin user: %v", err)
 		}
-		defer store.DeleteAdminUser(created.ID)
+		defer func() { _ = store.DeleteAdminUser(created.ID) }()
 
 		// Test authentication.
 		authUser, session, err := store.AuthenticateAdminUser("test@example.com", "password123", 24*time.Hour)
@@ -196,7 +196,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 
 		// Clean up.
 		for _, id := range createdIDs {
-			store.DeleteProject(id)
+			_ = store.DeleteProject(id)
 		}
 	})
 }

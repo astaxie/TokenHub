@@ -1,0 +1,263 @@
+{
+  "id": "baidu-qianfan-personal",
+  "type": "openai_compatible",
+  "api": "https://qianfan.baidubce.com/v2/tokenplan/personal",
+  "name": "Baidu Qianfan Token Plan Personal",
+  "display_name": "Baidu Qianfan Token Plan Personal",
+  "doc": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+  "metadata": {
+    "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+    "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+    "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+    "catalog_reviewed_at": "2026-10-24",
+    "pricing_status": "unverified",
+    "billing_mode": "subscription",
+    "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+    "model_discovery": "seed"
+  },
+  "models": [
+    {
+      "id": "qianfan-code-latest",
+      "name": "qianfan-code-latest",
+      "display_name": "qianfan-code-latest",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "deepseek-v4.1-flash",
+      "display_name": "deepseek-v4.1-flash",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
+      "display_name": "deepseek-v4-pro",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "name": "deepseek-v4-pro-0813",
+      "display_name": "deepseek-v4-pro-0813",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "name": "deepseek-v4-flash-0731",
+      "display_name": "deepseek-v4-flash-0731",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.3",
+      "name": "glm-5.3",
+      "display_name": "glm-5.3",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.3-flash",
+      "name": "glm-5.3-flash",
+      "display_name": "glm-5.3-flash",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.2",
+      "name": "glm-5.2",
+      "display_name": "glm-5.2",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.1",
+      "name": "glm-5.1",
+      "display_name": "glm-5.1",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    }
+  ]
+}

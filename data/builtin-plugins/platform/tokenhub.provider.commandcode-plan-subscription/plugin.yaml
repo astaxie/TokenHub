@@ -1,0 +1,21 @@
+schema_version: 2
+id: "tokenhub.provider.commandcode-plan-subscription"
+name: "Command Code"
+version: 1.0.0
+summary: "Connect a Command Code subscription account."
+description: "Connect an explicitly authorized Command Code subscription account through TokenHub's isolated bundled runtime."
+category: provider_integration
+tokenhub:
+  plugin_api: v2
+  min_core: 0.7.0
+host_adapter: "commandcode_plan_subscription"
+distribution:
+  license: Apache-2.0
+kinds: ["provider"]
+placement: []
+permissions:
+  network:
+    allow: []
+  data:
+    read: []
+    write: []

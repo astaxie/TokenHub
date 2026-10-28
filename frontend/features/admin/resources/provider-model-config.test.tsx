@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataFromData } from "../domain/provider-resource-types";
 import { providerResourcePayload, providerResourceToForm } from "./payloads";
-import { accountResourceFieldVisible, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, pluginActionErrorMessage, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
+import { accountResourceFieldVisible, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, pluginActionErrorMessage, providerConfig, providerCreateAccountRuntimeFields, providerPluginActionDefaultPayload, providerResourceConfig, providerResourceCredentialRefreshAction, providerResourceDraftDefaults, providerResourceTypeOptionsFromData, runProviderAvailabilityTest, runProviderCapabilityAction, runProviderPluginAction, runProviderResourceCredentialRefreshAction, runProviderResourcePluginAction, unwrapPluginActionData } from "./provider-model-config";
 
 describe("providerResourceConfig", () => {
   it("keeps provider account runtime fields free of provider-specific plugin options", () => {
@@ -956,5 +956,18 @@ describe("providerResourceConfig", () => {
     await runProviderAvailabilityTest({ baseURL: "http://localhost:8080", adminToken: "admin-token" }, data.providers[0], data);
 
     expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:8080/api/admin/providers/prv_legacy/test");
+  });
+});
+
+describe("Provider capability resource scope", () => {
+  it("uses descriptor resource metadata without overwriting explicit scope", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ data: { status: "pending" } })));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = { baseURL: "http://localhost:8080", adminToken: "synthetic-admin" };
+    const action = { metadata: { provider_resource_type: "subscription_account" } };
+    await runProviderCapabilityAction(api, "subscription", "oauth.start", action, {}, "start");
+    await runProviderCapabilityAction(api, "subscription", "oauth.exchange", action, { resource_type: "explicit_account" }, "exchange");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({ resource_type: "subscription_account" });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toEqual({ resource_type: "explicit_account" });
   });
 });

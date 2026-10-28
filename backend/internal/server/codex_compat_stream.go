@@ -18,7 +18,7 @@ func (s *Server) streamCodexAsAnthropic(
 	headers http.Header,
 	writer io.Writer,
 ) (Usage, error) {
-	upstream, err := anthropicToCodexResponsesRequest(req)
+	upstream, err := anthropicToBridgedResponsesRequest(route.Provider.Type, req)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -45,7 +45,7 @@ func (s *Server) streamCodexAsChat(
 	headers http.Header,
 	writer io.Writer,
 ) (Usage, error) {
-	upstream, err := chatToCodexResponsesRequest(req)
+	upstream, err := chatToBridgedResponsesRequest(route.Provider.Type, req)
 	if err != nil {
 		return Usage{}, err
 	}
@@ -89,16 +89,16 @@ func (s *Server) streamCodexCompatibility(
 	)
 	if err != nil {
 		if providerResourceModelUnsupportedError(err) {
-			s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+			s.removeProviderResourceModel(ctx, route)
 		}
-		return Usage{}, err
+		return subscriptionJSONFailureUsage(err), err
 	}
 	defer opened.Body.Close()
 
 	usage, streamErr := consumeCodexCompatibilityStream(opened.Body, sink)
 	applyCodexResponseMetadata(&usage, opened.Header)
 	if providerResourceModelUnsupportedError(streamErr) {
-		s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+		s.removeProviderResourceModel(ctx, route)
 	}
 	return usage, streamErr
 }
@@ -298,6 +298,9 @@ func (d *codexResponsesStreamDecoder) consume(event serverSentEvent) (bool, erro
 		}
 		return true, nil
 	case "response.failed", "error":
+		if response, ok := payload["response"].(map[string]any); ok {
+			d.usage = usageFromMap(response)
+		}
 		return false, codexStreamEventError(payload)
 	default:
 		return false, nil

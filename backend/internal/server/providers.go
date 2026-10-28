@@ -448,6 +448,7 @@ type AnthropicAdapter struct {
 	// Streaming calls fall back to Client when it is unset.
 	StreamClient      *http.Client
 	StreamIdleTimeout time.Duration
+	reasoningEfforts  map[string]bool
 }
 
 const (
@@ -542,7 +543,7 @@ func applyAnthropicProviderAuth(req *http.Request, provider Provider) {
 
 func (a AnthropicAdapter) buildRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
 	reasoningEffort := normalizedReasoningEffort(req.ReasoningEffort)
-	if reasoningEffort != nil && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
+	if reasoningEffort != nil && !a.reasoningEfforts[*reasoningEffort] && !anthropicReasoningEffortSupported(providerModel, *reasoningEffort) {
 		if currentAnthropicModelContract(providerModel) != "" {
 			return nil, NewHTTPError(http.StatusBadRequest, "unsupported_reasoning_effort", "This model requires a supported adaptive reasoning effort; use low, medium, high, xhigh, or max")
 		}

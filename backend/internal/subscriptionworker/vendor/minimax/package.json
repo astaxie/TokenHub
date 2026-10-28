@@ -1,0 +1,12 @@
+{
+  "name": "@magpie-community/opencode-minimax-auth",
+  "version": "0.1.5",
+  "description": "OpenCode provider plugins for MiniMax Code accounts: their credits and M Plan, China (minimax-code) and international (minimax-code-global), with MiniMax Code's own device sign-in",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "files": ["index.mjs", "README.md"],
+  "keywords": ["opencode", "opencode-plugin", "minimax", "mcode", "minimax-code"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/magpie-community/plugins.git", "directory": "packages/minimax" }
+}

@@ -6,6 +6,7 @@ import type { ImageCapabilityProfile } from "../domain/provider-image-capability
 import { languageLocale, tx } from "../i18n/runtime";
 
 export { ProviderAccountTokenRenewal } from "./provider-account-token-renewal";
+export { ProviderQuotaWindowDetails } from "./provider-quota-window-details";
 
 export type ProviderAccountOAuthAction = "copy" | "open";
 
@@ -123,6 +124,7 @@ export function providerAccountQuotaSecondaryWindow(quota?: ProviderAccountQuota
 export function providerAccountQuotaStatusLabel(quota?: ProviderAccountQuota) {
   if (!quota) return "不可用";
   const explicit = quota.status_label?.trim();
+  if (explicit === "Quota reported") return "已读取额度";
   if (explicit) return explicit;
   if (providerAccountQuotaIsLimited(quota)) return "已达上限";
   if (quota.allowed ?? quota.rate_limit?.allowed) return "可用";
@@ -135,11 +137,14 @@ export function providerAccountQuotaIsLimited(quota?: ProviderAccountQuota) {
 }
 
 export function providerAccountQuotaRemainingPercent(quota?: ProviderAccountQuota) {
-  if (!quota) return 100;
+  if (!quota) return undefined;
   if (Number.isFinite(quota.remaining_percent)) return clampQuotaPercent(quota.remaining_percent);
-  const used = quota.used_percent ?? providerAccountQuotaPrimaryWindow(quota)?.used_percent;
-  if (Number.isFinite(used)) return clampQuotaPercent(100 - Number(used));
-  return providerAccountQuotaIsLimited(quota) ? 0 : 100;
+  if (Number.isFinite(quota.used_percent)) return clampQuotaPercent(100 - Number(quota.used_percent));
+  const windows = [quota.primary_window, quota.secondary_window, quota.rate_limit?.primary_window, quota.rate_limit?.secondary_window, ...(quota.windows ?? [])];
+  const used = windows.map(window => window?.used_percent).filter((value): value is number => Number.isFinite(value));
+  const maximum = Math.max(0, ...used);
+  if (maximum === 0 && providerAccountQuotaIsLimited(quota)) return 0;
+  return used.length ? clampQuotaPercent(100 - maximum) : undefined;
 }
 
 export function providerAccountQuotaUsedPercent(quota?: ProviderAccountQuota) {
@@ -152,8 +157,8 @@ export function providerAccountQuotaUsedPercent(quota?: ProviderAccountQuota) {
 export function providerAccountQuotaMetrics(quota?: ProviderAccountQuota): ProviderQuotaMetric[] {
   return (quota?.metrics ?? [])
     .map((metric) => ({
-      label: metric.label?.trim() ?? "",
-      value: metric.value?.trim() ?? "",
+      label: metric.label === "Balance" ? tx("余额") : metric.label === "Plan expires" ? tx("套餐到期时间") : metric.label?.trim() ?? "",
+      value: metric.label === "Plan expires" ? formatProviderAccountDate(metric.value) : metric.value?.trim() ?? "",
       tone: metric.tone,
     }))
     .filter((metric) => metric.label && metric.value);

@@ -1,0 +1,12 @@
+{
+  "name": "@magpie-community/opencode-devin-auth",
+  "version": "0.1.23",
+  "description": "Devin subscriptions (the devin CLI's account) in OpenCode and magpie",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "files": ["index.mjs", "README.md"],
+  "keywords": ["opencode", "opencode-plugin", "magpie", "devin", "windsurf"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/magpie-community/plugins.git", "directory": "packages/devin" }
+}

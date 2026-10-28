@@ -17,13 +17,25 @@ const (
 	providerCatalogMaxBytes        = 16 << 20
 )
 
-// These entries are reviewed against first-party documentation and must not be
+// These entries are reviewed against documentation or pinned upstream presets and must not be
 // replaced by an older upstream snapshot during an explicit catalog refresh.
 var curatedLocalProviderCatalogs = map[string]bool{
-	"stepfun":        true,
-	"stepfun-global": true,
-	"stepfun-plan":   true,
-	"stepfun-ai":     true,
+	"stepfun":                            true,
+	"stepfun-global":                     true,
+	"stepfun-plan":                       true,
+	"stepfun-ai":                         true,
+	"baidu-qianfan-personal":             true,
+	"baidu-qianfan-team":                 true,
+	"huawei-maas-token-plan":             true,
+	"volcengine-coding-plan":             true,
+	"volcengine-agent-plan":              true,
+	"qwen-token-plan":                    true,
+	"kimi-code-global":                   true,
+	"tencent-token-plan-enterprise-intl": true,
+	"clinepass":                          true,
+	"ollama-cloud":                       true,
+	"commandcode":                        true,
+	"nous":                               true,
 }
 
 type providerCatalogHTTPClient interface {

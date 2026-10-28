@@ -58,6 +58,10 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 	}
 	catalog, status, err := modeler.ResourceModels(ctx, provider, resource, etag)
 	if err == nil && status == http.StatusNotModified {
+		current, currentOK := s.providerResourceByID(resourceID)
+		if !currentOK || !sameProviderAccountSnapshot(current, resource) {
+			return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusConflict, "provider_resource_changed", "Provider resource changed during the model request")
+		}
 		pluginCatalog, _ := s.pluginProviderCatalogCapabilityEntryForType(provider.Type)
 		if cached, ok := providerResourceCachedCatalog(provider, &resource, pluginCatalog); ok {
 			return cached, true, nil
@@ -65,11 +69,44 @@ func (s *Server) queryProviderResourceModelsForCatalog(ctx context.Context, cata
 		catalog, _, err = modeler.ResourceModels(ctx, provider, resource, "")
 	}
 	if err == nil {
-		if persistErr := s.persistProviderResourceModels(resourceID, catalog.Models, time.Now().UTC()); persistErr != nil {
+		if persistErr := s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalog.Models, time.Now().UTC(), resource); persistErr != nil {
 			return ProviderCatalogEntry{}, true, persistErr
 		}
 	}
 	return catalog, true, err
+}
+
+func (s *Server) persistProviderResourceModelsIfCurrent(ctx context.Context, resourceID string, models []ProviderCatalogModel, fetchedAt time.Time, expected ProviderResource) error {
+	modelIDs := make([]string, 0, len(models))
+	seen := map[string]struct{}{}
+	for _, model := range models {
+		modelID := strings.TrimSpace(model.ID)
+		lookupName := normalizeModelLookupName(modelID)
+		if modelID == "" {
+			continue
+		}
+		if _, ok := seen[lookupName]; ok {
+			continue
+		}
+		seen[lookupName] = struct{}{}
+		modelIDs = append(modelIDs, modelID)
+	}
+	sort.Strings(modelIDs)
+	encoded, err := json.Marshal(modelIDs)
+	if err != nil {
+		return err
+	}
+	catalogEncoded, err := json.Marshal(models)
+	if err != nil {
+		return err
+	}
+	_, err = s.store.UpdateProviderResourceOptionsIfCurrent(ctx, resourceID, map[string]string{
+		providerResourceSupportedModelsOption: string(encoded),
+		providerResourceModelsFetchedAtOption: fetchedAt.UTC().Format(time.RFC3339Nano),
+		providerResourceModelsETagOption:      firstNonEmptyModelETag(models),
+		providerResourceModelCatalogOption:    string(catalogEncoded),
+	}, expected)
+	return err
 }
 
 func providerResourceCachedCatalog(provider Provider, resource *ProviderResource, catalogEntries ...ProviderCatalogEntry) (ProviderCatalogEntry, bool) {
@@ -141,39 +178,6 @@ func cachedProviderCatalogSource(catalog ProviderCatalogEntry) string {
 		return strings.TrimSuffix(source, "-live") + "-cache"
 	}
 	return "provider-resource-cache"
-}
-
-func (s *Server) persistProviderResourceModels(resourceID string, models []ProviderCatalogModel, fetchedAt time.Time) error {
-	modelIDs := make([]string, 0, len(models))
-	seen := map[string]struct{}{}
-	for _, model := range models {
-		modelID := strings.TrimSpace(model.ID)
-		lookupName := normalizeModelLookupName(modelID)
-		if modelID == "" {
-			continue
-		}
-		if _, ok := seen[lookupName]; ok {
-			continue
-		}
-		seen[lookupName] = struct{}{}
-		modelIDs = append(modelIDs, modelID)
-	}
-	sort.Strings(modelIDs)
-	encoded, err := json.Marshal(modelIDs)
-	if err != nil {
-		return err
-	}
-	catalogEncoded, err := json.Marshal(models)
-	if err != nil {
-		return err
-	}
-	_, err = s.store.UpdateProviderResourceOptions(resourceID, map[string]string{
-		providerResourceSupportedModelsOption: string(encoded),
-		providerResourceModelsFetchedAtOption: fetchedAt.UTC().Format(time.RFC3339Nano),
-		providerResourceModelsETagOption:      firstNonEmptyModelETag(models),
-		providerResourceModelCatalogOption:    string(catalogEncoded),
-	})
-	return err
 }
 
 func firstNonEmptyModelETag(models []ProviderCatalogModel) string {
@@ -276,9 +280,13 @@ func (s *Server) filterProviderAccountRoutesByModel(modelName string, routes []R
 	)
 }
 
-func (s *Server) removeProviderResourceModel(resourceID string, modelName string) {
+func (s *Server) removeProviderResourceModel(ctx context.Context, route RouteSelection) {
+	if route.Resource == nil {
+		return
+	}
+	resourceID := routeResourceID(route)
 	resource, ok := s.providerResourceByID(resourceID)
-	if !ok {
+	if !ok || !sameProviderAccountSnapshot(resource, *route.Resource) {
 		return
 	}
 	models, _, cached := providerResourceCachedModels(&resource)
@@ -287,7 +295,7 @@ func (s *Server) removeProviderResourceModel(resourceID string, modelName string
 	}
 	filtered := make([]string, 0, len(models))
 	for _, candidate := range models {
-		if normalizeModelLookupName(candidate) != normalizeModelLookupName(modelName) {
+		if normalizeModelLookupName(candidate) != normalizeModelLookupName(route.ProviderModel) {
 			filtered = append(filtered, candidate)
 		}
 	}
@@ -295,7 +303,7 @@ func (s *Server) removeProviderResourceModel(resourceID string, modelName string
 	for _, modelID := range filtered {
 		catalogModels = append(catalogModels, ProviderCatalogModel{ID: modelID})
 	}
-	_ = s.persistProviderResourceModels(resourceID, catalogModels, time.Now().UTC())
+	_ = s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalogModels, time.Now().UTC(), resource)
 }
 
 func cloneStringMap(values map[string]string) map[string]string {

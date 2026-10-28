@@ -1,0 +1,11 @@
+{
+  "name": "@magpie-community/opencode-factory-auth",
+  "version": "0.1.38",
+  "description": "Sign in to a Factory (Droid) subscription from OpenCode or magpie",
+  "type": "module",
+  "main": "./index.mjs",
+  "files": ["index.mjs", "anthropic-tools.mjs", "client-phrases.json", "README.md"],
+  "keywords": ["opencode", "opencode-plugin", "magpie", "factory", "droid"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/magpie-community/plugins.git", "directory": "packages/factory" }
+}

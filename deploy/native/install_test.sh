@@ -289,6 +289,7 @@ cp "$script_dir/tokenhub-run" "$runner_root/bin/tokenhub-run"
 cat >"$runner_root/bin/tokenhub" <<'EOF'
 #!/usr/bin/env bash
 [ "${TOKENHUB_RUNNER_MARKER:-}" = "loaded" ] || exit 12
+[ "$(command -v node)" = "$(dirname "$0")/node" ] || exit 13
 sleep 0.2
 exit 7
 EOF

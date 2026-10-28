@@ -31,14 +31,15 @@ func (s *Server) handleAdminPluginActionPost(w http.ResponseWriter, r *http.Requ
 		writeError(w, r, err)
 		return
 	}
-	result, err := s.executeRawPluginAction(r.Context(), user, pluginID, actionID, payload)
+	actionCtx := s.capturePluginActionResourceRevision(r.Context(), payload)
+	result, err := s.executeRawPluginAction(actionCtx, user, pluginID, actionID, payload)
 	if err != nil {
 		s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", "Plugin action failed")
 		writeError(w, r, pluginActionHTTPError(err))
 		return
 	}
 	if descriptor, ok := s.pluginActions.Describe(pluginID, actionID); ok {
-		result, err = s.applyPluginActionSideEffects(r.Context(), descriptor, payload, result)
+		result, err = s.applyPluginActionSideEffects(actionCtx, descriptor, payload, result)
 		if err != nil {
 			s.recordPluginActionAudit(r, user, pluginID, actionID, "failed", "Plugin action failed")
 			writeError(w, r, err)
@@ -77,13 +78,14 @@ func (s *Server) handleAdminProviderActionPost(w http.ResponseWriter, r *http.Re
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "provider_action_not_found", "Provider plugin action not found"))
 		return
 	}
-	result, err := s.executeRawPluginAction(r.Context(), user, descriptor.PluginID, descriptor.ActionID, payload)
+	actionCtx := s.capturePluginActionResourceRevision(r.Context(), payload)
+	result, err := s.executeRawPluginAction(actionCtx, user, descriptor.PluginID, descriptor.ActionID, payload)
 	if err != nil {
 		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", "Plugin action failed")
 		writeError(w, r, pluginActionHTTPError(err))
 		return
 	}
-	result, err = s.applyPluginActionSideEffects(r.Context(), descriptor, payload, result)
+	result, err = s.applyPluginActionSideEffects(actionCtx, descriptor, payload, result)
 	if err != nil {
 		s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "failed", "Plugin action failed")
 		writeError(w, r, err)
@@ -91,6 +93,8 @@ func (s *Server) handleAdminProviderActionPost(w http.ResponseWriter, r *http.Re
 	}
 	if !providerActionAllowsSensitiveResult(descriptor) {
 		result = sanitizePluginActionResult(result)
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
 	}
 	s.recordPluginActionAudit(r, user, descriptor.PluginID, descriptor.ActionID, "success", "")
 	writeJSON(w, http.StatusOK, result)
@@ -135,13 +139,13 @@ func (s *Server) handleAdminPluginBackgroundJobRunPost(w http.ResponseWriter, r 
 
 func providerAdapterCapabilityForActionCapability(actionCapability string) (AdapterCapability, bool) {
 	switch strings.TrimSpace(actionCapability) {
-	case "oauth.start", "oauth.exchange", "credentials.refresh":
+	case "oauth.methods", "oauth.start", "oauth.exchange", "oauth.cancel", "credentials.refresh":
 		return AdapterCapabilityOAuth, true
 	case "models.read", "models.preview":
 		return AdapterCapabilityModels, true
 	case "provider.probe.run", "probe.run":
 		return AdapterCapabilityProbe, true
-	case "quota.read", "quota.reset_credits.read", "quota.reset":
+	case "quota.read", "quota.reset_credits.read", "quota.reset", "checkin.run":
 		return AdapterCapabilityQuota, true
 	case "image.capability.configure":
 		return AdapterCapabilityImageGenerate, true
@@ -243,7 +247,7 @@ func (s *Server) applyPluginActionSideEffects(ctx context.Context, descriptor pl
 	}
 }
 
-func (s *Server) applyQuotaReadActionSideEffects(_ context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
+func (s *Server) applyQuotaReadActionSideEffects(ctx context.Context, descriptor pluginmeta.ActionDescriptor, payload json.RawMessage, result pluginmeta.ActionResult) (pluginmeta.ActionResult, error) {
 	var request struct {
 		ResourceID string `json:"resource_id"`
 	}
@@ -275,7 +279,13 @@ func (s *Server) applyQuotaReadActionSideEffects(_ context.Context, descriptor p
 	if !ok {
 		return result, NewHTTPError(http.StatusBadGateway, "plugin_quota_read_invalid_result", "Quota read action returned an invalid quota snapshot")
 	}
-	if err := s.store.SaveProviderResourceQuota(resourceID, provider.Type, snapshot, fetchedAt); err != nil {
+	var saveErr error
+	if expected, ok := pluginActionResourceRevision(ctx); ok {
+		saveErr = s.store.SaveProviderResourceQuotaIfCurrent(ctx, resourceID, provider.Type, snapshot, fetchedAt, expected)
+	} else {
+		saveErr = s.store.SaveProviderResourceQuota(resourceID, provider.Type, snapshot, fetchedAt)
+	}
+	if err := saveErr; err != nil {
 		return result, err
 	}
 	result.Data = normalized
@@ -315,15 +325,12 @@ func (s *Server) applyCredentialsRefreshActionSideEffects(ctx context.Context, d
 	if expectedResourceType != "" && resource.ResourceType != expectedResourceType {
 		return result, NewHTTPError(http.StatusForbidden, "plugin_action_resource_type_mismatch", "Plugin action resource type does not match the Provider resource")
 	}
-	if reauthorizationRequired && !hasCredentials {
-		updated, err := s.store.UpdateProviderResourceOptions(resourceID, map[string]string{providerResourceReauthorizationRequiredOption: "true"})
-		if err != nil {
-			return result, err
-		}
-		result.Data = pluginActionResultWithCredentialSummary(result.Data, updated.CredentialSummary)
-		return result, nil
+	expected := resource
+	if revision, ok := pluginActionResourceRevision(ctx); ok {
+		expected = revision
 	}
-	updated, err := s.store.UpdateProviderResource(resourceID, providerResourceCredentialPatch(resource, credentials))
+	ctx = providerCredentialRefreshContext(ctx, provider.Type, expected)
+	updated, err := s.store.ApplyProviderResourceCredentialRefresh(ctx, expected, credentials, reauthorizationRequired)
 	if err != nil {
 		return result, err
 	}
@@ -455,7 +462,8 @@ func sensitivePluginActionResultKey(key string) bool {
 	if normalized == "reauthorization_required" || normalized == providerResourceReauthorizationRequiredOption {
 		return false
 	}
-	return normalized == "access_token" ||
+	return normalized == "session_json" || normalized == "sessionjson" ||
+		normalized == "access_token" ||
 		normalized == "refresh_token" ||
 		normalized == "id_token" ||
 		strings.Contains(normalized, "secret") ||
@@ -578,6 +586,15 @@ func pluginActionHTTPError(err error) error {
 	}
 	httpErr := AsHTTPError(err)
 	if httpErr.Code != "internal_error" {
+		// The administrator session has already passed requireAdmin. A 401
+		// returned by a provider action describes the connected account, not the
+		// administrator, so do not make the console clear its valid session.
+		if httpErr.Status == http.StatusUnauthorized {
+			if httpErr.Code == "provider_resource_reauthorization_required" {
+				return NewHTTPError(http.StatusConflict, httpErr.Code, httpErr.Message)
+			}
+			return NewHTTPError(http.StatusBadGateway, httpErr.Code, httpErr.Message)
+		}
 		return httpErr
 	}
 	return NewHTTPError(http.StatusInternalServerError, "plugin_action_failed", "Plugin action failed")

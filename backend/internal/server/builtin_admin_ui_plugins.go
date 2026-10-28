@@ -3,6 +3,7 @@ package server
 import pluginmeta "tokenhub/backend/internal/plugin"
 
 func registerBuiltinAdminUIDefinitions(registry *pluginmeta.Registry, adminUI *pluginmeta.AdminUIRegistry) {
+	registerBuiltinSubscriptionWorkerUI(registry, adminUI)
 	registerBuiltinDefaultSIMPlugin(registry)
 	registerBuiltinAntDSIMPlugin(registry)
 	registerBuiltinKnowledgeSidebarSIMPlugin(registry)

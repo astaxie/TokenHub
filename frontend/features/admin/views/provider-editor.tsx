@@ -1,3 +1,5 @@
+import { ProviderSubscriptionAuth, subscriptionCredentialIdentity, subscriptionCredentialValues, supportsSubscriptionAuthorization, supportsSubscriptionReauthorization } from "./provider-subscription-auth";
+import { ProviderSubscriptionReauthorization } from "./provider-subscription-reauthorization";
 import { ModelCatalogNotices } from "./model-catalog-notices";
 import { preserveRetrievalCatalog } from "../domain/retrieval-settings";
 import { AlertCircle, Ban, Check, Copy, Send, Trash2 } from "lucide-react";
@@ -22,16 +24,17 @@ import { ProviderOnboardingCatalog } from "./provider-onboarding-catalog";
 import { ProviderModelInventory } from "./provider-model-inventory";
 import { ProviderImageCapability } from "./provider-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
+import { ProviderQuotaUsage } from "./provider-quota-usage";
 import { ProviderInlineField, providerCreateWizardSteps, providerCredentialModeLabel } from "./provider-editor-fields";
 import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
 import { ProviderAPIKeyPool } from "./provider-api-key-pool";
-import { ProviderPluginPanels, providerQuotaPanelDescription, providerQuotaPanelSelection } from "./provider-plugin-panels";
+import { ProviderPluginPanels, providerQuotaPanelDescription, providerQuotaPanelSelection, providerQuotaPanelTitle } from "./provider-plugin-panels";
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { isProviderAccountResourceForData, isProviderAccountResourceTypeForData } from "../domain/provider-resource-types";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, providerAccountQuotaIsLimited, providerAccountQuotaMetrics, providerAccountQuotaPrimaryWindow, providerAccountQuotaSecondaryWindow, providerAccountQuotaStatusLabel, ProviderAccountTokenRenewal, providerAccountQuotaUsedPercent, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaWindowResetLabel } from "./provider-account-ui";
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderQuotaWindowDetails, providerAccountQuotaIsLimited, providerAccountQuotaMetrics, providerAccountQuotaPrimaryWindow, providerAccountQuotaSecondaryWindow, providerAccountQuotaStatusLabel, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaWindowResetLabel } from "./provider-account-ui";
 type ProviderEditTab = "connect" | "models" | "advanced";
 type ProviderAccountConfirmation = { action: "enable" | "disable" | "delete"; resource: ProviderResource };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
@@ -109,6 +112,7 @@ export function ProviderUpsertModal({
   const [accountProviderCatalog, setAccountProviderCatalog] = useState<ProviderCatalogEntry | null>(null);
   const [accountProviderCatalogLoading, setAccountProviderCatalogLoading] = useState(false);
   const [accountProviderCatalogError, setAccountProviderCatalogError] = useState("");
+  const authorizedCatalogCredentials = useRef("");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [modelQuery, setModelQuery] = useState("");
   const [modelLoading, setModelLoading] = useState(false);
@@ -142,6 +146,8 @@ export function ProviderUpsertModal({
     base_url: mode === "edit" ? provider?.base_url ?? initialEntry?.base_url ?? "" : initialEntry?.base_url ?? "",
     type: mode === "edit" ? provider?.type ?? "" : initialEntry?.type ?? "",
   }, { plugins, providerAdapters }));
+  const accountCredentialIdentity = subscriptionCredentialIdentity(values.type, catalogID, accountValues);
+  const subscriptionAccountWithoutPreview = supportsSubscriptionAuthorization(pluginActions, values.type) && !providerPluginActionForCapability(pluginActions, values.type, "models.preview");
   const [accountOAuthCallback, setAccountOAuthCallback] = useState("");
   const [accountOAuthStatus, setAccountOAuthStatus] = useState("");
   const [accountOAuthBusy, setAccountOAuthBusy] = useState(false);
@@ -152,11 +158,19 @@ export function ProviderUpsertModal({
   const [accountQuotaBusyIDs, setAccountQuotaBusyIDs] = useState<Record<string, boolean>>({});
   const [accountQuotaErrors, setAccountQuotaErrors] = useState<Record<string, string>>({});
   const [accountQuotas, setAccountQuotas] = useState<Record<string, ProviderAccountQuota>>({});
+  const accountCredentialRevision = useRef(0);
   const [accountConfirmation, setAccountConfirmation] = useState<ProviderAccountConfirmation | null>(null);
   const [accountConfirmationBusy, setAccountConfirmationBusy] = useState(false);
   const [accountConfirmationError, setAccountConfirmationError] = useState("");
   const [deleteAccountConfirmation, setDeleteAccountConfirmation] = useState("");
-  const [selectedAccountID, setSelectedAccountID] = useState(editingAccountProvider ? "all" : "");
+  const accountResources = useMemo(
+    () => resources.filter((resource) =>
+      isProviderAccountResourceTypeForData({ plugins, providerAdapters }, provider?.type ?? values.type, resource.resource_type) && (mode === "create" || resource.provider_id === provider?.id),
+    ),
+    [mode, plugins, provider?.id, provider?.type, providerAdapters, resources, values.type],
+  );
+  const [selectedAccountID, setSelectedAccountID] = useState(editingAccountProvider ? accountResources.length === 1 ? accountResources[0].id : "all" : "");
+  const [reauthorizationTarget, setReauthorizationTarget] = useState({ id: "", revision: 0 });
   const [accountCatalogs, setAccountCatalogs] = useState<Record<string, ProviderCatalogEntry>>({});
   const [accountCatalogErrors, setAccountCatalogErrors] = useState<Record<string, string>>({});
   const [accountCatalogLoading, setAccountCatalogLoading] = useState(false);
@@ -177,12 +191,6 @@ export function ProviderUpsertModal({
   const existingRouteModels = useMemo(
     () => new Set(routes.filter((route) => provider && route.provider_id === provider.id).map((route) => route.model_name)),
     [provider, routes],
-  );
-  const accountResources = useMemo(
-    () => resources.filter((resource) =>
-      isProviderAccountResourceTypeForData({ plugins, providerAdapters }, provider?.type ?? values.type, resource.resource_type) && (mode === "create" || resource.provider_id === provider?.id),
-    ),
-    [mode, plugins, provider?.id, provider?.type, providerAdapters, resources, values.type],
   );
   const usesAccountCatalog = credentialMode === "account_integration" || editingAccountProvider;
   const selectedAccountResources = useMemo(() => selectedAccountID === "all" ? accountResources : accountResources.filter((resource) => resource.id === selectedAccountID), [accountResources, selectedAccountID]);
@@ -307,9 +315,17 @@ export function ProviderUpsertModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the explicit catalog and connection keys are the request identity; form setters must not refetch.
   }, [api, catalogID, catalogReloadKey, customCatalogEntry, initialEntry?.display_name, mode, modelCategory, provider?.id, selectedCatalogDiscoveryRouteID, selectedCatalogIsAccountProvider, selectedCatalogUsesDiscoveryPreview]);
   useEffect(() => {
-    if (!usesAccountCatalog || mode === "edit") return;
+    if (!usesAccountCatalog || mode === "edit") { setAccountProviderCatalogLoading(false); return; }
+    if (authorizedCatalogCredentials.current === accountCredentialIdentity) { setAccountProviderCatalogLoading(false); return; }
+    if (authorizedCatalogCredentials.current) { authorizedCatalogCredentials.current = ""; setAccountProviderCatalog(null); setSelectedModels({}); }
     const resource = accountResources.find((item) => item.status === "active") ?? accountResources[0];
-    const hasPendingCredentials = Boolean(accountValues.access_token?.trim() && accountValues.account_id?.trim());
+    const hasPendingCredentials = Boolean(accountValues.access_token?.trim() || accountValues.session_json?.trim());
+    if (hasPendingCredentials && subscriptionAccountWithoutPreview) {
+      setAccountProviderCatalog(null); setAccountProviderCatalogLoading(false); setSelectedModels({});
+      setAccountProviderCatalogError(tx("请先保存账号，再加载可用模型。"));
+      return;
+    }
+    if (accountValues.session_json?.trim()) { setAccountProviderCatalogLoading(false); return; }
     if (!resource && !hasPendingCredentials) {
       setAccountProviderCatalog(null);
       setAccountProviderCatalogError(tx("完成账号授权后将从真实账号加载可用模型。"));
@@ -326,6 +342,8 @@ export function ProviderUpsertModal({
           method: "POST",
           body: JSON.stringify({
             auth_type: accountValues.auth_type || "oauth",
+            session_json: accountValues.session_json,
+            client_id: accountValues.client_id,
             access_token: accountValues.access_token,
             refresh_token: accountValues.refresh_token,
             id_token: accountValues.id_token,
@@ -365,6 +383,8 @@ export function ProviderUpsertModal({
     credentialMode,
     accountResources,
     usesAccountCatalog,
+    accountValues.session_json,
+    accountValues.client_id,
     accountValues.access_token,
     accountValues.account_id,
     accountValues.account_email,
@@ -376,9 +396,12 @@ export function ProviderUpsertModal({
     accountValues.refresh_token,
     accountValues.scopes,
     accountValues.token_type,
+    accountValues.resource_type,
     catalogID,
     catalogReloadKey,
     mode,
+    accountCredentialIdentity,
+    subscriptionAccountWithoutPreview,
   ]);
   useEffect(() => {
     if (mode !== "edit" || !editingAccountProvider || !editingAccountProviderCatalogEntry?.id || selectedAccountResources.length === 0) {
@@ -387,6 +410,7 @@ export function ProviderUpsertModal({
       return;
     }
     let cancelled = false;
+    const revision = accountCredentialRevision.current;
     setAccountCatalogLoading(true);
     setAccountCatalogErrors({});
     void Promise.all(selectedAccountResources.map(async (resource) => {
@@ -397,21 +421,21 @@ export function ProviderUpsertModal({
         );
         if (!resp.ok) throw new Error(await readAdminError(resp, tx("加载账号模型目录")));
         const payload = (await resp.json()) as { data: ProviderCatalogEntry };
-        if (!cancelled) {
+        if (!cancelled && revision === accountCredentialRevision.current) {
           setAccountCatalogs((current) => ({ ...current, [resource.id]: payload.data }));
         }
       } catch (err) {
-        if (cancelled || isAuthExpiredError(err)) return;
+        if (cancelled || revision !== accountCredentialRevision.current || isAuthExpiredError(err)) return;
         const message = err instanceof Error ? err.message : tx("账号模型目录加载失败");
         setAccountCatalogErrors((current) => ({ ...current, [resource.id]: message }));
       }
     })).finally(() => {
-      if (!cancelled) setAccountCatalogLoading(false);
+      if (!cancelled && revision === accountCredentialRevision.current) setAccountCatalogLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [api, editingAccountProvider, editingAccountProviderCatalogEntry?.id, mode, selectedAccountResources]);
+  }, [api, catalogReloadKey, editingAccountProvider, editingAccountProviderCatalogEntry?.id, mode, selectedAccountResources]);
 
   useEffect(() => {
     if (mode === "create") {
@@ -443,7 +467,7 @@ export function ProviderUpsertModal({
     }
     const timer = window.setInterval(() => { for (const resource of richQuotaPanel.resources) void queryAccountQuota(resource, true); }, 10 * 60 * 1000); return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- queryAccountQuota is an event command; resource selection owns the polling lifecycle.
-  }, [editTab, mode, richQuotaPanel.firstAction, richQuotaPanel.resources]);
+  }, [catalogReloadKey, editTab, mode, richQuotaPanel.firstAction, richQuotaPanel.resources]);
 
   const selectedAccountCatalog = useMemo(
     () => {
@@ -482,10 +506,27 @@ export function ProviderUpsertModal({
     .filter(([id, selected]) => selected && !importedModelIDs.has(id))
     .map(([id]) => id);
   const selectedModelCount = selectedModelIDs.length;
+  const selectableFilteredModelIDs = filteredModels.filter((model) => !importedModelIDs.has(model.id)).map((model) => model.id);
+  const allFilteredModelsSelected = selectableFilteredModelIDs.length > 0 && selectableFilteredModelIDs.every((id) => selectedModels[id] === true);
+  const modelSelectionControl = (
+    <button
+      className="secondary-button"
+      disabled={loading || effectiveCatalogLoading || Boolean(effectiveCatalogError) || selectableFilteredModelIDs.length === 0}
+      onClick={() => setSelectedModels((current) => {
+        const selected = !selectableFilteredModelIDs.every((id) => current[id] === true);
+        return { ...current, ...Object.fromEntries(selectableFilteredModelIDs.map((id) => [id, selected])) };
+      })}
+      type="button"
+    >
+      {modelQuery.trim()
+        ? tx(allFilteredModelsSelected ? "取消全选筛选结果" : "全选筛选结果")
+        : tx(allFilteredModelsSelected ? "取消全选" : "全选")}
+    </button>
+  );
   const selectedEntry = usesAccountCatalog
     ? accountProviderCatalog ?? accountProviderCatalogOptions.find((entry) => entry.id === catalogID) ?? defaultAccountProviderCatalogEntry
     : detail ?? (catalogID === "custom" ? customCatalogEntry : catalog.find((entry) => entry.id === catalogID));
-  const accountRuntimeFields = useMemo(() => providerCreateAccountRuntimeFields(), []);
+  const accountRuntimeFields = useMemo(() => providerCreateAccountRuntimeFields(Boolean(selectedEntry?.base_url)), [selectedEntry?.base_url]);
   const accountManualTokenFields = useMemo(() => providerCreateAccountManualTokenFields(), []);
   const accountTokenSummary = useMemo(() => providerAccountTokenSummary(accountValues), [accountValues]);
   const accountResourceNameConflict = useMemo(() => {
@@ -545,6 +586,7 @@ export function ProviderUpsertModal({
 
   function updateAccountValue(key: string, value: string) {
     setAccountValues((current) => ({ ...current, [key]: value }));
+    if (key === "session_json") setAccountProviderCatalog(null);
     if (key === "name") {
       setError("");
       setAccountOAuthStatus("");
@@ -563,27 +605,23 @@ export function ProviderUpsertModal({
       await exchangeProviderAccountAuthorizationCode(result, message);
       return;
     }
-    if (!result.access_token && !result.refresh_token && !result.id_token) {
+    if (!result.access_token && !result.refresh_token && !result.id_token && !result.session_json) {
       setAccountOAuthStatus(tx("未在回调结果中识别到 Token。"));
       setError(tx("未在回调结果中识别到 Token。"));
       return;
     }
     const defaults = providerResourceDraftDefaults({ name: selectedEntry?.display_name || selectedEntry?.name || values.name, base_url: selectedEntry?.base_url || values.base_url, type: values.type || selectedEntry?.type }, { plugins, providerAdapters });
-    setAccountValues((current) => ({
-      ...current,
-      resource_type: current.resource_type || defaults.resource_type,
-      auth_type: current.auth_type || defaults.auth_type,
-      access_token: result.access_token || current.access_token || "",
-      refresh_token: result.refresh_token || current.refresh_token || "",
-      id_token: result.id_token || current.id_token || "",
-      account_email: result.account_email || current.account_email || "",
-      account_id: result.account_id || current.account_id || "",
-      organization_id: result.organization_id || current.organization_id || "",
-      plan_type: result.plan_type || current.plan_type || "",
-      token_type: result.token_type || current.token_type || "",
-      expires_at: result.expires_at || current.expires_at || "",
-      scopes: result.scopes || current.scopes || "",
-    }));
+    const nextAccountValues = {
+      ...accountValues,
+      resource_type: accountValues.resource_type || defaults.resource_type,
+      auth_type: accountValues.auth_type || defaults.auth_type,
+      ...subscriptionCredentialValues(result, supportsSubscriptionAuthorization(pluginActions, values.type)),
+    };
+    setAccountValues(nextAccountValues);
+    if (result.catalog || result.session_json || supportsSubscriptionAuthorization(pluginActions, values.type)) {
+      authorizedCatalogCredentials.current = subscriptionCredentialIdentity(values.type, catalogID, nextAccountValues);
+      setAccountProviderCatalog(result.catalog ?? null); setAccountProviderCatalogError(result.catalog ? "" : result.catalog_error || result.catalog_unavailable ? tx("账号已授权，模型目录暂时不可用。请保存账号后重试。") : tx("账号模型目录加载失败")); setAccountProviderCatalogLoading(false); setSelectedModels({});
+    }
     setAccountOAuthStatus(message);
     setError("");
   }
@@ -633,7 +671,7 @@ export function ProviderUpsertModal({
       const tokenInfo = await exchangeProviderAccountOAuthCode(api, pluginActions, values.type, {
         session_id: sessionID,
         state,
-        code: result.authorization_code,
+        code: result.authorization_code, client_id: result.client_id,
       });
       clearPendingProviderAccountOAuthSession();
       await applyProviderAccountOAuthResult(tokenInfo, message);
@@ -694,15 +732,18 @@ export function ProviderUpsertModal({
   }
 
   async function queryAccountQuota(resource: ProviderResource, force = false) {
+    const revision = accountCredentialRevision.current;
     setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: true }));
     setAccountQuotaErrors((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
     try {
       const action = accountQuotaActionsByResourceID[resource.id];
       if (!action) throw new Error(tx("该插件动作尚未注册。"));
-      const quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: force }, tx("查询订阅额度"));
+      const quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: force || revision > 0 }, tx("查询订阅额度"));
+      if (revision !== accountCredentialRevision.current) return false;
       setAccountQuotas((current) => ({ ...current, [resource.id]: quota }));
       return true;
     } catch (err) {
+      if (revision !== accountCredentialRevision.current) return false;
       setAccountQuotas((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== resource.id)));
       if (isAuthExpiredError(err)) return false;
       setAccountQuotaErrors((current) => ({
@@ -711,8 +752,32 @@ export function ProviderUpsertModal({
       }));
       return false;
     } finally {
-      setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: false }));
+      if (revision === accountCredentialRevision.current) setAccountQuotaBusyIDs((current) => ({ ...current, [resource.id]: false }));
     }
+  }
+
+  function openSubscriptionLogin(resourceID: string) {
+    setSelectedAccountID(resourceID); setEditTab("connect");
+    setReauthorizationTarget(current => ({ id: resourceID, revision: current.revision + 1 }));
+    requestAnimationFrame(() => modalRef.current?.querySelector(".provider-subscription-reauthorization")?.scrollIntoView?.({ block: "start" }));
+  }
+
+  function openSubscriptionAccountTest() {
+    setEditTab("advanced");
+    requestAnimationFrame(() => {
+      const panel = modalRef.current?.querySelector<HTMLElement>(".provider-resource-probe-panel");
+      panel?.scrollIntoView?.({ block: "start" });
+      panel?.querySelector<HTMLElement>("select, textarea, button")?.focus();
+    });
+  }
+
+  async function subscriptionCredentialsSaved() {
+    accountCredentialRevision.current += 1;
+    setAccountCatalogs({}); setAccountCatalogErrors({});
+    setAccountQuotas({}); setAccountQuotaErrors({}); setAccountQuotaBusyIDs({});
+    setSelectedModels({});
+    setCatalogReloadKey((current) => current + 1);
+    await (onAccountsChanged ?? onSaved)();
   }
 
   function selectCredentialMode(nextMode: ProviderCredentialMode) {
@@ -1058,6 +1123,7 @@ export function ProviderUpsertModal({
                   value={selectedAccountID}
                   onChange={(event) => {
                     setSelectedAccountID(event.target.value);
+                    setReauthorizationTarget(current => ({ ...current, id: "" }));
                     setModelQuery("");
                     setSelectedModels({});
                   }}
@@ -1123,6 +1189,7 @@ export function ProviderUpsertModal({
                   modelQuery={modelQuery}
                   selectedModelCount={selectedModelIDs.length}
                   selectedModels={selectedModels}
+                  modelSelectionControl={modelSelectionControl}
                   activeTab={quickAPITab}
                   values={values}
                   onModelQueryChange={setModelQuery}
@@ -1207,11 +1274,12 @@ export function ProviderUpsertModal({
                           <small>{tx("账号资源名称需全局唯一，用于在资源池中区分账号。")}</small>
                         )}
                       </label>
+                      {supportsSubscriptionAuthorization(pluginActions, values.type) ? <ProviderSubscriptionAuth key={values.type} api={api} actions={pluginActions} providerType={values.type} disabled={accountResourceNameConflict} organizationID={accountValues.organization_id} onCredentials={(result) => applyProviderAccountOAuthResult(result, "")} /> : <>
                       <label className="field provider-account-auth-wide">
                         <span>{tx("账号 OAuth 授权")}</span>
                         <div className="field-action-row">
                           <input readOnly value={accountOAuthRedirectURI} />
-                          <button className="secondary-button" onClick={requestProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
+                          <button className="button provider-authorization-button" onClick={requestProviderAccountAuthorization} type="button" disabled={accountOAuthBusy}>
                             <Send size={14} />
                             {tx(accountOAuthBusy ? "授权中" : "打开授权")}
                           </button>
@@ -1241,7 +1309,7 @@ export function ProviderUpsertModal({
                           <span>{tx(accountTokenSummary.ready ? "已回填账号 Token" : "等待授权回填")}</span>
                           {accountTokenSummary.items.map((item) => <em key={item}>{tx(item)}</em>)}
                         </div>
-                      </div>
+                      </div></>}
                     </div>
                     {accountOAuthStatus ? <p className="provider-credential-note">{accountOAuthStatus}</p> : null}
                     <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={updateAccountValue} providerType={values.type} resourceType={accountValues.resource_type} slot="provider.resource.form.section" values={accountValues} />
@@ -1282,7 +1350,9 @@ export function ProviderUpsertModal({
               </section>
             ) : null}
             {mode === "edit" && editTab === "connect" ? (
-              <><ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} />
+              <>
+                {editingAccountProvider && values.type === provider?.type ? <ProviderSubscriptionReauthorization key={`${values.type}:${selectedAccountID}:${reauthorizationTarget.revision}`} api={api} actions={pluginActions} providerType={values.type} resources={accountResources} resource={selectedAccountID === "all" ? undefined : selectedAccountResources[0]} initiallyOpen={reauthorizationTarget.id === selectedAccountID} onSelectAccount={openSubscriptionLogin} onTest={providerResourceSelectionSupportsAction(pluginActions, values.type, selectedAccountResources, "probe.run") ? openSubscriptionAccountTest : undefined} onSaved={subscriptionCredentialsSaved} /> : null}
+                <ProviderConnectionFields values={values} onUpdate={update} providerTypeOptions={providerTypeOptions} validationErrors={provider?.header_validation_errors} /><ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} provider={provider} values={values} />
                 {provider && !editingAccountProvider && !accountProviderTypesFromPlugins(plugins, providerAdapters).includes(provider.type) ? <ProviderAPIKeyPool api={api} provider={provider} resources={resources} onSaved={onAccountsChanged ?? onSaved} /> : null}</>
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
@@ -1294,7 +1364,7 @@ export function ProviderUpsertModal({
             {mode === "edit" && editTab === "advanced" && richQuotaPanel.firstAction && richQuotaPanel.firstContribution && richQuotaPanel.resources.length > 0 ? (
               <section className="provider-quota-panel">
                 <div className="wizard-panel-head">
-                  <h3>{richQuotaPanel.firstContribution.title || richQuotaPanel.firstAction.metadata?.panel_title?.trim() || tx("订阅额度")}</h3>
+                  <h3>{providerQuotaPanelTitle(richQuotaPanel.firstContribution) || richQuotaPanel.firstAction.metadata?.panel_title?.trim() || tx("订阅额度")}</h3>
                   <p>{providerQuotaPanelDescription(richQuotaPanel.firstContribution) || richQuotaPanel.firstAction.metadata?.panel_description?.trim() || tx("实时查询账号订阅用量和重置时间；每 10 分钟自动刷新，也可手动刷新。")}</p>
                 </div>
                 <div className="provider-quota-list">
@@ -1306,7 +1376,6 @@ export function ProviderUpsertModal({
                     const quotaStatus = providerAccountQuotaStatusLabel(quota);
                     const quotaLimited = providerAccountQuotaIsLimited(quota);
                     const imageCapability = imageCapabilityProfile ? resource.options?.[imageCapabilityProfile.capabilityOption] : undefined;
-                    const usagePercent = providerAccountQuotaUsedPercent(quota);
                     const metrics = providerAccountQuotaMetrics(quota);
                     return (
                       <article className="provider-quota-card" key={resource.id}>
@@ -1323,7 +1392,7 @@ export function ProviderUpsertModal({
                             <button className="secondary-button" disabled={accountQuotaBusyIDs[resource.id]} onClick={() => void queryAccountQuota(resource, true)} type="button">
                               {tx(accountQuotaBusyIDs[resource.id] ? "查询中" : quota ? "刷新用量与重置次数" : "查询用量与重置次数")}
                             </button>
-                            <ProviderAccountTokenRenewal api={api} pluginActions={pluginActions} providerType={values.type} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} />
+                            <ProviderAccountTokenRenewal api={api} pluginActions={pluginActions} providerType={values.type} resource={resource} onRenewed={async () => { await (onAccountsChanged ?? onSaved)(); }} onReauthorize={values.type === provider?.type && supportsSubscriptionReauthorization(pluginActions, values.type) ? () => openSubscriptionLogin(resource.id) : undefined} />
                             {resource.status === "active" ? (
                               <button
                                 className="secondary-button provider-account-disable-button"
@@ -1358,20 +1427,7 @@ export function ProviderUpsertModal({
                         {quota ? (
                           <>
                             <div className="provider-quota-summary">
-                              <div className="provider-quota-usage">
-                                <span>{tx("主窗口使用率")}</span>
-                                <strong>{quota ? `${formatQuotaPercent(usagePercent)}%` : "-"}</strong>
-                                <div
-                                  aria-label={tx("主窗口使用率")}
-                                  aria-valuemax={100}
-                                  aria-valuemin={0}
-                                  aria-valuenow={usagePercent}
-                                  className="provider-quota-progress"
-                                  role="progressbar"
-                                >
-                                  <span style={{ width: `${usagePercent}%` }} />
-                                </div>
-                              </div>
+                              <ProviderQuotaUsage quota={quota} />
                               <div className="provider-quota-highlights">
                                 <QuotaMetric label="套餐" value={quota.plan_type || resource.credential_summary?.plan_type || "-"} />
                                 {imageCapabilityProfile ? <QuotaMetric label="生图能力" value={formatImageGenerationCapability(imageCapability, imageCapabilityProfile.capabilitySupportedValue, imageCapabilityProfile.capabilityUnsupportedValue)} /> : null}
@@ -1392,7 +1448,7 @@ export function ProviderUpsertModal({
                                   <QuotaMetric label="次窗口重置" value={quotaWindowResetLabel(secondary)} />
                                 </div>
                               ) : null}
-                              <ProviderAccountDetails imageCapabilityProfile={imageCapabilityProfile} resource={resource} />
+                              <ProviderQuotaWindowDetails quota={quota} /><ProviderAccountDetails imageCapabilityProfile={imageCapabilityProfile} resource={resource} />
                             </details>
                           </>
                         ) : (
@@ -1439,6 +1495,7 @@ export function ProviderUpsertModal({
               </div>
               <div className="provider-model-tools">
                 <input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tx("搜索模型、能力、参数")} />
+                {modelSelectionControl}
                 <button className="secondary-button" onClick={reloadSelectedCatalog} type="button">
                   {tx("重新加载")}
                 </button>

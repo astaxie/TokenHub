@@ -1,0 +1,12 @@
+{
+  "name": "@magpie-community/opencode-qoder-auth",
+  "version": "0.2.37",
+  "description": "Qoder and QwenWork (千问办公) subscriptions in OpenCode and magpie: qoder.com, qoder.cn, gateway.qwenwork.cn and the enterprise flagship (VPC)",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "files": ["index.mjs", "README.md", "LICENSE-CLIProxyAPI"],
+  "keywords": ["opencode", "opencode-plugin", "magpie", "qoder", "qoder-cn", "qwenwork", "千问办公"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/magpie-community/plugins.git", "directory": "packages/qoder" }
+}

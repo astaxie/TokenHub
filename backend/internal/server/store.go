@@ -151,14 +151,16 @@ type Store interface {
 	ListProviderResources() []ProviderResource
 	GetProviderResource(id string) (ProviderResource, bool)
 	UpdateProviderResource(id string, patch ProviderResource) (ProviderResource, error)
+	ApplyProviderResourceCredentialRefresh(ctx context.Context, expected ProviderResource, credentials *ProviderResourceCredentials, reauthorizationRequired bool) (ProviderResource, error)
 	UpdateProviderResourceOptions(id string, options map[string]string) (ProviderResource, error)
+	UpdateProviderResourceOptionsIfCurrent(ctx context.Context, id string, options map[string]string, expected ProviderResource) (ProviderResource, error)
 	IsProviderAccountResourceType(providerType string, resourceType string) bool
 	DeleteProviderResource(id string) error
 	SetProviderResourceHealth(resourceID string, healthy bool) (ProviderResource, error)
 	BulkOperateProviderResources(action string, ids []string) (ProviderResourceBulkResult, error)
 	ImportProviderResources(resources []ProviderResource) (ProviderResourceImportResult, error)
 	AddModel(model Model) Model
-	CreateModelWithRoutes(model Model, routes []ModelRoute) (Model, error)
+	CreateModelWithRoutes(model Model, routes []ModelRoute, options ...ModelCreateOptions) (Model, error)
 	ListModels() []Model
 	UpdateModel(name string, patch Model) (Model, error)
 	DeleteModel(name string) error
@@ -234,6 +236,7 @@ type Store interface {
 	RecordProviderObservation(observation ProviderObservation)
 	GetProviderResourceObservation(resourceID string) (ProviderResourceObservation, bool)
 	SaveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error
+	SaveProviderResourceQuotaIfCurrent(ctx context.Context, resourceID string, adapterType string, snapshot string, fetchedAt time.Time, expected ProviderResource) error
 	GetRequestDetail(requestID string) (map[string]any, error)
 	ListAlerts() []AlertEvent
 	GetAlert(id string) (AlertEvent, error)
@@ -306,6 +309,7 @@ type GormStore struct {
 	readDB              *gorm.DB
 	mu                  *sync.Mutex
 	leaseHeartbeats     *sync.Map
+	nativeRefreshes     *nativeCredentialRefreshLifecycle
 	lastUsed            *lastUsedThrottle
 	modelLabels         *modelLabelCache
 	secretKey           string

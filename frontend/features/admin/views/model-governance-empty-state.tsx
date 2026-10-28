@@ -1,4 +1,5 @@
 import { Boxes, ChevronRight, Plus, Route, ServerCog } from "lucide-react";
+import { type ReactNode } from "react";
 import { tx } from "../i18n/runtime";
 
 export type ModelGovernanceStage = "providers" | "models" | "routes";
@@ -56,12 +57,14 @@ export function ModelGovernanceEmptyState({
   description,
   actionLabel,
   onAction,
+  actions,
 }: {
   stage: ModelGovernanceStage;
   title: string;
   description: string;
   actionLabel?: string;
   onAction?: () => void;
+  actions?: ReactNode;
 }) {
   const StageIcon = stage === "providers" ? ServerCog : stage === "models" ? Boxes : Route;
   return (
@@ -78,6 +81,7 @@ export function ModelGovernanceEmptyState({
             {tx(actionLabel)}
           </button>
         ) : null}
+        {actions}
       </div>
       <ModelGovernanceFlow currentStage={stage} />
     </div>

@@ -155,11 +155,17 @@ func (s *ProviderCredentialRefreshService) Shutdown(ctx context.Context) error {
 	if s.schedulerStop == nil {
 		return nil
 	}
-	s.schedulerStop()
+	s.stopScheduler()
 	select {
 	case <-s.schedulerDone:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+}
+
+func (s *ProviderCredentialRefreshService) stopScheduler() {
+	if s.schedulerStop != nil {
+		s.schedulerStop()
 	}
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"net/http"
 	"time"
 
 	"gorm.io/gorm"
@@ -19,18 +20,25 @@ func (s *GormStore) AddModel(model Model) Model {
 	return model
 }
 
-func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute) (Model, error) {
+type ModelCreateOptions struct {
+	CreateOnly bool
+}
+
+func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute, options ...ModelCreateOptions) (Model, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var created Model
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var err error
-		created, err = createModelRecord(tx, model)
+		created, err = createModelRecord(tx, model, options...)
 		if err != nil {
 			return err
 		}
 		for _, route := range routes {
+			if len(options) > 0 && options[0].CreateOnly {
+				route.ID = ""
+			}
 			if _, err := createRouteRecord(tx, route); err != nil {
 				return err
 			}
@@ -43,7 +51,11 @@ func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute) (Mod
 	return created, err
 }
 
-func createModelRecord(db *gorm.DB, model Model) (Model, error) {
+func createModelRecord(db *gorm.DB, model Model, options ...ModelCreateOptions) (Model, error) {
+	createOnly := len(options) > 0 && options[0].CreateOnly
+	if createOnly {
+		model = withExternalModelRole(model)
+	}
 	if err := validateAudioPriceMetadata(model.Metadata); err != nil {
 		return Model{}, err
 	}
@@ -90,6 +102,13 @@ func createModelRecord(db *gorm.DB, model Model) (Model, error) {
 		if result.Error != nil {
 			return result.Error
 		}
+		if createOnly {
+			if err := validateModelCreateOnly(tx, existing, model.Name); err != nil {
+				return err
+			}
+			// Promotion retains the reference row's identity and creation history.
+			model.ID, model.CreatedAt = existing.ID, existing.CreatedAt
+		}
 		if existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal && model.Metadata[modelDirectoryRoleKey] != modelDirectoryRoleExternal {
 			model = withExternalModelRole(model)
 			model.Status = existing.Status
@@ -99,6 +118,31 @@ func createModelRecord(db *gorm.DB, model Model) (Model, error) {
 		return tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
 	})
 	return model, err
+}
+
+// The caller holds the existing model row lock until its routes are committed.
+// Rechecking here also covers an insert lost to a concurrent model creator.
+func validateModelCreateOnly(tx *gorm.DB, existing Model, name string) error {
+	if existing.Name != name || existing.Metadata[modelDirectoryRoleKey] == modelDirectoryRoleExternal {
+		return modelCreateConflict()
+	}
+	switch existing.Metadata["source"] {
+	case "tokenhub-standard-catalog", "public-provider-conf":
+	default:
+		return modelCreateConflict()
+	}
+	var routes int64
+	if err := tx.Model(&ModelRoute{}).Where("model_name = ?", existing.Name).Count(&routes).Error; err != nil {
+		return err
+	}
+	if routes > 0 {
+		return modelCreateConflict()
+	}
+	return nil
+}
+
+func modelCreateConflict() error {
+	return NewHTTPError(http.StatusConflict, "model_conflict", "An external model with this name already exists")
 }
 
 func (s *GormStore) AddRoute(route ModelRoute) ModelRoute {

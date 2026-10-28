@@ -584,6 +584,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// drain the image queue is bad, failing to drain it and silently discarding
 	// every buffered trace is worse.
 	defer s.shutdownTracing()
+	defer s.shutdownProviderRuntimes()
 	s.responseWorkerStop.Do(func() {
 		s.responseCancel()
 	})

@@ -235,7 +235,11 @@
   }
 
   .provider-quick-model-tools {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .provider-quick-model-search {
+    grid-column: 1 / -1;
   }
 
   .provider-model-head {
@@ -245,6 +249,7 @@
 
   .provider-model-tools {
     min-width: 0;
+    flex-wrap: wrap;
     justify-content: stretch;
   }
 
@@ -262,6 +267,7 @@
 
   .provider-model-tools input {
     width: 100%;
+    flex-basis: 100%;
   }
 
   .workflow-hint {

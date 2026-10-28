@@ -50,7 +50,7 @@ func (s *Server) executeProviderResourceModelsActionForCatalog(ctx context.Conte
 	if !ok {
 		return ProviderCatalogEntry{}, true, NewHTTPError(http.StatusInternalServerError, "provider_models_invalid_result", "Provider models action returned an invalid result")
 	}
-	if err := s.persistProviderResourceModels(resourceID, catalog.Models, time.Now().UTC()); err != nil {
+	if err := s.persistProviderResourceModelsIfCurrent(ctx, resourceID, catalog.Models, time.Now().UTC(), resource); err != nil {
 		return ProviderCatalogEntry{}, true, err
 	}
 	return catalog, true, nil

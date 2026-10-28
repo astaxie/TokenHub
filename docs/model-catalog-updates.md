@@ -4,6 +4,16 @@ Language: English | [简体中文](zh-CN/model-catalog-updates.md) | [日本語]
 
 The catalog reviews through 2026-10-16 add upstream model offers and record access, retirement, compatibility, and pricing boundaries. Catalog inclusion lets administrators discover an offer; it does not establish call support, account entitlement, live health, or production deployment.
 
+## Magpie subscription and account presets (2026-10-24)
+
+The Provider catalog now has 172 entries. Twelve API-key presets were added from [Magpie's pinned preset inventory](https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go): Qianfan personal and enterprise Token Plans, Huawei Cloud MaaS Token Plan, Volcengine Coding and Agent Plans, Qwen AI Token Plan, Kimi Code Global, Tencent enterprise Token Plan Global, ClinePass, Ollama Cloud account models, Command Code API, and Nous Portal API. Existing StepFun Global Step Plan and other regional plans remain available.
+
+Select the exact plan and region before adding its key. Qwen AI and Alibaba Cloud Bailian use different hosts and keys. Versioned Qianfan, Huawei, Tencent, and Volcengine paths are preserved without appending `/v1`. Text requests use the OpenAI-compatible adapter; this addition does not claim the plans' image, video, or embedding operations. Command Code Go accounts use the subscription adapter instead of the Provider API preset.
+
+Plan seeds are candidate IDs from the pinned source. They do not prove account entitlement, context limits, or pricing. Kimi Global, Ollama Cloud, Command Code API, and Nous API begin with an empty candidate list and use account model discovery. The separate Ollama Cloud entry avoids copying the existing local-model reference library. All new seeds omit prices and unverified limits; configure current costs before publishing. Public catalog refreshes retain these plan endpoints and account-only entries.
+
+Maintain the pinned facts in `tools/magpie-provider-presets.mjs`, run `node tools/sync-magpie-provider-presets.mjs`, then `node tools/generate-builtin-provider-plugins.mjs`. The source commit and MIT attribution accompany the catalog. The bundled OAuth/subscription adapters run directly inside TokenHub; see [Deployment](deployment.md) for the Node runtime requirement.
+
 ## 2026-10-16 update
 
 This update refreshes lifecycle and conditional-price evidence, adds region- and plan-specific offers, and extends the basic native Gemini contract for `gemini-4-argon`. It includes domestic Kimi and GLM coverage, Alibaba and Tencent subscription catalogs, Voyage text embeddings, and candidates for specialized operations. A discovery in this review is not necessarily a new release; source update dates and model release dates remain distinct.

@@ -1,0 +1,479 @@
+{
+  "id": "tencent-token-plan-enterprise-intl",
+  "type": "openai_compatible",
+  "api": "https://tokenhub-intl.tencentmaas.com/plan/v3",
+  "name": "Tencent Cloud Token Plan Enterprise Global",
+  "display_name": "Tencent Cloud Token Plan Enterprise Global",
+  "doc": "https://cloud.tencent.com/document/product/1823/130659",
+  "metadata": {
+    "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+    "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+    "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+    "catalog_reviewed_at": "2026-10-24",
+    "pricing_status": "unverified",
+    "billing_mode": "subscription",
+    "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+    "model_discovery": "seed"
+  },
+  "models": [
+    {
+      "id": "auto",
+      "name": "auto",
+      "display_name": "auto",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "hy4-preview",
+      "name": "hy4-preview",
+      "display_name": "hy4-preview",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.3",
+      "name": "glm-5.3",
+      "display_name": "glm-5.3",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.3-flash",
+      "name": "glm-5.3-flash",
+      "display_name": "glm-5.3-flash",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "glm-5.2",
+      "name": "glm-5.2",
+      "display_name": "glm-5.2",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "kimi-k3",
+      "name": "kimi-k3",
+      "display_name": "kimi-k3",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "name": "kimi-k2.7-code",
+      "display_name": "kimi-k2.7-code",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "kimi-k2.7-code-highspeed",
+      "name": "kimi-k2.7-code-highspeed",
+      "display_name": "kimi-k2.7-code-highspeed",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "minimax-m3",
+      "name": "minimax-m3",
+      "display_name": "minimax-m3",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "deepseek-v4.1-flash",
+      "display_name": "deepseek-v4.1-flash",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
+      "display_name": "deepseek-v4-pro",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "name": "deepseek-v4-pro-0813",
+      "display_name": "deepseek-v4-pro-0813",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "name": "deepseek-v4-flash-0731",
+      "display_name": "deepseek-v4-flash-0731",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro-202606",
+      "name": "deepseek-v4-pro-202606",
+      "display_name": "deepseek-v4-pro-202606",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "deepseek-v4-flash-202605",
+      "name": "deepseek-v4-flash-202605",
+      "display_name": "deepseek-v4-flash-202605",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "mimo-v2.6-pro",
+      "name": "mimo-v2.6-pro",
+      "display_name": "mimo-v2.6-pro",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "name": "mimo-v2.6-flash",
+      "display_name": "mimo-v2.6-flash",
+      "type": "chat",
+      "endpoints": "chat/completions,responses",
+      "billing_mode": "subscription",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "metadata": {
+        "upstream_source": "https://cloud.tencent.com/document/product/1823/130659",
+        "inventory_source": "https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go",
+        "upstream_commit": "d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1",
+        "catalog_reviewed_at": "2026-10-24",
+        "pricing_status": "unverified",
+        "billing_mode": "subscription",
+        "pricing_note": "Account plan terms and current prices must be configured before publishing; omitted prices do not mean free inference.",
+        "limits_status": "unverified",
+        "entitlement_status": "seed: verify against the connected account"
+      }
+    }
+  ]
+}

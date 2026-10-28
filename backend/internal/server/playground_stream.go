@@ -545,7 +545,7 @@ func (s *Server) executeRoutedPlaygroundStream(
 				}
 				attemptResult, attemptUsage, attemptErr = s.streamPlaygroundResponses(ctx, r, prepared, upstreamReq, routed.Call, events, routed.Call.RequestID)
 				if providerResourceModelUnsupportedError(attemptErr) {
-					s.removeProviderResourceModel(routeResourceID(prepared), prepared.ProviderModel)
+					s.removeProviderResourceModel(ctx, prepared)
 				}
 			} else {
 				upstreamReq := req
@@ -626,7 +626,7 @@ func (s *Server) streamPlaygroundResponses(
 	}
 	opened, err := streamAdapter.OpenResponses(ctx, route.Provider, route.ProviderModel, req, r.Header)
 	if err != nil {
-		return playgroundStreamResult{}, Usage{}, err
+		return playgroundStreamResult{}, subscriptionJSONFailureUsage(err), err
 	}
 	defer opened.Body.Close()
 	sink := newPlaygroundDeltaSink(events, requestID)

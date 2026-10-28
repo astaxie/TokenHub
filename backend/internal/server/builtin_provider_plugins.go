@@ -350,7 +350,10 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 			return err
 		}
 	}
-	return nil
+	if err := registerBuiltinSubscriptionProviders(register, adapters); err != nil {
+		return err
+	}
+	return registerBuiltinSubscriptionWorkerProviders(register, adapters)
 }
 
 func registerBuiltinProviderCatalogPlugins(registry *pluginmeta.Registry) {

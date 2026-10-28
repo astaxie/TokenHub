@@ -11,6 +11,8 @@ import (
 )
 
 func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar) {
+	registerBuiltinSubscriptionActions(server, actions)
+	registerBuiltinSubscriptionWorkerActions(server, actions)
 	mustRegisterPluginAction(actions, pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",
 		ActionID:   "openai_codex.oauth.start",
@@ -682,14 +684,13 @@ func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar
 				return pluginmeta.ActionResult{}, NewHTTPError(http.StatusBadRequest, "invalid_plugin_action_payload", "Plugin action payload is invalid")
 			}
 		}
-		credentials, err := server.store.RefreshProviderResourceCredentials(ctx, payload.ResourceID, payload.Force)
+		credentials, err := providerCredentialLoaderForType(server.store, ProviderOpenAICodex)(ctx, payload.ResourceID, payload.Force)
 		if err != nil {
 			return pluginmeta.ActionResult{}, err
 		}
 		return pluginmeta.ActionResult{Data: map[string]any{"credential_summary": providerAccountCredentialSummary(credentials)}}, nil
 	}))
 }
-
 func openAICodexImageCapabilityActionDescriptor() pluginmeta.ActionDescriptor {
 	return pluginmeta.ActionDescriptor{
 		PluginID:   "tokenhub.provider.openai-codex",

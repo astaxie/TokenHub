@@ -13,6 +13,7 @@ TokenHub のドキュメントは、エンタープライズ Token Governance �
 
 - [全体アーキテクチャ](architecture.md)：デプロイ形態、コントロール/データプレーン、モデルリクエスト経路、永続化、セキュリティ境界。
 - [デプロイ](deployment.md)：Docker Compose、環境変数、データベース、リバースプロキシ、ヘルスチェック。
+- [サブスクリプションとアカウント Provider](subscription-providers.md)：32 件のアカウント Provider、12 件の追加 API Key プリセット、認証、実行環境、プロトコルの制限。
 - [データベース進化](database-evolution.md)：フォワードオンリーマイグレーション、採用ベースライン、メンテナンスコマンド、ロールバック互換性。
 - [PostgreSQL 設定ガイド](../postgresql-setup.md)：PostgreSQL の設定、運用、移行。
 - [パフォーマンスベンチマーク](performance-benchmarking.md)：再現可能なゲートウェイ比較、プロセス内割り当てベンチマーク、回帰バジェット。

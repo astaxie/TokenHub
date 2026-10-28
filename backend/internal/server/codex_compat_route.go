@@ -18,14 +18,14 @@ func (s *Server) executeCodexAnthropicMessages(
 	req anthropicMessagesRequest,
 	headers http.Header,
 ) (map[string]any, Usage, error) {
-	upstream, err := anthropicToCodexResponsesRequest(req)
+	upstream, err := anthropicToBridgedResponsesRequest(route.Provider.Type, req)
 	if err != nil {
 		return nil, Usage{}, err
 	}
 	applyClaudeCodeCodexToolConstraints(&upstream, headers)
 	resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstream, codexAnthropicCompatibilityHeaders(headers, req.Raw))
 	if providerResourceModelUnsupportedError(err) {
-		s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+		s.removeProviderResourceModel(ctx, route)
 	}
 	if err != nil {
 		return nil, usage, err
@@ -105,13 +105,13 @@ func (s *Server) executeCodexChatRoute(
 	req ChatCompletionRequest,
 	headers http.Header,
 ) (any, Usage, error) {
-	upstream, err := chatToCodexResponsesRequest(req)
+	upstream, err := chatToBridgedResponsesRequest(route.Provider.Type, req)
 	if err != nil {
 		return nil, Usage{}, err
 	}
 	resp, usage, err := s.invokeResponsesAdapter(ctx, route, upstream, codexChatCompatibilityHeaders(headers, req))
 	if providerResourceModelUnsupportedError(err) {
-		s.removeProviderResourceModel(routeResourceID(route), route.ProviderModel)
+		s.removeProviderResourceModel(ctx, route)
 	}
 	if err != nil {
 		return nil, usage, err
@@ -174,7 +174,7 @@ func (s *Server) compatibleChatRoutes(routed RoutedCall, req ChatCompletionReque
 		}
 		return compatible, firstErr
 	}
-	return compatible, nil
+	return s.bindClaudeSubscriptionContinuation(compatible, claudeSubscriptionChatResultIDs(req))
 }
 
 func (s *Server) anthropicGatewayAffinity(

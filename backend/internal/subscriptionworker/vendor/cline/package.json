@@ -1,0 +1,12 @@
+{
+  "name": "@magpie-community/opencode-cline-auth",
+  "version": "0.1.11",
+  "description": "Cline (cline.bot) on your own account — usage billing, ClinePass and the free models — in OpenCode and magpie",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "files": ["index.mjs", "README.md"],
+  "keywords": ["opencode", "opencode-plugin", "magpie", "cline", "clinepass"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/magpie-community/plugins.git", "directory": "packages/cline" }
+}

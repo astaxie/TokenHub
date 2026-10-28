@@ -8,6 +8,7 @@ import { activeLanguage, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { PluginActionRunner } from "./plugin-action-runner";
 import { ProviderResourceSystemPromptTransformFields } from "./provider-editor-sections";
+import { ProviderCheckinAction } from "./provider-checkin-action";
 
 type PanelField = {
   name: string;
@@ -89,8 +90,9 @@ export function ProviderPluginPanels({
     updateState(contribution, panelResources, { values: { [field]: value }, error: "" }, action);
   }
 
-  async function runPanel(contribution: AdminUIContribution, panelResources: ProviderResource[], action: PluginActionDescriptor, event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runPanel(contribution: AdminUIContribution, panelResources: ProviderResource[], action: PluginActionDescriptor, event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    event?.stopPropagation();
     const state = stateFor(contribution, panelResources, action);
     if (!state.resourceID) return;
     updateState(contribution, panelResources, { busy: true, error: "", result: "" }, action);
@@ -98,10 +100,9 @@ export function ProviderPluginPanels({
       const resp = await adminFetch(api, `/api/admin/plugins/${encodeURIComponent(action.plugin_id)}/actions/${encodeURIComponent(action.action_id)}`, {
         method: "POST",
         body: JSON.stringify({
-          provider_id: provider.id,
-          resource_id: state.resourceID,
-          refresh: true,
+          ...(action.capability === "checkin.run" ? {} : { provider_id: provider.id, refresh: true }),
           ...pluginActionPayload(action, state.values),
+          resource_id: state.resourceID,
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("插件面板执行失败")));
@@ -130,20 +131,21 @@ export function ProviderPluginPanels({
               const state = stateFor(contribution, panelResources, action);
               const selectedResource = panelResources.find((resource) => resource.id === state.resourceID);
               const registered = !contribution.action || Boolean(action);
+              const checkin = action?.capability === "checkin.run";
               return (
-                <article className="provider-quota-card" key={providerPanelContributionKey(contribution)}>
+                <article className={`provider-quota-card${checkin ? " provider-checkin-card" : ""}`} key={providerPanelContributionKey(contribution)}>
                   <div className="provider-quota-card-head">
                     <div className="provider-quota-account">
                       <span>{contribution.title || contribution.id}</span>
-                      <strong>{contribution.plugin_id}</strong>
+                      <strong>{checkin ? selectedResource?.name : contribution.plugin_id}</strong>
                     </div>
                     <div className="provider-quota-card-actions">
                       {panelResources.length > 0 ? (
-                        <select disabled={state.busy} value={state.resourceID} onChange={(event) => updateState(contribution, panelResources, { resourceID: event.target.value, error: "", result: "" }, action)}>
+                        <select aria-label={checkin ? tx("签到账号") : undefined} disabled={state.busy} value={state.resourceID} onChange={(event) => updateState(contribution, panelResources, { resourceID: event.target.value, error: "", result: "" }, action)}>
                           {panelResources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name || resource.id}</option>)}
                         </select>
                       ) : null}
-                      {contribution.action && action ? (
+                      {!checkin && contribution.action && action ? (
                         <PluginActionRunner
                           action={action}
                           draft={state}
@@ -155,7 +157,7 @@ export function ProviderPluginPanels({
                           onChange={(descriptor, field, value) => updatePanelValue(contribution, panelResources, descriptor, field, value)}
                           onSubmit={(descriptor, event) => void runPanel(contribution, panelResources, descriptor, event)}
                         />
-                      ) : contribution.action ? (
+                      ) : !checkin && contribution.action ? (
                         <button className="secondary-button" disabled={true} type="button">
                           <Play size={14} />
                           {tx("执行插件面板")}
@@ -163,6 +165,7 @@ export function ProviderPluginPanels({
                       ) : null}
                     </div>
                   </div>
+                  {checkin && action ? <ProviderCheckinAction busy={state.busy} disabled={!state.resourceID} error={state.error} result={state.result} onRun={() => void runPanel(contribution, panelResources, action)} /> : null}
                   {fields.length > 0 ? (
                     <div className="system-settings-plugin-fields">
                       {fields.map((field) => (
@@ -320,8 +323,12 @@ export function providerQuotaPanelSelection(
 }
 
 export function providerQuotaPanelDescription(contribution: AdminUIContribution) {
-  const description = contribution.schema?.description;
+  const description = localizeBuiltinContribution(contribution).schema?.description;
   return typeof description === "string" ? description.trim() : "";
+}
+
+export function providerQuotaPanelTitle(contribution: AdminUIContribution) {
+  return localizeBuiltinContribution(contribution).title;
 }
 
 function providerQuotaPanelContribution(

@@ -370,14 +370,18 @@ type ProviderResource struct {
 	LastCheckedAt          *time.Time                   `json:"last_checked_at,omitempty"`
 	CreatedAt              time.Time                    `json:"created_at"`
 	UpdatedAt              time.Time                    `json:"updated_at"`
+	replacementFields      map[string]bool
 }
 
 type ProviderResourceCredentials struct {
+	Replace        bool   `json:"replace,omitempty"`
+	SessionJSON    string `json:"session_json,omitempty"`
 	AuthType       string `json:"auth_type,omitempty"`
 	AccessToken    string `json:"access_token,omitempty"`
 	RefreshToken   string `json:"refresh_token,omitempty"`
 	IDToken        string `json:"id_token,omitempty"`
 	ClientID       string `json:"client_id,omitempty"`
+	ClientSecret   string `json:"client_secret,omitempty"`
 	Scopes         string `json:"scopes,omitempty"`
 	TokenType      string `json:"token_type,omitempty"`
 	ExpiresAt      string `json:"expires_at,omitempty"`
@@ -386,6 +390,8 @@ type ProviderResourceCredentials struct {
 	Email          string `json:"email,omitempty"`
 	OrganizationID string `json:"organization_id,omitempty"`
 	PlanType       string `json:"plan_type,omitempty"`
+
+	resourceSnapshot *ProviderResource
 }
 
 type ProviderResourceBulkResult struct {

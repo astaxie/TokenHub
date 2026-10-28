@@ -17,7 +17,7 @@ TokenHub includes a Go backend, a Next.js admin console, Node.js SDK smoke tests
 
 ## Local Development
 
-Local development requires Go 1.26 and Node.js 20 or later. Docker and Docker Compose are required only for container and deployment checks.
+Local development requires Go 1.26 and Node.js 22.23.1 or later. Docker and Docker Compose are required only for container and deployment checks.
 
 Start the full local development stack from the repository root:
 
