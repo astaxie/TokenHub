@@ -8,10 +8,17 @@ import (
 )
 
 func checkGoogleSubscriptionResponse(response *http.Response) error {
-	if response.StatusCode < http.StatusBadRequest {
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
 		return nil
 	}
 	defer response.Body.Close()
+	if response.StatusCode < http.StatusBadRequest {
+		// Redirects are deliberately not followed with account credentials.
+		// Reject their status before an arbitrary body reaches JSON/SSE decoding.
+		failure := NewHTTPError(http.StatusBadGateway, "google_subscription_upstream_error", "Google subscription returned a non-success HTTP status")
+		failure.UpstreamStatus = response.StatusCode
+		return &ProviderInvocationError{Err: failure, Disposition: ProviderErrorTransientSame, RetryAfter: parseRetryAfter(response.Header.Get("Retry-After"))}
+	}
 	if response.StatusCode == http.StatusForbidden {
 		// Only a 403 body can refine the failure classification. Decode one
 		// bounded object without waiting for EOF, and cap the entire inspection

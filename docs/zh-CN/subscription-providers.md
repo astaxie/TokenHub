@@ -106,6 +106,8 @@ Copilot 和社区 Chat 请求路由到 Responses 模型时，会保留 `temperat
 
 Gemini CLI 和 Antigravity 将代理认证失败与连接超时保留为出口故障，不会惩罚有效账号。GCP 的 token 刷新和模型发现会区分临时上游故障、限流和凭据被拒绝。ChatGPT、Gemini CLI 和 Antigravity 的 token 刷新同样保留临时故障的上游状态和有效重试等待时间，包括绑定账号的限流。
 
+Gemini CLI 和 Antigravity 的 Code Assist 操作只接受 HTTP 2xx 响应。上游跳转会立即归类为可重试的上游故障；TokenHub 保留其状态码和重试等待时间，不会向跳转目标转发凭据，也不会把跳转响应正文当作模型输出。
+
 Gemini CLI 和 Antigravity 默认选择 **Google 账号（默认）**，直接点击蓝色的 **打开授权** 即可，无需填写 client ID 或 client secret。每个 Provider 使用各自公开的桌面应用 OAuth 配置；这些应用参数本身不能授权账号，用户仍需登录 Google 并授权。只有需要自定义客户端时，才选择 **自定义 Google OAuth（高级）** 并填写完整的 client ID/secret，缺少其中一项会被拒绝。所选配置绑定到加密的授权会话，并随账号保存供 token 刷新使用；已有账号保留原来的客户端配置。
 
 Google 账号如果需要指定 Cloud 项目，可选择 **Google 账号（指定 Cloud 项目）**，只填写项目 ID，继续使用内置客户端配置。自定义客户端方式也支持项目 ID。项目随新凭据保存，重新授权时不会自动沿用旧账号的项目。完成 Google 登录后，将回调 URL 粘贴到 TokenHub，凭据回填后保存账号。账号资格和模型访问权限仍由上游服务决定。
