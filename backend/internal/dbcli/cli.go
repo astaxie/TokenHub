@@ -12,9 +12,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"tokenhub/backend/internal/dbschema"
+	"tokenhub/backend/internal/dbupgrade"
 	"tokenhub/backend/internal/server"
 )
 
@@ -76,6 +78,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		err = runRepair(ctx, args[1:], config, stdout, stderr)
 	case "contract":
 		err = runContract(ctx, args[1:], config, stdout, stderr)
+	case "upgrade-plan":
+		err = runUpgradePlan(ctx, args[1:], config, stdout, stderr)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return 0
@@ -341,6 +345,42 @@ func runContract(ctx context.Context, args []string, config server.Config, stdou
 	return nil
 }
 
+// runUpgradePlan executes the read-only SQLite-to-PostgreSQL upgrade
+// preflight. The command itself always exits 0 when the preflight ran:
+// blockers and warnings are findings it reports, not failures of the
+// invocation. See docs/development/database-upgrade-design.md.
+func runUpgradePlan(ctx context.Context, args []string, config server.Config, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("upgrade-plan", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	from := flags.String("from", "", "source database URL (default: the configured database)")
+	target := flags.String("target", "", "target PostgreSQL database URL (required)")
+	secretKey := flags.String("secret-key", "", "source secret key (default: TOKENHUB_SECRET_KEY, then the .secret-key sidecar file)")
+	asJSON := flags.Bool("json", false, "write the plan as JSON")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*target) == "" {
+		return errors.New("upgrade-plan requires --target <database-url>")
+	}
+	sourceURL := strings.TrimSpace(*from)
+	if sourceURL == "" {
+		sourceURL = config.DatabaseURL
+	}
+	plan, err := dbupgrade.BuildPlan(ctx, dbupgrade.Options{
+		SourceURL: sourceURL,
+		TargetURL: strings.TrimSpace(*target),
+		SecretKey: *secretKey,
+	})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return dbupgrade.RenderJSON(stdout, plan)
+	}
+	dbupgrade.RenderText(stdout, plan)
+	return nil
+}
+
 // requireBackfillsComplete refuses contract execution while any data backfill
 // is unfinished.
 func requireBackfillsComplete(ctx context.Context, s *session) error {
@@ -418,6 +458,9 @@ commands:
   contract [--dry-run]
             [--backup-reference <ref>]
             [--maintenance]   execute contract migrations with preflight
+  upgrade-plan [--from <url>] --target <url>
+            [--secret-key <key>] [--json]
+                              read-only SQLite-to-PostgreSQL upgrade preflight
 
 database: resolved from TOKENHUB_DATABASE_URL (or the default SQLite path)`)
 }
