@@ -17,7 +17,7 @@
 | 阶段 | 依赖变化 | 状态 | 退出条件 | 剩余工作 |
 | --- | --- | --- | --- | --- |
 | 0. 基线与约束 | 新增包依赖前冻结可观察行为；目标目录稳定后再加入依赖检查 | 已完成，依赖检查延期 | 行为刻画矩阵已完成，依赖检查设计可通过独立 PR 实施 | 最终目录稳定后加入检查；此前不将其描述为已启用的仓库门禁 |
-| 1. 业务模块 | 将 billing 和 reconciliation 调用方从 `server.Store` 迁移到消费者定义的端口，再引入 analytics 端口和适配器 | 进行中 | billing、reconciliation 和 analytics 的生产路径使用公开接口；`server` 不再包含这些业务实现 | 完成 analytics 提取，移除过时的 server 投影并迁移剩余测试 |
+| 1. 业务模块 | 将 billing 和 reconciliation 调用方从 `server.Store` 迁移到消费者定义的端口，再引入 analytics 端口和适配器 | Analytics 应用边界已完成，适配器待迁移 | billing、reconciliation 和 analytics 的生产路径使用公开接口；`server` 不再包含这些业务实现 | 在下一项 analytics 适配器变更中迁移 SQLite/PostgreSQL 与 HTTP 适配器，然后移除兼容 shim |
 | 2. Gateway、协议与 Provider | 将 `server` 从协议和 Provider 实现转为 `gateway`、`protocol/*` 和 `provider` 的依赖组装 | 已规划 | OpenAI、Anthropic、Gemini 协议适配器和 Provider 调用都通过统一网关契约运行 | 定义契约，再迁移 Provider 管理、调用、协议适配器和网关错误映射 |
 | 3. Project 与 Routing | 将认证、授权、配额准入、候选规划和路由策略迁入 `project` 与 `routing` 端口 | 已规划 | 网关不再通过全局 `Store` 处理身份、准入或候选规划 | 分离 Project 和 API Key 状态、配额语义、路由策略和故障回退规划，保持准入顺序 |
 | 4. 请求生命周期与后台能力 | 将请求记录、用量、审计、载荷保留、图像任务和可观测性迁入 `usage`、`image` 和 `observability` 模块 | 已规划 | `Server` 不再拥有请求或 worker 的领域状态；生命周期和恢复行为不变 | 先提取用量写入和审计语义，再迁移网关编排、图像 worker 和遥测适配器 |
@@ -57,14 +57,15 @@ CSV 转义、锁定、重算和审计行为。PostgreSQL CI job 执行带标签�
 本阶段剩余工作是将其余 server 测试迁往公开模块边界，并在调用方迁移后移除兼容构造器
 和测试投影。
 
-## 下一阶段：Analytics
+## 当前阶段：Analytics 适配器迁移
 
-下一阶段分为两个可独立审查的步骤：
+Analytics 提取分为两个可独立审查的步骤：
 
 1. 提取 analytics 查询和应用模块，包括 analytics 凭证、游标和快照语义、聚合，以及消费者定义的持久化端口。
 2. 迁移 SQLite/PostgreSQL 查询适配器和管理 HTTP 适配器，再删除 server 中的 analytics 实现，保持聚合、授权和一致性行为。
 
-退出条件是 analytics 的生产路径使用新公开接口，适配器在 SQLite 和 PostgreSQL 上都可运行，
+第一步已完成：analytics 生产路径现在通过兼容适配器使用新公开接口，GORM 实现和 HTTP
+传输暂时留在 `server`，等待适配器迁移。完整阶段的退出条件是 analytics 的生产路径使用新公开接口，适配器在 SQLite 和 PostgreSQL 上都可运行，
 并且生产 analytics 调用方不再依赖全局 server `Store`。
 
 analytics 的依赖变化为：

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"tokenhub/backend/internal/admin"
+	analyticsapp "tokenhub/backend/internal/analytics"
 	"tokenhub/backend/internal/billing"
 	billingadapters "tokenhub/backend/internal/billing/adapters"
 	"tokenhub/backend/internal/guardrails"
@@ -45,6 +46,7 @@ type Server struct {
 	reconciliationExecutionAvailable bool
 	reconciliation                   *reconciliation.Service
 	reconciliationAdmin              *admin.ReconciliationHandler
+	analyticsService                 *analyticsapp.Service
 	credentialRefresh                *ProviderCredentialRefreshService
 	payloadRetention                 *requestPayloadRetentionService
 	providerMonitoring               *providerMonitoringScheduler
@@ -191,6 +193,7 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 	}
 	providerCatalog := newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient)
 	providerCatalog.UsePluginCatalogTypes(pluginBootstrap.adapterRegistry)
+	analyticsStore := newAnalyticsStoreAdapter(store)
 	s := &Server{
 		store:                            store,
 		pluginRegistry:                   pluginBootstrap.pluginRegistry,
@@ -209,6 +212,7 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		reconciliationReadAvailable:      reconciliationReadAvailable,
 		reconciliationExecutionAvailable: reconciliationExecutionAvailable,
 		reconciliation:                   reconciliation.NewService(dependencies.ReconciliationStore, reconciliationpersistence.NewBillingReader(dependencies.ReconciliationReader)),
+		analyticsService:                 analyticsapp.NewService(analyticsStore, analyticsStore),
 		credentialRefresh:                newProviderCredentialRefreshService(store),
 		payloadRetention:                 newRequestPayloadRetentionService(store),
 		mux:                              http.NewServeMux(),
