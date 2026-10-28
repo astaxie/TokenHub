@@ -11,9 +11,16 @@ output="$image_root/BUILD_ID"
 temporary="$(mktemp)"
 trap 'rm -f -- "$temporary"' EXIT HUP INT TERM
 
-find "$image_root" -type f ! -path "$output" -print0 |
-  sort -z |
-  xargs -0 sha256sum |
+{
+  find "$image_root" -type f ! -path "$output" -print0 |
+    sort -z |
+    xargs -0 sha256sum
+  # Container bundles reuse the base image runtime through this link. Include
+  # the target bytes so a Node upgrade changes the installed bundle identity.
+  if [ -L "$image_root/bin/node" ]; then
+    sha256sum "$image_root/bin/node"
+  fi
+} |
   sha256sum |
   cut -d ' ' -f 1 >"$temporary"
 chmod 0644 "$temporary"

@@ -44,7 +44,7 @@ RUN cd backend && \
       -ldflags="-s -w -linkmode external -extldflags '-static' -X main.buildVersion=${TOKENHUB_VERSION} -X main.buildType=${TOKENHUB_BUILD_TYPE} -X main.deploymentType=container" \
       -o /out/tokenhub ./cmd/tokenhub
 
-FROM ${NODE_IMAGE}
+FROM ${NODE_IMAGE} AS image-bundle
 
 ARG TOKENHUB_VERSION=0.8.0
 LABEL org.opencontainers.image.version="${TOKENHUB_VERSION}"
@@ -63,7 +63,6 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 COPY --from=backend-builder --chown=node:node /out/tokenhub /usr/local/lib/tokenhub-image/bin/tokenhub
-COPY --from=frontend-builder --chown=node:node /usr/local/bin/node /usr/local/lib/tokenhub-image/bin/node
 COPY --from=frontend-builder --chown=node:node /out/frontend /usr/local/lib/tokenhub-image/frontend
 COPY --chown=node:node deploy/native/tokenhub-run /usr/local/lib/tokenhub-image/bin/tokenhub-run
 COPY --chown=node:node deploy/native/tokenhub.service /usr/local/lib/tokenhub-image/deploy/tokenhub.service
@@ -73,15 +72,34 @@ COPY --chown=node:node data/builtin-plugins /usr/local/lib/tokenhub-image/catalo
 COPY deploy/container/tokenhub-build-id /usr/local/bin/tokenhub-build-id
 COPY deploy/container/tokenhub-entrypoint /usr/local/bin/tokenhub-entrypoint
 
-RUN printf '%s\n' "$TOKENHUB_VERSION" >/usr/local/lib/tokenhub-image/VERSION && \
+RUN ln -s /usr/local/bin/node /usr/local/lib/tokenhub-image/bin/node && \
+    printf '%s\n' "$TOKENHUB_VERSION" >/usr/local/lib/tokenhub-image/VERSION && \
     chmod 0755 \
       /usr/local/bin/tokenhub-build-id \
       /usr/local/bin/tokenhub-entrypoint \
       /usr/local/lib/tokenhub-image/bin/node \
       /usr/local/lib/tokenhub-image/bin/tokenhub \
       /usr/local/lib/tokenhub-image/bin/tokenhub-run && \
-    tokenhub-build-id /usr/local/lib/tokenhub-image && \
-    chown -R node:node /usr/local/lib/tokenhub-image && \
+    tokenhub-build-id /usr/local/lib/tokenhub-image
+
+# Assemble and set metadata before the final COPY so changing permissions does
+# not add another layer containing the release binaries and frontend assets.
+FROM ${NODE_IMAGE} AS runtime
+ARG TOKENHUB_VERSION=0.8.0
+LABEL org.opencontainers.image.version="${TOKENHUB_VERSION}"
+ENV NODE_ENV=production \
+    TOKENHUB_DEPLOYMENT_TYPE=container \
+    TOKENHUB_INSTALL_ROOT=/opt/tokenhub \
+    TOKENHUB_MODEL_CATALOG_FILE=/opt/tokenhub/current/catalog/model-catalog.yaml \
+    TOKENHUB_PROVIDER_CATALOG_FILE=/opt/tokenhub/current/catalog/provider-catalog.json \
+    TOKENHUB_RUN_MODE=all
+WORKDIR /app
+COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=image-bundle --chown=node:node /usr/local/lib/tokenhub-image /usr/local/lib/tokenhub-image
+COPY --chmod=0755 deploy/container/tokenhub-build-id /usr/local/bin/tokenhub-build-id
+COPY --chmod=0755 deploy/container/tokenhub-entrypoint /usr/local/bin/tokenhub-entrypoint
+RUN command -v bash >/dev/null && command -v setpriv >/dev/null && \
+    test -s /etc/ssl/certs/ca-certificates.crt && \
     mkdir -p /app/data /app/plugins /opt/tokenhub && \
     chown node:node /app/data /app/plugins /opt/tokenhub
 

@@ -4,6 +4,8 @@ Language: English | [简体中文](zh-CN/deployment.md) | [日本語](ja/deploym
 
 TokenHub is designed for private deployment with a Go backend, a Next.js admin console, and support for SQLite or PostgreSQL persistence.
 
+The runtime image copies the prepared release bundle once with its final ownership. Container bundles keep `bin/node` as an absolute link to `/usr/local/bin/node`, so installing them under `/opt/tokenhub/releases/<version>` reuses the base image runtime. The build identity includes the linked Node bytes, allowing runtime upgrades to activate a new bundle without changing the application version. Frontend standalone assets, catalogs, plugin permissions, and managed upgrades retain their existing layout.
+
 ## Database Selection
 
 TokenHub supports two database backends:

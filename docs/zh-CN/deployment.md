@@ -4,6 +4,8 @@ Language: [English](../deployment.md) | 简体中文 | [日本語](../ja/deploym
 
 TokenHub 面向私有化部署，由 Go 后端、Next.js 管理后台和 SQLite 持久化组成。
 
+运行镜像仅复制一次已设置最终归属的 release bundle。容器 bundle 的 `bin/node` 使用指向 `/usr/local/bin/node` 的绝对链接，安装到 `/opt/tokenhub/releases/<version>` 后继续复用基础镜像的 Node。构建标识包含链接目标的 Node 内容，因此运行时升级也能在应用版本不变时激活新 bundle。前端 standalone、目录数据、插件权限和面板升级继续使用现有布局。
+
 ## 数据库选择
 
 TokenHub 支持两种数据库后端：

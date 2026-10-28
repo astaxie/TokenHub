@@ -4,6 +4,8 @@ Language: [English](../deployment.md) | [简体中文](../zh-CN/deployment.md) |
 
 TokenHub は、Go バックエンド、Next.js 管理コンソール、SQLite 永続化で構成されるプライベートデプロイ向けのサービスです。
 
+実行用イメージは、所有者を設定済みの release bundle を一度だけコピーします。コンテナ用 bundle の `bin/node` は `/usr/local/bin/node` への絶対リンクであり、`/opt/tokenhub/releases/<version>` へインストール後もベースイメージの Node を使用します。ビルド識別子にはリンク先の Node の内容も含まれるため、アプリケーションのバージョンが同じでもランタイム更新を反映できます。フロントエンドの standalone、カタログ、プラグイン権限、管理画面からの更新は既存の配置を維持します。
+
 ## データベースの選択
 
 TokenHub は 2 種類のデータベースバックエンドをサポートしています。

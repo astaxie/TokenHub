@@ -53,6 +53,18 @@ sh "$script_dir/tokenhub-build-id" "$build_id_root"
 [ "$(<"$build_id_root/BUILD_ID")" != "$first_build_id" ] ||
   fail_test "changed image contents kept the previous build identity"
 
+# The container bundle can reference the base image Node binary. Its bytes still
+# participate in build identity, and the link must survive release installation.
+mkdir -p "$build_id_root/bin"
+printf 'node-runtime-one\n' >"$test_root/node-runtime"
+ln -s "$test_root/node-runtime" "$build_id_root/bin/node"
+sh "$script_dir/tokenhub-build-id" "$build_id_root"
+linked_node_id="$(<"$build_id_root/BUILD_ID")"
+printf 'node-runtime-two\n' >"$test_root/node-runtime"
+sh "$script_dir/tokenhub-build-id" "$build_id_root"
+[ "$(<"$build_id_root/BUILD_ID")" != "$linked_node_id" ] ||
+  fail_test "changed linked Node runtime kept the previous build identity"
+
 run_entrypoint() {
   local image_root="$1"
   TOKENHUB_CONTAINER_IMAGE_ROOT="$image_root" \
