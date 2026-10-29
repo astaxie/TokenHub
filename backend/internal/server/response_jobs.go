@@ -88,14 +88,14 @@ func responseJobPath(r *http.Request) (string, bool, bool) {
 }
 
 func (s *Server) serveResponseJob(w http.ResponseWriter, r *http.Request, id string, cancel bool) {
-	project, key, err := s.authenticate(r)
+	key, err := s.authenticateAsyncJobKey(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	expired, _ := s.store.ExpireResponseJobs()
 	s.metrics.ObserveResponseJobTerminalCount(responseJobStatusExpired, "response_expired", expired)
-	job, ok := s.authorizedResponseJob(project, key, id)
+	job, ok := s.authorizedResponseJob(key, id, s.clientIP(r))
 	if !ok || job.Status == responseJobStatusExpired {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "response_not_found", "Response job not found"))
 		return
@@ -122,18 +122,12 @@ func (s *Server) serveResponseJob(w http.ResponseWriter, r *http.Request, id str
 	}
 }
 
-func (s *Server) authorizedResponseJob(project Project, key APIKey, id string) (ResponseJob, bool) {
+func (s *Server) authorizedResponseJob(key APIKey, id string, clientIP string) (ResponseJob, bool) {
 	job, ok, err := s.store.GetResponseJob(id)
 	if err != nil || !ok {
 		return ResponseJob{}, false
 	}
-	if job.ProjectID != project.ID || job.APIKeyID != key.ID {
-		return ResponseJob{}, false
-	}
-	if job.AttributedUserID != usageAttributionUserID(key, project) {
-		return ResponseJob{}, false
-	}
-	if !keyCanAccessModel(s.store, key, job.Model) {
+	if key.ID != job.APIKeyID || !s.store.ResponseJobModelAccessible(job, clientIP) {
 		return ResponseJob{}, false
 	}
 	return job, true
@@ -392,22 +386,19 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		return
 	}
 
-	project, projectOK := s.store.GetProject(job.ProjectID)
-	key, keyOK := responseJobAPIKey(s.store, job.ProjectID, job.APIKeyID)
-	if !projectOK || !keyOK || usageAttributionUserID(key, project) != job.AttributedUserID {
+	project, key, authorizationErr := s.store.AuthorizeAsyncJob(job.ProjectID, job.APIKeyID, job.AttributedUserID, job.Model, envelope.ClientIP)
+	if authorizationErr != nil {
 		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 			return
 		}
-		s.finalizeResponseJob(job, owner, CallContext{}, RouteSelection{}, Usage{}, nil, http.StatusUnauthorized, "response_authorization_lost", "Response job authorization is no longer valid", request, resultTTL)
-		return
-	}
-	if !responseJobAuthorizationValid(project, key, envelope.ClientIP) {
-		if s.stopResponseJobForShutdown(job, owner, resultTTL) {
-			return
+		rejectedCall := CallContext{}
+		originalProject, projectOK := s.store.GetProject(job.ProjectID)
+		currentKey, keyOK := s.store.GetAPIKey(job.APIKeyID)
+		if projectOK && keyOK && usageAttributionUserID(currentKey, originalProject) == job.AttributedUserID {
+			rejectedAt := time.Now()
+			requestID := s.store.RecordRejectedRequest(originalProject, currentKey, request.Model, false, http.StatusUnauthorized, "response_authorization_lost", envelope.ClientIP, envelope.UserAgent)
+			rejectedCall = CallContext{RequestID: requestID, Project: originalProject, Key: currentKey, Model: Model{Name: request.Model}, StartedAt: rejectedAt, measuredAt: rejectedAt}
 		}
-		rejectedAt := time.Now()
-		requestID := s.store.RecordRejectedRequest(project, key, request.Model, false, http.StatusUnauthorized, "response_authorization_lost", envelope.ClientIP, envelope.UserAgent)
-		rejectedCall := CallContext{RequestID: requestID, Project: project, Key: key, Model: Model{Name: request.Model}, StartedAt: rejectedAt, measuredAt: rejectedAt}
 		s.finalizeResponseJob(job, owner, rejectedCall, RouteSelection{}, Usage{}, nil, http.StatusUnauthorized, "response_authorization_lost", "Response job authorization is no longer valid", request, resultTTL)
 		return
 	}
@@ -671,32 +662,6 @@ func (s *Server) stopResponseJobForShutdown(job ResponseJob, owner string, resul
 	}
 	s.observeResponseQueueDepth()
 	return true
-}
-
-func responseJobAPIKey(store Store, projectID string, keyID string) (APIKey, bool) {
-	for _, key := range store.ListProjectKeys(projectID) {
-		if key.ID == keyID {
-			return key, true
-		}
-	}
-	return APIKey{}, false
-}
-
-func responseJobAuthorizationValid(project Project, key APIKey, clientIP string) bool {
-	if project.Status != StatusActive {
-		return false
-	}
-	now := time.Now().UTC()
-	if key.Status == StatusDisabled {
-		return false
-	}
-	if key.Status == StatusRevoked && (key.GraceUntil == nil || !now.Before(*key.GraceUntil)) {
-		return false
-	}
-	if key.ExpiresAt != nil && now.After(*key.ExpiresAt) {
-		return false
-	}
-	return len(key.IPAllowlist) == 0 || ipAllowed(clientIP, key.IPAllowlist)
 }
 
 func (s *Server) watchResponseJobCancellation(ctx context.Context, cancel context.CancelCauseFunc, done chan<- struct{}, id string) {

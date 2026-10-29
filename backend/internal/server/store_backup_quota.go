@@ -284,8 +284,12 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 		return nil
 	}
 	hydrateProject(&project)
+	return s.accessibleModelsInScope(s.db, project, privateKey)
+}
+
+func (s *GormStore) accessibleModelsInScope(db *gorm.DB, project Project, privateKey APIKey) []Model {
 	var policyResources []AdminResource
-	if err := s.db.Where("kind = ?", routingPolicyResourceKind).Order("created_at asc").Find(&policyResources).Error; err != nil {
+	if err := db.Where("kind = ?", routingPolicyResourceKind).Order("created_at asc").Find(&policyResources).Error; err != nil {
 		return nil
 	}
 	policy, err := effectiveScopedRoutingPolicy(policyResources, project.ID, privateKey.ID)
@@ -293,11 +297,11 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 		return nil
 	}
 	var routes []ModelRoute
-	if err := s.db.Where("status = ?", StatusActive).Find(&routes).Error; err != nil {
+	if err := db.Where("status = ?", StatusActive).Find(&routes).Error; err != nil {
 		return nil
 	}
 	var providerResources []ProviderResource
-	if err := s.db.Where("status = ?", StatusActive).Find(&providerResources).Error; err != nil {
+	if err := db.Where("status = ?", StatusActive).Find(&providerResources).Error; err != nil {
 		return nil
 	}
 	resourcesByID := make(map[string]*ProviderResource, len(providerResources))
@@ -340,13 +344,13 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 		if seenModelNames[profile.PublicModel] || !modelAllowedByScopes(project, privateKey, profile.PublicModel) {
 			continue
 		}
-		if s.providerImageCapabilityAllowedByPolicyLocked(project, privateKey, policy, profile) {
+		if s.providerImageCapabilityAllowedByPolicyLocked(db, project, privateKey, policy, profile) {
 			seenModelNames[profile.PublicModel] = true
 			publishedModelNames = append(publishedModelNames, profile.PublicModel)
 		}
 	}
 	var models []Model
-	if err := s.db.Where("status = ?", StatusActive).
+	if err := db.Where("status = ?", StatusActive).
 		Where("name IN ?", publishedModelNames).
 		Order("name asc").
 		Find(&models).Error; err != nil {

@@ -364,7 +364,20 @@ func (s *GormStore) AdmitResponseJob(ctx context.Context, id string, owner strin
 		if err := appendResponseJobEvent(tx, id, responseJobStatusRunning, responseJobStatusRunning, "response_admitted", owner, now); err != nil {
 			return err
 		}
-		admission, err = s.admitCallTransaction(ctx, tx, key, modelName, tokenReservation, requestID)
+		var job ResponseJob
+		if err := tx.First(&job, "id = ?", id).Error; err != nil {
+			return err
+		}
+		payload, err := s.decryptResponseJobPayload(job.RequestCiphertext)
+		if err != nil {
+			return err
+		}
+		var envelope responseJobEnvelope
+		if err := json.Unmarshal(payload, &envelope); err != nil {
+			return err
+		}
+		scope := asyncJobScope{job.ProjectID, job.APIKeyID, job.AttributedUserID, modelName, envelope.ClientIP}
+		admission, err = s.admitCallTransaction(ctx, tx, key, modelName, tokenReservation, requestID, scope)
 		if err != nil {
 			return err
 		}

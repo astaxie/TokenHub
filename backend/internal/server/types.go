@@ -150,6 +150,7 @@ type APIKey struct {
 	TokenLimitTPM        *int64            `json:"token_limit_tpm,omitempty"`
 	TokenLimitSet        bool              `json:"-" gorm:"-"`
 	Status               string            `json:"status"`
+	ConfiguredStatus     string            `json:"configured_status,omitempty" gorm:"-"`
 	ExpiresAt            *time.Time        `json:"expires_at,omitempty"`
 	RotatedFromID        string            `json:"rotated_from_id,omitempty" gorm:"index"`
 	GraceUntil           *time.Time        `json:"grace_until,omitempty"`

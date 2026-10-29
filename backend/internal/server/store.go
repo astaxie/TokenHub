@@ -117,6 +117,7 @@ type Store interface {
 	ListGatewayModelAccessKeys(filter GatewayModelAccessKeyFilter) (GatewayModelAccessKeyPage, error)
 	RevealGatewayModelAccessKey(id string, tenantExternalID string, principalType string, principalID string, requestedBy string) (string, error)
 	RevokeGatewayModelAccessKey(id string, tenantExternalID string, principalType string, principalID string, reason string, requestedBy string) (APIKey, error)
+	RebindGatewayModelAccessKeyProject(id string, input GatewayModelAccessKeyProjectInput) (APIKey, error)
 	ListGatewayRequestLogs(filter GatewayRequestLogFilter) (GatewayRequestLogPage, error)
 	GetGatewayUsage(filter GatewayUsageFilter) (GatewayUsageReport, error)
 	CreateProject(project Project) Project
@@ -142,6 +143,9 @@ type Store interface {
 	RotateAPIKey(id string, graceUntil *time.Time) (APIKey, string, error)
 	DeleteAPIKey(id string) error
 	ValidateAPIKey(rawSecret string, clientIP string) (Project, APIKey, error)
+	AuthorizeAsyncJob(projectID, keyID, attributedUserID, model, clientIP string) (Project, APIKey, error)
+	AuthenticateAsyncJobAPIKey(rawSecret, clientIP string) (APIKey, error)
+	ResponseJobModelAccessible(job ResponseJob, clientIP string) bool
 	AddProvider(provider Provider) Provider
 	GetProvider(id string) (Provider, bool)
 	ListProviders() []Provider

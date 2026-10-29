@@ -367,7 +367,7 @@ func (s *Server) handleImageJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleImageJobGet(w http.ResponseWriter, r *http.Request) {
-	project, _, err := s.authenticate(r)
+	key, err := s.authenticateAsyncJobKey(r)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -378,8 +378,12 @@ func (s *Server) handleImageJobGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, ok := s.store.GetImageJob(id)
-	if !ok || job.ProjectID != project.ID {
+	if !ok {
 		writeError(w, r, NewHTTPError(http.StatusNotFound, "image_job_not_found", "Image job not found"))
+		return
+	}
+	if err := s.authorizeImageJobRead(r, key, job); err != nil {
+		writeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, s.imageJobResponse(r, job))
@@ -702,6 +706,10 @@ func (s *Server) processImageJob(work imageJobWork) {
 	}
 	if !claimed {
 		s.finishImageGatewayCall(work.call, RouteSelection{}, Usage{}, http.StatusConflict, "image_job_not_queued", work.clientIP, work.userAgent)
+		return
+	}
+	if _, _, err := s.store.AuthorizeAsyncJob(job.ProjectID, job.APIKeyID, job.AttributedUserID, job.Model, work.clientIP); err != nil {
+		s.finishImageJobFailure(work, job, RouteSelection{}, Usage{}, http.StatusUnauthorized, "image_authorization_lost", "Image job authorization is no longer valid")
 		return
 	}
 	ctx := s.imageContext
@@ -1474,7 +1482,7 @@ func imageJobErrorStatus(code string) int {
 		return http.StatusForbidden
 	case "codex_image_account_unavailable", "image_provider_unavailable", "provider_unavailable":
 		return http.StatusServiceUnavailable
-	case "codex_account_auth_failed":
+	case "codex_account_auth_failed", "image_authorization_lost":
 		return http.StatusUnauthorized
 	case "codex_rate_limited", "codex_quota_exhausted":
 		return http.StatusTooManyRequests

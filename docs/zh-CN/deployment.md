@@ -332,12 +332,21 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 - `POST /api/internal/model-access-keys`：为已生效的项目和人员/工作负载签发模型访问 Key。`request_id` 必填且幂等，仅首次成功响应返回 `api_key` 明文。
 - `POST /api/internal/model-access-keys/{id}/reveal`：精确校验 `tenant_id`、`principal_type`、`principal_id` 所有权后展示 active Key。每次成功展示都会写审计，审计数据不包含 Key 原文。
 - `POST /api/internal/model-access-keys/{id}/revoke`：在请求提供的 `tenant_id` 范围内吊销集成管理的 Key；可选的 `principal_type` 和 `principal_id` 用于强制本人自助所有权。不提供轮转或宽限期。
+- `POST /api/internal/model-access-keys/{id}/project`：使用 `{tenant_id, principal_type:"user", principal_id, project_id, expected_project_id, requested_by}` 改绑个人凭证的项目。所有字段必填，且 `requested_by` 必须等于主体。接口要求集成 Token，凭证必须属于该租户和本人并处于 active 状态。TokenHub 校验目标项目、租户、主体、组织和组织成员关系有效后，在同一事务中更新 scope 并记录审计。预期原项目已变化时返回 `409 model_access_key_project_conflict`；重复最近一次成功改绑请求可幂等重试。
 - `GET /api/internal/providers`：查询 Provider，支持服务端 `name`、`type`、`status`、`health` 筛选和分页；响应不包含 API Key、Headers、Options 或资源 Secret。
 - `GET /api/internal/routes`：查询模型路由，支持服务端 `model_name`、`provider_id`、`strategy`、`status` 筛选和分页；响应仅包含安全的 Provider/资源名称及路由元数据。
 
 集成管理的项目投影会在同一事务中物化为 TokenHub 服务项目。租户、项目和人员/工作负载投影未生效时，Key 创建请求将被拒绝。项目关联组织后，该组织也是授权生命周期边界：用户 Key 要求组织和用户的组织成员关系均为 active，工作负载 Key 则通过项目继承组织状态。临时禁用租户、组织、人员、组织成员关系或工作负载会使适用的 Key 暂时不可用，但不修改 Key 自身的持久化状态；投影重新启用后，原本有效且未过期、未吊销的 Key 自动恢复。删除租户、组织或工作负载、将人员移出租户时，受影响的 Key 将被永久吊销。人员状态和组织成员关系只控制个人 Key，不会隐式禁用该人员所拥有工作负载的 Key。显式吊销或已过期的 Key 不会因投影重新启用而恢复。
 
 集成管理的模型访问 Key 同时保存单向认证 Hash，以及由 `TOKENHUB_SECRET_KEY` 进行 AES-GCM 加密的密文。无法生成密文时创建操作直接失败，禁止明文入库。所有副本和重启过程必须保持 `TOKENHUB_SECRET_KEY` 稳定；更换该值会导致已有 Key 无法再次展示，但基于 Hash 的网关鉴权仍可继续工作。
+
+改绑保留凭证 ID、Key 原文、限额、累计额度桶和在途并发租约。新请求准入直接从数据库读取已提交项目，不存在凭证 scope 缓存。已准入请求在结算时保留原项目快照。历史请求日志和用量保留记录中的项目，项目筛选与分组按记录 scope 查询。改绑响应及审计快照均不包含 Key 原文。应先部署本接口，再部署提供个人凭证项目选择的客户端。
+
+集成管理的 Key 响应可选返回 `configured_status`，表示 Key 持久化的生命周期状态；`status` 继续表示经过期和投影检查后的有效状态。自身配置为 active、仅因原项目归档而禁用的 Key，可以改绑到已授权的有效项目。自身配置为 disabled、已吊销或已过期的 Key 不可改绑。Key 改绑后重放原项目的创建请求会返回 `409 model_access_key_request_project_changed`；新的凭证生命周期应使用新的请求 ID。
+
+已有 Responses 和图片任务在改绑后保留原项目及 API Key 身份。Responses 的读取与取消、图片任务的跨项目读取必须使用原 Key，并重新校验原项目的租户、组织、人员和成员关系状态。图片任务在原项目内继续沿用已有的项目共享读取行为。Responses 的读取与取消继续遵守原项目的有效模型、可用路由和路由策略可见性校验。仅归档新项目不会阻断原项目授权仍有效的任务。Worker 在执行前校验 Key 自身状态、过期时间、IP 规则和原模型范围；队列中的 Responses 在准入时继续使用原项目的额度与预算策略。用量和请求日志仍按原项目结算，同一 Key 的累计额度跨项目持续生效。
+
+本地改绑验证覆盖 SQLite 事务和并发。PostgreSQL 复用现有租户及 API Key advisory lock，并配合行锁；本次尚未在真实 PostgreSQL 多副本部署中验收，生产上线前仍需在目标环境验证。
 ## 本地运行生产构建（不使用 Docker）
 
 `deploy/local/run-local.sh` 以完全不依赖 Docker、不需要 root、不需要 systemd 的方式，在自己的机器上用生产构建运行后端和控制台。它是开发辅助手段，不是部署方式：要把 TokenHub 装到服务器上，请使用[原生 Release + systemd](#原生-release--systemd) 或 [Docker Compose](#docker-compose)。

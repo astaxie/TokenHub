@@ -1433,24 +1433,11 @@ func (s *Server) writeRouteHeaders(w http.ResponseWriter, call CallContext, rout
 }
 
 func (s *Server) authenticate(r *http.Request) (Project, APIKey, error) {
-	auth := r.Header.Get("authorization")
-	if auth != "" {
-		const prefix = "Bearer "
-		if !strings.HasPrefix(auth, prefix) {
-			return Project{}, APIKey{}, ErrInvalidAPIKey
-		}
-		return s.store.ValidateAPIKey(strings.TrimSpace(strings.TrimPrefix(auth, prefix)), s.clientIP(r))
+	secret, err := requestAPIKeySecret(r)
+	if err != nil {
+		return Project{}, APIKey{}, err
 	}
-	if apiKey := strings.TrimSpace(r.Header.Get("x-api-key")); apiKey != "" {
-		return s.store.ValidateAPIKey(apiKey, s.clientIP(r))
-	}
-	// The official Google Gen AI SDK, and therefore Gemini CLI in API-key mode,
-	// sends its credential in x-goog-api-key when GOOGLE_GEMINI_BASE_URL points
-	// at a compatible gateway.
-	if apiKey := strings.TrimSpace(r.Header.Get("x-goog-api-key")); apiKey != "" {
-		return s.store.ValidateAPIKey(apiKey, s.clientIP(r))
-	}
-	return Project{}, APIKey{}, ErrInvalidAPIKey
+	return s.store.ValidateAPIKey(secret, s.clientIP(r))
 }
 
 // playgroundModel resolves the catalog entry for a playground request so its usage

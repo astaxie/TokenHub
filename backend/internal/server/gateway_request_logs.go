@@ -156,7 +156,7 @@ func (s *GormStore) ListGatewayRequestLogs(filter GatewayRequestLogFilter) (Gate
 		base = base.Where("LOWER(ak.principal_external_id) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(gpr.display_name, gw.name, '')) LIKE ? ESCAPE '\\'", pattern, pattern)
 	}
 	if value := strings.TrimSpace(filter.ProjectExternalID); value != "" {
-		base = base.Where("ak.project_external_id = ?", value)
+		base = base.Where("gp.external_project_id = ?", value)
 	}
 	if value := strings.TrimSpace(filter.OrganizationExternalID); value != "" {
 		base = base.Where("go.external_organization_id = ?", value)
@@ -188,7 +188,7 @@ func (s *GormStore) ListGatewayRequestLogs(filter GatewayRequestLogFilter) (Gate
 			ak.principal_type,
 			ak.principal_external_id,
 			COALESCE(gpr.display_name, gw.name, '') AS principal_name,
-			ak.project_external_id,
+			gp.external_project_id AS project_external_id,
 			COALESCE(gp.name, '') AS project_name,
 			COALESCE(go.external_organization_id, '') AS organization_external_id,
 			COALESCE(go.name, '') AS organization_name,
@@ -202,7 +202,7 @@ func (s *GormStore) ListGatewayRequestLogs(filter GatewayRequestLogFilter) (Gate
 			rl.error_code,
 			rl.latency_ms,
 			rl.created_at`).
-		Group("rl.id, rl.request_id, ak.principal_type, ak.principal_external_id, gpr.display_name, gw.name, ak.project_external_id, gp.name, go.external_organization_id, go.name, rl.model_name, rl.provider_id, rl.status_code, rl.error_code, rl.latency_ms, rl.created_at").
+		Group("rl.id, rl.request_id, ak.principal_type, ak.principal_external_id, gpr.display_name, gw.name, gp.external_project_id, gp.name, go.external_organization_id, go.name, rl.model_name, rl.provider_id, rl.status_code, rl.error_code, rl.latency_ms, rl.created_at").
 		Order("rl.created_at DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).

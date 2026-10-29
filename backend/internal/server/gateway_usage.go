@@ -126,7 +126,7 @@ func (s *GormStore) gatewayUsageScope(filter GatewayUsageFilter, table string) (
 		Joins("LEFT JOIN gateway_workloads AS gw ON ak.principal_type <> ? AND gw.tenant_id = gp.tenant_id AND gw.external_workload_id = ak.principal_external_id", "user").
 		Where(prefix+".created_at >= ? AND "+prefix+".created_at <= ?", filter.DateFrom, filter.DateTo)
 	if value := strings.TrimSpace(filter.ProjectExternalID); value != "" {
-		query = query.Where("ak.project_external_id = ?", value)
+		query = query.Where("gp.external_project_id = ?", value)
 	}
 	if value := strings.TrimSpace(filter.OrganizationExternalID); value != "" {
 		query = query.Where("go.external_organization_id = ?", value)
@@ -206,7 +206,7 @@ func (s *GormStore) GetGatewayUsage(filter GatewayUsageFilter) (GatewayUsageRepo
 	if report.Breakdown.Organizations, err = buildGatewayUsageBreakdown(usageScope, logScope, organizationID, organizationName, organizationID, organizationName); err != nil {
 		return GatewayUsageReport{}, err
 	}
-	if report.Breakdown.Projects, err = buildGatewayUsageBreakdown(usageScope, logScope, "ak.project_external_id", "COALESCE(NULLIF(gp.name, ''), ak.project_external_id)", "ak.project_external_id", "COALESCE(NULLIF(gp.name, ''), ak.project_external_id)"); err != nil {
+	if report.Breakdown.Projects, err = buildGatewayUsageBreakdown(usageScope, logScope, "gp.external_project_id", "COALESCE(NULLIF(gp.name, ''), gp.external_project_id)", "gp.external_project_id", "COALESCE(NULLIF(gp.name, ''), gp.external_project_id)"); err != nil {
 		return GatewayUsageReport{}, err
 	}
 	principalName := "COALESCE(NULLIF(gpr.display_name, ''), NULLIF(gw.name, ''), ak.principal_external_id)"

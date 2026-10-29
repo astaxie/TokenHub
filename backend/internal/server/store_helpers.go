@@ -80,6 +80,9 @@ func modelAllowedByScopes(project Project, key APIKey, modelName string) bool {
 }
 
 func publicKey(key APIKey) APIKey {
+	if key.ManagedBy == gatewayModelAccessKeyManagedBy && key.ConfiguredStatus == "" {
+		key.ConfiguredStatus = key.Status
+	}
 	key.KeyHash = ""
 	key.KeyCiphertext = ""
 	if key.Allowed == nil && key.AllowedModels != nil {

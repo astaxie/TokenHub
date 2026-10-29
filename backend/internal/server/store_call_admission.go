@@ -21,7 +21,7 @@ type callAdmissionResult struct {
 // inside the caller's transaction. Durable background jobs use this helper in
 // the same transaction that records their admitted phase, closing the crash
 // window between consuming quota and persisting the request ID.
-func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key APIKey, modelName string, tokenReservation int64, requestID string) (admission callAdmissionResult, err error) {
+func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key APIKey, modelName string, tokenReservation int64, requestID string, jobScopes ...asyncJobScope) (admission callAdmissionResult, err error) {
 	redisAdmitted := false
 	defer func() {
 		if err != nil && redisAdmitted {
@@ -30,6 +30,11 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 			}
 		}
 	}()
+	if len(jobScopes) > 0 && key.ManagedBy == gatewayModelAccessKeyManagedBy {
+		if err := s.lockScopeForSharedRead(tx, "integration_tenant", key.TenantExternalID); err != nil {
+			return admission, err
+		}
+	}
 	if err := s.lockScopeForUpdate(tx, "api_key", key.ID); err != nil {
 		return admission, err
 	}
@@ -38,6 +43,13 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 		return admission, ErrInvalidAPIKey
 	}
 	hydrateAPIKey(&privateKey)
+	if len(jobScopes) > 0 {
+		_, scopedKey, scopeErr := authorizeAsyncJobScope(tx, privateKey, jobScopes[0])
+		if scopeErr != nil {
+			return admission, scopeErr
+		}
+		privateKey = scopedKey
+	}
 	if err := s.lockScopeForSharedRead(tx, "project", privateKey.ProjectID); err != nil {
 		return admission, err
 	}

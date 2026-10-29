@@ -3,17 +3,19 @@ package server
 import (
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
-func (s *GormStore) providerImageCapabilityAllowedByPolicyLocked(project Project, key APIKey, policy *ScopedRoutingPolicy, profile providerImageCapabilityRouteProfile) bool {
+func (s *GormStore) providerImageCapabilityAllowedByPolicyLocked(db *gorm.DB, project Project, key APIKey, policy *ScopedRoutingPolicy, profile providerImageCapabilityRouteProfile) bool {
 	profile.withDefaults()
 	var routes []ModelRoute
-	if err := s.db.Where("model_name = ? AND provider_model = ? AND status = ?", profile.PublicModel, profile.UpstreamModel, StatusActive).Find(&routes).Error; err != nil {
+	if err := db.Where("model_name = ? AND provider_model = ? AND status = ?", profile.PublicModel, profile.UpstreamModel, StatusActive).Find(&routes).Error; err != nil {
 		return false
 	}
 	for _, configuredRoute := range routes {
 		var provider Provider
-		providerQuery := s.db.Where("id = ? AND status = ? AND healthy = ?", configuredRoute.ProviderID, StatusActive, true)
+		providerQuery := db.Where("id = ? AND status = ? AND healthy = ?", configuredRoute.ProviderID, StatusActive, true)
 		if profile.ProviderType != "" {
 			providerQuery = providerQuery.Where("type = ?", profile.ProviderType)
 		}
@@ -21,7 +23,7 @@ func (s *GormStore) providerImageCapabilityAllowedByPolicyLocked(project Project
 			continue
 		}
 		var resources []ProviderResource
-		query := s.db.Where("provider_id = ? AND status = ? AND healthy = ?", provider.ID, StatusActive, true)
+		query := db.Where("provider_id = ? AND status = ? AND healthy = ?", provider.ID, StatusActive, true)
 		if profile.ResourceType != "" {
 			query = query.Where("resource_type = ?", profile.ResourceType)
 		}
