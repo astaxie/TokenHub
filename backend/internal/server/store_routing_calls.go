@@ -1132,6 +1132,8 @@ func (s *GormStore) CreateImageJobWithAdmission(ctx context.Context, project Pro
 			return err
 		}
 		job.RequestID = admission.call.RequestID
+		job.ProjectID = admission.call.Project.ID
+		job.APIKeyID = admission.call.Key.ID
 		job.AttributedUserID = admission.call.AttributedUserID
 		persisted, err = s.createImageJob(tx, imageJobWithAdmission(job, admission.call), prompt)
 		return err
