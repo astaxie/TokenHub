@@ -201,7 +201,7 @@ OpenAI Codex Subscription アカウントへルーティングされるモデル
 
 Codex ルートの Messages リクエストでは、サブスクリプション上流に対応するフィールドがないため、`max_tokens`、`temperature`、`top_p`、`stop_sequences`、Anthropic の構造化出力フォーマットを強制できません。
 
-`mid-conversation-system-2026-04-07` を有効にした Claude Code リクエストでは、`messages` 内に `system` エントリを含めることができます。TokenHub は Anthropic ネイティブルートではそのエントリを保持し、OpenAI 互換ルートでは順序を維持した system message に変換します。この beta がない場合、`messages` で使用できる role は引き続き `user` と `assistant` のみです。
+Claude Code リクエストは、従来の `mid-conversation-system-2026-04-07` beta header なしで `messages` 内に `system` エントリを含めることができます。これは [Anthropic の現在の Messages API](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages) に対応しています。TokenHub は Anthropic ネイティブルートで位置と内容を保持し、対応モデル、配置、引き続き beta である機能の検証は上流に委ねます。OpenAI 互換ルートでは、テキストのみのエントリを従来どおり順序を維持した system message に変換し、先頭への移動やトップレベルのシステムプロンプトへの統合は行いません。対話途中の system message を拒否する上流では、このリクエストは引き続き未対応です。対応する Anthropic ネイティブルートを使用してください。
 
 ローカル Claude Code には `/v1` suffix を付けず、TokenHub Host URL を設定します。
 
