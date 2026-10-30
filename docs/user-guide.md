@@ -201,7 +201,7 @@ Models routed to an OpenAI Codex Subscription account work through the same Mess
 
 On Codex-backed Messages routes, `max_tokens`, `temperature`, `top_p`, `stop_sequences`, and Anthropic structured-output formatting cannot be enforced because the subscription upstream does not support their equivalent request fields.
 
-Claude Code requests that enable `mid-conversation-system-2026-04-07` may include `system` entries inside `messages`. TokenHub preserves those entries on native Anthropic routes and translates them into ordered system messages on OpenAI-compatible routes. Without that beta, `messages` continues to accept only `user` and `assistant` roles.
+Claude Code requests may include `system` entries inside `messages` without the legacy `mid-conversation-system-2026-04-07` beta header, matching [Anthropic's current Messages API](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages). TokenHub preserves their positions and content on native Anthropic routes; the upstream still determines supported models, placement, and beta-only features. OpenAI-compatible routes continue translating text-only entries into ordered system messages, without moving them to the beginning or merging them into the top-level system prompt. An upstream that rejects mid-conversation system messages remains unsupported for these requests; use a compatible native Anthropic route instead.
 
 Configure local Claude Code with the TokenHub host URL, without the `/v1` suffix:
 
