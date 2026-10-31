@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -92,6 +94,32 @@ func TestIntegrationServiceUsesRegistryProbeFallbackPolicy(t *testing.T) {
 	}
 	if tested, ok := providerResult.(Provider); !ok || tested.ID != provider.ID || !tested.Healthy {
 		t.Fatalf("provider probe result = %#v, want store-tested Provider", providerResult)
+	}
+}
+
+func TestIntegrationServiceCatalogProbeFailureDoesNotLatchProviderUnhealthy(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code":1001,"msg":"missing authorization","success":false}`))
+	}))
+	defer upstream.Close()
+
+	store := NewMemoryStore()
+	provider := store.AddProvider(Provider{
+		ID: "prv_catalog_error", Name: "Catalog Error", Type: ProviderOpenAICompatible,
+		BaseURL: upstream.URL, Status: StatusActive, Healthy: true,
+	})
+	service := NewIntegrationService(store, NewAdapterRegistry(), upstream.Client())
+	if _, err := service.TestProvider(context.Background(), provider.ID); err == nil {
+		t.Fatal("test provider error = nil, want empty catalog error")
+	}
+	updated, ok := store.GetProvider(provider.ID)
+	if !ok {
+		t.Fatal("provider disappeared after catalog probe")
+	}
+	if !updated.Healthy {
+		t.Fatal("catalog discovery failure must not latch provider unhealthy")
 	}
 }
 
