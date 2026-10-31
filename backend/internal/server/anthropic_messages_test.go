@@ -921,13 +921,13 @@ func TestAnthropicMessagesPreservesMidConversationSystemForNativeRoute(t *testin
 	}
 }
 
-func TestAnthropicMessagesRejectsSystemRoleWithoutBeta(t *testing.T) {
+func TestAnthropicMessagesRejectsUnsupportedRole(t *testing.T) {
 	body := bytes.NewBufferString(`{
 		"model":"claude-tokenhub-test",
 		"max_tokens":1024,
 		"messages":[
 			{"role":"user","content":"Inspect the repository."},
-			{"role":"system","content":"Keep the next response concise."}
+			{"role":"developer","content":"Keep the next response concise."}
 		]
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", body)
@@ -935,7 +935,7 @@ func TestAnthropicMessagesRejectsSystemRoleWithoutBeta(t *testing.T) {
 
 	_, err := New(NewMemoryStore()).decodeAnthropicMessagesRequest(httptest.NewRecorder(), req, true)
 	if err == nil {
-		t.Fatal("expected system role without beta to be rejected")
+		t.Fatal("expected unsupported role to be rejected")
 	}
 	httpErr := AsHTTPError(err)
 	if httpErr.Status != http.StatusBadRequest || httpErr.Code != "invalid_message" {

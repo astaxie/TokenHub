@@ -201,7 +201,7 @@ OpenAI 兼容路由可通过 Provider 和 Provider Resource 的 `options` 适配
 
 在 Codex 路由的 Messages 请求中，由于订阅上游不支持对应请求字段，`max_tokens`、`temperature`、`top_p`、`stop_sequences` 和 Anthropic 结构化输出格式无法被强制执行。
 
-启用 `mid-conversation-system-2026-04-07` 的 Claude Code 请求可以在 `messages` 中包含 `system` 条目。TokenHub 会在原生 Anthropic 路由中保留这些条目，并在 OpenAI 兼容路由中将其转换为保持原顺序的系统消息。未启用该 beta 时，`messages` 仍只接受 `user` 和 `assistant` role。
+Claude Code 请求无需旧的 `mid-conversation-system-2026-04-07` beta header，即可在 `messages` 中包含 `system` 条目，这与 [Anthropic 当前的 Messages API](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages) 一致。TokenHub 在原生 Anthropic 路由中保留条目的位置和内容；支持的模型、消息位置和仍处于 beta 阶段的功能仍由上游校验。OpenAI 兼容路由继续将纯文本条目转换为保持原顺序的系统消息，不会将其移至开头或合并到顶层系统提示中。拒绝对话中途系统消息的上游仍不支持此类请求，请改用兼容的原生 Anthropic 路由。
 
 本地 Claude Code 使用 TokenHub Host URL，不添加 `/v1` 后缀：
 
