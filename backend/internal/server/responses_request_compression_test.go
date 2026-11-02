@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -152,5 +154,83 @@ func TestChatGPTSubscriptionCompressesWhenEnabled(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("upstream calls = %d", calls)
+	}
+}
+
+type closeAwareBody struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (b *closeAwareBody) Read([]byte) (int, error) {
+	<-b.closed
+	return 0, io.EOF
+}
+
+func (b *closeAwareBody) Close() error {
+	b.once.Do(func() { close(b.closed) })
+	return nil
+}
+
+func TestSubscriptionPostDoesNotWaitOnSilentCompressionError(t *testing.T) {
+	body := &closeAwareBody{closed: make(chan struct{})}
+	calls := 0
+	client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return &http.Response{StatusCode: http.StatusBadRequest, Body: body, Header: make(http.Header), Request: request}, nil
+		}
+		t.Errorf("ordinary 400 was retried")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("ok")), Header: make(http.Header), Request: request}, nil
+	})}
+	request, err := http.NewRequest(http.MethodPost, "https://api.openai.com/v1/responses", strings.NewReader("compressed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	_, err = subscriptionPost(context.Background(), client, request, func() (*http.Request, error) {
+		return http.NewRequest(http.MethodPost, "https://api.openai.com/v1/responses", strings.NewReader("raw"))
+	}, "zstd", 40*time.Millisecond)
+	elapsed := time.Since(started)
+	if err == nil {
+		t.Fatal("silent 400 succeeded")
+	}
+	if calls != 1 {
+		t.Fatalf("upstream calls = %d", calls)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("silent error body blocked for %s", elapsed)
+	}
+}
+
+func TestSubscriptionPostRetries415WithoutReadingBody(t *testing.T) {
+	body := &closeAwareBody{closed: make(chan struct{})}
+	calls := 0
+	client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		if request.Header.Get("Content-Encoding") == "zstd" {
+			return &http.Response{StatusCode: http.StatusUnsupportedMediaType, Body: body, Header: make(http.Header), Request: request}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("ok")), Header: make(http.Header), Request: request}, nil
+	})}
+	request, err := http.NewRequest(http.MethodPost, "https://api.openai.com/v1/responses", strings.NewReader("compressed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Encoding", "zstd")
+	started := time.Now()
+	response, err := subscriptionPost(context.Background(), client, request, func() (*http.Request, error) {
+		return http.NewRequest(http.MethodPost, "https://api.openai.com/v1/responses", strings.NewReader("raw"))
+	}, "zstd", time.Minute)
+	elapsed := time.Since(started)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if calls != 2 {
+		t.Fatalf("upstream calls = %d", calls)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("415 body was read for %s", elapsed)
 	}
 }

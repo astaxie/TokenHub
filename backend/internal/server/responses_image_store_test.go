@@ -58,6 +58,44 @@ func TestResponsesImageStoreNewItemsDropStoredHistory(t *testing.T) {
 	}
 }
 
+func TestResponsesImageStoreNewItemsMatchStoredAssistantHistory(t *testing.T) {
+	prior := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": "earlier"},
+	}}
+	assistant := map[string]any{"type": "message", "role": "assistant", "content": []any{
+		map[string]any{"type": "output_text", "text": "seen"},
+	}}
+	image := imageDataURL("C", 1100)
+	firstImage := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_image", "image_url": image},
+	}}
+	boundary := responsesImageStoreBoundary([]any{prior, assistant, firstImage})
+	later := map[string]any{"type": "message", "role": "assistant", "content": []any{
+		map[string]any{"type": "output_text", "text": "later"},
+	}}
+	next := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": "next-turn"},
+	}}
+	suffix, ok := responsesImageStoreNewItems([]any{prior, assistant, firstImage, later, next}, boundary)
+	if !ok {
+		t.Fatal("stored assistant history did not match")
+	}
+	encoded, err := json.Marshal(suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(encoded)
+	if strings.Contains(body, image) || strings.Contains(body, "seen") || strings.Contains(body, "later") || strings.Contains(body, "earlier") {
+		t.Fatalf("stored history was forwarded: %s", body)
+	}
+	if !strings.Contains(body, "next-turn") {
+		t.Fatalf("new input was dropped: %s", body)
+	}
+	if _, ok := responsesImageStoreNewItems([]any{prior, next}, boundary); ok {
+		t.Fatal("replay that omitted the stored assistant matched")
+	}
+}
+
 func TestResponsesDecodeLimitHonorsConfiguredCeiling(t *testing.T) {
 	server := &Server{config: Config{MaxMultimodalRequestBytes: 32 << 20}}
 	if server.responsesDecodeLimit() != responsesImageReplayBytes {

@@ -368,8 +368,9 @@ func responsesRawFieldPresent(request ResponsesRequest, key string) bool {
 }
 
 // responsesImageStoreNewItems returns the items that were not already accepted
-// into the stored response. Model-output echoes may sit between confirmed input
-// items; they are not forwarded again. A mismatch keeps the caller on a full replay.
+// into the stored response. An echo is skipped only when it is not the next
+// stored item. A stored assistant message still has to match, or a later turn
+// falls back to the full replay. A mismatch keeps the caller on a full replay.
 func responsesImageStoreNewItems(input any, boundary string) ([]any, bool) {
 	items, ok := input.([]any)
 	if !ok || len(items) == 0 {
@@ -381,13 +382,21 @@ func responsesImageStoreNewItems(input any, boundary string) ([]any, bool) {
 	}
 	index := 0
 	for _, hash := range expected {
-		for index < len(items) && responsesImageStoreReplayEcho(items[index]) {
+		matched := false
+		for index < len(items) {
+			if responsesInputItemHash(items[index]) == hash {
+				matched = true
+				index++
+				break
+			}
+			if !responsesImageStoreReplayEcho(items[index]) {
+				return nil, false
+			}
 			index++
 		}
-		if index >= len(items) || responsesInputItemHash(items[index]) != hash {
+		if !matched {
 			return nil, false
 		}
-		index++
 	}
 	for index < len(items) && responsesImageStoreReplayEcho(items[index]) {
 		index++

@@ -50,8 +50,10 @@ func finishSubscriptionResponse(resp *http.Response) (*http.Response, error) {
 
 // subscriptionPost sends one Responses body. A zstd body that the upstream
 // refuses is retried once uncompressed. The refusal body is not returned to
-// the caller.
-func subscriptionPost(ctx context.Context, client *http.Client, req *http.Request, rawReq func() (*http.Request, error), encoding string) (*http.Response, error) {
+// the caller. HTTP 415 is a refusal without reading the body. Any other error
+// body is peeked under the stream idle budget, because a streaming client has
+// no total deadline.
+func subscriptionPost(ctx context.Context, client *http.Client, req *http.Request, rawReq func() (*http.Request, error), encoding string, idle time.Duration) (*http.Response, error) {
 	if encoding == "" {
 		return subscriptionHTTP(ctx, client, req)
 	}
@@ -62,18 +64,27 @@ func subscriptionPost(ctx context.Context, client *http.Client, req *http.Reques
 	if resp.StatusCode < http.StatusBadRequest {
 		return finishSubscriptionResponse(resp)
 	}
-	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	header := resp.Header.Clone()
 	status := resp.StatusCode
-	resp.Body.Close()
-	if responsesCompressionRejected(status, snippet) {
-		fallback, buildErr := rawReq()
-		if buildErr != nil {
-			return nil, buildErr
-		}
-		return subscriptionHTTP(ctx, client, fallback)
+	if status == http.StatusUnsupportedMediaType {
+		resp.Body.Close()
+		return subscriptionCompressionFallback(ctx, client, rawReq)
+	}
+	body := newIdleTimeoutReadCloser(resp.Body, subscriptionIdleTimeout(idle), NewHTTPError(http.StatusGatewayTimeout, "subscription_stream_idle", "Subscription stream was idle for too long"))
+	snippet, readErr := io.ReadAll(io.LimitReader(body, 4096))
+	body.Close()
+	if readErr == nil && responsesCompressionRejected(status, snippet) {
+		return subscriptionCompressionFallback(ctx, client, rawReq)
 	}
 	return nil, subscriptionStatusFailure(status, header)
+}
+
+func subscriptionCompressionFallback(ctx context.Context, client *http.Client, rawReq func() (*http.Request, error)) (*http.Response, error) {
+	fallback, buildErr := rawReq()
+	if buildErr != nil {
+		return nil, buildErr
+	}
+	return subscriptionHTTP(ctx, client, fallback)
 }
 
 func subscriptionStatusFailure(status int, header http.Header) error {

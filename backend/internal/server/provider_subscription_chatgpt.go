@@ -89,7 +89,7 @@ func (a *ChatGPTSubscriptionAdapter) request(ctx context.Context, provider Provi
 		}
 		resp, err := subscriptionPost(ctx, client, req, func() (*http.Request, error) {
 			return build(body, "")
-		}, encoding)
+		}, encoding, a.StreamIdleTimeout)
 		if err != nil {
 			if attempt == 0 && AsHTTPError(err).UpstreamStatus == http.StatusUnauthorized {
 				continue
