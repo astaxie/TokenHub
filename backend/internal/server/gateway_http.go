@@ -252,7 +252,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ResponsesRequest
-	if err := s.decodeJSONLimit(w, r, &req, s.config.MaxMultimodalRequestBytes); err != nil {
+	if err := s.decodeJSONLimit(w, r, &req, s.responsesDecodeLimit()); err != nil {
 		writeError(w, r, err)
 		return
 	}
@@ -403,6 +403,11 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	if err := s.applyResponsesImageStore(r.Context(), &routed, &req, r.Header); err != nil {
+		s.finishFailedRoutedCall(r, routed, nil, Usage{}, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
 	if req.Stream {
 		s.handleStreamingResponses(w, r, routed, req, auditPayload)
 		return
@@ -435,6 +440,11 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.bindJevResponse(r.Context(), routed.Call, route, map[string]string{"id": upstreamResponseID}, jevResponseID(resp)); err != nil {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
+	if err := s.rememberResponsesImageStore(r.Context(), routed.Call, route, r.Header, req, map[string]string{"id": upstreamResponseID}); err != nil {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
 		return

@@ -135,6 +135,8 @@ TokenHub が `provider_capability_not_supported` を返す場合、管理者が�
 
 DeepSeek 公式 Provider では、Responses と Codex の能力はモデル単位で、`deepseek-v4-flash` と `deepseek-v4-pro` の両方で利用できます。両モデルはサーバー側の `web_search`、Codex の `apply_patch` カスタムツール、0～20 の `top_logprobs` をサポートしますが、画像やファイルの入力には対応していません。DeepSeek の Responses API はステートレスであるため、クライアントは `previous_response_id` や `conversation` に依存せず、各ターンの `input` に会話履歴全体を渡す必要があります。DeepSeek のコンテキストキャッシュは自動管理です。`TOKENHUB_CACHE_AFFINITY_ENABLED=true` を有効にすると、TokenHub は `session-id`、`client_metadata.session_id`、`prompt_cache_key` などの安定した Codex セッションヒントを使い、連続する Responses リクエストを同じ上流アカウントへ固定します。このキーはゲートウェイルーティング専用であり、TokenHub 内に別のレスポンスキャッシュを作成するものではありません。
 
+Codex のカスタムプロバイダーは `store: false` を送り、インライン画像を含む会話全体を毎ターン再送します。その画像は返信のたびに大きくなり、TokenHub の 32 MiB マルチモーダル上限（`413 payload_too_large`）を超えることがあります。OpenAI、Azure OpenAI、OpenAI 互換の Responses ルートでは、リクエストに Codex のセッション ID（`session-id`、`client_metadata.session_id`、`prompt_cache_key`、`thread-id`）があるとき、TokenHub は上流レスポンスを同じプロバイダーリソースに 30 日間固定します。画像を含む最初のターンは `store: true` で転送します。後続ターンはその上流レスポンス ID を再利用し、それ以前のインライン画像バイトを除くので、転送する本文は `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 以内に収まります。`/v1/responses` は 128 MiB、または設定済みマルチモーダル上限の大きい方まで読み、上限を適用する前に再送を縮小できるようにします。TokenHub の前段にあるリバースプロキシはその読み取りを許可する必要があります。ChatGPT Codex サブスクリプションのルートは `store: false` のままです。プロバイダーまたはリソースのオプション `responses_store` を `off` にするとこの動作を止められます。`store: true` を保持する別の Responses プロバイダーでは `on` にします。この固定は `TOKENHUB_CACHE_AFFINITY_ENABLED` とは独立です。Codex 自身が `responses_store` オプションを持つまでは完全な記録を送り続けます。TokenHub がゲートウェイ側で補います。
+
 ---
 
 ## 3. 方法 1：分離 Profile

@@ -508,6 +508,13 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 	}
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
+	// The client already has the stream, so a binding save failure degrades the
+	// next turn to a full replay instead of failing a response it has received.
+	if err := s.rememberResponsesImageStore(r.Context(), routed.Call, route, r.Header, request, response); err != nil && !streamStarted {
+		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
+		writeError(w, r, err)
+		return
+	}
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, response)
 }
 

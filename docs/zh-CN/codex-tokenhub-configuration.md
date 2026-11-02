@@ -179,6 +179,8 @@ Invoke-WebRequest `
 
 对于 DeepSeek 官方 Provider，Responses 与 Codex 能力按模型开放，`deepseek-v4-flash` 和 `deepseek-v4-pro` 均可使用。两个模型都支持服务端 `web_search`、Codex 的 `apply_patch` 自定义工具，以及范围为 0–20 的 `top_logprobs`，但不支持图片或文件输入。DeepSeek 的 Responses API 是无状态的，因此客户端每轮都必须在 `input` 中传入完整对话历史，不能依赖 `previous_response_id` 或 `conversation`。DeepSeek 会自动管理上下文缓存。启用 `TOKENHUB_CACHE_AFFINITY_ENABLED=true` 后，TokenHub 会使用 `session-id`、`client_metadata.session_id` 或 `prompt_cache_key` 等稳定的 Codex 会话提示，将连续 Responses 请求固定到同一个上游账号；该标识仅控制网关路由，不会在 TokenHub 内创建另一份响应缓存。
 
+Codex 自定义 Provider 会发送 `store: false`，并在每一轮重放完整记录，包括内联图片。这些图片会在每次回复后变大，可能超过 TokenHub 32 MiB 的多模态上限（`413 payload_too_large`）。对于 OpenAI、Azure OpenAI 和 OpenAI 兼容的 Responses 路由，当请求带有 Codex 会话标识（`session-id`、`client_metadata.session_id`、`prompt_cache_key` 或 `thread-id`）时，TokenHub 会把上游响应固定在同一个 Provider 资源上，保留 30 天。第一轮带图片的请求会以 `store: true` 转发。之后的轮次复用该上游响应 ID，并去掉更早的内联图片字节，使转发的请求体保持在 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 以内。`/v1/responses` 最多会读到 128 MiB，或者已配置的多模态上限（取较大者），以便在应用该上限之前缩小重放内容。TokenHub 前面的反向代理必须允许这么大的读取。ChatGPT Codex 订阅路由仍保持 `store: false`。将 Provider 或资源选项 `responses_store` 设为 `off` 可关闭该行为；若另一个 Responses Provider 会保留 `store: true`，则设为 `on`。此粘性与 `TOKENHUB_CACHE_AFFINITY_ENABLED` 无关。在 Codex 自己支持 `responses_store` 选项之前，它仍会发送完整记录；TokenHub 在网关上补上这一步。
+
 ---
 
 ## 3. 方案一：Profile 局部配置

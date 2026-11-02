@@ -85,6 +85,15 @@
       "checksum": "6e711e07bffa5bda9d04679c54e2d82fa72766b0d83bb0d364778f4a8af35fa4",
       "lock_timeout_seconds": 30,
       "statement_budget": 2
+    },
+    {
+      "version": 11,
+      "name": "add-responses-image-store-bindings",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "02301e5c9d40debdf11e0e6ebae9f69caaedbef16b990bd8d71ee1fc87eff7cb",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 10
     }
   ]
 }
