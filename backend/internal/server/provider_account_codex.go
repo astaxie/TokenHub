@@ -160,7 +160,7 @@ func (a CodexSubscriptionAdapter) OpenResponses(ctx context.Context, provider Pr
 		return nil, err
 	}
 	fingerprintIDs := prepareCodexFingerprintRequest(provider, incoming, &request)
-	resp, err := a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
+	resp, err := a.openResponsesWithRetry(ctx, endpoint, creds, provider.Options, providerModel, request, incoming, fingerprintIDs)
 	if err == nil || providerErrorDisposition(err) != ProviderErrorAuthBroken {
 		return resp, err
 	}
@@ -168,17 +168,17 @@ func (a CodexSubscriptionAdapter) OpenResponses(ctx context.Context, provider Pr
 	if refreshErr != nil {
 		return nil, refreshErr
 	}
-	return a.openResponsesWithRetry(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
+	return a.openResponsesWithRetry(ctx, endpoint, creds, provider.Options, providerModel, request, incoming, fingerprintIDs)
 }
 
-func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (*http.Response, error) {
+func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, endpoint string, creds ProviderResourceCredentials, options map[string]string, providerModel string, request ResponsesRequest, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (*http.Response, error) {
 	maxRetries := a.MaxRequestRetries
 	if maxRetries <= 0 {
 		maxRetries = openAICodexMaxRequestRetries
 	}
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		resp, err := a.openResponsesWithCredentials(ctx, endpoint, creds, providerModel, request, incoming, fingerprintIDs)
+		resp, err := a.openResponsesWithCredentials(ctx, endpoint, creds, options, providerModel, request, incoming, fingerprintIDs)
 		if err == nil {
 			return resp, nil
 		}
@@ -204,7 +204,7 @@ func (a CodexSubscriptionAdapter) openResponsesWithRetry(ctx context.Context, en
 	return nil, lastErr
 }
 
-func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Context, endpoint string, creds ProviderResourceCredentials, providerModel string, request ResponsesRequest, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (*http.Response, error) {
+func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Context, endpoint string, creds ProviderResourceCredentials, options map[string]string, providerModel string, request ResponsesRequest, incoming http.Header, fingerprintIDs *codexFingerprintIDs) (*http.Response, error) {
 	accessToken := strings.TrimSpace(creds.AccessToken)
 	accountID := strings.TrimSpace(creds.AccountID)
 	if accessToken == "" {
@@ -214,6 +214,74 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 		return nil, NewHTTPError(http.StatusBadRequest, "openai_account_id_missing", "OpenAI ChatGPT account ID is missing")
 	}
 	request.Model = strings.TrimSpace(providerModel)
+	request = codexSubscriptionResponsesRequest(request)
+	applyCodexRequestEnvelope(&request, incoming)
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return nil, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error())
+	}
+	host := responsesEndpointHost(endpoint)
+	bodies := []struct {
+		payload  []byte
+		encoding string
+	}{{payload: payload}}
+	if wire, encoding := encodeResponsesUpstreamBody(options, host, payload); encoding != "" {
+		bodies = []struct {
+			payload  []byte
+			encoding string
+		}{{payload: wire, encoding: encoding}, {payload: payload}}
+	}
+	client := a.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	for _, body := range bodies {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body.payload))
+		if err != nil {
+			return nil, NewHTTPError(http.StatusBadGateway, "codex_request_failed", err.Error())
+		}
+		if parsed, parseErr := url.Parse(endpoint); parseErr == nil && strings.EqualFold(parsed.Hostname(), "chatgpt.com") {
+			req.Host = parsed.Host
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("ChatGPT-Account-ID", accountID)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+		if body.encoding != "" {
+			req.Header.Set("Content-Encoding", body.encoding)
+		}
+		applyCodexRequestHeaders(req.Header, incoming)
+		applyCodexFingerprintHeaders(req.Header, fingerprintIDs)
+		resp, err := client.Do(req)
+		if err != nil {
+			if egressErr := providerEgressFailure(err); egressErr != nil {
+				return nil, egressErr
+			}
+			return nil, &ProviderInvocationError{
+				Err:         NewHTTPError(http.StatusBadGateway, "codex_request_failed", fmt.Sprintf("Codex request failed: %v", err)),
+				Disposition: ProviderErrorTransientSame,
+			}
+		}
+		if resp.StatusCode < http.StatusBadRequest {
+			resp.Body = newIdleTimeoutReadCloser(resp.Body, a.streamIdleTimeout(), errCodexStreamIdle)
+			return resp, nil
+		}
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
+		resp.Body.Close()
+		// One uncompressed retry when the backend refuses zstd. A normal 400
+		// is returned as-is so the same transcript is not posted twice.
+		if body.encoding != "" && responsesCompressionRejected(resp.StatusCode, data) {
+			continue
+		}
+		return nil, classifyCodexHTTPError(resp.StatusCode, resp.Header, data)
+	}
+	return nil, NewHTTPError(http.StatusBadGateway, "codex_request_failed", "Codex request failed")
+}
+
+// codexSubscriptionResponsesRequest keeps the ChatGPT Codex HTTP contract:
+// store stays false and previous_response_id is removed. The caller's request
+// is left unchanged because unsupported fields are deleted on a cloned raw map.
+func codexSubscriptionResponsesRequest(request ResponsesRequest) ResponsesRequest {
 	if inputText, ok := request.Input.(string); ok {
 		request.Input = []map[string]any{{
 			"role":    "user",
@@ -221,53 +289,16 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 		}}
 	}
 	request.Stream = true
-	if request.Store == nil {
-		store := false
-		request.Store = &store
-	}
+	store := false
+	request.Store = &store
 	if strings.EqualFold(strings.TrimSpace(request.ServiceTier), "fast") {
 		request.ServiceTier = "priority"
 	}
 	request = withoutUnsupportedCodexGenerationControls(request)
-	applyCodexRequestEnvelope(&request, incoming)
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return nil, NewHTTPError(http.StatusBadRequest, "invalid_request", err.Error())
+	if request.raw != nil {
+		delete(request.raw, "previous_response_id")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return nil, NewHTTPError(http.StatusBadGateway, "codex_request_failed", err.Error())
-	}
-	if parsed, parseErr := url.Parse(endpoint); parseErr == nil && strings.EqualFold(parsed.Hostname(), "chatgpt.com") {
-		req.Host = parsed.Host
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("ChatGPT-Account-ID", accountID)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
-	applyCodexRequestHeaders(req.Header, incoming)
-	applyCodexFingerprintHeaders(req.Header, fingerprintIDs)
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		if egressErr := providerEgressFailure(err); egressErr != nil {
-			return nil, egressErr
-		}
-		return nil, &ProviderInvocationError{
-			Err:         NewHTTPError(http.StatusBadGateway, "codex_request_failed", fmt.Sprintf("Codex request failed: %v", err)),
-			Disposition: ProviderErrorTransientSame,
-		}
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
-		return nil, classifyCodexHTTPError(resp.StatusCode, resp.Header, data)
-	}
-	resp.Body = newIdleTimeoutReadCloser(resp.Body, a.streamIdleTimeout(), errCodexStreamIdle)
-	return resp, nil
+	return request
 }
 
 func withoutUnsupportedCodexGenerationControls(request ResponsesRequest) ResponsesRequest {

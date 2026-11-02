@@ -44,6 +44,8 @@ func (a *ChatGPTSubscriptionAdapter) request(ctx context.Context, provider Provi
 	if a.APIBaseURL != "" {
 		endpoint = strings.TrimRight(a.APIBaseURL, "/") + path
 	}
+	host := responsesEndpointHost(endpoint)
+	wire, encoding := encodeResponsesUpstreamBody(provider.Options, host, body)
 	for attempt := 0; attempt < 2; attempt++ {
 		credentials, err := subscriptionCredentials(ctx, provider, a.RefreshCredentials, attempt > 0)
 		if err != nil {
@@ -56,25 +58,38 @@ func (a *ChatGPTSubscriptionAdapter) request(ctx context.Context, provider Provi
 		if body == nil {
 			method = http.MethodGet
 		}
-		req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "Bearer "+credentials.AccessToken)
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Content-Type", "application/json")
-		if etag != "" {
-			req.Header.Set("If-None-Match", etag)
-		}
 		client := a.Client
+		accept := "application/json"
 		if body != nil {
-			req.Header.Set("Accept", "text/event-stream")
+			accept = "text/event-stream"
 			client = a.StreamClient
 			if client == nil {
 				client = a.Client
 			}
 		}
-		resp, err := subscriptionHTTP(ctx, client, req)
+		build := func(payload []byte, contentEncoding string) (*http.Request, error) {
+			req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(payload))
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Authorization", "Bearer "+credentials.AccessToken)
+			req.Header.Set("Accept", accept)
+			req.Header.Set("Content-Type", "application/json")
+			if contentEncoding != "" {
+				req.Header.Set("Content-Encoding", contentEncoding)
+			}
+			if etag != "" {
+				req.Header.Set("If-None-Match", etag)
+			}
+			return req, nil
+		}
+		req, err := build(wire, encoding)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := subscriptionPost(ctx, client, req, func() (*http.Request, error) {
+			return build(body, "")
+		}, encoding)
 		if err != nil {
 			if attempt == 0 && AsHTTPError(err).UpstreamStatus == http.StatusUnauthorized {
 				continue

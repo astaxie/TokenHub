@@ -222,7 +222,7 @@ func responseJobExecutionRequest(request ResponsesRequest) ResponsesRequest {
 
 func (s *Server) submitResponseJob(w http.ResponseWriter, r *http.Request, project Project, key APIKey, request ResponsesRequest) {
 	if !responsesRequestHasInlineImages(request) {
-		if err := s.rejectOversizedResponsesRequest(request); err != nil {
+		if err := s.rejectOversizedResponsesRequest(request, nil); err != nil {
 			writeError(w, r, err)
 			return
 		}

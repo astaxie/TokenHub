@@ -25,30 +25,70 @@ func subscriptionClient(client *http.Client) *http.Client {
 func subscriptionHTTP(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 	resp, err := subscriptionClient(client).Do(req)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if guarded := providerEgressFailure(err); guarded != nil {
-			return nil, guarded
-		}
-		return nil, NewHTTPError(http.StatusBadGateway, "subscription_request_failed", "Subscription upstream request failed")
+		return nil, subscriptionTransportError(ctx, err)
 	}
+	return finishSubscriptionResponse(resp)
+}
+
+func subscriptionTransportError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if guarded := providerEgressFailure(err); guarded != nil {
+		return guarded
+	}
+	return NewHTTPError(http.StatusBadGateway, "subscription_request_failed", "Subscription upstream request failed")
+}
+
+func finishSubscriptionResponse(resp *http.Response) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 || resp.StatusCode == http.StatusNotModified {
 		return resp, nil
 	}
 	defer resp.Body.Close()
+	return nil, subscriptionStatusFailure(resp.StatusCode, resp.Header)
+}
+
+// subscriptionPost sends one Responses body. A zstd body that the upstream
+// refuses is retried once uncompressed. The refusal body is not returned to
+// the caller.
+func subscriptionPost(ctx context.Context, client *http.Client, req *http.Request, rawReq func() (*http.Request, error), encoding string) (*http.Response, error) {
+	if encoding == "" {
+		return subscriptionHTTP(ctx, client, req)
+	}
+	resp, err := subscriptionClient(client).Do(req)
+	if err != nil {
+		return nil, subscriptionTransportError(ctx, err)
+	}
+	if resp.StatusCode < http.StatusBadRequest {
+		return finishSubscriptionResponse(resp)
+	}
+	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	header := resp.Header.Clone()
+	status := resp.StatusCode
+	resp.Body.Close()
+	if responsesCompressionRejected(status, snippet) {
+		fallback, buildErr := rawReq()
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		return subscriptionHTTP(ctx, client, fallback)
+	}
+	return nil, subscriptionStatusFailure(status, header)
+}
+
+func subscriptionStatusFailure(status int, header http.Header) error {
 	// The status and headers fully determine this failure. Do not wait for a
 	// discarded error body: streaming clients have no total request deadline,
 	// and the response's idle guard is installed only after this function.
-	message := fmt.Sprintf("Subscription upstream returned HTTP %d", resp.StatusCode)
-	if resp.StatusCode < http.StatusBadRequest {
+	message := fmt.Sprintf("Subscription upstream returned HTTP %d", status)
+	if status < http.StatusBadRequest {
 		failure := NewHTTPError(http.StatusBadGateway, "subscription_upstream_error", message)
-		failure.UpstreamStatus = resp.StatusCode
-		return nil, &ProviderInvocationError{Err: failure, Disposition: ProviderErrorTransientSame, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		failure.UpstreamStatus = status
+		return &ProviderInvocationError{Err: failure, Disposition: ProviderErrorTransientSame, RetryAfter: parseRetryAfter(header.Get("Retry-After"))}
 	}
 	// Keep standard route classification and parsed retry metadata without
 	// exposing provider bodies or copying private headers to the caller.
-	return nil, newProviderHTTPError(resp.StatusCode, resp.Header, []byte(message))
+	return newProviderHTTPError(status, header, []byte(message))
 }
 
 func subscriptionDecode(resp *http.Response, target any) error {

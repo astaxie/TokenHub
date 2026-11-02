@@ -73,13 +73,56 @@ func TestResponsesDecodeLimitHonorsConfiguredCeiling(t *testing.T) {
 	}
 }
 
+func TestSubscriptionRoutesForwardAboveConfiguredLimit(t *testing.T) {
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	server := NewWithConfig(store, Config{SecretKey: "subscription-ceiling", MaxMultimodalRequestBytes: 2000})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	image := imageDataURL("Z", 2500)
+	headers := http.Header{"Session-Id": []string{"sess-sub"}}
+	requestFor := func() ResponsesRequest {
+		return responsesRequestFromJSON(t, fmt.Sprintf(`{"model":"vision-replay","store":false,"input":[{"role":"user","content":[{"type":"input_image","image_url":%q}]}]}`, image))
+	}
+	call := CallContext{Model: Model{Name: "vision-replay"}, Key: APIKey{ID: "key-sub"}}
+	subscription := RoutedCall{Call: call, Routes: []RouteSelection{{Provider: Provider{Type: ProviderChatGPTSubscription}}}}
+	request := requestFor()
+	if err := server.applyResponsesImageStore(context.Background(), &subscription, &request, headers); err != nil {
+		t.Fatalf("subscription replay: %v", err)
+	}
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Store == nil || *request.Store || responsesRawStringField(request, "previous_response_id") != "" || !strings.Contains(string(encoded), image) {
+		t.Fatal("subscription replay rewrote store or dropped the image")
+	}
+	codex := RoutedCall{Call: call, Routes: []RouteSelection{{Provider: Provider{Type: ProviderOpenAICodex, Options: map[string]string{"responses_store": "on"}}}}}
+	request = requestFor()
+	if err := server.applyResponsesImageStore(context.Background(), &codex, &request, headers); err != nil {
+		t.Fatalf("codex replay: %v", err)
+	}
+	openai := RoutedCall{Call: call, Routes: []RouteSelection{{Provider: Provider{Type: ProviderOpenAI}}}}
+	request = requestFor()
+	if err := server.applyResponsesImageStore(context.Background(), &openai, &request, headers); err == nil || AsHTTPError(err).Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("openai replay error = %v", err)
+	}
+	mixed := RoutedCall{Call: call, Routes: []RouteSelection{{Provider: Provider{Type: ProviderChatGPTSubscription}}, {Provider: Provider{Type: ProviderOpenAI}}}}
+	request = requestFor()
+	if err := server.applyResponsesImageStore(context.Background(), &mixed, &request, headers); err == nil || AsHTTPError(err).Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("mixed replay error = %v", err)
+	}
+	if server.responsesForwardLimit(subscription.Routes) != server.responsesDecodeLimit() || server.responsesForwardLimit(nil) != server.configuredMultimodalLimit() {
+		t.Fatal("forward limit did not follow the route set")
+	}
+}
+
 func TestPrepareResponsesImageStoreSkipsUnsafeRoutes(t *testing.T) {
 	image := imageDataURL("C", 1200)
 	headers := http.Header{"Session-Id": []string{"sess-skip"}}
 	base := func() (ResponsesRequest, RoutedCall) {
 		request := responsesRequestFromJSON(t, fmt.Sprintf(`{"model":"vision-replay","store":false,"input":[{"role":"user","content":[{"type":"input_image","image_url":%q}]}]}`, image))
 		routed := RoutedCall{Call: CallContext{Model: Model{Name: "vision-replay"}, Key: APIKey{ID: "key-skip"}}, Routes: []RouteSelection{{
-			Provider: Provider{ID: "provider-a", Type: ProviderOpenAICompatible}, Route: ModelRoute{ID: "route-a"}, ProviderModel: "vendor-a",
+			Provider: Provider{ID: "provider-a", Type: ProviderOpenAICompatible, Options: map[string]string{"responses_store": "on"}}, Route: ModelRoute{ID: "route-a"}, ProviderModel: "vendor-a",
 		}}}
 		return request, routed
 	}
@@ -160,6 +203,15 @@ func TestPrepareResponsesImageStoreSkipsUnsafeRoutes(t *testing.T) {
 		if routeAllowsResponsesImageStore(RouteSelection{Provider: Provider{Type: "deepseek"}}) {
 			t.Fatal("deepseek accepted image store without responses_store=on")
 		}
+		if routeAllowsResponsesImageStore(RouteSelection{Provider: Provider{Type: ProviderOpenAICompatible}}) {
+			t.Fatal("openai-compatible accepted image store without responses_store=on")
+		}
+		if !routeAllowsResponsesImageStore(RouteSelection{Provider: Provider{Type: ProviderOpenAI}}) || !routeAllowsResponsesImageStore(RouteSelection{Provider: Provider{Type: ProviderAzureOpenAI}}) {
+			t.Fatal("official OpenAI or Azure store support was not on by default")
+		}
+		if !routeAllowsResponsesImageStore(RouteSelection{Provider: Provider{Type: ProviderOpenAICompatible, Options: map[string]string{"responses_store": "on"}}}) {
+			t.Fatal("explicit responses_store=on did not enable an openai-compatible provider")
+		}
 		if !routeAllowsResponsesImageStore(RouteSelection{Provider: Provider{Type: "deepseek", Options: map[string]string{"responses_store": "on"}}}) {
 			t.Fatal("explicit responses_store=on did not enable a custom provider")
 		}
@@ -218,7 +270,7 @@ func TestPrepareResponsesImageStoreKeepsImagesWhenContinuationUnavailable(t *tes
 		t.Fatal(err)
 	}
 	routed := RoutedCall{Call: call, Routes: []RouteSelection{{
-		Provider: Provider{ID: "provider-new", Type: ProviderOpenAICompatible}, Route: ModelRoute{ID: "route-new"}, ProviderModel: "vendor-new",
+		Provider: Provider{ID: "provider-new", Type: ProviderOpenAICompatible, Options: map[string]string{"responses_store": "on"}}, Route: ModelRoute{ID: "route-new"}, ProviderModel: "vendor-new",
 	}}}
 	err := server.applyResponsesImageStore(context.Background(), &routed, &request, headers)
 	if err == nil || AsHTTPError(err).Status != http.StatusRequestEntityTooLarge {
@@ -251,7 +303,7 @@ func TestResponsesImageStoreReplaysContinuationOnSameProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.AddProvider(Provider{ID: "provider-a", Name: "Provider A", Type: ProviderOpenAICompatible, BaseURL: upstreamA.URL + "/v1", APIKey: "upstream-a", Status: StatusActive, Healthy: true})
+	store.AddProvider(Provider{ID: "provider-a", Name: "Provider A", Type: ProviderOpenAICompatible, BaseURL: upstreamA.URL + "/v1", APIKey: "upstream-a", Status: StatusActive, Healthy: true, Options: map[string]string{"responses_store": "on"}})
 	store.AddModel(Model{Name: model, Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{ID: "route-a", ModelName: model, ProviderID: "provider-a", ProviderModel: "vendor-a", Status: StatusActive, Priority: 2, Weight: 100, Strategy: RouteStrategyPriorityOnly})
 	server := NewWithConfig(store, Config{AdminToken: "image-store-admin", SecretKey: "image-store-secret", MaxMultimodalRequestBytes: 8000})
@@ -275,7 +327,7 @@ func TestResponsesImageStoreReplaysContinuationOnSameProvider(t *testing.T) {
 		t.Fatalf("first forward = %#v", forwarded)
 	}
 
-	store.AddProvider(Provider{ID: "provider-b", Name: "Provider B", Type: ProviderOpenAICompatible, BaseURL: upstreamB.URL + "/v1", APIKey: "upstream-b", Status: StatusActive, Healthy: true})
+	store.AddProvider(Provider{ID: "provider-b", Name: "Provider B", Type: ProviderOpenAICompatible, BaseURL: upstreamB.URL + "/v1", APIKey: "upstream-b", Status: StatusActive, Healthy: true, Options: map[string]string{"responses_store": "on"}})
 	store.AddRoute(ModelRoute{ID: "route-b", ModelName: model, ProviderID: "provider-b", ProviderModel: "vendor-b", Status: StatusActive, Priority: 1, Weight: 100, Strategy: RouteStrategyPriorityOnly})
 	secondTurn := postResponses(t, server.Handler(), continuedImageTurn(model, small, "next"), secret, "sess-image")
 	if secondTurn.Code != http.StatusOK || secondTurn.Header.Get("x-tokenhub-provider") != "provider-a" {
@@ -322,7 +374,7 @@ func TestResponsesImageStoreStreamingRemember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.AddProvider(Provider{ID: "provider-stream", Name: "Stream", Type: ProviderOpenAICompatible, BaseURL: remote.URL + "/v1", APIKey: "upstream-stream", Status: StatusActive, Healthy: true})
+	store.AddProvider(Provider{ID: "provider-stream", Name: "Stream", Type: ProviderOpenAICompatible, BaseURL: remote.URL + "/v1", APIKey: "upstream-stream", Status: StatusActive, Healthy: true, Options: map[string]string{"responses_store": "on"}})
 	store.AddModel(Model{Name: model, Modality: "chat", Status: StatusActive})
 	store.AddRoute(ModelRoute{ID: "route-stream", ModelName: model, ProviderID: "provider-stream", ProviderModel: "vendor-stream", Status: StatusActive, Priority: 1, Weight: 100, Strategy: RouteStrategyPriorityOnly})
 	server := NewWithConfig(store, Config{AdminToken: "image-stream-admin", SecretKey: "image-stream-secret", MaxMultimodalRequestBytes: 8000})

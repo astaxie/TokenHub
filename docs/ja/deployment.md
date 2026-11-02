@@ -414,8 +414,8 @@ docker inspect --format 'memory={{.HostConfig.Memory}} memory_swap={{.HostConfig
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 非ストリーミングの上流リクエスト 1 件あたりの全体タイムアウト |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | ストリーミング呼び出しに全体タイムアウトはありません。この値はレスポンスヘッダーの待機時間と、その後ストリームが無音でいられる時間を制限します。1 バイト受信するたびに計測し直します |
 | `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `8388608`（8 MiB） | `/v1` エンドポイントの JSON リクエストボディ上限。生のバイト数または二進接尾辞（`8m`、`8mib`、`512k`）を指定できます。512 MiB を超える値は上限に丸められます |
-| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | マルチモーダルのチャットエンドポイント（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）向けの上限。`/v1/responses` は 128 MiB、またはこの値の大きい方まで読み、保存済み応答に一致する続きでは、この上限を適用する前に確認済みの過去項目を除きます。保存済み応答に一致せず、この上限を超える再送は拒否します。リバースプロキシの `client_max_body_size` は少なくともその読み取りサイズにしてください |
-| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 同梱のマルチインスタンス nginx ロードバランサーのみが読み取ります。バックエンドのバイト形式ではなく nginx のサイズ構文（`32m`、`512k`）を使用し、`TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 以上に設定してください |
+| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | マルチモーダルのチャットエンドポイント（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）向けの上限。`/v1/responses` は 128 MiB、またはこの値の大きい方まで読み、512 MiB を超えません。OpenAI と Azure のルートは、上流に保存済みの過去項目を除いた後もこの値を超える転送本文を拒否します。ChatGPT サブスクリプションと Codex サブスクリプションのルートは、それらの API が `store: true` を拒否するため、完全な記録をこの読み取りサイズまで転送します。フェイルオーバー先にそれ以外のプロバイダーが含まれる場合は、この値のままです。リバースプロキシの `client_max_body_size` は少なくともその読み取りサイズにしてください。同梱 nginx は `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` を上げるまで `32m` のままです |
+| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 同梱のマルチインスタンス nginx ロードバランサーのみが読み取ります。バックエンドのバイト形式ではなく nginx のサイズ構文（`32m`、`512k`）を使用します。`/v1/responses` の読み取りサイズ以上にしてください（既定は 128 MiB、`TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` の方が大きいときはその値）。既定の `32m` は、それより大きい本文が TokenHub に届く前に拒否します |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | クラスター全体の同時実行リースの期限と更新間隔の基準 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | クラスター調整ロックの期限と更新間隔の基準 |
 | `TOKENHUB_BILLING_REDIS_URL` | 空 | 高同時実行の課金 admission 用の任意 Redis URL。設定すると、分単位 RPM/TPM 予約と API Key/ユーザー同時実行リースを Redis が処理し、データベースは永続的な課金台帳として残ります |

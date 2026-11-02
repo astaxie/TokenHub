@@ -79,8 +79,9 @@ func (s *GormStore) SaveResponsesImageStore(ctx context.Context, binding respons
 }
 
 // responsesDecodeLimit admits a Responses replay that is larger than the body
-// TokenHub is willing to forward. The configured multimodal limit still applies
-// after a matching continuation drops already stored items.
+// TokenHub is willing to forward on a store-capable route. ChatGPT subscription
+// and Codex routes forward up to this same ceiling, because those APIs reject
+// store and cannot drop already seen images.
 func (s *Server) responsesDecodeLimit() int64 {
 	limit := max(s.configuredMultimodalLimit(), int64(responsesImageReplayBytes))
 	if limit > maxConfigurableRequestBytes {
@@ -100,7 +101,11 @@ func (s *Server) applyResponsesImageStore(ctx context.Context, routed *RoutedCal
 	if err := s.prepareResponsesImageStore(ctx, routed, req, headers); err != nil {
 		return err
 	}
-	return s.rejectOversizedResponsesRequest(*req)
+	var routes []RouteSelection
+	if routed != nil {
+		routes = routed.Routes
+	}
+	return s.rejectOversizedResponsesRequest(*req, routes)
 }
 
 func (s *Server) prepareResponsesImageStore(ctx context.Context, routed *RoutedCall, req *ResponsesRequest, headers http.Header) error {
@@ -152,12 +157,36 @@ func (s *Server) prepareResponsesImageStore(ctx context.Context, routed *RoutedC
 	return nil
 }
 
-func (s *Server) rejectOversizedResponsesRequest(req ResponsesRequest) error {
-	limit := s.configuredMultimodalLimit()
+func (s *Server) rejectOversizedResponsesRequest(req ResponsesRequest, routes []RouteSelection) error {
+	limit := s.responsesForwardLimit(routes)
 	if int64(responsesMarshaledBytes(req)) > limit {
 		return NewHTTPError(http.StatusRequestEntityTooLarge, "payload_too_large", "request body exceeds "+strconv.FormatInt(limit, 10)+" bytes")
 	}
 	return nil
+}
+
+// responsesForwardLimit keeps the configured multimodal cap unless every
+// candidate is a ChatGPT subscription or Codex route. A mixed failover set
+// stays at that cap so a store-capable target never receives an unshrunk body.
+func (s *Server) responsesForwardLimit(routes []RouteSelection) int64 {
+	if routesForwardFullResponsesReplay(routes) {
+		return s.responsesDecodeLimit()
+	}
+	return s.configuredMultimodalLimit()
+}
+
+func routesForwardFullResponsesReplay(routes []RouteSelection) bool {
+	if len(routes) == 0 {
+		return false
+	}
+	for _, route := range routes {
+		switch strings.TrimSpace(route.Provider.Type) {
+		case ProviderOpenAICodex, ProviderChatGPTSubscription:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) rememberResponsesImageStore(ctx context.Context, call CallContext, route RouteSelection, headers http.Header, req ResponsesRequest, response any) error {
@@ -232,8 +261,10 @@ func routeAllowsResponsesImageStore(route RouteSelection) bool {
 	if value, ok := responsesStoreSwitch(route); ok {
 		return value == "on"
 	}
+	// OpenAI and Azure document stored responses. Other APIs, including
+	// OpenAI-compatible ones, stay off until responses_store=on.
 	switch strings.TrimSpace(route.Provider.Type) {
-	case ProviderOpenAI, ProviderAzureOpenAI, ProviderOpenAICompatible:
+	case ProviderOpenAI, ProviderAzureOpenAI:
 		return true
 	default:
 		return false
@@ -252,19 +283,7 @@ func responsesStoreSwitch(route RouteSelection) (string, bool) {
 }
 
 func responsesStoreSwitchValue(options map[string]string) (string, bool) {
-	if options == nil {
-		return "", false
-	}
-	raw, ok := options["responses_store"]
-	if !ok {
-		return "", false
-	}
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "on", "off":
-		return strings.ToLower(strings.TrimSpace(raw)), true
-	default:
-		return "", false
-	}
+	return namedOptionSwitch(options, "responses_store")
 }
 
 func pinResponsesImageStoreRoute(routed *RoutedCall, binding responsesImageStoreBinding) bool {
