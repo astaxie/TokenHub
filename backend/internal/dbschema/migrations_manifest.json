@@ -91,7 +91,7 @@
       "name": "add-responses-image-store-bindings",
       "phase": "expand",
       "dialect": "",
-      "checksum": "02301e5c9d40debdf11e0e6ebae9f69caaedbef16b990bd8d71ee1fc87eff7cb",
+      "checksum": "22670204472977364b5706f2c8f252cc624ff8f49339f7dfc0be3f72be4e057f",
       "lock_timeout_seconds": 30,
       "statement_budget": 10
     }

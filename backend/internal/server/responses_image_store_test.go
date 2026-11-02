@@ -17,45 +17,44 @@ func imageDataURL(fill string, count int) string {
 	return "data:image/png;base64," + strings.Repeat(fill, count)
 }
 
-func TestCompactResponsesHistoricalImagesKeepsLatestUserImage(t *testing.T) {
+func TestResponsesImageStoreNewItemsDropStoredHistory(t *testing.T) {
 	historical := imageDataURL("A", 1100)
 	latest := imageDataURL("B", 1100)
 	remote := "https://example.com/keep.png"
-	tiny := "data:image/png;base64,YWJj"
-	nested, err := json.Marshal(map[string]any{"image_url": historical})
-	if err != nil {
-		t.Fatal(err)
+	first := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_image", "image_url": historical},
+	}}
+	assistant := map[string]any{"type": "message", "role": "assistant", "content": []any{
+		map[string]any{"type": "output_text", "text": "ok"},
+	}}
+	call := map[string]any{"type": "function_call", "name": "look", "arguments": "{}"}
+	output := map[string]any{"type": "function_call_output", "call_id": "call-1", "output": "done"}
+	next := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": "again"},
+		map[string]any{"type": "input_image", "image_url": latest},
+		map[string]any{"type": "input_image", "image_url": remote},
+	}}
+	boundary := responsesImageStoreBoundary([]any{first})
+	suffix, ok := responsesImageStoreNewItems([]any{first, assistant, call, output, next}, boundary)
+	if !ok {
+		t.Fatal("matching replay was not continued")
 	}
-	input := []any{
-		map[string]any{"type": "message", "role": "user", "content": []any{
-			map[string]any{"type": "input_image", "image_url": historical},
-			map[string]any{"type": "input_image", "image_url": tiny},
-		}},
-		map[string]any{"type": "function_call_output", "output": string(nested)},
-		map[string]any{"type": "message", "role": "assistant", "content": []any{
-			map[string]any{"type": "output_text", "text": "ok"},
-		}},
-		map[string]any{"type": "message", "role": "user", "content": []any{
-			map[string]any{"type": "input_text", "text": "again"},
-			map[string]any{"type": "input_image", "image_url": latest},
-			map[string]any{"type": "input_image", "image_url": remote},
-		}},
-	}
-
-	compacted := compactResponsesHistoricalImages(input)
-	encoded, err := json.Marshal(compacted)
+	encoded, err := json.Marshal(suffix)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body := string(encoded)
-	if strings.Contains(body, historical) || !strings.Contains(body, responsesOmittedImageURL) {
-		t.Fatalf("historical image was not replaced: %s", body)
+	if strings.Contains(body, historical) || strings.Contains(body, "tokenhub.invalid") || strings.Contains(body, `"function_call"`) || strings.Contains(body, `"ok"`) {
+		t.Fatalf("stored history was forwarded: %s", body)
 	}
-	if !strings.Contains(body, latest) || !strings.Contains(body, remote) || !strings.Contains(body, tiny) {
-		t.Fatalf("current image, remote URL, or tiny fixture changed: %s", body)
+	if !strings.Contains(body, latest) || !strings.Contains(body, remote) || !strings.Contains(body, "done") {
+		t.Fatalf("new tool result or image was dropped: %s", body)
 	}
-	if strings.Count(body, responsesOmittedImageURL) != 2 {
-		t.Fatalf("placeholder count = %d, want 2: %s", strings.Count(body, responsesOmittedImageURL), body)
+	if _, ok := responsesImageStoreNewItems([]any{next, assistant}, boundary); ok {
+		t.Fatal("divergent replay matched the stored boundary")
+	}
+	if _, ok := responsesImageStoreNewItems([]any{first, assistant}, boundary); ok {
+		t.Fatal("replay with no new input was continued")
 	}
 }
 
@@ -129,6 +128,28 @@ func TestPrepareResponsesImageStoreSkipsUnsafeRoutes(t *testing.T) {
 		}
 	})
 
+	t.Run("prompt cache key is not a session", func(t *testing.T) {
+		_, routed := base()
+		request := responsesRequestFromJSON(t, fmt.Sprintf(`{"model":"vision-replay","store":false,"prompt_cache_key":"shared-prefix","input":[{"role":"user","content":[{"type":"input_image","image_url":%q}]}]}`, image))
+		if err := (&Server{}).prepareResponsesImageStore(context.Background(), &routed, &request, http.Header{}); err != nil {
+			t.Fatal(err)
+		}
+		if request.Store == nil || *request.Store || responsesRawStringField(request, "previous_response_id") != "" {
+			t.Fatal("prompt_cache_key started an image continuation")
+		}
+	})
+
+	t.Run("conversation is left untouched", func(t *testing.T) {
+		_, routed := base()
+		request := responsesRequestFromJSON(t, fmt.Sprintf(`{"model":"vision-replay","store":false,"conversation":{"id":"conv_1"},"input":[{"role":"user","content":[{"type":"input_image","image_url":%q}]}]}`, image))
+		if err := (&Server{}).prepareResponsesImageStore(context.Background(), &routed, &request, headers); err != nil {
+			t.Fatal(err)
+		}
+		if request.Store == nil || *request.Store || responsesRawStringField(request, "previous_response_id") != "" || !responsesRawFieldPresent(request, "conversation") {
+			t.Fatalf("conversation request changed: store=%v previous=%s", request.Store, responsesRawStringField(request, "previous_response_id"))
+		}
+	})
+
 	t.Run("subscription and opted out types", func(t *testing.T) {
 		if routeAllowsResponsesImageStore(RouteSelection{Provider: Provider{Type: ProviderOpenAICodex, Options: map[string]string{"responses_store": "on"}}}) {
 			t.Fatal("codex subscription accepted responses_store=on")
@@ -153,17 +174,18 @@ func TestResponsesImageStoreBindingUpsertsAndExpires(t *testing.T) {
 	store := NewMemoryStore()
 	t.Cleanup(func() { _ = store.Close() })
 	ctx := context.Background()
-	binding := responsesImageStoreBinding{KeyHash: "image-store-key", RouteID: "route-a", ProviderID: "provider-a", ProviderModel: "vendor-a", ResourceID: "", UpstreamID: "resp_old", ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	binding := responsesImageStoreBinding{KeyHash: "image-store-key", RouteID: "route-a", ProviderID: "provider-a", ProviderModel: "vendor-a", ResourceID: "", UpstreamID: "resp_old", InputBoundary: `["old"]`, ExpiresAt: time.Now().Add(time.Hour).Unix()}
 	if err := store.SaveResponsesImageStore(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	binding.UpstreamID = "resp_new"
+	binding.InputBoundary = `["old","new"]`
 	binding.ExpiresAt = time.Now().Add(time.Hour).Unix()
 	if err := store.SaveResponsesImageStore(ctx, binding); err != nil {
 		t.Fatal(err)
 	}
 	loaded, found, err := store.LoadResponsesImageStore(ctx, binding.KeyHash)
-	if err != nil || !found || loaded.UpstreamID != "resp_new" || loaded.RouteID != "route-a" {
+	if err != nil || !found || loaded.UpstreamID != "resp_new" || loaded.RouteID != "route-a" || loaded.InputBoundary != `["old","new"]` {
 		t.Fatalf("loaded = %+v found=%v err=%v", loaded, found, err)
 	}
 	expired := binding
@@ -177,7 +199,7 @@ func TestResponsesImageStoreBindingUpsertsAndExpires(t *testing.T) {
 	}
 }
 
-func TestPrepareResponsesImageStoreCompactsWhenBoundRouteIsGone(t *testing.T) {
+func TestPrepareResponsesImageStoreKeepsImagesWhenContinuationUnavailable(t *testing.T) {
 	store := NewMemoryStore()
 	t.Cleanup(func() { _ = store.Close() })
 	server := NewWithConfig(store, Config{SecretKey: "image-store-secret", MaxMultimodalRequestBytes: 2000})
@@ -191,22 +213,23 @@ func TestPrepareResponsesImageStoreCompactsWhenBoundRouteIsGone(t *testing.T) {
 		t.Fatal("missing session key")
 	}
 	if err := store.SaveResponsesImageStore(context.Background(), responsesImageStoreBinding{
-		KeyHash: key, RouteID: "route-old", ProviderID: "provider-old", ProviderModel: "vendor-old", UpstreamID: "resp_old", ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		KeyHash: key, RouteID: "route-old", ProviderID: "provider-old", ProviderModel: "vendor-old", UpstreamID: "resp_old", InputBoundary: responsesImageStoreBoundary(request.Input), ExpiresAt: time.Now().Add(time.Hour).Unix(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	routed := RoutedCall{Call: call, Routes: []RouteSelection{{
 		Provider: Provider{ID: "provider-new", Type: ProviderOpenAICompatible}, Route: ModelRoute{ID: "route-new"}, ProviderModel: "vendor-new",
 	}}}
-	if err := server.prepareResponsesImageStore(context.Background(), &routed, &request, headers); err != nil {
-		t.Fatal(err)
+	err := server.applyResponsesImageStore(context.Background(), &routed, &request, headers)
+	if err == nil || AsHTTPError(err).Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized unbound replay error = %v", err)
 	}
-	encoded, err := json.Marshal(request)
-	if err != nil {
-		t.Fatal(err)
+	encoded, marshalErr := json.Marshal(request)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
 	}
-	if responsesRawStringField(request, "previous_response_id") != "" || strings.Contains(string(encoded), historical) || request.Store == nil || !*request.Store {
-		t.Fatalf("unbound replay = %s", encoded)
+	if responsesRawStringField(request, "previous_response_id") != "" || !strings.Contains(string(encoded), historical) || strings.Contains(string(encoded), "tokenhub.invalid") {
+		t.Fatalf("unbound replay dropped or rewrote images: %s", encoded)
 	}
 	if len(routed.Routes) != 1 || routed.Routes[0].Route.ID != "route-new" {
 		t.Fatalf("routes = %+v", routed.Routes)
@@ -243,7 +266,7 @@ func TestResponsesImageStoreReplaysContinuationOnSameProvider(t *testing.T) {
 		t.Fatal("text turn forced store")
 	}
 
-	firstTurn := postResponses(t, server.Handler(), imageTurn(model, small, ""), secret, "sess-image")
+	firstTurn := postResponses(t, server.Handler(), imageTurn(model, small), secret, "sess-image")
 	if firstTurn.Code != http.StatusOK || firstTurn.Header.Get("x-tokenhub-provider") != "provider-a" {
 		t.Fatalf("first image turn: %d provider=%s body=%s", firstTurn.Code, firstTurn.Header.Get("x-tokenhub-provider"), firstTurn.Body)
 	}
@@ -254,8 +277,7 @@ func TestResponsesImageStoreReplaysContinuationOnSameProvider(t *testing.T) {
 
 	store.AddProvider(Provider{ID: "provider-b", Name: "Provider B", Type: ProviderOpenAICompatible, BaseURL: upstreamB.URL + "/v1", APIKey: "upstream-b", Status: StatusActive, Healthy: true})
 	store.AddRoute(ModelRoute{ID: "route-b", ModelName: model, ProviderID: "provider-b", ProviderModel: "vendor-b", Status: StatusActive, Priority: 1, Weight: 100, Strategy: RouteStrategyPriorityOnly})
-	huge := imageDataURL("H", 9000)
-	secondTurn := postResponses(t, server.Handler(), imageTurn(model, huge, "next"), secret, "sess-image")
+	secondTurn := postResponses(t, server.Handler(), continuedImageTurn(model, small, "next"), secret, "sess-image")
 	if secondTurn.Code != http.StatusOK || secondTurn.Header.Get("x-tokenhub-provider") != "provider-a" {
 		t.Fatalf("continuation: %d provider=%s body=%s", secondTurn.Code, secondTurn.Header.Get("x-tokenhub-provider"), secondTurn.Body)
 	}
@@ -263,16 +285,26 @@ func TestResponsesImageStoreReplaysContinuationOnSameProvider(t *testing.T) {
 		t.Fatalf("better-priority provider was called %d times", second.calls())
 	}
 	continued := string(first.last())
-	if !strings.Contains(continued, `"previous_response_id":"resp_provider_a"`) || strings.Contains(continued, huge) || !strings.Contains(continued, responsesOmittedImageURL) {
+	if !strings.Contains(continued, `"previous_response_id":"resp_provider_a"`) || strings.Contains(continued, small) || strings.Contains(continued, "look") || strings.Contains(continued, "function_call") || strings.Contains(continued, "tokenhub.invalid") || !strings.Contains(continued, "next") {
 		t.Fatalf("continuation body = %s", continued)
 	}
+	callsBeforeReject := first.calls()
+	huge := imageDataURL("H", 9000)
+	rejected := postResponses(t, server.Handler(), imageTurn(model, huge), secret, "sess-image")
+	if rejected.Code != http.StatusRequestEntityTooLarge || !strings.Contains(rejected.Body, "request body exceeds 8000 bytes") || first.calls() != callsBeforeReject {
+		t.Fatalf("divergent replay: %d calls=%d body=%s", rejected.Code, first.calls(), rejected.Body)
+	}
+	conversation := postResponses(t, server.Handler(), strings.TrimSuffix(continuedImageTurn(model, small, "via-conversation"), "}")+`,"conversation":{"id":"conv_keep"}}`, secret, "sess-image")
+	if conversation.Code != http.StatusOK || strings.Contains(string(second.last()), `"previous_response_id"`) || upstreamBool(t, second.last(), "store") {
+		t.Fatalf("conversation replay: %d body=%s", conversation.Code, second.last())
+	}
 
-	other := postResponses(t, server.Handler(), imageTurn(model, small, ""), secret, "sess-other")
+	other := postResponses(t, server.Handler(), imageTurn(model, small), secret, "sess-other")
 	if other.Code != http.StatusOK || other.Header.Get("x-tokenhub-provider") != "provider-b" {
 		t.Fatalf("new session: %d provider=%s body=%s", other.Code, other.Header.Get("x-tokenhub-provider"), other.Body)
 	}
 
-	noSession := postResponses(t, server.Handler(), imageTurn(model, huge, ""), secret, "")
+	noSession := postResponses(t, server.Handler(), imageTurn(model, huge), secret, "")
 	if noSession.Code != http.StatusRequestEntityTooLarge || !strings.Contains(noSession.Body, "request body exceeds 8000 bytes") {
 		t.Fatalf("no session: %d %s", noSession.Code, noSession.Body)
 	}
@@ -297,25 +329,25 @@ func TestResponsesImageStoreStreamingRemember(t *testing.T) {
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 
 	small := imageDataURL("S", 1500)
-	first := postResponses(t, server.Handler(), strings.TrimSuffix(imageTurn(model, small, ""), "}")+`,"stream":true}`, secret, "sess-stream")
+	first := postResponses(t, server.Handler(), strings.TrimSuffix(imageTurn(model, small), "}")+`,"stream":true}`, secret, "sess-stream")
 	if first.Code != http.StatusOK || !strings.Contains(first.Body, "response.completed") {
 		t.Fatalf("stream turn: %d %s", first.Code, first.Body)
 	}
-	huge := imageDataURL("H", 9000)
-	second := postResponses(t, server.Handler(), imageTurn(model, huge, "next"), secret, "sess-stream")
+	second := postResponses(t, server.Handler(), continuedImageTurn(model, small, "next"), secret, "sess-stream")
 	if second.Code != http.StatusOK {
 		t.Fatalf("follow-up: %d %s", second.Code, second.Body)
 	}
-	if !strings.Contains(string(upstream.last()), `"previous_response_id":"resp_stream"`) || strings.Contains(string(upstream.last()), huge) {
+	if !strings.Contains(string(upstream.last()), `"previous_response_id":"resp_stream"`) || strings.Contains(string(upstream.last()), small) || strings.Contains(string(upstream.last()), "tokenhub.invalid") {
 		t.Fatalf("stream continuation body = %s", upstream.last())
 	}
 }
 
-func imageTurn(model string, image string, followUp string) string {
-	if followUp == "" {
-		return fmt.Sprintf(`{"model":%q,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":%q}]}]}`, model, image)
-	}
-	return fmt.Sprintf(`{"model":%q,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_image","image_url":%q}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]},{"type":"message","role":"user","content":[{"type":"input_text","text":%q}]}]}`, model, image, followUp)
+func imageTurn(model string, image string) string {
+	return fmt.Sprintf(`{"model":%q,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":%q}]}]}`, model, image)
+}
+
+func continuedImageTurn(model string, image string, followUp string) string {
+	return fmt.Sprintf(`{"model":%q,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":%q}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]},{"type":"function_call","name":"noop","arguments":"{}"},{"type":"message","role":"user","content":[{"type":"input_text","text":%q}]}]}`, model, image, followUp)
 }
 
 func postResponses(t *testing.T, handler http.Handler, body string, key string, session string) responseBody {

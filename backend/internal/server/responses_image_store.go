@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -22,9 +24,6 @@ const (
 	responsesImageStoreTTL = 30 * 24 * time.Hour
 	// responsesInlineImageMinChars ignores tiny data URLs used by fixtures.
 	responsesInlineImageMinChars = 1024
-	// responsesOmittedImageURL replaces a historical inline image. The URL is
-	// not fetched; it only keeps the item shape valid after the bytes are gone.
-	responsesOmittedImageURL = "https://tokenhub.invalid/omitted-prior-image"
 )
 
 // responsesImageStoreBinding pins one Codex session to the upstream response
@@ -37,6 +36,7 @@ type responsesImageStoreBinding struct {
 	ProviderModel string
 	ResourceID    string
 	UpstreamID    string
+	InputBoundary string
 	ExpiresAt     int64
 }
 
@@ -46,7 +46,7 @@ func (responsesImageStoreBinding) TableName() string {
 
 func responsesImageStoreMigration() dbschema.Migration {
 	return dbschema.Migration{Version: 11, Name: "add-responses-image-store-bindings", Statements: []string{
-		`CREATE TABLE IF NOT EXISTS responses_image_store_bindings (key_hash text PRIMARY KEY, route_id text NOT NULL, provider_id text NOT NULL, provider_model text NOT NULL, resource_id text NOT NULL, upstream_id text NOT NULL, expires_at bigint NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS responses_image_store_bindings (key_hash text PRIMARY KEY, route_id text NOT NULL, provider_id text NOT NULL, provider_model text NOT NULL, resource_id text NOT NULL, upstream_id text NOT NULL, input_boundary text NOT NULL, expires_at bigint NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS idx_responses_image_store_bindings_expiry ON responses_image_store_bindings (expires_at)`,
 	}, StatementBudget: 10}
 }
@@ -73,14 +73,14 @@ func (s *GormStore) SaveResponsesImageStore(ctx context.Context, binding respons
 		}
 		return tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "key_hash"}},
-			DoUpdates: clause.AssignmentColumns([]string{"route_id", "provider_id", "provider_model", "resource_id", "upstream_id", "expires_at"}),
+			DoUpdates: clause.AssignmentColumns([]string{"route_id", "provider_id", "provider_model", "resource_id", "upstream_id", "input_boundary", "expires_at"}),
 		}).Create(&binding).Error
 	})
 }
 
 // responsesDecodeLimit admits a Responses replay that is larger than the body
 // TokenHub is willing to forward. The configured multimodal limit still applies
-// after historical image bytes are removed.
+// after a matching continuation drops already stored items.
 func (s *Server) responsesDecodeLimit() int64 {
 	limit := max(s.configuredMultimodalLimit(), int64(responsesImageReplayBytes))
 	if limit > maxConfigurableRequestBytes {
@@ -107,11 +107,12 @@ func (s *Server) prepareResponsesImageStore(ctx context.Context, routed *RoutedC
 	if req == nil || routed == nil {
 		return nil
 	}
-	// A caller-supplied continuation already names an upstream response.
-	if responsesRawStringField(*req, "previous_response_id") != "" {
+	// The caller already owns continuation state. conversation and
+	// previous_response_id cannot be sent together.
+	if responsesRawStringField(*req, "previous_response_id") != "" || responsesRawFieldPresent(*req, "conversation") {
 		return nil
 	}
-	if !responsesRequestHasInlineImages(*req) || !routesAllowResponsesImageStore(routed.Routes) {
+	if !routesAllowResponsesImageStore(routed.Routes) {
 		return nil
 	}
 	key, ok := s.responsesImageStoreKey(routed.Call, *req, headers)
@@ -126,20 +127,28 @@ func (s *Server) prepareResponsesImageStore(ctx context.Context, routed *RoutedC
 	if err != nil {
 		return NewHTTPError(http.StatusServiceUnavailable, "responses_image_store_unavailable", "Responses image continuation could not be read")
 	}
-	if found && pinResponsesImageStoreRoute(routed, binding) {
-		forceResponsesStore(req)
-		setResponsesPreviousResponseID(req, binding.UpstreamID)
-		// Drop historical images even when the follow-up is still under the
-		// limit, so the forwarded transcript stops growing every turn.
-		assignResponsesInput(req, compactResponsesHistoricalImages(req.Input))
+	if found {
+		suffix, matched := responsesImageStoreNewItems(req.Input, binding.InputBoundary)
+		boundary := ""
+		if matched {
+			boundary = responsesImageStoreExtendedBoundary(binding.InputBoundary, suffix)
+		}
+		if matched && boundary != "" && pinResponsesImageStoreRoute(routed, binding) {
+			forceResponsesStore(req)
+			setResponsesPreviousResponseID(req, binding.UpstreamID)
+			assignResponsesInput(req, suffix)
+			req.imageStoreBoundary = boundary
+			return nil
+		}
+	}
+	// No usable stored response. Keep every image. Ask the upstream to retain
+	// this turn only when it actually carries inline images; otherwise an
+	// oversized body fails with the configured limit instead of being trimmed.
+	if !responsesRequestHasInlineImages(*req) {
 		return nil
 	}
-	// No usable stored response. Forward the images and ask the upstream to
-	// retain this turn. Compact only when that full body cannot be forwarded.
 	forceResponsesStore(req)
-	if int64(responsesMarshaledBytes(*req)) > s.configuredMultimodalLimit() {
-		assignResponsesInput(req, compactResponsesHistoricalImages(req.Input))
-	}
+	req.imageStoreBoundary = responsesImageStoreBoundary(req.Input)
 	return nil
 }
 
@@ -152,7 +161,7 @@ func (s *Server) rejectOversizedResponsesRequest(req ResponsesRequest) error {
 }
 
 func (s *Server) rememberResponsesImageStore(ctx context.Context, call CallContext, route RouteSelection, headers http.Header, req ResponsesRequest, response any) error {
-	if req.Store == nil || !*req.Store || !routeAllowsResponsesImageStore(route) {
+	if strings.TrimSpace(req.imageStoreBoundary) == "" || req.Store == nil || !*req.Store || !routeAllowsResponsesImageStore(route) {
 		return nil
 	}
 	upstreamID := strings.TrimSpace(jevResponseID(response))
@@ -174,6 +183,7 @@ func (s *Server) rememberResponsesImageStore(ctx context.Context, call CallConte
 		ProviderModel: route.ProviderModel,
 		ResourceID:    routeResourceID(route),
 		UpstreamID:    upstreamID,
+		InputBoundary: req.imageStoreBoundary,
 		ExpiresAt:     time.Now().Add(responsesImageStoreTTL).Unix(),
 	}
 	if err := store.SaveResponsesImageStore(ctx, binding); err != nil {
@@ -183,7 +193,7 @@ func (s *Server) rememberResponsesImageStore(ctx context.Context, call CallConte
 }
 
 func (s *Server) responsesImageStoreKey(call CallContext, req ResponsesRequest, headers http.Header) (string, bool) {
-	session, ok := compatibilitySessionIdentifier(headers, req)
+	session, ok := responsesImageStoreSessionID(headers, req)
 	if !ok || validateSessionIdentifier(session, "session_id_invalid", "Session identifier") != nil {
 		return "", false
 	}
@@ -308,6 +318,135 @@ func responsesMarshaledBytes(req ResponsesRequest) int {
 	return len(data)
 }
 
+// responsesImageStoreSessionID accepts an explicit Codex session. prompt_cache_key
+// is a cache-routing hint and may be shared by unrelated conversations.
+func responsesImageStoreSessionID(headers http.Header, request ResponsesRequest) (string, bool) {
+	for _, value := range []string{
+		headers.Get("session-id"),
+		headers.Get("session_id"),
+		compatibilityClientMetadataSessionID(request),
+		headers.Get("thread-id"),
+		headers.Get("x-client-request-id"),
+	} {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func responsesRawFieldPresent(request ResponsesRequest, key string) bool {
+	if request.raw == nil {
+		return false
+	}
+	raw, ok := request.raw[key]
+	if !ok {
+		return false
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	return trimmed != "" && trimmed != "null"
+}
+
+// responsesImageStoreNewItems returns the items that were not already accepted
+// into the stored response. Model-output echoes may sit between confirmed input
+// items; they are not forwarded again. A mismatch keeps the caller on a full replay.
+func responsesImageStoreNewItems(input any, boundary string) ([]any, bool) {
+	items, ok := input.([]any)
+	if !ok || len(items) == 0 {
+		return nil, false
+	}
+	var expected []string
+	if json.Unmarshal([]byte(strings.TrimSpace(boundary)), &expected) != nil || len(expected) == 0 {
+		return nil, false
+	}
+	index := 0
+	for _, hash := range expected {
+		for index < len(items) && responsesImageStoreReplayEcho(items[index]) {
+			index++
+		}
+		if index >= len(items) || responsesInputItemHash(items[index]) != hash {
+			return nil, false
+		}
+		index++
+	}
+	for index < len(items) && responsesImageStoreReplayEcho(items[index]) {
+		index++
+	}
+	if index >= len(items) {
+		return nil, false
+	}
+	return append([]any{}, items[index:]...), true
+}
+
+func responsesImageStoreBoundary(input any) string {
+	items, ok := input.([]any)
+	if !ok {
+		if input == nil {
+			return ""
+		}
+		items = []any{input}
+	}
+	if len(items) == 0 {
+		return ""
+	}
+	return responsesImageStoreExtendedBoundary(emptyResponsesImageStoreBoundary(), items)
+}
+
+func emptyResponsesImageStoreBoundary() string {
+	return "[]"
+}
+
+func responsesImageStoreExtendedBoundary(existing string, suffix []any) string {
+	var hashes []string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(existing)), &hashes); err != nil {
+		return ""
+	}
+	for _, item := range suffix {
+		hash := responsesInputItemHash(item)
+		if hash == "" {
+			return ""
+		}
+		hashes = append(hashes, hash)
+	}
+	if len(hashes) == 0 {
+		return ""
+	}
+	encoded, err := json.Marshal(hashes)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func responsesInputItemHash(item any) string {
+	data, err := json.Marshal(item)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// responsesImageStoreReplayEcho reports items the stored response already
+// contains as model output. User messages and tool results are new input.
+func responsesImageStoreReplayEcho(item any) bool {
+	message, ok := item.(map[string]any)
+	if !ok {
+		return false
+	}
+	if role, _ := message["role"].(string); strings.EqualFold(strings.TrimSpace(role), "assistant") {
+		return true
+	}
+	kind, _ := message["type"].(string)
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "reasoning", "function_call", "custom_tool_call", "web_search_call", "file_search_call", "computer_call", "image_generation_call", "mcp_call", "local_shell_call", "tool_call":
+		return true
+	default:
+		return false
+	}
+}
+
 func responsesRequestHasInlineImages(req ResponsesRequest) bool {
 	return responsesValueHasInlineImage(req.Input)
 }
@@ -337,90 +476,4 @@ func inlineImageDataURL(value string) bool {
 		return false
 	}
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "data:image/")
-}
-
-// compactResponsesHistoricalImages removes inline image bytes from items before
-// the latest user message. Text stays, because an OpenAI-compatible server may
-// accept previous_response_id without actually retaining the prior turn.
-// With no user message, only the last item is kept intact.
-func compactResponsesHistoricalImages(input any) any {
-	items, ok := input.([]any)
-	if !ok || len(items) < 2 {
-		return input
-	}
-	keepFrom := len(items) - 1
-	for index := len(items) - 1; index >= 0; index-- {
-		if responsesItemRole(items[index]) == "user" {
-			keepFrom = index
-			break
-		}
-	}
-	for index := 0; index < keepFrom; index++ {
-		items[index], _ = stripInlineImageValue(items[index], 0)
-	}
-	return items
-}
-
-func responsesItemRole(item any) string {
-	message, ok := item.(map[string]any)
-	if !ok {
-		return ""
-	}
-	role, _ := message["role"].(string)
-	return strings.ToLower(strings.TrimSpace(role))
-}
-
-func stripInlineImageValue(value any, depth int) (any, bool) {
-	if depth > 8 {
-		return value, false
-	}
-	switch typed := value.(type) {
-	case string:
-		if inlineImageDataURL(typed) {
-			return responsesOmittedImageURL, true
-		}
-		return stripInlineImageJSONString(typed, depth)
-	case map[string]any:
-		changed := false
-		for key, child := range typed {
-			next, childChanged := stripInlineImageValue(child, depth+1)
-			if childChanged {
-				typed[key] = next
-				changed = true
-			}
-		}
-		return typed, changed
-	case []any:
-		changed := false
-		for index, child := range typed {
-			next, childChanged := stripInlineImageValue(child, depth+1)
-			if childChanged {
-				typed[index] = next
-				changed = true
-			}
-		}
-		return typed, changed
-	default:
-		return value, false
-	}
-}
-
-func stripInlineImageJSONString(value string, depth int) (string, bool) {
-	trimmed := strings.TrimSpace(value)
-	if len(trimmed) <= responsesInlineImageMinChars || (trimmed[0] != '{' && trimmed[0] != '[') {
-		return value, false
-	}
-	var decoded any
-	if json.Unmarshal([]byte(value), &decoded) != nil {
-		return value, false
-	}
-	stripped, changed := stripInlineImageValue(decoded, depth+1)
-	if !changed {
-		return value, false
-	}
-	encoded, err := json.Marshal(stripped)
-	if err != nil {
-		return value, false
-	}
-	return string(encoded), true
 }

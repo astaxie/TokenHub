@@ -414,7 +414,7 @@ docker inspect --format 'memory={{.HostConfig.Memory}} memory_swap={{.HostConfig
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 非ストリーミングの上流リクエスト 1 件あたりの全体タイムアウト |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | ストリーミング呼び出しに全体タイムアウトはありません。この値はレスポンスヘッダーの待機時間と、その後ストリームが無音でいられる時間を制限します。1 バイト受信するたびに計測し直します |
 | `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `8388608`（8 MiB） | `/v1` エンドポイントの JSON リクエストボディ上限。生のバイト数または二進接尾辞（`8m`、`8mib`、`512k`）を指定できます。512 MiB を超える値は上限に丸められます |
-| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | マルチモーダルのチャットエンドポイント（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）向けの上限。`/v1/responses` は 128 MiB、またはこの値の大きい方まで読み、画像の再送をこの上限の適用前に縮小できるようにします。リバースプロキシの `client_max_body_size` は少なくともその読み取りサイズにしてください |
+| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | マルチモーダルのチャットエンドポイント（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）向けの上限。`/v1/responses` は 128 MiB、またはこの値の大きい方まで読み、保存済み応答に一致する続きでは、この上限を適用する前に確認済みの過去項目を除きます。保存済み応答に一致せず、この上限を超える再送は拒否します。リバースプロキシの `client_max_body_size` は少なくともその読み取りサイズにしてください |
 | `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 同梱のマルチインスタンス nginx ロードバランサーのみが読み取ります。バックエンドのバイト形式ではなく nginx のサイズ構文（`32m`、`512k`）を使用し、`TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 以上に設定してください |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | クラスター全体の同時実行リースの期限と更新間隔の基準 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | クラスター調整ロックの期限と更新間隔の基準 |
