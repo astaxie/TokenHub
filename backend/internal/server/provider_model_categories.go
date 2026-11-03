@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -272,17 +273,63 @@ func normalizeCompactModelVersion(value string, prefix string) string {
 	return value
 }
 
-func providerCategoryDefinitionsOrFallback(definitions []providerModelCategoryDefinition) []providerModelCategoryDefinition {
-	if len(definitions) > 0 {
-		return normalizeProviderModelCategoryDefinitions(definitions)
-	}
-	return defaultProviderModelCategoryDefinitions()
+// providerCategoryDefinitionsOrFallback normalizes caller-supplied definitions
+// before category matching. Normalization is pure and idempotent, but catalog
+// parsing invokes it once per model, and a cold pass rebuilds the merge map,
+// the alias dedup, and the sort every time; across a multi-thousand-model
+// catalog that dominated both parse time and GC. Callers in the catalog path
+// repeatedly pass the same normalized slice (the service holds one immutable
+// instance), so memoize on slice identity: identical backing arrays share the
+// prior result, while any different input still normalizes correctly because
+// identity is only ever compared against the input it was produced from.
+type categoryDefinitionsMemoEntry struct {
+	input  []providerModelCategoryDefinition
+	output []providerModelCategoryDefinition
 }
 
+var categoryDefinitionsMemo atomic.Pointer[categoryDefinitionsMemoEntry]
+
+func providerCategoryDefinitionsOrFallback(definitions []providerModelCategoryDefinition) []providerModelCategoryDefinition {
+	if len(definitions) == 0 {
+		return defaultProviderModelCategoryDefinitions()
+	}
+	if entry := categoryDefinitionsMemo.Load(); entry != nil && sameCategoryDefinitionSlice(entry.input, definitions) {
+		return entry.output
+	}
+	normalized := normalizeProviderModelCategoryDefinitions(definitions)
+	categoryDefinitionsMemo.Store(&categoryDefinitionsMemoEntry{input: definitions, output: normalized})
+	return normalized
+}
+
+func sameCategoryDefinitionSlice(a []providerModelCategoryDefinition, b []providerModelCategoryDefinition) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if &a[i] != &b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// defaultProviderModelCategoryDefinitionsCache memoizes the normalized builtin
+// definitions. Category resolution runs once per catalog model, and a cold
+// normalize rebuys the map, the per-definition alias deduplication, and the
+// sort on every call; over a multi-thousand-model catalog that dominated both
+// parse time and GC. The value is immutable once built, so a shared snapshot is
+// safe as long as callers do not mutate the returned slice or its members.
+var defaultProviderModelCategoryDefinitionsCache atomic.Pointer[[]providerModelCategoryDefinition]
+
 func defaultProviderModelCategoryDefinitions() []providerModelCategoryDefinition {
+	if cached := defaultProviderModelCategoryDefinitionsCache.Load(); cached != nil {
+		return *cached
+	}
 	definitions := builtinProviderModelCategoryDefinitions()
 	if len(definitions) == 0 {
 		definitions = fallbackProviderModelCategoryDefinitions()
 	}
-	return normalizeProviderModelCategoryDefinitions(definitions)
+	definitions = normalizeProviderModelCategoryDefinitions(definitions)
+	defaultProviderModelCategoryDefinitionsCache.Store(&definitions)
+	return definitions
 }
