@@ -3,9 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
-	"os"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
