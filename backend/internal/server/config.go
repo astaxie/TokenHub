@@ -12,33 +12,38 @@ import (
 )
 
 type Config struct {
-	SemanticRoutingEnabled   bool
-	SemanticRoutingProjects  []string
-	TypeSafeAPIKey           string
-	TypeSafeModel            string
-	SemanticRoutingTimeoutMS int
-	Environment              string
-	AppVersion               string
-	BuildType                string
-	DeploymentType           string
-	ManagedUpdates           bool
-	ReleaseRepository        string
-	InstallRoot              string
-	AdminToken               string
-	BootstrapAdminPassword   string
-	PublicBaseURL            string
-	DatabaseURL              string
-	SQLiteBackupDir          string
-	ModelCatalogFile         string
-	ProviderCatalogFile      string
-	PluginDir                string
-	PluginMarketplaceURL     string
-	SecretKey                string
-	TrustedProxyCIDRs        []string
-	CORSAllowedOrigins       []string
-	SeedDemo                 bool
-	ResourceFailureThreshold int
-	ResourceCooldownSeconds  int
+	SemanticRoutingEnabled     bool
+	SemanticRoutingProjects    []string
+	TypeSafeAPIKey             string
+	TypeSafeModel              string
+	SemanticRoutingTimeoutMS   int
+	Environment                string
+	AppVersion                 string
+	BuildType                  string
+	DeploymentType             string
+	ManagedUpdates             bool
+	ReleaseRepository          string
+	InstallRoot                string
+	AdminToken                 string
+	BootstrapAdminPassword     string
+	PublicBaseURL              string
+	DatabaseURL                string
+	SQLiteBackupDir            string
+	ModelCatalogFile           string
+	ProviderCatalogFile        string
+	ProviderCatalogUpstreamURL string
+	// ProviderCatalogSyncIntervalSeconds controls how often the background
+	// scheduler refreshes the public provider catalog from the upstream URL.
+	// Zero disables the scheduled sync; the bundled catalog still serves reads.
+	ProviderCatalogSyncIntervalSeconds int
+	PluginDir                          string
+	PluginMarketplaceURL               string
+	SecretKey                          string
+	TrustedProxyCIDRs                  []string
+	CORSAllowedOrigins                 []string
+	SeedDemo                           bool
+	ResourceFailureThreshold           int
+	ResourceCooldownSeconds            int
 	// ResourceCooldownMaxSeconds caps the exponential backoff applied to repeated
 	// half-open recovery failures, so a permanently broken resource is retried on a
 	// widening interval instead of once per base cooldown forever.
@@ -133,53 +138,55 @@ type Config struct {
 
 func ConfigFromEnv() Config {
 	return Config{
-		SemanticRoutingEnabled:           getenvBool("TOKENHUB_SEMANTIC_ROUTING_ENABLED", false),
-		SemanticRoutingProjects:          getenvList("TOKENHUB_SEMANTIC_ROUTING_PROJECTS"),
-		TypeSafeAPIKey:                   getenv("TOKENHUB_TYPESAFE_API_KEY", ""),
-		TypeSafeModel:                    getenv("TOKENHUB_TYPESAFE_MODEL", "jev-1.13.0"),
-		SemanticRoutingTimeoutMS:         getenvSetInt("TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS", 1000),
-		Environment:                      getenv("TOKENHUB_ENV", "dev"),
-		AppVersion:                       DefaultAppVersion,
-		BuildType:                        defaultBuildType,
-		DeploymentType:                   sourceDeploymentType,
-		ManagedUpdates:                   getenvBool("TOKENHUB_MANAGED_UPDATES", false),
-		ReleaseRepository:                getenv("TOKENHUB_RELEASE_REPOSITORY", defaultReleaseRepository),
-		InstallRoot:                      getenv("TOKENHUB_INSTALL_ROOT", defaultNativeInstallRoot),
-		AdminToken:                       getenv("TOKENHUB_ADMIN_TOKEN", "dev_admin_token"),
-		BootstrapAdminPassword:           getenv("TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD", "admin123456"),
-		PublicBaseURL:                    getenv("TOKENHUB_PUBLIC_BASE_URL", ""),
-		DatabaseURL:                      resolveDatabaseURL(),
-		SQLiteBackupDir:                  getenv("TOKENHUB_SQLITE_BACKUP_DIR", defaultSQLiteBackupDir()),
-		ModelCatalogFile:                 getenv("TOKENHUB_MODEL_CATALOG_FILE", defaultModelCatalogFile()),
-		ProviderCatalogFile:              getenv("TOKENHUB_PROVIDER_CATALOG_FILE", defaultProviderCatalogFile()),
-		PluginDir:                        getenv("TOKENHUB_PLUGIN_DIR", defaultPluginDir()),
-		PluginMarketplaceURL:             getenv("TOKENHUB_PLUGIN_MARKETPLACE_URL", ""),
-		SecretKey:                        getenv("TOKENHUB_SECRET_KEY", "dev_tokenhub_secret_key"),
-		TrustedProxyCIDRs:                getenvList("TOKENHUB_TRUSTED_PROXY_CIDRS"),
-		CORSAllowedOrigins:               getenvList("TOKENHUB_CORS_ALLOWED_ORIGINS"),
-		SeedDemo:                         getenvBool("TOKENHUB_SEED_DEMO", false),
-		ResourceFailureThreshold:         getenvInt("TOKENHUB_RESOURCE_FAILURE_THRESHOLD", 3),
-		ResourceCooldownSeconds:          getenvInt("TOKENHUB_RESOURCE_COOLDOWN_SECONDS", 300),
-		ResourceCooldownMaxSeconds:       getenvInt("TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS", 3600),
-		MetricsEnabled:                   getenvBool("TOKENHUB_METRICS_ENABLED", false),
-		MetricsToken:                     getenv("TOKENHUB_METRICS_TOKEN", ""),
-		MetricsProjectLabel:              getenvBool("TOKENHUB_METRICS_PROJECT_LABEL", false),
-		TracingEnabled:                   getenvBool("TOKENHUB_TRACING_ENABLED", false),
-		TracingEndpoint:                  getenv("TOKENHUB_TRACING_ENDPOINT", ""),
-		TracingHeaders:                   getenv("TOKENHUB_TRACING_HEADERS", ""),
-		TracingCapturePayloads:           getenvBool("TOKENHUB_TRACING_CAPTURE_PAYLOADS", false),
-		TracingSampleRatio:               getenvFloat("TOKENHUB_TRACING_SAMPLE_RATIO", 1),
-		TracingTimeoutSeconds:            getenvSetInt("TOKENHUB_TRACING_TIMEOUT_SECONDS", 10),
-		TracingQueueSize:                 getenvSetInt("TOKENHUB_TRACING_QUEUE_SIZE", 2048),
-		UpstreamNonStreamTimeoutSeconds:  getenvInt("TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS", defaultUpstreamNonStreamTimeoutSeconds),
-		UpstreamStreamIdleTimeoutSeconds: getenvInt("TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS", defaultUpstreamStreamIdleTimeoutSeconds),
-		InFlightLeaseTTLSeconds:          getenvInt("TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS", 300),
-		ClusterLockTTLSeconds:            getenvInt("TOKENHUB_CLUSTER_LOCK_TTL_SECONDS", 180),
-		BillingRedisURL:                  getenv("TOKENHUB_BILLING_REDIS_URL", ""),
-		GracefulShutdownSeconds:          getenvInt("TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS", 150),
-		DBMaxOpenConns:                   getenvInt("TOKENHUB_DB_MAX_OPEN_CONNS", 25),
-		DBMaxIdleConns:                   getenvInt("TOKENHUB_DB_MAX_IDLE_CONNS", 5),
-		DBConnMaxLifetimeMinutes:         getenvInt("TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES", 30),
+		SemanticRoutingEnabled:             getenvBool("TOKENHUB_SEMANTIC_ROUTING_ENABLED", false),
+		SemanticRoutingProjects:            getenvList("TOKENHUB_SEMANTIC_ROUTING_PROJECTS"),
+		TypeSafeAPIKey:                     getenv("TOKENHUB_TYPESAFE_API_KEY", ""),
+		TypeSafeModel:                      getenv("TOKENHUB_TYPESAFE_MODEL", "jev-1.13.0"),
+		SemanticRoutingTimeoutMS:           getenvSetInt("TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS", 1000),
+		Environment:                        getenv("TOKENHUB_ENV", "dev"),
+		AppVersion:                         DefaultAppVersion,
+		BuildType:                          defaultBuildType,
+		DeploymentType:                     sourceDeploymentType,
+		ManagedUpdates:                     getenvBool("TOKENHUB_MANAGED_UPDATES", false),
+		ReleaseRepository:                  getenv("TOKENHUB_RELEASE_REPOSITORY", defaultReleaseRepository),
+		InstallRoot:                        getenv("TOKENHUB_INSTALL_ROOT", defaultNativeInstallRoot),
+		AdminToken:                         getenv("TOKENHUB_ADMIN_TOKEN", "dev_admin_token"),
+		BootstrapAdminPassword:             getenv("TOKENHUB_BOOTSTRAP_ADMIN_PASSWORD", "admin123456"),
+		PublicBaseURL:                      getenv("TOKENHUB_PUBLIC_BASE_URL", ""),
+		DatabaseURL:                        resolveDatabaseURL(),
+		SQLiteBackupDir:                    getenv("TOKENHUB_SQLITE_BACKUP_DIR", defaultSQLiteBackupDir()),
+		ModelCatalogFile:                   getenv("TOKENHUB_MODEL_CATALOG_FILE", defaultModelCatalogFile()),
+		ProviderCatalogFile:                getenv("TOKENHUB_PROVIDER_CATALOG_FILE", defaultProviderCatalogFile()),
+		ProviderCatalogUpstreamURL:         strings.TrimSpace(getenv("TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL", providerCatalogUpstreamURL)),
+		ProviderCatalogSyncIntervalSeconds: getenvInt("TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS", defaultProviderCatalogSyncIntervalSeconds),
+		PluginDir:                          getenv("TOKENHUB_PLUGIN_DIR", defaultPluginDir()),
+		PluginMarketplaceURL:               getenv("TOKENHUB_PLUGIN_MARKETPLACE_URL", ""),
+		SecretKey:                          getenv("TOKENHUB_SECRET_KEY", "dev_tokenhub_secret_key"),
+		TrustedProxyCIDRs:                  getenvList("TOKENHUB_TRUSTED_PROXY_CIDRS"),
+		CORSAllowedOrigins:                 getenvList("TOKENHUB_CORS_ALLOWED_ORIGINS"),
+		SeedDemo:                           getenvBool("TOKENHUB_SEED_DEMO", false),
+		ResourceFailureThreshold:           getenvInt("TOKENHUB_RESOURCE_FAILURE_THRESHOLD", 3),
+		ResourceCooldownSeconds:            getenvInt("TOKENHUB_RESOURCE_COOLDOWN_SECONDS", 300),
+		ResourceCooldownMaxSeconds:         getenvInt("TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS", 3600),
+		MetricsEnabled:                     getenvBool("TOKENHUB_METRICS_ENABLED", false),
+		MetricsToken:                       getenv("TOKENHUB_METRICS_TOKEN", ""),
+		MetricsProjectLabel:                getenvBool("TOKENHUB_METRICS_PROJECT_LABEL", false),
+		TracingEnabled:                     getenvBool("TOKENHUB_TRACING_ENABLED", false),
+		TracingEndpoint:                    getenv("TOKENHUB_TRACING_ENDPOINT", ""),
+		TracingHeaders:                     getenv("TOKENHUB_TRACING_HEADERS", ""),
+		TracingCapturePayloads:             getenvBool("TOKENHUB_TRACING_CAPTURE_PAYLOADS", false),
+		TracingSampleRatio:                 getenvFloat("TOKENHUB_TRACING_SAMPLE_RATIO", 1),
+		TracingTimeoutSeconds:              getenvSetInt("TOKENHUB_TRACING_TIMEOUT_SECONDS", 10),
+		TracingQueueSize:                   getenvSetInt("TOKENHUB_TRACING_QUEUE_SIZE", 2048),
+		UpstreamNonStreamTimeoutSeconds:    getenvInt("TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS", defaultUpstreamNonStreamTimeoutSeconds),
+		UpstreamStreamIdleTimeoutSeconds:   getenvInt("TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS", defaultUpstreamStreamIdleTimeoutSeconds),
+		InFlightLeaseTTLSeconds:            getenvInt("TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS", 300),
+		ClusterLockTTLSeconds:              getenvInt("TOKENHUB_CLUSTER_LOCK_TTL_SECONDS", 180),
+		BillingRedisURL:                    getenv("TOKENHUB_BILLING_REDIS_URL", ""),
+		GracefulShutdownSeconds:            getenvInt("TOKENHUB_GRACEFUL_SHUTDOWN_SECONDS", 150),
+		DBMaxOpenConns:                     getenvInt("TOKENHUB_DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConns:                     getenvInt("TOKENHUB_DB_MAX_IDLE_CONNS", 5),
+		DBConnMaxLifetimeMinutes:           getenvInt("TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES", 30),
 
 		CacheAffinityEnabled:         getenvBool("TOKENHUB_CACHE_AFFINITY_ENABLED", false),
 		CacheAffinityModels:          getenvList("TOKENHUB_CACHE_AFFINITY_MODELS"),

@@ -12,5 +12,8 @@ func (s *Server) StartBillingScheduler() {
 	if s.providerMonitoring != nil {
 		s.providerMonitoring.StartScheduler(providerMonitoringSchedulerInterval)
 	}
+	if s.providerCatalogSync != nil && s.config.ProviderCatalogSyncIntervalSeconds > 0 {
+		s.providerCatalogSync.StartScheduler(time.Duration(s.config.ProviderCatalogSyncIntervalSeconds) * time.Second)
+	}
 	s.pluginBackgroundRunner.StartScheduler(pluginBackgroundJobSchedulerInterval)
 }

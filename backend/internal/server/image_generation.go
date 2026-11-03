@@ -623,6 +623,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			return err
 		}
 	}
+	if s.providerCatalogSync != nil {
+		if err := s.providerCatalogSync.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
 	if s.pluginBackgroundRunner != nil {
 		if err := s.pluginBackgroundRunner.Shutdown(ctx); err != nil {
 			return err

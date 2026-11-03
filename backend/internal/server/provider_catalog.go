@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,6 +32,20 @@ type providerCatalogService struct {
 	modelCategories []providerModelCategoryDefinition
 	builtinEntries  []ProviderCatalogEntry
 	defaultType     string
+	// syncMu serializes upstream refreshes so a manual sync and the daily
+	// scheduler cannot download the multi-megabyte catalog concurrently.
+	syncMu sync.Mutex
+	// lastSyncAttempt records the most recent upstream attempt, success or
+	// failure, so user-triggered refreshes stay off the network while the
+	// stored snapshot is fresh.
+	lastSyncAttempt time.Time
+}
+
+// SetUpstreamURL overrides the public catalog source. An empty value disables
+// upstream fetching entirely, leaving the bundled and stored catalogs as the
+// only sources for air-gapped deployments.
+func (s *providerCatalogService) SetUpstreamURL(upstreamURL string) {
+	s.upstreamURL = strings.TrimSpace(upstreamURL)
 }
 
 func newProviderCatalogService(store Store, catalogFile string, clients ...providerCatalogHTTPClient) *providerCatalogService {
@@ -184,6 +199,62 @@ func providerCatalogHasEntry(entries []ProviderCatalogEntry, id string) bool {
 }
 
 func (s *providerCatalogService) reload(ctx context.Context) ([]ProviderCatalogEntry, string, error) {
+	return s.reloadWithOptions(ctx, false)
+}
+
+// ForceReload bypasses the freshness window and fetches the public catalog
+// from the configured upstream, falling back to the bundled catalog on any
+// failure. It backs the explicit admin sync endpoint.
+func (s *providerCatalogService) ForceReload(ctx context.Context) ([]ProviderCatalogEntry, string, error) {
+	return s.reloadWithOptions(ctx, true)
+}
+
+// upstreamSnapshotFresh reports whether a recent sync attempt (in-memory) or a
+// recently written snapshot (survives restarts) makes another multi-megabyte
+// upstream download unnecessary for this pass.
+func (s *providerCatalogService) upstreamSnapshotFresh() bool {
+	if !s.lastSyncAttempt.IsZero() && time.Since(s.lastSyncAttempt) < providerCatalogFreshInterval {
+		return true
+	}
+	_, _, fetchedAt, found, err := s.store.LoadProviderCatalogSnapshot(false)
+	if err != nil || !found || fetchedAt.IsZero() {
+		return false
+	}
+	return time.Since(fetchedAt) < providerCatalogFreshInterval
+}
+
+func (s *providerCatalogService) reloadWithOptions(ctx context.Context, force bool) ([]ProviderCatalogEntry, string, error) {
+	if !force && s.upstreamSnapshotFresh() {
+		// Skip the upstream download while the sync window is fresh, but keep
+		// re-reading the bundled catalog file so local edits stay visible to
+		// admin refreshes. Falls back to the stored snapshot if the file is
+		// unreadable.
+		if entries, err := s.loadLocalProviderCatalog(); err == nil && len(entries) > 0 {
+			// Persist the re-read so the Get() snapshot lookup after reload
+			// observes the updated file without a network round trip.
+			if saveErr := s.store.SaveProviderCatalogSnapshot(entries, providerCatalogLocalSource, time.Now().UTC()); saveErr == nil {
+				return cloneCatalogEntries(entries, false), providerCatalogLocalSource, nil
+			}
+		}
+		if entries, source, _, err := s.loadStored(true); err == nil && len(entries) > 0 {
+			return entries, source, nil
+		}
+	}
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	if !force && s.upstreamSnapshotFresh() {
+		if entries, err := s.loadLocalProviderCatalog(); err == nil && len(entries) > 0 {
+			// Persist the re-read so the Get() snapshot lookup after reload
+			// observes the updated file without a network round trip.
+			if saveErr := s.store.SaveProviderCatalogSnapshot(entries, providerCatalogLocalSource, time.Now().UTC()); saveErr == nil {
+				return cloneCatalogEntries(entries, false), providerCatalogLocalSource, nil
+			}
+		}
+		if entries, source, _, err := s.loadStored(true); err == nil && len(entries) > 0 {
+			return entries, source, nil
+		}
+	}
+	s.lastSyncAttempt = time.Now()
 	var (
 		refreshed []ProviderCatalogEntry
 		source    = providerCatalogLocalSource
@@ -198,6 +269,9 @@ func (s *providerCatalogService) reload(ctx context.Context) ([]ProviderCatalogE
 	})
 	if err != nil {
 		return nil, source, err
+	}
+	if source == providerCatalogUpstreamSource {
+		s.lastSyncAttempt = time.Now()
 	}
 	return refreshed, source, nil
 }
