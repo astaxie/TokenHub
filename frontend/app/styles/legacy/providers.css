@@ -1472,3 +1472,19 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+@keyframes provider-onboarding-sync-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.provider-onboarding-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider-onboarding-sync-status {
+  color: var(--muted, #6b7280);
+  font-size: 12px;
+}

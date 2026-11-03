@@ -963,7 +963,9 @@ export function ProviderUpsertModal({
   function reloadSelectedCatalog() {
     loadedCustomConnection.current = customConnectionKey;
     preserveCatalogValuesOnReload.current = true;
-    catalogRefreshRequested.current = catalogID !== "custom" && !usesAccountCatalog;
+    // Catalog reloads read the locally stored snapshot; explicit upstream
+    // syncs go through the separate admin sync endpoint.
+    catalogRefreshRequested.current = false;
     setError("");
     setCatalogReloadKey((current) => current + 1);
     setDetail(null);
@@ -1175,7 +1177,7 @@ export function ProviderUpsertModal({
               </div>
             ) : null}
             {mode === "create" && createStep === 0 ? (
-              <ProviderOnboardingCatalog directEntries={directCredentialCatalog} accountEntries={accountProviderCatalogOptions} providers={existingProviders} query={catalogQuery} onQueryChange={setCatalogQuery} onSelect={selectOnboardingProvider} onCustom={selectOnboardingCustom} contributions={pluginUI} />
+              <ProviderOnboardingCatalog api={api} directEntries={directCredentialCatalog} accountEntries={accountProviderCatalogOptions} providers={existingProviders} query={catalogQuery} onQueryChange={setCatalogQuery} onSelect={selectOnboardingProvider} onCustom={selectOnboardingCustom} contributions={pluginUI} />
             ) : null}
             {quickAPIConnect ? (
                 <><ProviderAPIQuickConnect api={api}

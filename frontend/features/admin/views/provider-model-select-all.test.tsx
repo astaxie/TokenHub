@@ -112,11 +112,15 @@ describe("Provider model bulk selection", () => {
     const user = userEvent.setup();
     let resolveReload!: (response: Response) => void;
     const pending = new Promise<Response>(resolve => { resolveReload = resolve; });
+    let catalogFetches = 0;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
       if ((!init?.method || init.method === "GET") && url.pathname === `/api/admin/provider-catalog/${catalog.id}`) {
-        if (url.search === "?refresh=true") return pending;
-        return new Response(JSON.stringify({ data: catalog }));
+        // The first load renders the catalog; the reload button now re-reads
+        // the same local snapshot route without the legacy refresh query.
+        catalogFetches += 1;
+        if (catalogFetches === 1) return new Response(JSON.stringify({ data: catalog }));
+        return pending;
       }
       throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url.pathname}`);
     }));

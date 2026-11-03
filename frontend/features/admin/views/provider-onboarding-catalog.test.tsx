@@ -3,19 +3,26 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ProviderCatalogEntry } from "../core/types";
+import { adminFetch } from "../resources/payloads";
 import { ProviderOnboardingCatalog } from "./provider-onboarding-catalog";
+
+vi.mock("../resources/payloads", async importOriginal => ({
+  ...(await importOriginal<typeof import("../resources/payloads")>()),
+  adminFetch: vi.fn(),
+}));
 
 const apiEntry: ProviderCatalogEntry = { id: "ui-api", name: "UI API", display_name: "UI API", type: "openai_compatible", base_url: "https://api.example.test/v1", models_count: 2, source: "test" };
 const accountEntry: ProviderCatalogEntry = { id: "ui-account", name: "UI Account", display_name: "UI Account", type: "example_account", base_url: "https://account.example.test", models_count: 1, source: "plugin" };
 const ollamaEntry: ProviderCatalogEntry = { id: "ollama", name: "Ollama", display_name: "Ollama", type: "local", base_url: "http://127.0.0.1:11434/v1", models_count: 1, source: "plugin" };
 const aggregatorEntry: ProviderCatalogEntry = { ...apiEntry, id: "openrouter", name: "OpenRouter", display_name: "OpenRouter", base_url: "https://router.example.test/v1" };
+const api = { baseURL: "http://localhost:8080", adminToken: "admin-token" };
 
 describe("ProviderOnboardingCatalog", () => {
   it("keeps configured cards actionable and selects metadata-driven account entries", async () => {
     const user = userEvent.setup();
     const select = vi.fn();
     const custom = vi.fn();
-    render(<ProviderOnboardingCatalog directEntries={[apiEntry]} accountEntries={[accountEntry]} providers={[{ id: "existing", name: "Existing Provider", type: apiEntry.type, options: { catalog_id: apiEntry.id }, priority: 1, status: "active", healthy: true }]} query="" onQueryChange={vi.fn()} onSelect={select} onCustom={custom} contributions={[{ id: "card", plugin_id: "example", slot: "provider.catalog.card", provider_types: [accountEntry.type], title: "Example Subscription", schema: { description: "Sign in with your example account" } }]} />);
+    render(<ProviderOnboardingCatalog api={api} directEntries={[apiEntry]} accountEntries={[accountEntry]} providers={[{ id: "existing", name: "Existing Provider", type: apiEntry.type, options: { catalog_id: apiEntry.id }, priority: 1, status: "active", healthy: true }]} query="" onQueryChange={vi.fn()} onSelect={select} onCustom={custom} contributions={[{ id: "card", plugin_id: "example", slot: "provider.catalog.card", provider_types: [accountEntry.type], title: "Example Subscription", schema: { description: "Sign in with your example account" } }]} />);
     expect(within(screen.getByRole("button", { name: /UI API/ })).getByText("已接入")).toBeVisible();
     await user.click(screen.getByRole("button", { name: /UI API/ }));
     expect(select).toHaveBeenLastCalledWith(apiEntry, "provider_api_key");
@@ -30,7 +37,7 @@ describe("ProviderOnboardingCatalog", () => {
     const user = userEvent.setup();
     function Harness() {
       const [query, setQuery] = useState("");
-      return <ProviderOnboardingCatalog directEntries={[apiEntry]} accountEntries={[accountEntry]} providers={[]} query={query} onQueryChange={setQuery} onSelect={vi.fn()} onCustom={vi.fn()} contributions={[{ id: "account-card", plugin_id: "example", slot: "provider.catalog.card", provider_types: [accountEntry.type], schema: { description: "Connect your subscription" } }]} />;
+      return <ProviderOnboardingCatalog api={api} directEntries={[apiEntry]} accountEntries={[accountEntry]} providers={[]} query={query} onQueryChange={setQuery} onSelect={vi.fn()} onCustom={vi.fn()} contributions={[{ id: "account-card", plugin_id: "example", slot: "provider.catalog.card", provider_types: [accountEntry.type], schema: { description: "Connect your subscription" } }]} />;
     }
     render(<Harness />);
     const search = screen.getByPlaceholderText("搜索供应商名称或地址");
@@ -44,7 +51,7 @@ describe("ProviderOnboardingCatalog", () => {
   });
 
   it("renders the matched brand icon and a shared fallback for unknown providers", () => {
-    render(<ProviderOnboardingCatalog directEntries={[ollamaEntry]} accountEntries={[accountEntry]} providers={[]} query="" onQueryChange={vi.fn()} onSelect={vi.fn()} onCustom={vi.fn()} contributions={[]} />);
+    render(<ProviderOnboardingCatalog api={api} directEntries={[ollamaEntry]} accountEntries={[accountEntry]} providers={[]} query="" onQueryChange={vi.fn()} onSelect={vi.fn()} onCustom={vi.fn()} contributions={[]} />);
     const ollamaCard = screen.getByRole("button", { name: /Ollama/ });
     expect(ollamaCard.querySelector("img")).toHaveAttribute("src", "/provider-icons/ollama.svg");
     fireEvent.error(ollamaCard.querySelector("img")!);
@@ -59,7 +66,7 @@ describe("ProviderOnboardingCatalog", () => {
     const custom = vi.fn();
     function Harness() {
       const [query, setQuery] = useState("");
-      return <ProviderOnboardingCatalog directEntries={[apiEntry, ollamaEntry, aggregatorEntry]} accountEntries={[accountEntry]} providers={[{ id: "existing", name: "Existing API", type: apiEntry.type, base_url: apiEntry.base_url, priority: 1, status: "disabled", healthy: false }]} query={query} onQueryChange={setQuery} onSelect={select} onCustom={custom} contributions={[]} />;
+      return <ProviderOnboardingCatalog api={api} directEntries={[apiEntry, ollamaEntry, aggregatorEntry]} accountEntries={[accountEntry]} providers={[{ id: "existing", name: "Existing API", type: apiEntry.type, base_url: apiEntry.base_url, priority: 1, status: "disabled", healthy: false }]} query={query} onQueryChange={setQuery} onSelect={select} onCustom={custom} contributions={[]} />;
     }
     render(<Harness />);
     const filters = within(screen.getByRole("group", { name: "供应商分类" }));
@@ -101,7 +108,7 @@ describe("ProviderOnboardingCatalog", () => {
   });
 
   it("shows only available connection modes and handles an empty catalog", () => {
-    const props = { directEntries: [apiEntry], accountEntries: [], providers: [], query: "", onQueryChange: vi.fn(), onSelect: vi.fn(), onCustom: vi.fn(), contributions: [] };
+    const props = { api, directEntries: [apiEntry], accountEntries: [], providers: [], query: "", onQueryChange: vi.fn(), onSelect: vi.fn(), onCustom: vi.fn(), contributions: [] };
     const { rerender } = render(<ProviderOnboardingCatalog {...props} />);
     const filters = within(screen.getByRole("group", { name: "供应商分类" }));
     expect(filters.queryByRole("button", { name: /订阅与账号/ })).not.toBeInTheDocument();
@@ -110,5 +117,22 @@ describe("ProviderOnboardingCatalog", () => {
     expect(filters.getByRole("button", { name: "全部 0" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("没有匹配的供应商，可使用自定义接入。")).toBeVisible();
     expect(screen.getByRole("button", { name: /自定义供应商/ })).toBeEnabled();
+  });
+
+  it("syncs the provider catalog from the explicit sync endpoint and reports the outcome", async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminFetch).mockResolvedValueOnce(new Response(JSON.stringify({ source: "upstream-provider-catalog", providers: 258, models_count: 9000, duration_ms: 1800 }), { status: 200 }));
+    render(<ProviderOnboardingCatalog api={api} directEntries={[apiEntry]} accountEntries={[]} providers={[]} query="" onQueryChange={vi.fn()} onSelect={vi.fn()} onCustom={vi.fn()} contributions={[]} />);
+    await user.click(screen.getByRole("button", { name: /同步供应商目录/ }));
+    expect(await screen.findByText("同步供应商目录完成：已加载 258 个供应商。")).toBeVisible();
+    expect(adminFetch).toHaveBeenCalledWith(api, "/api/admin/provider-catalog-sync", { method: "POST" });
+  });
+
+  it("shows a retryable failure message when the catalog sync endpoint fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminFetch).mockResolvedValueOnce(new Response("upstream unavailable", { status: 502 }));
+    render(<ProviderOnboardingCatalog api={api} directEntries={[apiEntry]} accountEntries={[]} providers={[]} query="" onQueryChange={vi.fn()} onSelect={vi.fn()} onCustom={vi.fn()} contributions={[]} />);
+    await user.click(screen.getByRole("button", { name: /同步供应商目录/ }));
+    expect(await screen.findByText("目录同步失败，请稍后重试。")).toBeVisible();
   });
 });

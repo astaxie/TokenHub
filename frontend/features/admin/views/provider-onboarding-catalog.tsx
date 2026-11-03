@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Boxes, Check, Plus, Search } from "lucide-react";
-import type { AdminUIContribution, Provider, ProviderCatalogEntry, ProviderCredentialMode } from "../core/types";
+import { Boxes, Check, Plus, RefreshCw, Search } from "lucide-react";
+import type { AdminUIContribution, ApiContext, Provider, ProviderCatalogEntry, ProviderCredentialMode } from "../core/types";
+import { adminFetch, readAdminError } from "../resources/payloads";
 import { providerBrandIconSource } from "../domain/provider-brand-icons";
 import { providerCatalogCategory } from "../domain/provider-onboarding-categories";
 import { languageLocale, tx } from "../i18n/runtime";
@@ -18,7 +19,8 @@ function ProviderBrandIcon({ entry, label }: { entry: ProviderCatalogEntry; labe
   </span>;
 }
 
-export function ProviderOnboardingCatalog({ directEntries, accountEntries, providers, query, onQueryChange, onSelect, onCustom, contributions }: {
+export function ProviderOnboardingCatalog({ api, directEntries, accountEntries, providers, query, onQueryChange, onSelect, onCustom, contributions }: {
+  api: ApiContext;
   directEntries: ProviderCatalogEntry[];
   accountEntries: ProviderCatalogEntry[];
   providers: Provider[];
@@ -29,6 +31,23 @@ export function ProviderOnboardingCatalog({ directEntries, accountEntries, provi
   contributions: AdminUIContribution[];
 }) {
   const [filter, setFilter] = useState<CatalogFilter>("all");
+  const [syncState, setSyncState] = useState<{ loading: boolean; message: string }>({ loading: false, message: "" });
+
+  async function syncCatalog() {
+    if (syncState.loading) return;
+    setSyncState({ loading: true, message: "" });
+    try {
+      const resp = await adminFetch(api, "/api/admin/provider-catalog-sync", { method: "POST" });
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx("目录同步失败，请稍后重试。")));
+      const payload = await resp.json() as { providers?: number };
+      setSyncState({
+        loading: false,
+        message: tx("同步供应商目录完成：已加载 {count} 个供应商。").replace("{count}", new Intl.NumberFormat(languageLocale()).format(payload.providers ?? 0)),
+      });
+    } catch {
+      setSyncState({ loading: false, message: tx("目录同步失败，请稍后重试。") });
+    }
+  }
   const normalized = query.trim().toLowerCase();
   const apiEntries = directEntries.filter(entry => entry.id !== "custom");
   const groups: Array<{ id: CatalogCategory; title: string; mode: ProviderCredentialMode; entries: ProviderCatalogEntry[] }> = [
@@ -60,6 +79,10 @@ export function ProviderOnboardingCatalog({ directEntries, accountEntries, provi
     <p className="provider-onboarding-intro">{tx("选择你要接入的服务，下一步填写密钥或登录账号。")}</p>
     <label className="search-box provider-onboarding-search"><Search size={16} /><input autoFocus value={query} onChange={event => onQueryChange(event.target.value)} placeholder={tx("搜索供应商名称或地址")} /></label>
     <div className="provider-onboarding-filters" role="group" aria-label={tx("供应商分类")}>
+      <button type="button" className="provider-onboarding-sync" onClick={syncCatalog} disabled={syncState.loading} title={tx("从公共目录拉取最新的供应商模板，通常每天自动同步一次。")}>
+        <RefreshCw size={14} style={syncState.loading ? { animation: "provider-onboarding-sync-rotate 1s linear infinite" } : undefined} />{" "}{syncState.loading ? tx("正在同步…") : tx("同步供应商目录")}
+      </button>
+      {syncState.message ? <span className="provider-onboarding-sync-status">{syncState.message}</span> : null}
       {filters.map(item => <button key={item.id} type="button" aria-pressed={activeFilter === item.id} onClick={() => setFilter(item.id)}>
         {item.label}{" "}<span>{new Intl.NumberFormat(languageLocale()).format(item.count)}</span>
       </button>)}
