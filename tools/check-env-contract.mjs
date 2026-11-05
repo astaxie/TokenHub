@@ -16,9 +16,12 @@ import {
   checkComposeDefaults,
   checkDocumented,
   checkNoPhantoms,
+  checkStartShCoverage,
+  checkStartShExemptions,
   extractComposeRequiredVars,
   extractDocumentedVars,
   extractGoEnvVars,
+  extractStartShVars,
   parseEnvExample,
 } from "./env-contract.mjs";
 
@@ -69,6 +72,7 @@ function main() {
 
   const backendEnv = parseEnvExample(read(root, "backend/.env.example"));
   const deployEnv = parseEnvExample(read(root, "deploy/.env.example"));
+  const startShVars = extractStartShVars(read(root, "start.sh"));
 
   const composeRequired = new Set();
   for (const entry of readdirSync(join(root, COMPOSE_DIR))) {
@@ -84,6 +88,8 @@ function main() {
     ...checkNoPhantoms("deploy/.env.example", deployEnv, goVars),
     ...checkComposeDefaults(composeRequired, deployEnv),
     ...checkBackendCompleteness(goVars, backendEnv),
+    ...checkStartShCoverage(goVars, startShVars),
+    ...checkStartShExemptions(goVars, startShVars),
   ];
 
   if (failures.length > 0) {
@@ -97,6 +103,8 @@ function main() {
         "A new backend variable needs an entry in backend/.env.example and a row in the",
         "English deployment documentation. A variable owned by Compose or the frontend",
         "instead of Go belongs in KNOWN_CONSUMERS in tools/env-contract.mjs.",
+        "A new backend variable also needs a start.sh decision: register it in",
+        "BACKEND_VAR_DEFAULTS, or add it to START_SH_EXEMPT with a reason.",
       ].join("\n"),
     );
     return 1;

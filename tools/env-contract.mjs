@@ -6,10 +6,66 @@
 //
 // Scope, stated honestly: these are key-presence rules. They do not compare default
 // VALUES — dev and deploy defaults differ on purpose, and a default drifting from 300
-// to 600 is invisible here. Nor does any rule force a new variable into start.sh or
-// Compose; those surfaces are deliberately selected rather than universal.
+// to 600 is invisible here.
+//
+// start.sh is a deliberately selected surface rather than a universal one: it passes an
+// explicit allowlist to the backend and lets godotenv read the rest from backend/.env, so
+// optional subsystems (PostgreSQL, tracing, metrics) stay out on purpose. Requiring every
+// variable there would be wrong. What start.sh does need is a decision for each new
+// variable: either it is registered in BACKEND_VAR_DEFAULTS, or it is listed in
+// START_SH_EXEMPT with a reason. A third state — forgotten — is what this contract
+// rejects, because that is the one that silently changes what ./start.sh sets.
 
 const VAR = "TOKENHUB_[A-Z0-9_]+";
+
+/**
+ * Variables read by the gateway that are intentionally absent from start.sh.
+ *
+ * Exempting a variable is a claim about how ./start.sh runs, so every entry carries a
+ * reason. A test asserts these keys are still real backend variables and still absent
+ * from start.sh, so the list cannot accumulate stale entries or outlive its subject.
+ */
+export const START_SH_EXEMPT = new Map([
+  // The migration CLI reads these, not the gateway process ./start.sh launches.
+  ["TOKENHUB_API", "read by the migration CLI, not the gateway"],
+  // Database selection stays with backend/.env so godotenv can pick up a PostgreSQL
+  // configuration; start.sh forwards TOKENHUB_DATABASE_URL separately when the shell
+  // sets it explicitly.
+  ["TOKENHUB_DB_CONN_MAX_LIFETIME_MINUTES", "PostgreSQL subsystem, configured via backend/.env"],
+  ["TOKENHUB_DB_HOST", "PostgreSQL subsystem, configured via backend/.env"],
+  ["TOKENHUB_DB_MAX_IDLE_CONNS", "PostgreSQL subsystem, configured via backend/.env"],
+  ["TOKENHUB_DB_MAX_OPEN_CONNS", "PostgreSQL subsystem, configured via backend/.env"],
+  ["TOKENHUB_DB_NAME", "PostgreSQL subsystem, configured via backend/.env"],
+  ["TOKENHUB_DB_PASSWORD", "PostgreSQL subsystem, configured via backend/.env"],
+  ["TOKENHUB_DB_PORT", "PostgreSQL subsystem, configured via backend/.env"],
+  ["TOKENHUB_DB_SSLMODE", "PostgreSQL subsystem, configured via backend/.env"],
+  ["TOKENHUB_DB_USER", "PostgreSQL subsystem, configured via backend/.env"],
+  // Deployment and installation state is owned by the installer and release bundles;
+  // a developer checkout served by ./start.sh has no install root to manage.
+  ["TOKENHUB_DEPLOYMENT_TYPE", "set by the installer, not a developer checkout"],
+  ["TOKENHUB_INSTALL_ROOT", "set by the installer, not a developer checkout"],
+  ["TOKENHUB_MANAGED_UPDATES", "set by the installer, not a developer checkout"],
+  ["TOKENHUB_MODEL_CATALOG_FILE", "resolved from the release layout at runtime"],
+  ["TOKENHUB_PROVIDER_CATALOG_FILE", "resolved from the release layout at runtime"],
+  ["TOKENHUB_SQLITE_BACKUP_DIR", "resolved next to the database at runtime"],
+  // Optional observability and seeding surfaces: off by default, so a dev run needs no
+  // entry and adding one would imply the feature is on.
+  ["TOKENHUB_METRICS_ENABLED", "optional metrics surface, off by default"],
+  ["TOKENHUB_METRICS_PROJECT_LABEL", "optional metrics surface, off by default"],
+  ["TOKENHUB_METRICS_TOKEN", "optional metrics surface, off by default"],
+  ["TOKENHUB_TRACING_CAPTURE_PAYLOADS", "optional tracing surface, off by default"],
+  ["TOKENHUB_TRACING_ENABLED", "optional tracing surface, off by default"],
+  ["TOKENHUB_TRACING_ENDPOINT", "optional tracing surface, off by default"],
+  ["TOKENHUB_TRACING_HEADERS", "optional tracing surface, off by default"],
+  ["TOKENHUB_TRACING_QUEUE_SIZE", "optional tracing surface, off by default"],
+  ["TOKENHUB_TRACING_SAMPLE_RATIO", "optional tracing surface, off by default"],
+  ["TOKENHUB_TRACING_TIMEOUT_SECONDS", "optional tracing surface, off by default"],
+  // Resource cooldown is an operator tuning knob for production incident handling.
+  ["TOKENHUB_RESOURCE_COOLDOWN_MAX_SECONDS", "operator tuning knob, defaults are fine for dev"],
+  ["TOKENHUB_RESOURCE_COOLDOWN_SECONDS", "operator tuning knob, defaults are fine for dev"],
+  ["TOKENHUB_RESOURCE_FAILURE_THRESHOLD", "operator tuning knob, defaults are fine for dev"],
+  ["TOKENHUB_SEED_DEMO", "demo seeding, configured via backend/.env"],
+]);
 
 /**
  * Variables that appear in an .env.example without being read by Go, because a
@@ -310,6 +366,70 @@ export function checkComposeDefaults(requiredVars, deployEnv) {
         `${name} is interpolated in a Compose file with no :-default and is not set ` +
         `in deploy/.env.example, so it resolves to an empty string`,
     }));
+}
+
+/**
+ * Extracts the variables start.sh actually sets, either through the
+ * BACKEND_VAR_DEFAULTS allowlist or through a standalone assignment.
+ */
+export function extractStartShVars(source) {
+  const names = new Set();
+  for (const match of source.matchAll(/\b(TOKENHUB_[A-Z0-9_]+)=/g)) {
+    names.add(match[1]);
+  }
+  return names;
+}
+
+/**
+ * Rule 5 — every gateway variable is a conscious decision for start.sh.
+ *
+ * Not a completeness rule: the allowlist model means optional subsystems stay out by
+ * design. This rule only rejects the third state — a variable nobody decided about.
+ */
+export function checkStartShCoverage(goVars, startShVars, exempt = START_SH_EXEMPT) {
+  return sorted(goVars)
+    .filter((name) => !startShVars.has(name) && !exempt.has(name))
+    .map((name) => ({
+      rule: "start-sh-decision",
+      name,
+      detail:
+        `${name} is read by Go code but start.sh neither sets it nor lists it in ` +
+        `START_SH_EXEMPT. Add it to BACKEND_VAR_DEFAULTS, or exempt it with a reason.`,
+    }));
+}
+
+/**
+ * Rule 6 — a start.sh exemption must stay honest.
+ *
+ * An exemption that no longer matches a real backend variable, or one that lingers
+ * after the variable was added to start.sh, reads like a decision that is still in
+ * force when it is not. Both directions are failures.
+ */
+export function checkStartShExemptions(goVars, startShVars, exempt = START_SH_EXEMPT) {
+  const failures = [];
+  // A Map spreads into [key, value] pairs, so sort the keys explicitly.
+  for (const name of [...exempt.keys()].sort()) {
+    if (!goVars.has(name)) {
+      failures.push({
+        rule: "start-sh-exempt-stale",
+        name,
+        detail: `${name} is exempted from start.sh but no Go code reads it`,
+      });
+    } else if (startShVars.has(name)) {
+      failures.push({
+        rule: "start-sh-exempt-stale",
+        name,
+        detail: `${name} is exempted from start.sh but start.sh now sets it; drop the exemption`,
+      });
+    } else if (!String(exempt.get(name) ?? "").trim()) {
+      failures.push({
+        rule: "start-sh-exempt-stale",
+        name,
+        detail: `${name} is exempted from start.sh without a reason`,
+      });
+    }
+  }
+  return failures;
 }
 
 /**

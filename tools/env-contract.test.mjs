@@ -1,18 +1,22 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
   KNOWN_CONSUMERS,
+  START_SH_EXEMPT,
   checkBackendCompleteness,
   checkComposeDefaults,
   checkDocumented,
   checkNoPhantoms,
+  checkStartShCoverage,
+  checkStartShExemptions,
   extractComposeRequiredVars,
   extractDocumentedVars,
   extractGoEnvVars,
+  extractStartShVars,
   parseEnvExample,
   stripGoComments,
 } from "./env-contract.mjs";
@@ -290,4 +294,110 @@ describe("KNOWN_CONSUMERS", () => {
       );
     });
   }
+});
+
+describe("start.sh env extraction", () => {
+  it("reads allowlist entries and standalone assignments", () => {
+    const source = [
+      "BACKEND_VAR_DEFAULTS=(",
+      '  "TOKENHUB_ENV=dev"',
+      '  "TOKENHUB_TYPESAFE_API_KEY="',
+      ")",
+      'TOKENHUB_DATABASE_URL="${TOKENHUB_DATABASE_URL:-}"',
+      "FRONTEND_PORT=3000",
+    ].join("\n");
+    const names = extractStartShVars(source);
+    assert.deepEqual([...names].sort(), [
+      "TOKENHUB_DATABASE_URL",
+      "TOKENHUB_ENV",
+      "TOKENHUB_TYPESAFE_API_KEY",
+    ]);
+  });
+
+  it("ignores lookups that do not assign", () => {
+    const source = 'if [ -z "${TOKENHUB_OPTIONAL:-}" ]; then echo "$TOKENHUB_OTHER"; fi';
+    assert.deepEqual([...extractStartShVars(source)], []);
+  });
+});
+
+describe("start.sh coverage rule", () => {
+  it("reports a gateway variable nobody decided about", () => {
+    const failures = checkStartShCoverage(
+      new Set(["TOKENHUB_ENV", "TOKENHUB_FORGOTTEN"]),
+      new Set(["TOKENHUB_ENV"]),
+      new Map(),
+    );
+    assert.deepEqual(
+      failures.map((failure) => [failure.rule, failure.name]),
+      [["start-sh-decision", "TOKENHUB_FORGOTTEN"]],
+    );
+  });
+
+  it("accepts a variable that is set or exempted", () => {
+    const failures = checkStartShCoverage(
+      new Set(["TOKENHUB_ENV", "TOKENHUB_TRACING_ENABLED"]),
+      new Set(["TOKENHUB_ENV"]),
+      new Map([["TOKENHUB_TRACING_ENABLED", "optional tracing surface"]]),
+    );
+    assert.deepEqual(failures, []);
+  });
+});
+
+describe("start.sh exemption hygiene", () => {
+  it("reports an exemption for a variable Go no longer reads", () => {
+    const failures = checkStartShExemptions(
+      new Set(["TOKENHUB_ENV"]),
+      new Set(["TOKENHUB_ENV"]),
+      new Map([["TOKENHUB_GONE", "was optional"]]),
+    );
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].rule, "start-sh-exempt-stale");
+    assert.match(failures[0].detail, /no Go code reads it/);
+  });
+
+  it("reports an exemption that start.sh outgrew", () => {
+    const failures = checkStartShExemptions(
+      new Set(["TOKENHUB_ENV"]),
+      new Set(["TOKENHUB_ENV"]),
+      new Map([["TOKENHUB_ENV", "stale"]]),
+    );
+    assert.equal(failures.length, 1);
+    assert.match(failures[0].detail, /start\.sh now sets it/);
+  });
+
+  it("reports an exemption without a reason", () => {
+    const failures = checkStartShExemptions(
+      new Set(["TOKENHUB_KNOB"]),
+      new Set(),
+      new Map([["TOKENHUB_KNOB", "  "]]),
+    );
+    assert.equal(failures.length, 1);
+    assert.match(failures[0].detail, /without a reason/);
+  });
+
+  it("keeps every real exemption honest against the repository", () => {
+    const startShVars = extractStartShVars(readFileSync(join(REPOSITORY_ROOT, "start.sh"), "utf8"));
+    const goVars = new Set();
+    const collect = (directory) => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) {
+          collect(path);
+        } else if (entry.name.endsWith(".go") && !entry.name.endsWith("_test.go")) {
+          for (const name of extractGoEnvVars(readFileSync(path, "utf8"))) goVars.add(name);
+        }
+      }
+    };
+    for (const root of ["backend/internal", "backend/cmd"]) {
+      collect(join(REPOSITORY_ROOT, root));
+    }
+    assert.deepEqual(checkStartShExemptions(goVars, startShVars), []);
+    assert.deepEqual(checkStartShCoverage(goVars, startShVars), []);
+  });
+
+  it("documents a reason for every exemption", () => {
+    for (const [name, reason] of START_SH_EXEMPT) {
+      assert.ok(reason.trim().length > 0, `${name} needs a reason`);
+    }
+  });
 });
