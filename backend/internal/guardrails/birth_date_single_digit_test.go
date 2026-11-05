@@ -58,10 +58,18 @@ func TestEngineRejectsImpossibleBirthDatesWithSingleDigitParts(t *testing.T) {
 		}},
 		Bindings: []Binding{{ScopeType: ScopeAllProjects}},
 	})
-	for _, text := range []string{"出生日期：1990年2月30日", "出生日期：1990年4月31日", "生日：1990-2-30"} {
-		t.Run(text, func(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+	}{
+		{name: "Chinese date with impossible February day", text: "出生日期：1990年2月30日"},
+		{name: "Chinese date with impossible April day", text: "出生日期：1990年4月31日"},
+		{name: "dash date with impossible February day", text: "生日：1990-2-30"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			decision, err := NewEngine(nil).Evaluate(context.Background(), EvaluationRequest{
-				Fragments: []Fragment{{ID: "input", Text: text, Mutable: true}}, Policies: []Policy{policy},
+				Fragments: []Fragment{{ID: "input", Text: test.text, Mutable: true}}, Policies: []Policy{policy},
 			})
 			if err != nil {
 				t.Fatal(err)
