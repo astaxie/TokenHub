@@ -174,14 +174,22 @@ func TestConfigFromEnvPreservesProviderCatalogDisableValues(t *testing.T) {
 func TestConfigFromEnvDefaultsProviderCatalogWhenUnset(t *testing.T) {
 	previousURL, hadURL := os.LookupEnv("TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL")
 	previousInterval, hadInterval := os.LookupEnv("TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS")
-	os.Unsetenv("TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL")
-	os.Unsetenv("TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS")
+	if err := os.Unsetenv("TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL"); err != nil {
+		t.Fatalf("unset upstream URL: %v", err)
+	}
+	if err := os.Unsetenv("TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS"); err != nil {
+		t.Fatalf("unset sync interval: %v", err)
+	}
 	t.Cleanup(func() {
 		if hadURL {
-			os.Setenv("TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL", previousURL)
+			if err := os.Setenv("TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL", previousURL); err != nil {
+				t.Errorf("restore upstream URL: %v", err)
+			}
 		}
 		if hadInterval {
-			os.Setenv("TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS", previousInterval)
+			if err := os.Setenv("TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS", previousInterval); err != nil {
+				t.Errorf("restore sync interval: %v", err)
+			}
 		}
 	})
 
