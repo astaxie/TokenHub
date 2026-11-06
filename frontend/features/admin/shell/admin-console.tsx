@@ -1227,6 +1227,11 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             setProviderCreateOpen(false);
             await load();
           }}
+          // The sync endpoint answers with counts only, so the catalog has to be
+          // fetched again before the cards can show what it imported.
+          onCatalogSynced={async () => {
+            await load();
+          }}
           setLoading={setLoading}
           setError={setError}
           setNotice={setNotice}
