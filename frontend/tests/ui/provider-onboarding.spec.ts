@@ -7,6 +7,7 @@ import type { MockAPI } from "./network";
 const direct: ProviderCatalogEntry = { id: "ui-direct", name: "UI Direct Service", display_name: "UI Direct Service", type: "openai_compatible", base_url: "https://api.example.test/v1", categories: ["openai"], models_count: 2, source: "ui-fixture" };
 const alternate: ProviderCatalogEntry = { ...direct, id: "ui-alternate", name: "UI Alternate Service", display_name: "UI Alternate Service", type: "ui_alternate" };
 const customConnection = { name: "UI Custom Draft", base_url: "https://custom.example.test/v1", type: alternate.type, api_key: "synthetic-ui-key" };
+const syncedCatalogEntry: ProviderCatalogEntry = { id: "ui-synced", name: "UI Synced Service", display_name: "UI Synced Service", type: "openai_compatible", base_url: "https://synced.example.test/v1", models_count: 3, source: "upstream" };
 const subscription: ProviderCatalogEntry = { id: "ui-subscription", name: "UI Subscription", display_name: "UI Subscription", type: "ui_subscription", base_url: "https://account.example.test", categories: ["openai"], models_count: 1, source: "plugin" };
 const brandedOllama: ProviderCatalogEntry = { id: "ollama", name: "Ollama", display_name: "Ollama", type: "local", base_url: "http://127.0.0.1:11434/v1", models_count: 0, source: "plugin" };
 const brandedAggregator: ProviderCatalogEntry = { id: "openrouter", name: "OpenRouter", display_name: "OpenRouter", type: "openai_compatible", base_url: "https://openrouter.example.test/api/v1", models_count: 0, source: "ui-fixture" };
@@ -30,6 +31,22 @@ function installProviderFixtures(api: MockAPI, state: string) {
   const extraCatalog = state === "catalog-many" ? Array.from({ length: 8 }, (_, index) => ({ ...direct, id: `ui-catalog-${index}`, name: `UI Service ${index + 2}`, display_name: index === 3 ? "UI Enterprise Service With a Long Regional Deployment Name" : `UI Service ${index + 2}`, base_url: `https://region-${index + 2}.example.test/enterprise/compatible/v1` })) : [];
   api.respond("GET", "/api/admin/providers", { data: providers });
   api.respond("GET", "/api/admin/provider-catalog", { data: [direct, ...extraCatalog, ...(["catalog", "catalog-filters"].includes(state) ? [brandedOllama] : []), ...(state === "catalog-filters" ? [brandedAggregator] : []), ...(custom ? [alternate] : []), subscription] });
+  // The sync endpoint answers with counts only; the console then re-reads the catalog,
+  // so this fixture also replaces the catalog response to prove the cards refresh.
+  // sync-pending holds the response open so a scenario can observe the loading state.
+  let releaseSync: (() => void) | undefined;
+  const pendingSync = state === "sync-pending"
+    ? new Promise<{ json: { source: string; providers: number; models_count: number; duration_ms: number } }>((resolve) => {
+      releaseSync = () => resolve({ json: { source: "upstream-provider-catalog", providers: 2, models_count: 9000, duration_ms: 1800 } });
+    })
+    : undefined;
+  api.define("POST", "/api/admin/provider-catalog-sync", () => {
+    if (state === "sync-failure") return { status: 502, json: { error: { message: "Synthetic catalog sync unavailable" } } };
+    if (state === "sync-success" || state === "sync-pending") {
+      api.replaceResponse("GET", "/api/admin/provider-catalog", { data: [direct, syncedCatalogEntry, subscription] });
+    }
+    return pendingSync ?? { json: { source: "upstream-provider-catalog", providers: state === "sync-success" ? 2 : 1, models_count: 9000, duration_ms: 1800 } };
+  });
   let catalogFailed = state === "model-failure";
   api.define("GET", "/api/admin/provider-catalog/ui-direct", () => catalogFailed
     ? { status: 503, json: { error: { message: "Synthetic catalog unavailable" } } }
@@ -98,7 +115,7 @@ function installProviderFixtures(api: MockAPI, state: string) {
       return { status: 201, json: resource };
     });
   }
-  return () => releaseConnection?.();
+  return { releaseConnection: () => releaseConnection?.(), releaseSync: () => releaseSync?.() };
 }
 
 for (const variant of ["desktop-light", "desktop-dark", "mobile-light"] as const) {
@@ -201,6 +218,8 @@ for (const viewport of ["desktop", "mobile"] as const) {
     const accountCategory = categories.getByRole("button", { name: /^订阅与账号/ });
     const aggregatorCategory = categories.getByRole("button", { name: /^中转聚合/ });
     const localCategory = categories.getByRole("button", { name: /^本地部署/ });
+    // The sync button lives in the modal header, so the group holds only the five
+    // category filters it always did.
     await expect(categories.getByRole("button")).toHaveCount(5);
     await expect(all).toHaveAttribute("aria-pressed", "true");
     await expect(all).toHaveText("全部 4");
@@ -237,6 +256,8 @@ for (const viewport of ["desktop", "mobile"] as const) {
     await expect(accountCategory).toBeEnabled();
     await expect(accountCategory).toHaveText("订阅与账号 0");
     await expect(all).toHaveText("全部 1");
+    // The sync button lives in the modal header, so the group holds only the five
+    // category filters it always did.
     await expect(categories.getByRole("button")).toHaveCount(5);
     await expect(editor.getByRole("button", { name: /自定义供应商/ })).toBeEnabled();
     await capture(page, testInfo, editor, `provider-onboarding-category-empty-${viewport}`, "分类与搜索组合无结果时仍可切换分类或自定义接入", "viewport");
@@ -255,6 +276,72 @@ for (const viewport of ["desktop", "mobile"] as const) {
     await editor.getByRole("button", { name: /自定义供应商/ }).click();
     await expect(editor.getByLabel("渠道名称", { exact: true })).toBeVisible();
     await expect(editor.getByLabel("Base URL", { exact: true })).toBeVisible();
+  });
+
+  test(`provider-onboarding catalog sync refreshes visible providers ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    installProviderFixtures(api, "sync-success");
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    // The sync action sits with the "choose a provider" heading, not by the close button.
+    const syncButton = editor.locator(".provider-modal-header-title-row").getByRole("button", { name: /同步供应商目录/ });
+    await expect(editor.getByRole("button", { name: /UI Synced Service/ })).toHaveCount(0);
+
+    await syncButton.click();
+    // The success message alone is not the contract: the cards must show the entries
+    // the sync imported, which is why the console re-reads the catalog afterwards.
+    await expect(editor.getByText("同步供应商目录完成：已加载 2 个供应商。")).toBeVisible();
+    await expect(editor.getByRole("button", { name: /UI Synced Service/ })).toBeVisible();
+    await expect(syncButton).toBeEnabled();
+    // The category-count contract belongs to the filter scenario above; this fixture
+    // exposes fewer categories, so asserting a fixed count here would test the fixture
+    // rather than the sync behaviour.
+    expect(api.calls.filter(call => call.method === "POST" && call.path === "/api/admin/provider-catalog-sync")).toHaveLength(1);
+    expect(api.calls.some(call => call.method === "GET" && call.path === "/api/admin/provider-catalog")).toBe(true);
+    await capture(page, testInfo, editor, `provider-onboarding-catalog-sync-${viewport}`, "同步供应商目录后刷新可见的供应商模板", "viewport");
+  });
+
+  test(`provider-onboarding catalog sync surfaces failure ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    installProviderFixtures(api, "sync-failure");
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    // The sync action sits with the "choose a provider" heading, not by the close button.
+    const syncButton = editor.locator(".provider-modal-header-title-row").getByRole("button", { name: /同步供应商目录/ });
+
+    await syncButton.click();
+    await expect(editor.getByText("目录同步失败，请稍后重试。")).toBeVisible();
+    // The existing templates stay usable after a failed sync, and the button is
+    // available again so the operator can retry.
+    await expect(syncButton).toBeEnabled();
+    await expect(editor.getByRole("button", { name: /UI Direct Service/ })).toBeVisible();
+    await capture(page, testInfo, editor, `provider-onboarding-catalog-sync-failure-${viewport}`, "供应商目录同步失败后仍可选择现有模板并重试", "viewport");
+  });
+
+  test(`provider-onboarding catalog sync shows progress while running ${viewport}`, async ({ page, api }, testInfo) => {
+    if (viewport === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    const { releaseSync } = installProviderFixtures(api, "sync-pending");
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();
+    const editor = page.locator("form.provider-modal");
+    const syncPending = editor.locator(".provider-modal-header-title-row").getByRole("button", { name: /同步供应商目录/ });
+
+    await syncPending.click();
+    // The response is held open, so the button has to report that work is in flight
+    // instead of looking idle or merely dimmed.
+    const busy = editor.locator(".provider-modal-header-title-row").getByRole("button", { name: /正在同步/ });
+    await expect(busy).toBeVisible();
+    await expect(busy).toBeDisabled();
+    await capture(page, testInfo, editor, `provider-onboarding-catalog-sync-loading-${viewport}`, "供应商目录同步进行中：按钮禁用并显示进度", "viewport");
+
+    releaseSync();
+    // Once the held response lands the label returns to the idle wording and the
+    // imported providers are visible.
+    await expect(editor.getByText("同步供应商目录完成：已加载 2 个供应商。")).toBeVisible();
+    await expect(editor.locator(".provider-modal-header-title-row").getByRole("button", { name: /同步供应商目录/ })).toBeEnabled();
+    await expect(editor.getByRole("button", { name: /UI Synced Service/ })).toBeVisible();
   });
 
   test(`provider-onboarding manual discovery preserves selection ${viewport}`, async ({ page, api }, testInfo) => {
@@ -336,7 +423,7 @@ for (const viewport of ["desktop", "mobile"] as const) {
 }
 
 test("provider-onboarding delayed connection result does not clear the next provider draft", async ({ page, api }, testInfo) => {
-  const releaseConnection = installProviderFixtures(api, "late-connection");
+  const { releaseConnection } = installProviderFixtures(api, "late-connection");
   try {
     await page.goto("/providers");
     await page.getByRole("button", { name: "添加供应商", exact: true }).first().click();

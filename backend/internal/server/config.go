@@ -157,8 +157,8 @@ func ConfigFromEnv() Config {
 		SQLiteBackupDir:                    getenv("TOKENHUB_SQLITE_BACKUP_DIR", defaultSQLiteBackupDir()),
 		ModelCatalogFile:                   getenv("TOKENHUB_MODEL_CATALOG_FILE", defaultModelCatalogFile()),
 		ProviderCatalogFile:                getenv("TOKENHUB_PROVIDER_CATALOG_FILE", defaultProviderCatalogFile()),
-		ProviderCatalogUpstreamURL:         strings.TrimSpace(getenv("TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL", providerCatalogUpstreamURL)),
-		ProviderCatalogSyncIntervalSeconds: getenvInt("TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS", defaultProviderCatalogSyncIntervalSeconds),
+		ProviderCatalogUpstreamURL:         strings.TrimSpace(getenvOptional("TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL", providerCatalogUpstreamURL)),
+		ProviderCatalogSyncIntervalSeconds: getenvNonNegativeInt("TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS", defaultProviderCatalogSyncIntervalSeconds),
 		PluginDir:                          getenv("TOKENHUB_PLUGIN_DIR", defaultPluginDir()),
 		PluginMarketplaceURL:               getenv("TOKENHUB_PLUGIN_MARKETPLACE_URL", ""),
 		SecretKey:                          getenv("TOKENHUB_SECRET_KEY", "dev_tokenhub_secret_key"),
@@ -449,6 +449,31 @@ func getenvInt(key string, fallback int) int {
 		parsed = parsed*10 + int(ch-'0')
 	}
 	if parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+// getenvOptional returns fallback only when the variable is absent. A variable
+// that is present but empty resolves to the empty string, so an operator can
+// disable a feature by setting it to an empty value instead of unsetting it.
+func getenvOptional(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
+
+// getenvNonNegativeInt returns fallback when the variable is absent or is not a
+// non-negative integer. Unlike getenvInt it accepts zero, which several options
+// document as an explicit off switch rather than an absent value.
+func getenvNonNegativeInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
 		return fallback
 	}
 	return parsed

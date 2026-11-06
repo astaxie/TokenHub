@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,10 +36,27 @@ type providerCatalogService struct {
 	// syncMu serializes upstream refreshes so a manual sync and the daily
 	// scheduler cannot download the multi-megabyte catalog concurrently.
 	syncMu sync.Mutex
-	// lastSyncAttempt records the most recent upstream attempt, success or
-	// failure, so user-triggered refreshes stay off the network while the
-	// stored snapshot is fresh.
-	lastSyncAttempt time.Time
+	// lastSyncAttemptNanos records the most recent upstream attempt, success
+	// or failure, so user-triggered refreshes stay off the network while the
+	// stored snapshot is fresh. Zero means no attempt yet. The fast path reads
+	// it before syncMu is taken while forced and stale reloads write it with
+	// syncMu held, so it is stored atomically rather than under that mutex.
+	lastSyncAttemptNanos atomic.Int64
+}
+
+// markSyncAttempt records the current time as the most recent upstream attempt.
+func (s *providerCatalogService) markSyncAttempt() {
+	s.lastSyncAttemptNanos.Store(time.Now().UnixNano())
+}
+
+// lastSyncAttempt reports the most recent upstream attempt and whether one has
+// been recorded at all.
+func (s *providerCatalogService) lastSyncAttempt() (time.Time, bool) {
+	nanos := s.lastSyncAttemptNanos.Load()
+	if nanos == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(0, nanos), true
 }
 
 // SetUpstreamURL overrides the public catalog source. An empty value disables
@@ -213,7 +231,7 @@ func (s *providerCatalogService) ForceReload(ctx context.Context) ([]ProviderCat
 // recently written snapshot (survives restarts) makes another multi-megabyte
 // upstream download unnecessary for this pass.
 func (s *providerCatalogService) upstreamSnapshotFresh() bool {
-	if !s.lastSyncAttempt.IsZero() && time.Since(s.lastSyncAttempt) < providerCatalogFreshInterval {
+	if attempt, ok := s.lastSyncAttempt(); ok && time.Since(attempt) < providerCatalogFreshInterval {
 		return true
 	}
 	_, _, fetchedAt, found, err := s.store.LoadProviderCatalogSnapshot(false)
@@ -223,18 +241,91 @@ func (s *providerCatalogService) upstreamSnapshotFresh() bool {
 	return time.Since(fetchedAt) < providerCatalogFreshInterval
 }
 
+// reloadFreshLocal re-reads the bundled catalog file while the upstream snapshot is
+// fresh and returns the merged result. It reports whether it produced a result; a
+// false return means the caller should fall back to the stored snapshot.
+//
+// The bundled file is an overlay, not a replacement. A forced sync may have just
+// imported providers that exist only upstream, and rewriting the snapshot with the
+// bundled file would silently delete them without another upstream request. Local
+// entries therefore override the stored entries with the same ID, and the remaining
+// stored entries are kept in order. The merged result goes through the same
+// completeness checks as an upstream refresh so a truncated local file cannot shrink
+// a healthy snapshot. The stored timestamp is carried over instead of being advanced,
+// because a local re-read says nothing about upstream freshness and advancing it would
+// keep postponing the next real sync.
+func (s *providerCatalogService) reloadFreshLocal(ctx context.Context) ([]ProviderCatalogEntry, string, bool, error) {
+	localEntries, err := s.loadLocalProviderCatalog()
+	if err != nil || len(localEntries) == 0 {
+		return nil, "", false, nil
+	}
+	// Validate the bundled file on its own terms before it influences the snapshot.
+	// An absolute count check catches a truncated or corrupted file; the retention
+	// comparison against the stored snapshot is skipped because the bundled catalog
+	// is legitimately smaller than an upstream one, and previous=nil does that.
+	if _, err := prepareProviderCatalogRefreshWithDefault(localEntries, nil, s.defaultType); err != nil {
+		return nil, "", false, nil
+	}
+	storedEntries, storedSource, storedAt, err := s.loadStored(true)
+	if err != nil {
+		return nil, "", false, nil
+	}
+	merged := localEntries
+	source := providerCatalogLocalSource
+	fetchedAt := storedAt
+	if len(storedEntries) > 0 {
+		// Overlay, never replace: a forced sync may have imported providers that exist
+		// only upstream, and rewriting the snapshot with the bundled file would delete
+		// them without another upstream request. The source stays upstream because the
+		// stored entries are still the bulk of the result.
+		merged = mergeProviderCatalogOverlay(storedEntries, localEntries)
+		source = storedSource
+	}
+	if err := context.Cause(ctx); err != nil {
+		return nil, "", false, err
+	}
+	// The timestamp is carried over rather than advanced. A local re-read says nothing
+	// about upstream freshness, and advancing it would keep postponing the next sync.
+	if saveErr := s.store.SaveProviderCatalogSnapshot(merged, source, fetchedAt); saveErr != nil {
+		return nil, "", false, nil
+	}
+	return cloneCatalogEntries(merged, false), source, true, nil
+}
+
+// mergeProviderCatalogOverlay returns the stored entries with every local entry
+// replacing the stored entry of the same ID. Stored entries without a local
+// counterpart keep their position, so upstream-only providers survive.
+func mergeProviderCatalogOverlay(stored []ProviderCatalogEntry, local []ProviderCatalogEntry) []ProviderCatalogEntry {
+	localByID := make(map[string]ProviderCatalogEntry, len(local))
+	for _, entry := range local {
+		localByID[entry.ID] = entry
+	}
+	merged := make([]ProviderCatalogEntry, 0, len(stored)+len(local))
+	for _, entry := range stored {
+		if replacement, ok := localByID[entry.ID]; ok {
+			merged = append(merged, replacement)
+			delete(localByID, entry.ID)
+			continue
+		}
+		merged = append(merged, entry)
+	}
+	// Local entries with no stored counterpart are appended, which is how a newly
+	// added curated provider reaches the admin console before the next upstream sync.
+	for _, entry := range local {
+		if replacement, ok := localByID[entry.ID]; ok {
+			merged = append(merged, replacement)
+			delete(localByID, entry.ID)
+		}
+	}
+	return merged
+}
+
 func (s *providerCatalogService) reloadWithOptions(ctx context.Context, force bool) ([]ProviderCatalogEntry, string, error) {
 	if !force && s.upstreamSnapshotFresh() {
-		// Skip the upstream download while the sync window is fresh, but keep
-		// re-reading the bundled catalog file so local edits stay visible to
-		// admin refreshes. Falls back to the stored snapshot if the file is
-		// unreadable.
-		if entries, err := s.loadLocalProviderCatalog(); err == nil && len(entries) > 0 {
-			// Persist the re-read so the Get() snapshot lookup after reload
-			// observes the updated file without a network round trip.
-			if saveErr := s.store.SaveProviderCatalogSnapshot(entries, providerCatalogLocalSource, time.Now().UTC()); saveErr == nil {
-				return cloneCatalogEntries(entries, false), providerCatalogLocalSource, nil
-			}
+		if entries, source, ok, err := s.reloadFreshLocal(ctx); err != nil {
+			return nil, source, err
+		} else if ok {
+			return entries, source, nil
 		}
 		if entries, source, _, err := s.loadStored(true); err == nil && len(entries) > 0 {
 			return entries, source, nil
@@ -243,18 +334,16 @@ func (s *providerCatalogService) reloadWithOptions(ctx context.Context, force bo
 	s.syncMu.Lock()
 	defer s.syncMu.Unlock()
 	if !force && s.upstreamSnapshotFresh() {
-		if entries, err := s.loadLocalProviderCatalog(); err == nil && len(entries) > 0 {
-			// Persist the re-read so the Get() snapshot lookup after reload
-			// observes the updated file without a network round trip.
-			if saveErr := s.store.SaveProviderCatalogSnapshot(entries, providerCatalogLocalSource, time.Now().UTC()); saveErr == nil {
-				return cloneCatalogEntries(entries, false), providerCatalogLocalSource, nil
-			}
+		if entries, source, ok, err := s.reloadFreshLocal(ctx); err != nil {
+			return nil, source, err
+		} else if ok {
+			return entries, source, nil
 		}
 		if entries, source, _, err := s.loadStored(true); err == nil && len(entries) > 0 {
 			return entries, source, nil
 		}
 	}
-	s.lastSyncAttempt = time.Now()
+	s.markSyncAttempt()
 	var (
 		refreshed []ProviderCatalogEntry
 		source    = providerCatalogLocalSource
@@ -271,7 +360,7 @@ func (s *providerCatalogService) reloadWithOptions(ctx context.Context, force bo
 		return nil, source, err
 	}
 	if source == providerCatalogUpstreamSource {
-		s.lastSyncAttempt = time.Now()
+		s.markSyncAttempt()
 	}
 	return refreshed, source, nil
 }

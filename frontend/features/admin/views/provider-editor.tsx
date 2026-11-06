@@ -20,7 +20,7 @@ import { assertProviderAccountResourceReady, defaultProviderResourceName, exchan
 import { providerTypeManagedHeaders, type ProviderTypeOption } from "../shared/ui";
 import { ReviewItem } from "./modals";
 import { ProviderAPIQuickConnect } from "./provider-api-quick-connect";
-import { ProviderOnboardingCatalog } from "./provider-onboarding-catalog";
+import { ProviderCatalogSyncButton, ProviderOnboardingCatalog } from "./provider-onboarding-catalog";
 import { ProviderModelInventory } from "./provider-model-inventory";
 import { ProviderImageCapability } from "./provider-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
@@ -52,6 +52,7 @@ export function ProviderUpsertModal({
   onClose,
   onSaved,
   onAccountsChanged,
+  onCatalogSynced,
   setLoading,
   setError: setParentError,
   setNotice, providerTypeOptions, providerAdapters = emptyProviderAdapters, pluginUI = [], pluginActions = [],
@@ -69,6 +70,7 @@ export function ProviderUpsertModal({
   onClose: () => void;
   onSaved: () => Promise<void>;
   onAccountsChanged?: () => Promise<void>;
+  onCatalogSynced?: () => Promise<void> | void;
   setLoading: (value: boolean) => void;
   setError: (value: string) => void;
   setNotice: (value: string) => void; providerTypeOptions?: ProviderTypeOption[]; providerAdapters?: AdapterDescriptor[]; pluginUI?: AdminUIContribution[]; pluginActions?: PluginActionDescriptor[]; plugins?: PluginDescriptor[];
@@ -1106,9 +1108,14 @@ export function ProviderUpsertModal({
     <div className="modal-backdrop" role="presentation">
       <form className={mode === "create" ? "modal provider-modal provider-wizard-modal" : "modal provider-modal"} ref={modalRef} onSubmit={submit}>
         <div className="modal-header">
-          <div>
+          <div className="provider-modal-header-title">
             <p className="eyebrow">{tx(mode === "edit" ? "编辑" : "新增")}</p>
-            <h2>{tx(mode === "create" ? createStep === 0 ? "选择供应商" : "添加供应商" : "Provider 渠道")}</h2>
+            <div className="provider-modal-header-title-row">
+              <h2>{tx(mode === "create" ? createStep === 0 ? "选择供应商" : "添加供应商" : "Provider 渠道")}</h2>
+              {mode === "create" && createStep === 0 ? (
+                <ProviderCatalogSyncButton api={api} disabled={loading} onSynced={onCatalogSynced} />
+              ) : null}
+            </div>
           </div>
           <button className="icon-button" onClick={onClose} type="button" title={tx("关闭")}>×</button>
         </div>
@@ -1177,7 +1184,7 @@ export function ProviderUpsertModal({
               </div>
             ) : null}
             {mode === "create" && createStep === 0 ? (
-              <ProviderOnboardingCatalog api={api} directEntries={directCredentialCatalog} accountEntries={accountProviderCatalogOptions} providers={existingProviders} query={catalogQuery} onQueryChange={setCatalogQuery} onSelect={selectOnboardingProvider} onCustom={selectOnboardingCustom} contributions={pluginUI} />
+              <ProviderOnboardingCatalog directEntries={directCredentialCatalog} accountEntries={accountProviderCatalogOptions} providers={existingProviders} query={catalogQuery} onQueryChange={setCatalogQuery} onSelect={selectOnboardingProvider} onCustom={selectOnboardingCustom} contributions={pluginUI} />
             ) : null}
             {quickAPIConnect ? (
                 <><ProviderAPIQuickConnect api={api}

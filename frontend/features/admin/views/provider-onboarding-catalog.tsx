@@ -19,8 +19,53 @@ function ProviderBrandIcon({ entry, label }: { entry: ProviderCatalogEntry; labe
   </span>;
 }
 
-export function ProviderOnboardingCatalog({ api, directEntries, accountEntries, providers, query, onQueryChange, onSelect, onCustom, contributions }: {
+export type ProviderCatalogSyncState = { loading: boolean; message: string; failed: boolean };
+
+// ProviderCatalogSyncButton refreshes the public provider catalog from the upstream
+// configured by the deployment. It lives in the modal header so the action reads as a
+// catalog-wide operation, not as one more category filter. It reports its own state
+// through onStateChange so the caller can show the outcome next to the button without
+// duplicating the request logic.
+export function ProviderCatalogSyncButton({ api, disabled, onSynced, onStateChange }: {
   api: ApiContext;
+  disabled?: boolean;
+  onSynced?: () => Promise<void> | void;
+  onStateChange?: (state: ProviderCatalogSyncState) => void;
+}) {
+  const [state, setState] = useState<ProviderCatalogSyncState>({ loading: false, message: "", failed: false });
+  function update(next: ProviderCatalogSyncState) {
+    setState(next);
+    onStateChange?.(next);
+  }
+  async function syncCatalog() {
+    if (state.loading) return;
+    update({ loading: true, message: "", failed: false });
+    try {
+      const resp = await adminFetch(api, "/api/admin/provider-catalog-sync", { method: "POST" });
+      if (!resp.ok) throw new Error(await readAdminError(resp, tx("目录同步失败，请稍后重试。")));
+      const payload = await resp.json() as { providers?: number };
+      // The response only reports counts. Without reloading the owner's catalog the
+      // cards keep rendering the entries the modal was mounted with, so a provider the
+      // sync just imported stays invisible while the message claims success.
+      await onSynced?.();
+      update({
+        loading: false,
+        failed: false,
+        message: tx("同步供应商目录完成：已加载 {count} 个供应商。").replace("{count}", new Intl.NumberFormat(languageLocale()).format(payload.providers ?? 0)),
+      });
+    } catch {
+      update({ loading: false, failed: true, message: tx("目录同步失败，请稍后重试。") });
+    }
+  }
+  return <>
+    <button type="button" className="secondary-button compact-action provider-onboarding-sync" onClick={syncCatalog} disabled={disabled || state.loading} title={tx("从公共目录拉取最新的供应商模板，通常每天自动同步一次。")}>
+      <RefreshCw size={14} style={state.loading ? { animation: "provider-onboarding-sync-rotate 1s linear infinite" } : undefined} />{" "}{state.loading ? tx("正在同步…") : tx("同步供应商目录")}
+    </button>
+    {state.message ? <span className={`provider-onboarding-sync-status${state.failed ? " failed" : ""}`} role="status">{state.message}</span> : null}
+  </>;
+}
+
+export function ProviderOnboardingCatalog({ directEntries, accountEntries, providers, query, onQueryChange, onSelect, onCustom, contributions }: {
   directEntries: ProviderCatalogEntry[];
   accountEntries: ProviderCatalogEntry[];
   providers: Provider[];
@@ -31,23 +76,6 @@ export function ProviderOnboardingCatalog({ api, directEntries, accountEntries, 
   contributions: AdminUIContribution[];
 }) {
   const [filter, setFilter] = useState<CatalogFilter>("all");
-  const [syncState, setSyncState] = useState<{ loading: boolean; message: string }>({ loading: false, message: "" });
-
-  async function syncCatalog() {
-    if (syncState.loading) return;
-    setSyncState({ loading: true, message: "" });
-    try {
-      const resp = await adminFetch(api, "/api/admin/provider-catalog-sync", { method: "POST" });
-      if (!resp.ok) throw new Error(await readAdminError(resp, tx("目录同步失败，请稍后重试。")));
-      const payload = await resp.json() as { providers?: number };
-      setSyncState({
-        loading: false,
-        message: tx("同步供应商目录完成：已加载 {count} 个供应商。").replace("{count}", new Intl.NumberFormat(languageLocale()).format(payload.providers ?? 0)),
-      });
-    } catch {
-      setSyncState({ loading: false, message: tx("目录同步失败，请稍后重试。") });
-    }
-  }
   const normalized = query.trim().toLowerCase();
   const apiEntries = directEntries.filter(entry => entry.id !== "custom");
   const groups: Array<{ id: CatalogCategory; title: string; mode: ProviderCredentialMode; entries: ProviderCatalogEntry[] }> = [
@@ -79,10 +107,6 @@ export function ProviderOnboardingCatalog({ api, directEntries, accountEntries, 
     <p className="provider-onboarding-intro">{tx("选择你要接入的服务，下一步填写密钥或登录账号。")}</p>
     <label className="search-box provider-onboarding-search"><Search size={16} /><input autoFocus value={query} onChange={event => onQueryChange(event.target.value)} placeholder={tx("搜索供应商名称或地址")} /></label>
     <div className="provider-onboarding-filters" role="group" aria-label={tx("供应商分类")}>
-      <button type="button" className="provider-onboarding-sync" onClick={syncCatalog} disabled={syncState.loading} title={tx("从公共目录拉取最新的供应商模板，通常每天自动同步一次。")}>
-        <RefreshCw size={14} style={syncState.loading ? { animation: "provider-onboarding-sync-rotate 1s linear infinite" } : undefined} />{" "}{syncState.loading ? tx("正在同步…") : tx("同步供应商目录")}
-      </button>
-      {syncState.message ? <span className="provider-onboarding-sync-status">{syncState.message}</span> : null}
       {filters.map(item => <button key={item.id} type="button" aria-pressed={activeFilter === item.id} onClick={() => setFilter(item.id)}>
         {item.label}{" "}<span>{new Intl.NumberFormat(languageLocale()).format(item.count)}</span>
       </button>)}
