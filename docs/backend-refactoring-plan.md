@@ -24,7 +24,7 @@ remaining work for each phase without exposing internal task identifiers.
 | Phase | Dependency transition | Status | Exit condition | Remaining work |
 | --- | --- | --- | --- | --- |
 | 0. Baseline and constraints | Freeze observable behavior before introducing new package edges; add dependency guards only after the target directories stabilize | Complete, with dependency guards deferred | The characterization matrix is complete and the guard design is ready for a separate PR | Add the guard after the final package layout is stable; do not present it as an active repository gate before then |
-| 1. Business modules | Move billing and reconciliation callers from `server.Store` to consumer-owned ports; then introduce analytics ports and adapters | In progress | Billing, reconciliation, and analytics production paths use their public interfaces; no business implementation remains in `server` | Complete analytics extraction, remove obsolete server projections, and migrate remaining tests |
+| 1. Business modules | Move billing and reconciliation callers from `server.Store` to consumer-owned ports; then introduce analytics ports and adapters | Analytics application boundary complete; adapters remain | Billing, reconciliation, and analytics production paths use their public interfaces; no business implementation remains in `server` | Move the SQLite/PostgreSQL and HTTP adapters in the next analytics adapter change, then remove compatibility shims |
 | 2. Gateway, protocols, and providers | Change `server` from protocol/provider implementation to composition over `gateway`, `protocol/*`, and `provider` | Planned | OpenAI, Anthropic, and Gemini protocol adapters plus provider invocation run behind the normalized gateway contract | Define the contract, then move provider management, invocation, protocol adapters, and gateway error mapping |
 | 3. Projects and routing | Move authentication, authorization, quota admission, candidate planning, and routing policy behind `project` and `routing` ports | Planned | Gateway no longer uses the global `Store` for identity, admission, or candidate planning | Separate project and API-key state, quota semantics, routing policy, and failover planning while preserving admission order |
 | 4. Request lifecycle and background capabilities | Move request records, usage, audit, payload retention, image jobs, and observability behind `usage`, `image`, and `observability` modules | Planned | `Server` no longer owns request or worker domain state; lifecycle and recovery behavior remain unchanged | Extract usage writes and audit semantics before moving gateway orchestration, image workers, and telemetry adapters |
@@ -74,9 +74,9 @@ Remaining work in this phase is to migrate the remaining server tests to the
 public module boundaries and remove compatibility constructors and test
 projections after their callers have moved.
 
-## Next phase: analytics
+## Current phase: analytics adapter migration
 
-The next phase is split into two reviewable steps:
+The analytics extraction is split into two reviewable steps:
 
 1. Extract the analytics query and application module, including analytics
    credentials, cursor and snapshot semantics, aggregation, and consumer-owned
@@ -85,7 +85,10 @@ The next phase is split into two reviewable steps:
    then remove the server analytics implementation while preserving its
    aggregation, authorization, and consistency behavior.
 
-The phase exits when analytics production paths use the new public interfaces,
+The first step is complete: analytics production paths now use the new public
+interfaces through a compatibility adapter, while the GORM implementation and
+HTTP transport remain in `server` for the adapter migration. The full phase
+exits when analytics production paths use the new public interfaces,
 the adapters run on both SQLite and PostgreSQL, and no production analytics
 caller depends on the global server `Store`.
 
