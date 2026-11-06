@@ -1122,6 +1122,9 @@ type ResponsesRequest struct {
 	Reasoning    *ResponsesReasoning `json:"reasoning,omitempty"`
 	ServiceTier  string              `json:"service_tier,omitempty"`
 	raw          map[string]json.RawMessage
+	// imageStoreBoundary is the confirmed input-item hash list saved after a
+	// successful image continuation. It is not part of the Responses payload.
+	imageStoreBoundary string
 }
 
 type ResponsesReasoning struct {

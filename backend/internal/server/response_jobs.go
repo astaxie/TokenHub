@@ -221,6 +221,12 @@ func responseJobExecutionRequest(request ResponsesRequest) ResponsesRequest {
 }
 
 func (s *Server) submitResponseJob(w http.ResponseWriter, r *http.Request, project Project, key APIKey, request ResponsesRequest) {
+	if !responsesRequestHasInlineImages(request) {
+		if err := s.rejectOversizedResponsesRequest(request, nil); err != nil {
+			writeError(w, r, err)
+			return
+		}
+	}
 	if request.Stream {
 		writeError(w, r, NewHTTPError(http.StatusBadRequest, "background_stream_not_supported", "Background Responses do not support stream=true"))
 		return
@@ -579,6 +585,11 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		s.finalizeResponseJob(job, owner, call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
 		return
 	}
+	if err := s.applyResponsesImageStore(ctx, &routed, &request, envelope.Headers); err != nil {
+		httpErr := AsHTTPError(err)
+		s.finalizeResponseJob(job, owner, routed.Call, RouteSelection{}, Usage{}, nil, httpErr.Status, httpErr.Code, httpErr.Message, auditPayload, resultTTL)
+		return
+	}
 	if s.stopResponseJobForShutdown(job, owner, resultTTL) {
 		return
 	}
@@ -595,6 +606,9 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 		// Persist this binding only with a successful, ownership-fenced completion.
 		// Capture the upstream ID before output hooks can rewrite the response.
 		routed.Call.jevResponseBinding, invokeErr = s.pendingJevResponseBinding(routed.Call, route, response, job.ID)
+	}
+	if invokeErr == nil {
+		invokeErr = s.rememberResponsesImageStore(ctx, routed.Call, route, envelope.Headers, request, response)
 	}
 	if invokeErr == nil {
 		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response, providerRouteProtocolResponses)

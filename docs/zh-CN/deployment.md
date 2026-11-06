@@ -414,8 +414,8 @@ docker inspect --format 'memory={{.HostConfig.Memory}} memory_swap={{.HostConfig
 | `TOKENHUB_UPSTREAM_NON_STREAM_TIMEOUT_SECONDS` | `120` | 单个非流式上游请求的整体超时 |
 | `TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS` | `300` | 流式请求没有整体超时；该值限制等待响应头的时长，以及流开始后允许的静默时长。每收到一个字节即重新计时 |
 | `TOKENHUB_MAX_JSON_REQUEST_BYTES` | `8388608`（8 MiB） | `/v1` 接口的 JSON 请求体上限。可填原始字节数或二进制单位（`8m`、`8mib`、`512k`）。超过 512 MiB 会被截断到上限 |
-| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | 多模态对话接口（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）的更高请求体上限。请将反向代理的 `client_max_body_size` 至少设置为该值 |
-| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 仅内置的多实例 nginx 负载均衡器读取该值。它使用 nginx 尺寸语法（`32m`、`512k`），不是后端的字节格式，且应不小于 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` |
+| `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` | `33554432`（32 MiB） | 多模态对话接口（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、playground）的更高请求体上限。`/v1/responses` 会先读到 128 MiB，或该值（取较大者），并且不超过 512 MiB。OpenAI 和 Azure 路由在去掉上游已保存的历史项之后，转发正文仍超过该值时会被拒绝。ChatGPT 订阅和 Codex 订阅路由会把完整记录转发到这个读取上限，因为这些 API 拒绝 `store: true`。故障切换里只要还有其他类型的 Provider，就仍使用该值。请把反向代理的 `client_max_body_size` 至少设成这个读取大小。内置 nginx 在提高 `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` 之前保持 `32m` |
+| `TOKENHUB_NGINX_CLIENT_MAX_BODY_SIZE` | `32m` | 仅内置的多实例 nginx 负载均衡器读取该值。它使用 nginx 尺寸语法（`32m`、`512k`），不是后端的字节格式。请把它至少设成 `/v1/responses` 的读取大小（默认 128 MiB，或 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 更大时取该值）。默认的 `32m` 会在更大的正文到达 TokenHub 之前拒绝它 |
 | `TOKENHUB_IN_FLIGHT_LEASE_TTL_SECONDS` | `300` | 集群并发租约的过期时间及续租周期基准 |
 | `TOKENHUB_CLUSTER_LOCK_TTL_SECONDS` | `180` | 集群协调锁的过期时间及续租周期基准 |
 | `TOKENHUB_BILLING_REDIS_URL` | 空 | 可选 Redis URL，用于高并发计费准入。设置后，Redis 处理每分钟 RPM/TPM 预留以及 API Key/用户并发租约；数据库仍是持久计费账本 |
