@@ -19,6 +19,20 @@ const coreModelCategoryDefinitions: ModelCategoryDefinition[] = [
   { key: "custom", label: "自定义", order: 1000, aliases: ["custom"], family_prefixes: ["custom"], canonical_prefixes: ["custom"] },
 ];
 
+// Category resolution runs once per rendered model, but every entry point took the
+// raw `data` object and rebuilt the merged definition list on each call. Sorting a
+// model list made it worse: the comparator called back into this path O(n log n)
+// times, so a single render on a 300-model catalog re-parsed the plugin and adapter
+// definitions tens of thousands of times. Plugin and adapter slices are immutable
+// once loaded (`mergeLoadedData` replaces the references instead of mutating them),
+// so their identity is a sound cache key.
+const noPlugins: PluginDescriptor[] = [];
+const noAdapters: AdapterDescriptor[] = [];
+const pluginsDefinitionsCache = new WeakMap<PluginDescriptor[], ModelCategoryDefinition[]>();
+const adaptersDefinitionsCache = new WeakMap<AdapterDescriptor[], ModelCategoryDefinition[]>();
+const dataDefinitionsCache = new WeakMap<PluginDescriptor[], WeakMap<AdapterDescriptor[], ModelCategoryDefinition[]>>();
+const normalizedDefinitionArrays = new WeakSet<ModelCategoryDefinition[]>();
+
 export const preferredModelCategories = coreModelCategoryDefinitions.map((definition) => definition.key);
 
 export function preferredModelCategoriesFromData(data?: { plugins?: PluginDescriptor[]; providerAdapters?: AdapterDescriptor[] }) {
@@ -26,20 +40,39 @@ export function preferredModelCategoriesFromData(data?: { plugins?: PluginDescri
 }
 
 export function modelCategoryDefinitionsFromData(data?: { plugins?: PluginDescriptor[]; providerAdapters?: AdapterDescriptor[] }) {
-  return normalizeModelCategoryDefinitions([
-    ...modelCategoryDefinitionsFromPlugins(data?.plugins),
-    ...modelCategoryDefinitionsFromAdapters(data?.providerAdapters),
+  const plugins = data?.plugins ?? noPlugins;
+  const adapters = data?.providerAdapters ?? noAdapters;
+  let byAdapters = dataDefinitionsCache.get(plugins);
+  if (!byAdapters) {
+    byAdapters = new WeakMap<AdapterDescriptor[], ModelCategoryDefinition[]>();
+    dataDefinitionsCache.set(plugins, byAdapters);
+  }
+  const cached = byAdapters.get(adapters);
+  if (cached) return cached;
+  const definitions = normalizeModelCategoryDefinitions([
+    ...modelCategoryDefinitionsFromPlugins(plugins),
+    ...modelCategoryDefinitionsFromAdapters(adapters),
     ...coreModelCategoryDefinitions,
   ]);
+  byAdapters.set(adapters, definitions);
+  return definitions;
 }
 
 export function modelCategoryDefinitionsFromAdapters(adapters?: AdapterDescriptor[]) {
-  return normalizeModelCategoryDefinitions((adapters ?? []).flatMap((adapter) => adapter.provider_policy?.model_categories ?? []));
+  const key = adapters ?? noAdapters;
+  const cached = adaptersDefinitionsCache.get(key);
+  if (cached) return cached;
+  const definitions = normalizeModelCategoryDefinitions(key.flatMap((adapter) => adapter.provider_policy?.model_categories ?? []));
+  adaptersDefinitionsCache.set(key, definitions);
+  return definitions;
 }
 
 export function modelCategoryDefinitionsFromPlugins(plugins?: PluginDescriptor[]) {
+  const key = plugins ?? noPlugins;
+  const cached = pluginsDefinitionsCache.get(key);
+  if (cached) return cached;
   const definitions: ModelCategoryDefinition[] = [];
-  for (const plugin of plugins ?? []) {
+  for (const plugin of key) {
     for (const capability of plugin.capabilities ?? []) {
       if (capability.kind !== "provider_catalog" || capability.name !== "model_category" || !capability.value) continue;
       try {
@@ -49,7 +82,9 @@ export function modelCategoryDefinitionsFromPlugins(plugins?: PluginDescriptor[]
       }
     }
   }
-  return normalizeModelCategoryDefinitions(definitions);
+  const normalized = normalizeModelCategoryDefinitions(definitions);
+  pluginsDefinitionsCache.set(key, normalized);
+  return normalized;
 }
 
 export function modelCategoryKeys(definitions?: ModelCategoryDefinition[]) {
@@ -116,8 +151,18 @@ export function normalizeCompactModelVersionForUI(value: string, prefix: string)
   return value;
 }
 
+let coreFallbackDefinitions: ModelCategoryDefinition[] | null = null;
+
 function categoryDefinitionsOrFallback(definitions?: ModelCategoryDefinition[]) {
-  return definitions && definitions.length > 0 ? normalizeModelCategoryDefinitions(definitions) : normalizeModelCategoryDefinitions(coreModelCategoryDefinitions);
+  if (definitions && definitions.length > 0) {
+    // Arrays produced by this module are already normalized; re-normalizing them was
+    // the second half of the same hot path, since every label, key, icon and sort
+    // lookup called back through here with an already-merged list.
+    if (normalizedDefinitionArrays.has(definitions)) return definitions;
+    return normalizeModelCategoryDefinitions(definitions);
+  }
+  coreFallbackDefinitions ??= normalizeModelCategoryDefinitions(coreModelCategoryDefinitions);
+  return coreFallbackDefinitions;
 }
 
 function normalizeModelCategoryDefinitions(definitions: Array<ModelCategoryDefinition | AdapterModelCategory>) {
@@ -136,7 +181,9 @@ function normalizeModelCategoryDefinitions(definitions: Array<ModelCategoryDefin
     }
     byKey.set(definition.key, definition);
   }
-  return Array.from(byKey.values()).sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.key.localeCompare(right.key));
+  const normalized = Array.from(byKey.values()).sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.key.localeCompare(right.key));
+  normalizedDefinitionArrays.add(normalized);
+  return normalized;
 }
 
 function normalizeModelCategoryDefinition(raw: ModelCategoryDefinition | AdapterModelCategory) {
