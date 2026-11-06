@@ -4,7 +4,7 @@ import { configuredPriceFormValue } from "./configured-pricing";
 import { modelDisplayName } from "./model-display-name";
 import { imageCapabilityCapableResources, modelHasImageCapability, routeImageCapabilityProfile, findProvider, findProviderResource, modelRoutesFor, stringifyForm, stringifyValue } from "./entities";
 import { guardrailBlockedDiagnostic, languageLocale, tx } from "../i18n/runtime";
-import { preferredModelCategories, preferredModelCategoriesFromData } from "./model-categories";
+import { type ModelCategoryDefinition, modelCategoryDefinitionsFromData, modelCategoryKeys, preferredModelCategories, preferredModelCategoriesFromData } from "./model-categories";
 import { pluginDetailRouteFromPath } from "./plugin-detail-route";
 
 export { routeStrategyLabel } from "./route-strategy";
@@ -33,12 +33,36 @@ export function apiKeyUsageIDFromPath(pathname: string) {
 }
 
 export function playgroundModels(data: AppData, sortByRoutes = data.routes.length > 0) {
-  return data.models
-    .filter((model) => model.status === "active" && (model.modality === "" || model.modality === "chat"))
-    .sort((a, b) => {
-      const routeDiff = sortByRoutes ? activeRouteCount(b.name, data) - activeRouteCount(a.name, data) : 0;
-      return routeDiff || modelCategoryRank(a, data) - modelCategoryRank(b, data) || a.name.localeCompare(b.name);
-    });
+  const models = data.models
+    .filter((model) => model.status === "active" && (model.modality === "" || model.modality === "chat"));
+  // Precompute both sort keys once per model. Doing it inside the comparator meant
+  // O(n log n) category lookups and O(n log n) full route scans for a single call.
+  const routeCounts = sortByRoutes ? routeCountsByModel(data) : null;
+  const ranks = modelCategoryRanks(data);
+  return models.sort((a, b) => {
+    const routeDiff = routeCounts ? (routeCounts.get(b.name) ?? 0) - (routeCounts.get(a.name) ?? 0) : 0;
+    return routeDiff || (ranks.get(a.name) ?? 0) - (ranks.get(b.name) ?? 0) || a.name.localeCompare(b.name);
+  });
+}
+
+function routeCountsByModel(data: AppData) {
+  const counts = new Map<string, number>();
+  for (const route of data.routes) {
+    if (route.status !== "active") continue;
+    counts.set(route.model_name, (counts.get(route.model_name) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function modelCategoryRanks(data: Pick<AppData, "plugins" | "providerAdapters"> & { models: Model[] }) {
+  const definitions = modelCategoryDefinitionsFromData(data);
+  const keys = modelCategoryKeys(definitions);
+  const ranks = new Map<string, number>();
+  for (const model of data.models) {
+    const index = keys.indexOf(modelCategory(model, definitions));
+    ranks.set(model.name, index >= 0 ? index : keys.length);
+  }
+  return ranks;
 }
 
 export const apiExampleLanguages: Array<{ key: ApiExampleLanguage; label: string }> = [
@@ -279,8 +303,10 @@ export function keyWizardModelOptions(data: AppData, project?: Pick<Project, "mo
   const imageCapabilityModels = data.models.filter((model) =>
     model.status === "active" && modelHasImageCapability(data, model) && activeRouteCount(model.name, data) > 0,
   );
+  const definitions = modelCategoryDefinitionsFromData(data);
+  const rank = (model: Model) => modelCategoryRank(model, definitions);
   const options = [...(routed.length > 0 ? routed : activeChatModels), ...imageCapabilityModels].sort((left, right) =>
-    modelCategoryRank(left, data) - modelCategoryRank(right, data) || left.name.localeCompare(right.name),
+    rank(left) - rank(right) || left.name.localeCompare(right.name),
   );
   // A restricted project is the outer model boundary: the key wizard must not
   // offer models the project itself cannot call, otherwise the key would store
@@ -293,9 +319,18 @@ export function keyWizardModelOptions(data: AppData, project?: Pick<Project, "mo
   return options;
 }
 
-export function modelCategoryRank(model: Model, data?: Pick<AppData, "plugins" | "providerAdapters">) {
-  const definitions = data ? preferredModelCategoriesFromData(data) : preferredModelCategories;
-  const index = definitions.indexOf(modelCategory(model, data));
+export function modelCategoryRank(
+  model: Model,
+  dataOrDefinitions?: Pick<AppData, "plugins" | "providerAdapters"> | ModelCategoryDefinition[],
+) {
+  // Accept an already-merged definition list so sort comparators do not rebuild it
+  // on every comparison; the object path stays for callers that only hold `data`.
+  const definitions = Array.isArray(dataOrDefinitions)
+    ? modelCategoryKeys(dataOrDefinitions)
+    : dataOrDefinitions
+      ? preferredModelCategoriesFromData(dataOrDefinitions)
+      : preferredModelCategories;
+  const index = definitions.indexOf(modelCategory(model, dataOrDefinitions));
   return index >= 0 ? index : definitions.length;
 }
 

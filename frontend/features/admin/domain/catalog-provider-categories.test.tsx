@@ -117,6 +117,50 @@ describe("providerCategories", () => {
     expect(modelCategoryInitial("opaque", "")).toBe("O");
   });
 
+  it("reuses merged category definitions for repeated lookups and drops them when plugins change", () => {
+    const data = emptyData();
+    data.models = [{
+      id: "acme-chat",
+      name: "acme-chat",
+      category: "acme",
+      family: "acme",
+      modality: "chat",
+      status: "active",
+    }];
+    data.providerAdapters = [{
+      type: "acme_subscription",
+      capabilities: [],
+      provider_policy: { supports_custom_headers: true, model_categories: [{ key: "acme", label: "Acme", order: 25, aliases: ["acme"] }] },
+    }];
+
+    const definitions = modelCategoryDefinitionsFromData(data);
+    expect(modelCategory(data.models[0], data)).toBe("acme");
+    expect(modelCategoryLabel("acme", data)).toBe("Acme");
+    // Repeated calls serve the same immutable instance instead of rebuilding it.
+    expect(modelCategoryDefinitionsFromData(data)).toBe(definitions);
+    expect(modelCategoryDefinitionsFromData({ ...data })).toBe(definitions);
+    expect(modelCategoryLabel("acme", definitions)).toBe("Acme");
+
+    // A newly loaded adapter slice must not keep serving the previous merge.
+    const reloaded = { ...data, providerAdapters: [{ ...data.providerAdapters[0], provider_policy: { supports_custom_headers: true, model_categories: [{ key: "other", label: "Other" }] } }] };
+    expect(modelCategoryDefinitionsFromData(reloaded)).not.toBe(definitions);
+    expect(modelCategoryLabel("other", reloaded)).toBe("Other");
+    expect(modelCategoryLabel("acme", reloaded)).toBe("acme");
+  });
+
+  it("resolves the same category through the data object and a merged definition list", () => {
+    const data = emptyData();
+    data.models = [{ id: "opaque-reasoner", name: "opaque-reasoner", family: "opaque", modality: "chat", status: "active" }];
+    data.providerAdapters = [{
+      type: "opaque_provider",
+      capabilities: [],
+      provider_policy: { supports_custom_headers: true, model_categories: [{ key: "opaque", label: "Opaque", order: 5, aliases: ["opaque"] }] },
+    }];
+    const definitions = modelCategoryDefinitionsFromData(data);
+    expect(modelCategory(data.models[0], data)).toBe(modelCategory(data.models[0], definitions));
+    expect(modelCategoryLabel("opaque", data)).toBe(modelCategoryLabel("opaque", definitions));
+  });
+
   it("uses adapter model category metadata declared by provider plugins", () => {
     const provider: Provider = {
       id: "prv_acme",
