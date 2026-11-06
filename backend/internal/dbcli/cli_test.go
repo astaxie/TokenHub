@@ -151,6 +151,28 @@ func TestContractDryRunOnAdoptedDatabase(t *testing.T) {
 	}
 }
 
+func TestUpgradePlanReportsPreflight(t *testing.T) {
+	databaseURL := cliTestEnv(t)
+	// Opening the store once adopts the schema so the plan sees the full
+	// protected table inventory.
+	if _, err := server.NewSQLiteStore(databaseURL); err != nil {
+		t.Fatal(err)
+	}
+	target := "sqlite://" + filepath.Join(t.TempDir(), "absent.db")
+	code, output := runCLI(t, "upgrade-plan", "--target", target)
+	if code != 0 || !strings.Contains(output, "ciphertext canary:") || !strings.Contains(output, "state:") {
+		t.Fatalf("upgrade-plan: code=%d output=%q", code, output)
+	}
+}
+
+func TestUpgradePlanRequiresTarget(t *testing.T) {
+	cliTestEnv(t)
+	code, output := runCLI(t, "upgrade-plan")
+	if code != 1 || !strings.Contains(output, "requires --target") {
+		t.Fatalf("upgrade-plan without target: code=%d output=%q", code, output)
+	}
+}
+
 func TestSQLiteContractBackupStoreDoesNotPublishHeartbeat(t *testing.T) {
 	databaseURL := cliTestEnv(t)
 	config := server.ConfigFromEnv()
