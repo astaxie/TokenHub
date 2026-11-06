@@ -30,10 +30,11 @@ TOKENHUB_SEMANTIC_ROUTING_ENABLED=true
 TOKENHUB_SEMANTIC_ROUTING_PROJECTS=prj_example
 TOKENHUB_TYPESAFE_API_KEY=<server-side-secret>
 TOKENHUB_TYPESAFE_MODEL=jev-1.13.0
+TOKENHUB_TYPESAFE_BASE_URL=https://api.typesafe.ai/v1
 TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS=1000
 ```
 
-The project allowlist contains exact IDs separated by commas. An empty list permits no external evaluation; startup rejects an enabled deployment without a key or allowlist. Pin the evaluator version. The timeout covers candidate metadata lookup and evaluation, defaults to 1000 ms, and cannot exceed 10000 ms. Each process permits eight simultaneous evaluations, without a queue or retry.
+The project allowlist contains exact IDs separated by commas. An empty list permits no external evaluation; startup rejects an enabled deployment without a key or allowlist. Pin the evaluator version. `TOKENHUB_TYPESAFE_BASE_URL` names the decision API root and defaults to the public TypeSafe root; point it at an internal System One compatible classifier when the deployment cannot reach public hosts. When evaluation is enabled, a non-empty base URL must be an absolute HTTP or HTTPS URL; startup rejects malformed values and other schemes. The timeout covers candidate metadata lookup and evaluation, defaults to 1000 ms, and cannot exceed 10000 ms. Each process permits eight simultaneous evaluations, without a queue or retry.
 
 ## Selection and fallback
 
@@ -57,7 +58,7 @@ Detailed route bindings are shared through SQLite or PostgreSQL and expire after
 
 The classifier receives only the latest eligible user text, selection instructions, candidate identifiers, upstream model names and configured task criteria. System/developer instructions, assistant history, tool definitions/results, media, credentials, headers and arbitrary model metadata are not sent to Jev. The full processed generation request is preserved for the selected Provider. Text over 8192 bytes, missing user text, or non-text content in the latest user message uses the fallback instead of truncating or sending media.
 
-The fixed endpoint is `https://api.typesafe.ai/v1/systemone`; redirects are rejected. Jev returns a constrained TypeSafe `Choice`. TokenHub checks candidate membership and confidence locally. Restrict external routing to approved workloads. The initial `0.65` threshold is a starting value, not a quality guarantee: confidence is a choice distribution, not task success probability.
+TokenHub posts to `<base>/systemone` under the configured decision API root, presents `TOKENHUB_TYPESAFE_API_KEY` as a bearer token, and rejects redirects. For a self-hosted classifier, TokenHub sends a request body carrying `model`, `state.request.user_text`, and `questions.selected_candidate` with `type`, `criteria` and `instructions`; the response echoes `model` and returns a TypeSafe `Choice` under `answers.selected_candidate`. `type` is `choice`, `choice` names one supplied criterion, `confidence` is between zero and one, `probabilities` cover every criterion, and `usage.input_tokens` and `usage.output_tokens` are optional. TokenHub rejects a response whose probabilities miss a criterion or do not sum to one within 0.05, or whose selected entry falls below the largest probability. Candidate membership is checked locally; selection compares `confidence` with the policy `min_confidence`, and `probabilities` are recorded in the audit entry without affecting selection. Restrict external routing to approved workloads. The initial `0.65` threshold is a starting value, not a quality guarantee: confidence is a choice distribution, not task success probability.
 
 Audit action `routing.semantic` records selection/fallback, strategy, protocol, selected model and candidate ID, evaluator version, confidence/probabilities, evaluator tokens and latency under the gateway request ID. It contains no user text or credentials. Generation request logs retain the executed upstream model. Public-model pricing still applies; the alias is not automatically repriced by selected model. Evaluator usage is separate and is not added to the generation token usage or customer bill.
 
