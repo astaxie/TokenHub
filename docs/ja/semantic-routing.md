@@ -30,10 +30,11 @@ TOKENHUB_SEMANTIC_ROUTING_ENABLED=true
 TOKENHUB_SEMANTIC_ROUTING_PROJECTS=prj_example
 TOKENHUB_TYPESAFE_API_KEY=<server-side-secret>
 TOKENHUB_TYPESAFE_MODEL=jev-1.13.0
+TOKENHUB_TYPESAFE_BASE_URL=https://api.typesafe.ai/v1
 TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS=1000
 ```
 
-許可リストはカンマ区切りの完全なプロジェクト ID です。空の場合は外部評価を許可しません。有効化時にキーまたは許可リストがなければ起動検証が失敗します。評価モデルは具体的なバージョンに固定します。タイムアウトは候補メタデータ取得と評価を含み、既定は 1000 ms、上限は 10000 ms です。各プロセスは同時に 8 件まで評価し、待ち行列や再試行は行いません。
+許可リストはカンマ区切りの完全なプロジェクト ID です。空の場合は外部評価を許可しません。有効化時にキーまたは許可リストがなければ起動検証が失敗します。評価モデルは具体的なバージョンに固定します。`TOKENHUB_TYPESAFE_BASE_URL` は判定 API のルートを指定し、既定は公開 TypeSafe です。公開ホストに到達できない展開では、内部の System One 互換分類器を指定します。評価を有効にした場合、空でないルートは絶対 HTTP／HTTPS URL である必要があり、それ以外は起動検証で拒否されます。タイムアウトは候補メタデータ取得と評価を含み、既定は 1000 ms、上限は 10000 ms です。各プロセスは同時に 8 件まで評価し、待ち行列や再試行は行いません。
 
 ## 選択とフォールバック
 
@@ -57,7 +58,7 @@ Jev Responses リクエストでは、選択したルート、Provider とモデ
 
 分類器には最新の適格なユーザーテキスト、選択の指示、候補 ID、上流モデル名、設定された適用条件のみを送ります。システム／開発者指示、アシスタント履歴、ツール定義と結果、メディア、認証情報、ヘッダー、任意のモデルメタデータは Jev に送信しません。処理済みの生成リクエスト全体は対象 Provider に保持されます。テキストが 8192 バイトを超える場合、ユーザーテキストがない場合、最新のユーザーメッセージに非テキスト要素がある場合は、切り捨てやメディア送信をせずフォールバックします。
 
-固定エンドポイントは `https://api.typesafe.ai/v1/systemone` で、リダイレクトは拒否します。Jev は制約付き TypeSafe `Choice` を返し、TokenHub が候補と信頼度をローカル検証します。承認済みのワークロードだけに外部ルーティングを許可してください。初期閾値 `0.65` は評価の開始値であり、品質保証ではありません。信頼度は選択肢の分布で、タスク成功確率ではありません。
+TokenHub は設定された判定 API ルートを基準に `<base>/systemone` に POST し、`TOKENHUB_TYPESAFE_API_KEY` をベアラートークンとして送り、リダイレクトは拒否します。セルフホストの分類器に送るリクエスト本文には `model`、`state.request.user_text`、`type`、`criteria`、`instructions` を持つ `questions.selected_candidate` が入り、応答は `model` を返し、`answers.selected_candidate` に TypeSafe `Choice` を返します。`type` は `choice`、`choice` は渡した候補のいずれか、`confidence` は 0 から 1 の確率、`probabilities` は全候補を網羅し、`usage.input_tokens` と `usage.output_tokens` は任意です。確率に候補の欠落があるか、合計が 1 から 0.05 を超えて外れる場合、選択項目が最大確率を下回る場合、TokenHub は応答を無効と判定します。候補の所属はローカルで検証します。モデル選択では `confidence` をポリシーの `min_confidence` と比較し、`probabilities` は監査記録に残すだけで選択には使いません。承認済みのワークロードだけに外部ルーティングを許可してください。初期閾値 `0.65` は評価の開始値であり、品質保証ではありません。信頼度は選択肢の分布で、タスク成功確率ではありません。
 
 監査アクション `routing.semantic` はゲートウェイリクエスト ID に、選択／フォールバック、戦略、プロトコル、選択モデルと候補 ID、評価モデルのバージョン、信頼度と確率、評価トークン数、所要時間を記録します。ユーザーテキストや認証情報は含みません。生成リクエストログには実行した上流モデルが残ります。公開モデルの価格を引き続き適用し、選択モデルに応じた自動再価格設定は行いません。評価器の使用量は別扱いで、生成トークン数や顧客請求に加算しません。
 

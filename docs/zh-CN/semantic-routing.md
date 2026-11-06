@@ -30,10 +30,11 @@ TOKENHUB_SEMANTIC_ROUTING_ENABLED=true
 TOKENHUB_SEMANTIC_ROUTING_PROJECTS=prj_example
 TOKENHUB_TYPESAFE_API_KEY=<server-side-secret>
 TOKENHUB_TYPESAFE_MODEL=jev-1.13.0
+TOKENHUB_TYPESAFE_BASE_URL=https://api.typesafe.ai/v1
 TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS=1000
 ```
 
-项目白名单是以逗号分隔的精确 ID。空名单不允许外部评估；开启功能但缺少密钥或白名单时，启动校验失败。评估模型应固定具体版本。超时覆盖候选元数据查询与评估，默认 1000 ms，上限 10000 ms。每个进程最多同时进行 8 次评估，不排队、不重试。
+项目白名单是以逗号分隔的精确 ID。空名单不允许外部评估；开启功能但缺少密钥或白名单时，启动校验失败。评估模型应固定具体版本。`TOKENHUB_TYPESAFE_BASE_URL` 指定决策 API 根地址，默认指向公共 TypeSafe；无法访问公网的部署应改为内部的 System One 兼容分类器。启用评估时，非空的根地址必须为绝对的 HTTP 或 HTTPS URL，否则启动校验失败。超时覆盖候选元数据查询与评估，默认 1000 ms，上限 10000 ms。每个进程最多同时进行 8 次评估，不排队、不重试。
 
 ## 选择与回退
 
@@ -57,7 +58,7 @@ Jev Responses 请求会保存所选线路、Provider 和模型、资源账号及
 
 分类器只接收最近一条符合条件的用户文本、选择指令、候选标识、上游模型名和已配置的适用条件。系统或开发者指令、助手历史、工具定义与结果、媒体、凭证、请求头及任意模型元数据不会发送给 Jev。处理后的完整生成请求保留给目标 Provider。用户文本超过 8192 字节、没有用户文本，或最近一条用户消息包含非文本内容时，使用回退模型，不截断文本或发送媒体。
 
-接口固定为 `https://api.typesafe.ai/v1/systemone`，拒绝重定向。Jev 返回受约束的 TypeSafe `Choice`，TokenHub 在本地验证候选归属和置信度。外部路由只应覆盖已批准的工作负载。初始阈值 `0.65` 是评估起点，不是质量保证；置信度描述选项分布，不代表任务成功率。
+TokenHub 向 `<base>/systemone` 发起 POST 请求，其中 `<base>` 为配置的决策 API 根地址，以 Bearer 形式携带 `TOKENHUB_TYPESAFE_API_KEY`，并拒绝重定向。TokenHub 发往自托管分类器的请求体包含 `model`、`state.request.user_text`，以及带有 `type`、`criteria` 和 `instructions` 的 `questions.selected_candidate`；响应回显 `model`，并在 `answers.selected_candidate` 中返回 TypeSafe `Choice`。`type` 为 `choice`，`choice` 取自传入候选，`confidence` 为 0 到 1 的概率，`probabilities` 覆盖全部候选，`usage.input_tokens` 和 `usage.output_tokens` 可选。概率缺少候选、总和偏离 1 超过 0.05，或选中项低于最大概率时，TokenHub 判定响应无效。候选归属在本地校验；选模以 `confidence` 与策略中的 `min_confidence` 比较，`probabilities` 仅写入审计记录，不影响选模。外部路由只应覆盖已批准的工作负载。初始阈值 `0.65` 是评估起点，不是质量保证；置信度描述选项分布，不代表任务成功率。
 
 审计事件 `routing.semantic` 按网关请求 ID 记录选择或回退结果、策略、协议、所选模型和候选 ID、评估模型版本、置信度及概率分布、评估 Token 数和耗时，不记录用户文本或凭证。生成请求日志保留实际执行的上游模型。计费仍使用对外模型价格，不随选模自动变价；评估器用量单独计算，不计入生成模型的 Token 用量或客户账单。
 
