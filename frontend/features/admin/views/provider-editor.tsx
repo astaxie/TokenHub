@@ -26,7 +26,7 @@ import { ProviderImageCapability } from "./provider-image-capability";
 import { ProviderAccountQuotaReset } from "./provider-account-quota-reset";
 import { ProviderQuotaUsage } from "./provider-quota-usage";
 import { ProviderInlineField, providerCreateWizardSteps, providerCredentialModeLabel } from "./provider-editor-fields";
-import { ProviderAdvancedFields, ProviderConnectionFields, providerReasoningFormValues } from "./provider-editor-sections";
+import { ProviderAdvancedFields, ProviderConnectionFields, ProviderHealthField, providerReasoningFormValues } from "./provider-editor-sections";
 import { ProviderResourceReasoningSettings } from "./provider-resource-reasoning-settings";
 import { ProviderResourceProbePanel } from "./provider-resource-probe-panel";
 import { ProviderAPIKeyPool } from "./provider-api-key-pool";
@@ -1356,7 +1356,7 @@ export function ProviderUpsertModal({
                 {provider && !editingAccountProvider && !accountProviderTypesFromPlugins(plugins, providerAdapters).includes(provider.type) ? <ProviderAPIKeyPool api={api} provider={provider} resources={resources} onSaved={onAccountsChanged ?? onSaved} /> : null}</>
             ) : null}
             {mode === "edit" && editTab === "advanced" ? (
-              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={{ ...values, catalog_id: values.type === provider?.type ? provider.options?.catalog_id ?? "" : catalogID }} onUpdate={update} providerTypeOptions={providerTypeOptions} />
+              <><ProviderAdvancedFields accountIntegration={credentialMode === "account_integration"} values={{ ...values, catalog_id: values.type === provider?.type ? provider.options?.catalog_id ?? "" : catalogID }} onUpdate={update} providerTypeOptions={providerTypeOptions} /><ProviderHealthField onUpdate={update} values={values} />
                 <ProviderPluginFormSections actions={pluginActions} api={api} contributions={pluginUI} onUpdate={update} placement="advanced" provider={provider} values={values} /></>
             ) : null}
             {mode === "edit" && editTab === "advanced" && provider ? <ProviderResourceReasoningSettings api={api} onSaved={onAccountsChanged ?? onSaved} provider={provider} providerType={values.type} providerAdapters={providerAdapters} providerTypeOptions={providerTypeOptions} plugins={plugins} resources={resources} /> : null}

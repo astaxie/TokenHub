@@ -61,6 +61,35 @@ test("providers local-provider-labels", async ({ page, api }, testInfo) => {
 });
 
 for (const mobile of [false, true]) {
+  test(`providers health-recovery-save ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    installProviders(api);
+    api.define("PATCH", "/api/admin/providers/prv_ui_internal", ({ body }) => {
+      expect(body).toMatchObject({ id: "prv_ui_internal", healthy: false });
+      return { json: { provider: { id: "prv_ui_internal", healthy: false } } };
+    });
+
+    await page.goto("/providers");
+    const row = page.getByRole("row").filter({ hasText: "UI Internal Cluster" });
+    await row.getByRole("button", { name: "编辑", exact: true }).click();
+    const editor = page.locator(".provider-modal");
+    await editor.getByRole("tab", { name: "高级", exact: true }).click();
+    const health = editor.getByRole("checkbox", { name: "Provider 健康", exact: true });
+    await expect(health).toBeChecked();
+    await expect(health).toHaveCSS("width", "16px");
+    await expect(health).toHaveCSS("height", "16px");
+    await expect(health).toHaveCSS("min-height", "16px");
+    const healthLabel = health.locator("xpath=..");
+    await expect(healthLabel).toHaveCSS("display", "flex");
+    await capture(page, testInfo, healthLabel, `provider-health-${mobile ? "mobile" : "desktop"}`, "健康状态复选框保持原生尺寸");
+    await health.uncheck();
+    await expect(health).not.toBeChecked();
+    await editor.getByRole("button", { name: "保存", exact: true }).click();
+    await expect.poll(() => api.calls.some(call => call.method === "PATCH" && call.path === "/api/admin/providers/prv_ui_internal" && (call.body as { healthy?: boolean } | undefined)?.healthy === false)).toBe(true);
+  });
+}
+
+for (const mobile of [false, true]) {
   test(`providers compact-management ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
     installProviders(api);

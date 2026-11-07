@@ -1410,6 +1410,23 @@
   line-height: 1.45;
 }
 
+.checkbox-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.field .checkbox-line input[type="checkbox"] {
+  all: revert;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 16px;
+}
+
 .field input,
 .field select,
 .field textarea {
