@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
@@ -98,7 +99,9 @@ func TestIntegrationServiceUsesRegistryProbeFallbackPolicy(t *testing.T) {
 }
 
 func TestIntegrationServiceCatalogProbeFailureDoesNotLatchProviderUnhealthy(t *testing.T) {
+	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"code":1001,"msg":"missing authorization","success":false}`))
@@ -110,9 +113,14 @@ func TestIntegrationServiceCatalogProbeFailureDoesNotLatchProviderUnhealthy(t *t
 		ID: "prv_catalog_error", Name: "Catalog Error", Type: ProviderOpenAICompatible,
 		BaseURL: upstream.URL, Status: StatusActive, Healthy: true,
 	})
-	service := NewIntegrationService(store, NewAdapterRegistry(), upstream.Client())
-	if _, err := service.TestProvider(context.Background(), provider.ID); err == nil {
-		t.Fatal("test provider error = nil, want empty catalog error")
+	registry := NewAdapterRegistry()
+	registry.Register(ProviderOpenAICompatible, OpenAICompatibleAdapter{Client: upstream.Client()}, AdapterCapabilityChat)
+	service := NewIntegrationService(store, registry, upstream.Client())
+	if _, err := service.TestProvider(context.Background(), provider.ID); err == nil || AsHTTPError(err).Code != "provider_models_empty" {
+		t.Fatalf("test provider error = %v, want provider_models_empty", err)
+	}
+	if calls.Load() == 0 {
+		t.Fatal("catalog probe did not reach the upstream")
 	}
 	updated, ok := store.GetProvider(provider.ID)
 	if !ok {
