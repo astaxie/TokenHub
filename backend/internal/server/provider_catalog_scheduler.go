@@ -108,6 +108,13 @@ func (s *Server) runProviderCatalogSync(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, _, err := s.providerCatalog.reloadWithOptions(ctx, false)
+	// The scheduled task must not reuse the freshness shortcut that lets an
+	// interactive reload reuse a recent snapshot. RunClusterTask records this UTC
+	// day's revision as complete as soon as this returns, and the next tick only
+	// arrives 24 hours later. Because the window is measured from the previous
+	// download's completion, a download that finished slightly after its own tick
+	// makes the following tick look fresh, so a forced fetch here is what keeps the
+	// daily task from consuming a day without contacting the upstream.
+	_, _, err := s.providerCatalog.reloadWithOptions(ctx, true)
 	return err
 }
