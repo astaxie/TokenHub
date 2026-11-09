@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -432,5 +433,211 @@ func writeProviderCatalogFixtureWithBaseURL(t *testing.T, catalogFile string, pr
 	}
 	if err := os.WriteFile(catalogFile, encoded, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// pausingSnapshotStore wraps the real store and pauses a specific snapshot save so a
+// test can interleave another writer at the exact point the reviewer described: after
+// the fresh reload has read the snapshot and before it writes its merge.
+type pausingSnapshotStore struct {
+	Store
+	armed       atomic.Bool
+	reached     chan struct{}
+	release     chan struct{}
+	reachedOnce sync.Once
+}
+
+func (s *pausingSnapshotStore) SaveProviderCatalogSnapshot(entries []ProviderCatalogEntry, source string, fetchedAt time.Time) error {
+	// The fresh reload saves once, as the final step of its merge. Pausing the first
+	// save keeps the interleaving deterministic without depending on which source the
+	// merge happened to inherit from the stored snapshot.
+	if s.armed.CompareAndSwap(true, false) {
+		s.reachedOnce.Do(func() { close(s.reached) })
+		<-s.release
+	}
+	return s.Store.SaveProviderCatalogSnapshot(entries, source, fetchedAt)
+}
+
+// TestProviderCatalogFreshReloadDoesNotOverwriteConcurrentUpstreamSync reproduces the
+// lost-update the reviewer described. The interleaving has to be: the fresh reload reads
+// the snapshot, a forced sync imports a provider and saves it, and only then does the
+// fresh reload save its merge. Its merge was built from the pre-sync snapshot, so without
+// shared coordination the imported provider is silently deleted.
+func TestProviderCatalogFreshReloadDoesNotOverwriteConcurrentUpstreamSync(t *testing.T) {
+	base := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+
+	inner := newProviderCatalogService(base, catalogFile)
+	inner.SetUpstreamURL("")
+	if _, _, err := inner.reloadWithOptions(context.Background(), true); err != nil {
+		t.Fatalf("prime snapshot: %v", err)
+	}
+
+	upstreamOnly := ProviderCatalogEntry{
+		ID:          "concurrent-upstream-only",
+		Name:        "Concurrent Upstream Only",
+		DisplayName: "Concurrent Upstream Only",
+		BaseURL:     "https://concurrent.example.test/v1",
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(upstreamCatalogWith(t, upstreamOnly))
+	}))
+	defer upstream.Close()
+
+	// The fresh reload runs through the pausing store so the test can stop it between
+	// its read and its write.
+	pausing := &pausingSnapshotStore{
+		Store:   base,
+		reached: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	pausing.armed.Store(true)
+	fresh := newProviderCatalogService(pausing, catalogFile)
+	fresh.SetUpstreamURL("")
+
+	// The forced sync writes through the same underlying store, so it shares the same
+	// cluster lease as the fresh reload.
+	concurrent := newProviderCatalogService(base, catalogFile)
+	concurrent.SetUpstreamURL(upstream.URL)
+
+	freshDone := make(chan error, 1)
+	go func() {
+		_, _, err := fresh.reloadWithOptions(context.Background(), false)
+		freshDone <- err
+	}()
+	select {
+	case <-pausing.reached:
+		// The fresh reload has now read the pre-sync snapshot and is about to save.
+	case <-time.After(30 * time.Second):
+		t.Fatal("fresh reload never reached its snapshot save")
+	}
+
+	syncDone := make(chan error, 1)
+	go func() {
+		_, _, err := concurrent.reloadWithOptions(context.Background(), true)
+		syncDone <- err
+	}()
+	// While the fresh reload is paused mid-merge, a coordinated forced sync cannot
+	// complete: it is waiting on the same cluster lease. An uncoordinated one runs to
+	// completion here, which is exactly the write the fresh save is about to clobber.
+	syncFinishedEarly := false
+	select {
+	case err := <-syncDone:
+		if err != nil {
+			t.Fatalf("concurrent forced sync: %v", err)
+		}
+		syncFinishedEarly = true
+	case <-time.After(5 * time.Second):
+	}
+
+	close(pausing.release)
+	if err := <-freshDone; err != nil {
+		t.Fatalf("fresh reload: %v", err)
+	}
+	if !syncFinishedEarly {
+		if err := <-syncDone; err != nil {
+			t.Fatalf("concurrent forced sync: %v", err)
+		}
+	}
+
+	stored, _, _, err := inner.loadStored(false)
+	if err != nil {
+		t.Fatalf("load stored: %v", err)
+	}
+	if !providerCatalogHasEntry(stored, upstreamOnly.ID) {
+		t.Fatal("fresh reload dropped a provider imported by a concurrent forced sync")
+	}
+}
+
+// TestProviderCatalogScheduledSyncFetchesDespiteFreshSnapshot pins the scheduler
+// boundary: RunClusterTask marks the UTC day complete as soon as the run returns, so a
+// scheduled run that reuses the interactive freshness window can consume a day without
+// contacting the upstream. A forced fetch is what keeps one download per day.
+func TestProviderCatalogScheduledSyncFetchesDespiteFreshSnapshot(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	service := newProviderCatalogService(store, catalogFile)
+
+	var downloads atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		downloads.Add(1)
+		_, _ = w.Write(upstreamCatalogWith(t, ProviderCatalogEntry{
+			ID:      "scheduled-download",
+			Name:    "Scheduled Download",
+			BaseURL: "https://scheduled.example.test/v1",
+		}))
+	}))
+	defer upstream.Close()
+	service.SetUpstreamURL(upstream.URL)
+
+	server := &Server{providerCatalog: service}
+	// A snapshot written a moment ago is inside the interactive freshness window.
+	if _, _, err := service.reloadWithOptions(context.Background(), true); err != nil {
+		t.Fatalf("prime snapshot: %v", err)
+	}
+	if got := downloads.Load(); got != 1 {
+		t.Fatalf("prime downloads = %d, want 1", got)
+	}
+	if err := server.runProviderCatalogSync(context.Background()); err != nil {
+		t.Fatalf("scheduled sync: %v", err)
+	}
+	if got := downloads.Load(); got != 2 {
+		t.Fatalf("downloads after scheduled sync = %d, want 2 (the daily task must not reuse the freshness window)", got)
+	}
+}
+
+// TestProviderCatalogSchedulerRunDueDoesNotBurnTheDayAtTheFreshnessBoundary covers the
+// exact boundary the reviewer reproduced. The scheduler's cluster task records the UTC
+// day as complete as soon as the run returns, and the freshness window is measured from
+// the previous download's completion. A download that finished just after its own tick
+// therefore makes the next day's tick still look fresh; if the scheduled run honoured
+// that window it would return without fetching and the day's sync would be consumed.
+func TestProviderCatalogSchedulerRunDueDoesNotBurnTheDayAtTheFreshnessBoundary(t *testing.T) {
+	store := NewMemoryStore()
+	catalogFile := filepath.Join(t.TempDir(), "provider-catalog.json")
+	writeProviderCatalogFixture(t, catalogFile)
+	service := newProviderCatalogService(store, catalogFile)
+
+	var downloads atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		downloads.Add(1)
+		_, _ = w.Write(upstreamCatalogWith(t, ProviderCatalogEntry{
+			ID:      "boundary-download",
+			Name:    "Boundary Download",
+			BaseURL: "https://boundary.example.test/v1",
+		}))
+	}))
+	defer upstream.Close()
+	service.SetUpstreamURL(upstream.URL)
+
+	// Seed a snapshot aged one second inside the freshness window, which is the state a
+	// download finishing just after its tick leaves behind.
+	if _, _, err := service.reloadWithOptions(context.Background(), true); err != nil {
+		t.Fatalf("prime snapshot: %v", err)
+	}
+	if got := downloads.Load(); got != 1 {
+		t.Fatalf("prime downloads = %d, want 1", got)
+	}
+	entries, _, _, err := service.loadStored(true)
+	if err != nil {
+		t.Fatalf("load primed snapshot: %v", err)
+	}
+	aged := time.Now().UTC().Add(-(providerCatalogFreshInterval - time.Second))
+	if err := store.SaveProviderCatalogSnapshot(entries, providerCatalogUpstreamSource, aged); err != nil {
+		t.Fatalf("age snapshot: %v", err)
+	}
+
+	server := &Server{providerCatalog: service}
+	scheduler := newProviderCatalogScheduler(store, server.runProviderCatalogSync)
+	// RunDue for the next UTC day: the cluster revision advances, so the task runs and
+	// must actually fetch rather than treating the aged snapshot as fresh.
+	nextDay := time.Now().UTC().Add(24 * time.Hour)
+	if err := scheduler.RunDue(context.Background(), nextDay); err != nil {
+		t.Fatalf("RunDue next day: %v", err)
+	}
+	if got := downloads.Load(); got != 2 {
+		t.Fatalf("downloads after next-day RunDue = %d, want 2 (a skipped fetch must not consume the day's sync)", got)
 	}
 }

@@ -266,30 +266,52 @@ func (s *providerCatalogService) reloadFreshLocal(ctx context.Context) ([]Provid
 	if _, err := prepareProviderCatalogRefreshWithDefault(localEntries, nil, s.defaultType); err != nil {
 		return nil, "", false, nil
 	}
-	storedEntries, storedSource, storedAt, err := s.loadStored(true)
+	var (
+		entries []ProviderCatalogEntry
+		source  string
+		applied bool
+	)
+	// The read/merge/save below must hold the same cluster lease as an upstream
+	// refresh. Without it, a normal reload can read the snapshot, lose the CPU, and
+	// then save a merge that no longer contains a provider a concurrent ForceReload
+	// just imported. Re-reading inside the lease is what makes the merge safe: the
+	// stored entries it overlays are guaranteed to be the ones the previous writer
+	// left behind. Holding only syncMu would still lose that write in another
+	// process, so the lease is the coordination that matters here.
+	err = s.store.RunClusterOperation(ctx, "provider-catalog-reload", func(operationCtx context.Context) error {
+		storedEntries, storedSource, storedAt, err := s.loadStored(true)
+		if err != nil {
+			return err
+		}
+		merged := localEntries
+		mergedSource := providerCatalogLocalSource
+		fetchedAt := storedAt
+		if len(storedEntries) > 0 {
+			// Overlay, never replace: a forced sync may have imported providers that
+			// exist only upstream, and rewriting the snapshot with the bundled file
+			// would delete them without another upstream request. The source stays
+			// upstream because the stored entries are still the bulk of the result.
+			merged = mergeProviderCatalogOverlay(storedEntries, localEntries)
+			mergedSource = storedSource
+		}
+		if err := context.Cause(operationCtx); err != nil {
+			return err
+		}
+		// The timestamp is carried over rather than advanced. A local re-read says
+		// nothing about upstream freshness, and advancing it would keep postponing the
+		// next sync.
+		if saveErr := s.store.SaveProviderCatalogSnapshot(merged, mergedSource, fetchedAt); saveErr != nil {
+			return saveErr
+		}
+		entries = cloneCatalogEntries(merged, false)
+		source = mergedSource
+		applied = true
+		return nil
+	})
 	if err != nil {
-		return nil, "", false, nil
-	}
-	merged := localEntries
-	source := providerCatalogLocalSource
-	fetchedAt := storedAt
-	if len(storedEntries) > 0 {
-		// Overlay, never replace: a forced sync may have imported providers that exist
-		// only upstream, and rewriting the snapshot with the bundled file would delete
-		// them without another upstream request. The source stays upstream because the
-		// stored entries are still the bulk of the result.
-		merged = mergeProviderCatalogOverlay(storedEntries, localEntries)
-		source = storedSource
-	}
-	if err := context.Cause(ctx); err != nil {
 		return nil, "", false, err
 	}
-	// The timestamp is carried over rather than advanced. A local re-read says nothing
-	// about upstream freshness, and advancing it would keep postponing the next sync.
-	if saveErr := s.store.SaveProviderCatalogSnapshot(merged, source, fetchedAt); saveErr != nil {
-		return nil, "", false, nil
-	}
-	return cloneCatalogEntries(merged, false), source, true, nil
+	return entries, source, applied, nil
 }
 
 // mergeProviderCatalogOverlay returns the stored entries with every local entry
