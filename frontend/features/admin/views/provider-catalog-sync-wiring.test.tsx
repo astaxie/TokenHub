@@ -7,7 +7,7 @@ import { fetchProviderCatalog } from "../resources/provider-catalog";
 import { ProviderCatalogSyncButton } from "./provider-onboarding-catalog";
 
 vi.mock("../resources/payloads", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./payloads")>();
+  const actual = await importOriginal<typeof import("../resources/payloads")>();
   return { ...actual, adminFetch: vi.fn() };
 });
 
