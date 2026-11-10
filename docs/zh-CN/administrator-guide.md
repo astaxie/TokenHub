@@ -303,6 +303,8 @@ Jev 在语义选模前检查请求接口、模型输入／输出能力、上下�
 
 已导入的 Provider 模型可在 metadata 中指定 `request_parameter_profile: openai-chat-responses-v1`，同时明确配置 `endpoints`。该协议配置提供 `include`、`truncation`、`service_tier`、`safety_identifier` 等通用控制字段，并根据工具能力识别工具控制字段。Responses 的 `text.format` 请求结构化格式时，仍要求模型支持结构化输出；采样字段仍需模型声明。`reasoning_effort_options` 和 `reasoning_effort_default` 描述推理档位；`sampling_requires_reasoning_effort` 限制采样条件，`chat_tools_requires_reasoning_effort` 指定 Chat 工具调用所需档位或 `unsupported`。可选的 `request_parameter_denied` 是逗号分隔的显式禁用列表，优先于其他允许规则。协议配置不授予上游账号权限，也不替代上游请求格式校验。
 
+`service_tier`、`safety_identifier`、`prompt_cache_options`、`prompt_cache_retention` 和 `store` 这类与端点无关的协议控制字段在适配器原样转发 OpenAI 请求体、且上游提供入站端点时无需声明即可接受，因为网关自己处理它们，而不是把它们当作模型能力。协议桥接（Anthropic、Gemini）和把请求翻译成私有协议的适配器（订阅工作器）仍以声明的字段集为准，被它们丢弃的字段继续被拒绝；`request_parameter_denied` 仍可显式拒绝。`include`、`truncation`、`max_tool_calls`、`text` 和 `stream_options` 只属于 Responses，仍由协议配置门控，因为旧式桥接可能无法理解。`store` 本就属于 Responses 请求信封、在 `/v1/responses` 上已经免声明，现在在 `/v1/chat/completions` 上也同样免声明，不再因端点不同而行为不一致。
+
 GPT-6 Sol／Luna 系列目录条目已携带这些配置，已导入的库存不会自动重写，未启用协议配置的旧线路保留已有协议桥接行为。即使语义评估器关闭、Jev 使用确定性回退，准入检查仍会执行。升级已有 Jev 线路前，应检查其 Provider 模型并测试代表性请求，尤其要检查参数声明为空的库存。更新已有条目时只调整 metadata，保留其他元数据及已配置价格。重新导入会替换 Provider 模型记录，包括价格和状态，不能当作仅更新元数据的操作。其他供应商应使用已核实的自身声明；仅因接口接收 OpenAI 形状的 JSON，不能推断其支持该协议配置。
 
 管理员可在审计中查看 action 为 `routing.jev_admission` 的候选淘汰事件，其中记录候选或绑定路由、固定原因码及已识别的参数名；未知字段名统一替换为 `unknown`。事件不记录提示词、请求参数值、凭据或完整请求体。原因码包括 `parameter_not_declared`、`sampling_reasoning_conflict` 和 `parameter_endpoint_mismatch`。公开错误仍为 `jev_no_eligible_candidates`（503）或 `jev_previous_route_unavailable`（409），不披露候选库存。

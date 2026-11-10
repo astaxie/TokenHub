@@ -193,8 +193,8 @@ func (s *Server) applyJevResponsesRouting(ctx context.Context, routed *RoutedCal
 	if _, ok := compatibilitySessionIdentifier(headers, *req); ok {
 		eligible = false
 	}
-	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel) jevCompatibility {
-		return jevResponsesCompatibility(model, *req)
+	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel, adapterForwards bool) jevCompatibility {
+		return jevResponsesCompatibilityForRoute(model, *req, adapterForwards)
 	})
 }
 

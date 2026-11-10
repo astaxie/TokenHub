@@ -1416,3 +1416,14 @@ func statusForProvider(status int) int {
 	}
 	return http.StatusBadGateway
 }
+
+// protocolControlForwarder is implemented by adapters that forward the OpenAI
+// request body verbatim. Endpoint-neutral protocol controls reach the upstream
+// unchanged for those routes, so they need no model declaration.
+type protocolControlForwarder interface {
+	ForwardsProtocolControls() bool
+}
+
+func (a MockAdapter) ForwardsProtocolControls() bool { return true }
+
+func (a OpenAICompatibleAdapter) ForwardsProtocolControls() bool { return true }
