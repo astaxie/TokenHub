@@ -11,6 +11,7 @@ export type PricingPeriodDraft = Omit<ModelPricingPeriod, PricingPeriodRateKey> 
 export function pricingPeriodDrafts(periods: ModelPricingPeriod[] = []): PricingPeriodDraft[] {
   return periods.map(period => ({
     ...period,
+    ...normalizedScheduleFields(period),
     input_price_usd_per_1m: priceText(period.input_price_usd_per_1m),
     cache_read_price_usd_per_1m: priceText(period.cache_read_price_usd_per_1m),
     output_price_usd_per_1m: priceText(period.output_price_usd_per_1m),
@@ -22,6 +23,16 @@ export function pricingPeriodDrafts(periods: ModelPricingPeriod[] = []): Pricing
 
 function priceText(value?: number) { return value == null ? "" : String(value); }
 
+function normalizedScheduleFields(period: Pick<ModelPricingPeriod, "timezone" | "start_time" | "end_time" | "effective_from" | "effective_until">) {
+  return {
+    timezone: period.timezone?.trim() || undefined,
+    start_time: period.start_time?.trim() || undefined,
+    end_time: period.end_time?.trim() || undefined,
+    effective_from: period.effective_from?.trim() || undefined,
+    effective_until: period.effective_until?.trim() || undefined,
+  };
+}
+
 export function newPricingPeriodDraft(): PricingPeriodDraft {
   return pricingPeriodDrafts([{ timezone: "UTC", start_time: "00:00", end_time: "08:00" }])[0];
 }
@@ -31,6 +42,7 @@ export function serializePricingPeriodDrafts(drafts: PricingPeriodDraft[]): Mode
   const periods = drafts.map(draft => {
     const period: ModelPricingPeriod = {
       ...draft,
+      ...normalizedScheduleFields(draft),
       input_price_usd_per_1m: undefined, cache_read_price_usd_per_1m: undefined, output_price_usd_per_1m: undefined,
       cache_write_price_usd_per_1m: undefined, cache_write_5m_price_usd_per_1m: undefined, cache_write_1h_price_usd_per_1m: undefined,
     };

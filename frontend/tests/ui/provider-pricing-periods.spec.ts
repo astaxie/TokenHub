@@ -98,3 +98,24 @@ test("provider-pricing-periods save-error-preserves-draft", async ({ page, api }
   await error.scrollIntoViewIfNeeded();
   await capture(page, info, page.locator(".provider-model-inventory"), "provider-pricing-periods-save-error", "供应商分时定价：保存失败保留草稿", "viewport");
 });
+
+test("provider-pricing-periods saved-schedule-whitespace", async ({ page, api }, info) => {
+  const stored = install(api);
+  stored.pricing_periods = [{
+    name: "UI off-peak", timezone: " Asia/Shanghai ", start_time: " 23:00 ", end_time: "\t08:00\n",
+    input_price_usd_per_1m: 1, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4,
+    effective_from: " 2026-11-01T00:00:00Z ", effective_until: " 2026-12-01T00:00:00Z ",
+  }];
+  api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
+  const panel = await open(page);
+  await expect(panel.getByLabel("开始时间", { exact: true })).toHaveValue("23:00");
+  await expect(panel.getByLabel("结束时间", { exact: true })).toHaveValue("08:00");
+  await expect(panel.getByLabel("时区（IANA）", { exact: true })).toHaveValue("Asia/Shanghai");
+  await capture(page, info, panel, "provider-pricing-periods-saved-schedule", "供应商分时定价：已有时段正确显示时间");
+  await panel.getByText("星期、生效日期与缓存写入", { exact: true }).click();
+  await panel.getByLabel("生效开始（RFC 3339，可选）", { exact: true }).fill(" ");
+  await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+  await expect(page.locator(".provider-model-inventory")).toContainText("渠道成本价已保存");
+  expect(stored.pricing_periods[0].effective_until).toBe("2026-12-01T00:00:00Z");
+  expect(stored.pricing_periods[0]).not.toHaveProperty("effective_from");
+});

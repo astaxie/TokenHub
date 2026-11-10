@@ -13,17 +13,44 @@ const model: ProviderModel = {
 };
 afterEach(() => vi.unstubAllGlobals());
 
-async function setup(response = () => new Response("{}", { status: 200 })) {
+async function setup(response = () => new Response("{}", { status: 200 }), storedModel = model) {
   const fetchMock = vi.fn<typeof fetch>(async () => response());
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
   const onSaved = vi.fn();
-  render(<ProviderModelInventory api={{ baseURL: "http://localhost:8080", adminToken: "synthetic" }} models={[model]} onSaved={onSaved} />);
+  render(<ProviderModelInventory api={{ baseURL: "http://localhost:8080", adminToken: "synthetic" }} models={[storedModel]} onSaved={onSaved} />);
   await user.click(screen.getByRole("button", { name: /分时价格/ }));
   return { user, fetchMock, onSaved, editor: within(screen.getByRole("region", { name: "分时成本设置" })) };
 }
 
 describe("Provider time-based pricing", () => {
+  it("round-trips supported padded schedule fields without changing price overrides", () => {
+    const period = model.pricing_periods![0];
+    const padded = { ...period, timezone: " Asia/Shanghai ", start_time: " 23:00 ", end_time: "\t08:00\n", effective_from: ` ${period.effective_from} `, effective_until: `\t${period.effective_until}\n` };
+    const drafts = pricingPeriodDrafts([padded]);
+    expect(drafts[0]).toMatchObject({ timezone: period.timezone, start_time: period.start_time, end_time: period.end_time, effective_from: period.effective_from, effective_until: period.effective_until });
+    expect(serializePricingPeriodDrafts(drafts)).toEqual([period]);
+    expect(serializePricingPeriodDrafts([{ ...drafts[0], effective_from: ` ${period.effective_from} `, effective_until: " \t " }])).toEqual([{ ...period, effective_until: undefined }]);
+  });
+
+  it("shows saved padded clocks and saves a cleared effective-date bound", async () => {
+    const period = model.pricing_periods![0];
+    const padded = { ...period, timezone: " Asia/Shanghai ", start_time: " 23:00 ", end_time: " 08:00 ", effective_from: ` ${period.effective_from} `, effective_until: ` ${period.effective_until} ` };
+    const { user, editor, fetchMock, onSaved } = await setup(undefined, { ...model, pricing_periods: [padded] });
+    expect(editor.getByLabelText("开始时间")).toHaveValue("23:00");
+    expect(editor.getByLabelText("结束时间")).toHaveValue("08:00");
+    expect(editor.getByLabelText("时区（IANA）")).toHaveValue("Asia/Shanghai");
+    await user.click(editor.getByText("星期、生效日期与缓存写入"));
+    const effectiveFrom = editor.getByLabelText("生效开始（RFC 3339，可选）");
+    await user.clear(effectiveFrom);
+    await user.type(effectiveFrom, " ");
+    await user.click(editor.getByRole("button", { name: "保存成本与时段" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload.pricing_periods).toEqual([{ ...period, effective_from: undefined }]);
+    expect(payload.pricing_periods[0]).not.toHaveProperty("effective_from");
+  });
+
   it("persists free overrides and omitted inheritance while preserving advanced fields", async () => {
     const { user, editor, fetchMock, onSaved } = await setup();
     await user.clear(editor.getByLabelText("输入（缓存命中）USD/1M"));
