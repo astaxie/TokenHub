@@ -6,9 +6,10 @@ export const pricingPeriodRateKeys = [
   "cache_write_price_usd_per_1m", "cache_write_5m_price_usd_per_1m", "cache_write_1h_price_usd_per_1m",
 ] as const;
 export type PricingPeriodRateKey = typeof pricingPeriodRateKeys[number];
+export type PricingPeriodInputKey = PricingPeriodRateKey | "start_time" | "end_time";
 export type PricingPeriodDraft = Omit<ModelPricingPeriod, PricingPeriodRateKey> & Record<PricingPeriodRateKey, string> & {
   draftID: number;
-  invalidRateKeys?: PricingPeriodRateKey[];
+  invalidFieldKeys?: PricingPeriodInputKey[];
 };
 
 let nextDraftID = 0;
@@ -46,8 +47,8 @@ export function newPricingPeriodDraft(): PricingPeriodDraft {
 export function serializePricingPeriodDrafts(drafts: PricingPeriodDraft[]): ModelPricingPeriod[] {
   if (drafts.length > 64) throw new Error("pricing_period_limit");
   const periods = drafts.map(draft => {
-    const { draftID: _draftID, invalidRateKeys, ...fields } = draft;
-    if (invalidRateKeys?.length) throw new Error("pricing_period_invalid_rate");
+    const { draftID: _draftID, invalidFieldKeys, ...fields } = draft;
+    if (invalidFieldKeys?.length) throw new Error("pricing_period_invalid_input");
     const period: ModelPricingPeriod = {
       ...fields,
       ...normalizedScheduleFields(draft),

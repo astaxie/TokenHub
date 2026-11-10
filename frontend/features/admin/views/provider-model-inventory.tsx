@@ -84,7 +84,7 @@ export function ProviderModelInventory({
       try {
         periods = serializePricingPeriodDrafts(draft.periods);
       } catch {
-        if (draft.periods.some(period => period.invalidRateKeys?.length)) {
+        if (draft.periods.some(period => period.invalidFieldKeys?.length)) {
           setScheduleID(model.id);
           requestAnimationFrame(() => scheduleRef.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus());
         }

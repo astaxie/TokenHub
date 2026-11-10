@@ -121,13 +121,30 @@ describe("Provider time-based pricing", () => {
   it("rejects native invalid values and never serializes editor state", () => {
     const drafts = pricingPeriodDrafts(model.pricing_periods);
     drafts[0].input_price_usd_per_1m = "";
-    drafts[0].invalidRateKeys = ["input_price_usd_per_1m"];
-    expect(() => serializePricingPeriodDrafts(drafts)).toThrow("pricing_period_invalid_rate");
-    drafts[0].invalidRateKeys = [];
-    expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("invalidRateKeys");
+    drafts[0].invalidFieldKeys = ["input_price_usd_per_1m"];
+    expect(() => serializePricingPeriodDrafts(drafts)).toThrow("pricing_period_invalid_input");
+    drafts[0].invalidFieldKeys = [];
+    expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("invalidFieldKeys");
     expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("draftID");
     expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("input_price_usd_per_1m");
     drafts[0].input_price_usd_per_1m = "0.123456789";
     expect(serializePricingPeriodDrafts(drafts)[0].input_price_usd_per_1m).toBe(0.123456789);
+  });
+
+  it("rejects partial clocks until both bounds are deliberately cleared", () => {
+    const drafts = pricingPeriodDrafts(model.pricing_periods);
+    drafts[0].start_time = "";
+    drafts[0].end_time = "";
+    drafts[0].invalidFieldKeys = ["start_time", "end_time"];
+    expect(() => serializePricingPeriodDrafts(drafts)).toThrow("pricing_period_invalid_input");
+    drafts[0].invalidFieldKeys = ["end_time"];
+    expect(() => serializePricingPeriodDrafts(drafts)).toThrow("pricing_period_invalid_input");
+    drafts[0].invalidFieldKeys = [];
+    const period = serializePricingPeriodDrafts(drafts)[0];
+    expect(period).not.toHaveProperty("start_time");
+    expect(period).not.toHaveProperty("end_time");
+    expect(period).not.toHaveProperty("invalidFieldKeys");
+    expect(period).not.toHaveProperty("draftID");
+    expect(period.input_price_usd_per_1m).toBe(1);
   });
 });

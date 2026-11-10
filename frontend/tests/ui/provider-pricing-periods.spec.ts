@@ -10,7 +10,7 @@ const inventoryModel: ProviderModel = {
   metadata: { pricing_status: "configured", fixture: "synthetic" },
 };
 
-function install(api: MockAPI, reject = false, expectedInput: number | null = 1, expectedTimezone = "Asia/Shanghai") {
+function install(api: MockAPI, reject = false, expectedInput: number | null = 1, expectedTimezone = "Asia/Shanghai", expectedAllDay = false) {
   const stored = structuredClone(inventoryModel);
   api.respond("GET", "/api/admin/providers", { data: [provider] });
   api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
@@ -29,10 +29,14 @@ function install(api: MockAPI, reject = false, expectedInput: number | null = 1,
     expect(request.body).toMatchObject({ input_price_usd_per_1m: 2, cache_read_price_usd_per_1m: 0.2, output_price_usd_per_1m: 8, metadata: { pricing_status: "configured", fixture: "synthetic" } });
     const periods = (request.body as ProviderModel).pricing_periods;
     expect(periods).toHaveLength(1);
-    expect(periods![0]).toMatchObject({ name: "UI off-peak", timezone: expectedTimezone, start_time: "23:00", end_time: "08:00", cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4 });
+    expect(periods![0]).toMatchObject({ name: "UI off-peak", timezone: expectedTimezone, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4 });
+    if (expectedAllDay) {
+      expect(periods![0]).not.toHaveProperty("start_time");
+      expect(periods![0]).not.toHaveProperty("end_time");
+    } else expect(periods![0]).toMatchObject({ start_time: "23:00", end_time: "08:00" });
     if (expectedInput === null) expect(periods![0]).not.toHaveProperty("input_price_usd_per_1m");
     else expect(periods![0].input_price_usd_per_1m).toBe(expectedInput);
-    expect(periods![0]).not.toHaveProperty("invalidRateKeys");
+    expect(periods![0]).not.toHaveProperty("invalidFieldKeys");
     expect(periods![0]).not.toHaveProperty("draftID");
     if (reject) return { status: 400, json: { error: { message: "Synthetic pricing schedule rejected" } } };
     Object.assign(stored, request.body);
@@ -205,6 +209,93 @@ for (const saveFrom of ["schedule", "table", "collapsed", "reopened", "switched"
     expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
   });
 }
+
+for (const saveFrom of ["schedule", "table", "collapsed", "reopened", "switched"]) {
+  test(`provider-pricing-periods partial-clocks-are-not-all-day-${saveFrom}`, async ({ page, api }) => {
+    const stored = install(api);
+    if (saveFrom === "switched") api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored, { ...inventoryModel, id: "pm_ui_alternate", upstream_model: "ui-alternate-chat", pricing_periods: [{ timezone: "UTC", start_time: "00:00", end_time: "08:00" }] }] });
+    const panel = await configure(page);
+    const start = panel.getByLabel("开始时间", { exact: true });
+    const end = panel.getByLabel("结束时间", { exact: true });
+    for (const clock of [start, end]) {
+      await clock.press("Home");
+      await clock.press("Delete");
+      expect(await clock.evaluate((input: HTMLInputElement) => input.validity.badInput)).toBe(true);
+      await expect(clock).toHaveValue("");
+      await expect(clock).toHaveAttribute("aria-invalid", "true");
+    }
+    if (saveFrom === "collapsed" || saveFrom === "reopened") await panel.getByRole("button", { name: "收起分时设置" }).click();
+    if (saveFrom === "reopened") await page.locator(".provider-modal").getByRole("button", { name: /分时价格/ }).click();
+    if (saveFrom === "switched") {
+      await page.getByRole("row").filter({ hasText: "ui-alternate-chat" }).getByRole("button", { name: /分时价格/ }).click();
+      await expect(start).toHaveValue("00:00");
+      await expect(start).not.toHaveAttribute("aria-invalid", "true");
+      await page.getByRole("row").filter({ hasText: inventoryModel.upstream_model }).getByRole("button", { name: /分时价格/ }).click();
+    }
+    const save = saveFrom === "table" || saveFrom === "collapsed"
+      ? page.locator(".provider-model-inventory-table").getByRole("button", { name: "保存成本", exact: true })
+      : panel.getByRole("button", { name: "保存成本与时段", exact: true });
+    await save.click();
+    await expect(page.locator(".provider-model-inventory").getByRole("alert")).toContainText("分时价格无效");
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(0);
+    await expect(start).toBeFocused();
+    await start.fill("23:00");
+    await end.fill("08:00");
+    await expect(start).not.toHaveAttribute("aria-invalid", "true");
+    await expect(end).not.toHaveAttribute("aria-invalid", "true");
+    await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+    await expect(page.locator(".provider-model-inventory")).toContainText("渠道成本价已保存");
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+  });
+}
+
+for (const clearFrom of ["mounted", "reopened"]) {
+  test(`provider-pricing-periods deliberately-clear-partial-clocks-${clearFrom}`, async ({ page, api }) => {
+    install(api, false, 1, "Asia/Shanghai", true);
+    const panel = await configure(page);
+    const start = panel.getByLabel("开始时间", { exact: true });
+    const end = panel.getByLabel("结束时间", { exact: true });
+    for (const clock of [start, end]) {
+      await clock.press("Home");
+      await clock.press("Delete");
+      await expect(clock).toHaveAttribute("aria-invalid", "true");
+    }
+    if (clearFrom === "reopened") {
+      await panel.getByRole("button", { name: "收起分时设置" }).click();
+      await page.locator(".provider-modal").getByRole("button", { name: /分时价格/ }).click();
+      await start.press("Backspace");
+    } else await start.fill("");
+    await expect(start).not.toHaveAttribute("aria-invalid", "true");
+    await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+    await expect(page.locator(".provider-model-inventory").getByRole("alert")).toContainText("分时价格无效");
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(0);
+    if (clearFrom === "reopened") await end.press("Delete");
+    else await end.fill("");
+    await expect(end).not.toHaveAttribute("aria-invalid", "true");
+    await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+    await expect(page.locator(".provider-model-inventory")).toContainText("渠道成本价已保存");
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+  });
+}
+
+test("provider-pricing-periods partial-start-does-not-preserve-all-day", async ({ page, api }) => {
+  const stored = install(api, false, 1, "Asia/Shanghai", true);
+  stored.pricing_periods = [{ name: "UI off-peak", timezone: "Asia/Shanghai", input_price_usd_per_1m: 1, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4 }];
+  api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
+  const panel = await open(page);
+  const start = panel.getByLabel("开始时间", { exact: true });
+  await start.press("ArrowUp");
+  await expect(start).toHaveValue("");
+  expect(await start.evaluate((input: HTMLInputElement) => input.validity.badInput)).toBe(true);
+  await expect(start).toHaveAttribute("aria-invalid", "true");
+  await page.locator(".provider-model-inventory-table").getByRole("button", { name: "保存成本", exact: true }).click();
+  await expect(page.locator(".provider-model-inventory").getByRole("alert")).toContainText("分时价格无效");
+  expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(0);
+  await start.fill("");
+  await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+  await expect(page.locator(".provider-model-inventory")).toContainText("渠道成本价已保存");
+  expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+});
 
 test("provider-pricing-periods invalid-schedule-does-not-block-another-model", async ({ page, api }) => {
   const stored = install(api);
