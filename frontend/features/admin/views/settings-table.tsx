@@ -567,7 +567,7 @@ export function EditModal<T>({
         </div>
         <div className="modal-body">
           {submitError ? <p className="inline-notice error" role="alert">{submitError}</p> : null}
-          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values, data, currentUser) ?? true)).map((field) => state.config.view === "models" && field.key === "pricing_mode" ? <ModelPricingSource key={field.key} data={data} values={values} onChange={updates => setValues(current => ({ ...current, ...updates }))} /> : (
+          {state.config.fields.filter((field) => (!state.item || !field.createOnly) && (field.visible?.(values, data, currentUser) ?? true)).map((field) => state.config.view === "models" && field.key === "pricing_mode" ? <ModelPricingSource key={field.key} data={data} values={values} initialModel={state.item as Model} onChange={updates => setValues(current => ({ ...current, ...updates }))} /> : (
             <FieldInput
               key={field.key}
               field={field}

@@ -1,5 +1,6 @@
 export const modelPricingSourceTranslations: Record<"en" | "ja" | "ru", Record<string, string>> = {
   en: {
+    "可以停用模型并保留原定价来源；重新启用前需要恢复有效来源。": "You can disable the model while retaining its pricing source. Restore a valid source before re-enabling it.",
     "所选来源决定对外价格；各线路的真实成本仍按实际供应商核算。": "The selected source sets public prices. Each route's actual cost is still calculated using its own provider.",
     "来源价格暂不可用": "Source price unavailable",
     "请联系管理员检查定价来源": "Contact an administrator to check the pricing source",
@@ -37,6 +38,7 @@ export const modelPricingSourceTranslations: Record<"en" | "ja" | "ru", Record<s
     "选择独立价格或指定上游作为所有路由的统一定价来源。": "Set independent prices or choose an upstream model as the shared pricing source for all routes.",
   },
   ja: {
+    "可以停用模型并保留原定价来源；重新启用前需要恢复有效来源。": "価格の参照元を保持したままモデルを無効にできます。再度有効にする前に、有効な参照元を復旧してください。",
     "所选来源决定对外价格；各线路的真实成本仍按实际供应商核算。": "選択した参照元が公開価格を決定します。各ルートの実際のコストは、引き続き実際のプロバイダーで計算されます。",
     "来源价格暂不可用": "参照元価格を利用できません",
     "请联系管理员检查定价来源": "管理者に価格の参照元の確認を依頼してください",
@@ -74,6 +76,7 @@ export const modelPricingSourceTranslations: Record<"en" | "ja" | "ru", Record<s
     "选择独立价格或指定上游作为所有路由的统一定价来源。": "個別価格を設定するか、すべてのルートで共有する上流モデルを価格の参照元として選択します。",
   },
   ru: {
+    "可以停用模型并保留原定价来源；重新启用前需要恢复有效来源。": "Модель можно отключить, сохранив источник цен. Перед повторным включением восстановите действующий источник.",
     "所选来源决定对外价格；各线路的真实成本仍按实际供应商核算。": "Выбранный источник задаёт публичные цены. Фактическая стоимость каждого маршрута рассчитывается по его провайдеру.",
     "来源价格暂不可用": "Цена источника недоступна",
     "请联系管理员检查定价来源": "Попросите администратора проверить источник цен",

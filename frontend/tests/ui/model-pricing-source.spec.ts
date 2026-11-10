@@ -13,7 +13,7 @@ const source: ProviderModel = {
 const model: Model = { id: "ui-public-pricing", name: "ui-public-chat", family: "ui", category: "other", modality: "chat", status: "active", input_price_usd_per_1m: 10, output_price_usd_per_1m: 20, context_window: 32000, metadata: { directory_role: "external", custom_note: "preserve" } };
 const route: ModelRoute = { id: "ui-pricing-route", model_name: model.name, provider_id: provider.id, provider_model: source.upstream_model, status: "active", priority: 1, weight: 100 };
 
-function install(api: MockAPI, linked = false, missing = false) {
+function install(api: MockAPI, linked = false, missing = false, disableBrokenSource = false) {
   const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
   let stored = structuredClone(model);
   if (linked) stored.metadata = { ...stored.metadata, pricing_mode: "provider", pricing_provider_model_id: source.id };
@@ -26,8 +26,9 @@ function install(api: MockAPI, linked = false, missing = false) {
   refresh();
   api.define("PATCH", `/api/admin/models/${model.name}`, input => {
     const body = input.body as Model;
-    expect(body).toMatchObject({ input_price_usd_per_1m: 10, output_price_usd_per_1m: 20, metadata: { custom_note: "preserve", pricing_mode: missing ? "custom" : "provider" } });
-    if (!missing) expect(body.metadata?.pricing_provider_model_id).toBe(source.id);
+    expect(body).toMatchObject({ input_price_usd_per_1m: 10, output_price_usd_per_1m: 20, metadata: { custom_note: "preserve", pricing_mode: missing && !disableBrokenSource ? "custom" : "provider" } });
+    if (!missing || disableBrokenSource) expect(body.metadata?.pricing_provider_model_id).toBe(source.id);
+    if (disableBrokenSource) expect(body.status).toBe("disabled");
     stored = { ...stored, ...body };
     refresh();
     return { json: stored };
@@ -83,4 +84,28 @@ test("pricing-source unavailable-source-recovery", async ({ page, api }, info) =
   await expect(editor.getByLabel(/^对外输入价/)).toHaveValue("10");
   await editor.getByRole("button", { name: "保存", exact: true }).click();
   await expect(editor).toHaveCount(0);
+});
+
+test("pricing-source disable-with-unavailable-source", async ({ page, api }, info) => {
+  install(api, true, true, true);
+  await page.goto("/models");
+  await page.locator(".model-directory-table").getByRole("button", { name: "编辑", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "模型目录", exact: true });
+  const chooser = editor.getByLabel(/^定价来源模型/);
+  await expect(chooser).toHaveAttribute("required", "");
+  await editor.getByRole("combobox", { name: "状态", exact: true }).selectOption("disabled");
+  await expect(chooser).not.toHaveAttribute("required");
+  await expect(editor.getByRole("alert")).toContainText("可以停用模型并保留原定价来源");
+  await editor.getByRole("alert").scrollIntoViewIfNeeded();
+  await capture(page, info, editor, "pricing-source-disable-unavailable", "来源失效时仍可停用模型并保留定价引用", "viewport");
+  await editor.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+  await page.getByRole("button", { name: "已下线", exact: true }).click();
+  await page.locator(".model-directory-table").getByRole("button", { name: "编辑", exact: true }).click();
+  await editor.getByRole("combobox", { name: "状态", exact: true }).selectOption("active");
+  await expect(chooser).toHaveAttribute("required", "");
+  await editor.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(editor).toBeVisible();
+  expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
 });

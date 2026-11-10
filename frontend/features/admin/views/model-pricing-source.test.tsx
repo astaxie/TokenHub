@@ -13,6 +13,8 @@ import { ModelDirectoryDetail } from "./model-directory-detail";
 import { ModelDirectoryPrice } from "./model-directory-price";
 import { PlaygroundPanel } from "./playground";
 import { modelTokenPriceMetric } from "../domain/model-token-price";
+import { ModelPricingSourcePreview } from "./model-pricing-source";
+import { languageLocale } from "../i18n/runtime";
 
 const source: ProviderModel = { id: "source", provider_id: "provider", upstream_model: "private-upstream", status: "active", modality: "chat", input_price_usd_per_1m: 2, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4, metadata: { pricing_status: "configured" }, pricing_periods: [{ name: "Night", timezone: "Asia/Shanghai", start_time: "23:00", end_time: "08:00", input_price_usd_per_1m: 1, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 2, weekdays: [1, 2, 3] }] };
 const model: Model = { id: "model", name: "public-chat", category: "other", family: "test", modality: "chat", status: "active", input_price_usd_per_1m: 99, output_price_usd_per_1m: 198, cache_read_price_usd_per_1m: 9, metadata: { directory_role: "external", custom_note: "preserve" } };
@@ -71,6 +73,64 @@ describe("Model pricing source", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
     expect(onSave).toHaveBeenCalledOnce();
     expect(modelToForm(linked)).toMatchObject({ pricing_mode: "provider", pricing_provider_model_id: "missing", input_price_usd_per_1m: "99" });
+  });
+
+  it.each(["missing", "disabled"])("can disable a linked model with a %s source while preserving its reference", async state => {
+    const linked = { ...model, metadata: { ...model.metadata, pricing_mode: "provider", pricing_provider_model_id: source.id } };
+    const data = fixture();
+    data.providerModels = state === "missing" ? [] : [{ ...source, status: "disabled" }];
+    const onSave = vi.fn();
+    render(<EditModal state={{ config: modelConfig(), item: linked }} data={data} api={{ baseURL: "", adminToken: "" }} loading={false} onClose={vi.fn()} onSave={onSave} />);
+    const user = userEvent.setup();
+    const sourceSelect = screen.getByLabelText(/^定价来源模型/);
+    const status = screen.getByRole("combobox", { name: "状态" });
+    expect(sourceSelect).toBeRequired();
+    await user.selectOptions(status, "disabled");
+    expect(sourceSelect).not.toBeRequired();
+    expect(screen.getByRole("alert")).toHaveTextContent("可以停用模型并保留原定价来源");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(modelPayload(onSave.mock.calls[0][0], linked.metadata)).toMatchObject({ status: "disabled", metadata: { pricing_mode: "provider", pricing_provider_model_id: source.id } });
+    await user.selectOptions(status, "active");
+    expect(sourceSelect).toBeRequired();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onSave).toHaveBeenCalledOnce();
+    await user.selectOptions(status, "disabled");
+    await user.selectOptions(sourceSelect, "");
+    expect(sourceSelect).toBeRequired();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onSave).toHaveBeenCalledOnce();
+  });
+
+  it("still requires a source when changing a custom model to linked pricing while disabled", async () => {
+    const data = fixture();
+    data.providerModels = [];
+    const onSave = vi.fn();
+    render(<EditModal state={{ config: modelConfig(), item: model }} data={data} api={{ baseURL: "", adminToken: "" }} loading={false} onClose={vi.fn()} onSave={onSave} />);
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByRole("combobox", { name: "对外定价方式" }), "provider");
+    await user.selectOptions(screen.getByRole("combobox", { name: "状态" }), "disabled");
+    expect(screen.getByLabelText(/^定价来源模型/)).toBeRequired();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("formats saved schedules with padded timezone and effective-date values", () => {
+    const period = { ...source.pricing_periods![0], timezone: " Asia/Shanghai ", start_time: " 23:00 ", end_time: " 08:00 ", effective_from: " 2026-11-01T20:30:00Z ", effective_until: "\t2026-11-03T20:30:00Z\n" };
+    render(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [period] }} />);
+    const date = new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Shanghai" });
+    expect(screen.getByText(/^生效区间/)).toHaveTextContent(`${date.format(new Date(period.effective_from.trim()))} – ${date.format(new Date(period.effective_until.trim()))}`);
+    expect(screen.getByText(/23:00 – 08:00/)).toHaveTextContent("23:00 – 08:00 · Asia/Shanghai");
+  });
+
+  it("treats whitespace-only timezones and date bounds as absent", () => {
+    const period = { timezone: " \t ", effective_from: " \n ", effective_until: "\t2026-11-03T20:30:00Z " };
+    const view = render(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [period] }} />);
+    const date = new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+    expect(screen.getByText(/^生效区间/)).toHaveTextContent(`— – ${date.format(new Date(period.effective_until.trim()))}`);
+    expect(screen.getByText(/全天 · UTC/)).toBeVisible();
+    view.rerender(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [{ ...period, effective_until: " \t " }] }} />);
+    expect(screen.queryByText(/^生效区间/)).not.toBeInTheDocument();
   });
 
   it("creates a linked model through the wizard while retaining template prices", async () => {

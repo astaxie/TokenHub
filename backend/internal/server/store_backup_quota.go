@@ -270,7 +270,7 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func (s *GormStore) AccessibleModels(key APIKey) []Model {
+func (s *GormStore) AccessibleModelMembership(key APIKey) []Model {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -352,7 +352,7 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 		Find(&models).Error; err != nil {
 		return nil
 	}
-	return s.publicPricedModels(models)
+	return models
 }
 
 func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket string, attributedUserIDs ...string) (QuotaBucket, error) {

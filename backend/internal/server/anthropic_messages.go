@@ -236,7 +236,7 @@ func (s *Server) decodeAnthropicMessagesRequest(w http.ResponseWriter, r *http.R
 }
 
 func keyCanAccessModel(store Store, key APIKey, model string) bool {
-	for _, candidate := range store.AccessibleModels(key) {
+	for _, candidate := range accessibleModelMembership(store, key) {
 		if candidate.Name == model || candidate.ID == model {
 			return true
 		}

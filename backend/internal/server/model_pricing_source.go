@@ -73,12 +73,9 @@ func validateUpdatedModelPricingSource(db *gorm.DB, previous Model, model *Model
 }
 
 func loadModelPricingSource(db *gorm.DB, model Model) (ProviderModel, error) {
-	if model.Modality != "chat" {
-		return ProviderModel{}, invalidModelPricingSource("Provider pricing references are supported only for chat models")
-	}
-	id := strings.TrimSpace(model.Metadata[modelPricingProviderKey])
-	if id == "" {
-		return ProviderModel{}, invalidModelPricingSource("Select a provider model as the pricing reference")
+	id, err := modelPricingSourceID(model)
+	if err != nil {
+		return ProviderModel{}, err
 	}
 	var source ProviderModel
 	if err := db.First(&source, "id = ?", id).Error; err != nil {
@@ -87,26 +84,48 @@ func loadModelPricingSource(db *gorm.DB, model Model) (ProviderModel, error) {
 		}
 		return source, err
 	}
-	if source.Modality != "chat" || source.Status != StatusActive {
-		return source, invalidModelPricingSource("The pricing reference must be an active chat provider model")
-	}
-	if source.Metadata["pricing_status"] != "configured" {
-		return source, invalidModelPricingSource("Confirm and save the provider model costs before using them as a pricing reference")
+	if err := validateModelPricingSourceRecord(source); err != nil {
+		return source, err
 	}
 	var provider Provider
-	if err := db.First(&provider, "id = ?", source.ProviderID).Error; err != nil {
+	if err := db.Select("id", "status").First(&provider, "id = ?", source.ProviderID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return source, invalidModelPricingSource("The pricing reference provider no longer exists")
 		}
 		return source, err
 	}
+	return source, validateModelPricingSourceProvider(source, provider)
+}
+
+func modelPricingSourceID(model Model) (string, error) {
+	if model.Modality != "chat" {
+		return "", invalidModelPricingSource("Provider pricing references are supported only for chat models")
+	}
+	id := strings.TrimSpace(model.Metadata[modelPricingProviderKey])
+	if id == "" {
+		return "", invalidModelPricingSource("Select a provider model as the pricing reference")
+	}
+	return id, nil
+}
+
+func validateModelPricingSourceRecord(source ProviderModel) error {
+	if source.Modality != "chat" || source.Status != StatusActive {
+		return invalidModelPricingSource("The pricing reference must be an active chat provider model")
+	}
+	if source.Metadata["pricing_status"] != "configured" {
+		return invalidModelPricingSource("Confirm and save the provider model costs before using them as a pricing reference")
+	}
+	return nil
+}
+
+func validateModelPricingSourceProvider(source ProviderModel, provider Provider) error {
 	if provider.Status != StatusActive {
-		return source, invalidModelPricingSource("The pricing reference provider must be active")
+		return invalidModelPricingSource("The pricing reference provider must be active")
 	}
-	if err := validateProviderModelCosts(source); err != nil {
-		return source, invalidModelPricingSource("The pricing reference contains invalid prices or time periods")
+	if err := providerPricingValidationCache.validate(source, validateProviderModelCosts); err != nil {
+		return invalidModelPricingSource("The pricing reference contains invalid prices or time periods")
 	}
-	return source, nil
+	return nil
 }
 
 func invalidModelPricingSource(message string) error {
@@ -125,6 +144,10 @@ func resolveModelPricingSource(db *gorm.DB, model Model) (Model, error) {
 	if err != nil {
 		return model, unavailableModelPricingSource()
 	}
+	return applyModelPricingSource(model, source), nil
+}
+
+func applyModelPricingSource(model Model, source ProviderModel) Model {
 	prices := providerModelCostModel(source)
 	model.InputPriceUSDPer1M = prices.InputPriceUSDPer1M
 	model.OutputPriceUSDPer1M = prices.OutputPriceUSDPer1M
@@ -137,7 +160,7 @@ func resolveModelPricingSource(db *gorm.DB, model Model) (Model, error) {
 	model.PricingPeriods = prices.PricingPeriods
 	model.Metadata = withConfiguredCacheReadPrice(model.Metadata, true)
 	model.pricingReference = &modelPricingReference{ProviderID: source.ProviderID, ProviderModelID: source.ID, UpstreamModel: source.UpstreamModel}
-	return model, nil
+	return model
 }
 
 func unavailableModelPricingSource() error {
@@ -163,16 +186,4 @@ func publicModelPricingMetadata(model Model) Model {
 	delete(model.Metadata, modelPricingProviderKey)
 	model.pricingReference = nil
 	return model
-}
-
-func (s *GormStore) publicPricedModels(models []Model) []Model {
-	items := make([]Model, 0, len(models))
-	for _, model := range models {
-		resolved, err := resolveModelPricingSource(s.db, model)
-		if err != nil {
-			resolved.pricingUnavailable = true
-		}
-		items = append(items, publicModelPricingMetadata(resolved))
-	}
-	return items
 }

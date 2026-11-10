@@ -560,14 +560,10 @@ func (s *Server) accessibleModelsForAdminUser(user AdminUser) []Model {
 			continue
 		}
 		if routed[model.Name] || routed[model.ID] {
-			resolved, err := resolvePlaygroundModelPricing(s.store, model)
-			if err != nil {
-				resolved.pricingUnavailable = true
-			}
-			out = append(out, publicModelPricingMetadata(resolved))
+			out = append(out, model)
 		}
 	}
-	return out
+	return publicPricedModels(s.store, out)
 }
 
 func (s *Server) activeRoutedModelNameSet() map[string]bool {
