@@ -45,7 +45,12 @@ function scheduleDays(period: ModelPricingPeriod) {
 function effectiveDate(value: string | undefined, timeZone: string) {
   const date = value?.trim();
   if (!date) return "—";
-  return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "short", timeZone: timeZone.trim() || "UTC" }).format(new Date(date));
+  try {
+    return new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "short", timeZone: timeZone.trim() || "UTC" }).format(new Date(date));
+  } catch {
+    // Server-supported zones such as Local may be unavailable in the browser.
+    return date;
+  }
 }
 
 export function ModelPricingSourcePreview({ source }: { source: ProviderModel }) {

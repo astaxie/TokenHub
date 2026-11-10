@@ -4,7 +4,7 @@ import { ModelCatalogNotices } from "./model-catalog-notices";
 import { StatementLauncher } from "./billing-statements";
 import { PricingPeriodsEditor } from "./pricing-periods-editor";
 import { Clock3, Save, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type ApiContext, type ProviderModel } from "../core/types";
 import { configuredPriceFormValue } from "../domain/configured-pricing";
 import { pricingPeriodDrafts, serializePricingPeriodDrafts, type PricingPeriodDraft } from "../domain/pricing-period-draft";
@@ -50,6 +50,7 @@ export function ProviderModelInventory({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [scheduleID, setScheduleID] = useState("");
+  const scheduleRef = useRef<HTMLElement>(null);
   const scheduleModel = models.find(model => model.id === scheduleID);
 
   useEffect(() => {
@@ -83,6 +84,10 @@ export function ProviderModelInventory({
       try {
         periods = serializePricingPeriodDrafts(draft.periods);
       } catch {
+        if (draft.periods.some(period => period.invalidRateKeys?.length)) {
+          setScheduleID(model.id);
+          requestAnimationFrame(() => scheduleRef.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus());
+        }
         throw new Error(tx("分时价格无效：请检查时区、时间、生效日期和非负价格，最多 64 个时段。"));
       }
       const resp = await adminFetch(api, `/api/admin/provider-models/${encodeURIComponent(model.id)}`, {
@@ -132,9 +137,9 @@ export function ProviderModelInventory({
       </div>
       {notice ? <p className="provider-inventory-notice success">{notice}</p> : null}
       {error ? <p className="provider-inventory-notice error" role="alert">{error}</p> : null}
-      {scheduleModel ? <section className="provider-pricing-schedule" aria-label={tx("分时成本设置")}>
+      {scheduleModel ? <section ref={scheduleRef} className="provider-pricing-schedule" aria-label={tx("分时成本设置")}>
         <div className="provider-pricing-schedule-head"><div><span>{tx("分时成本设置")}</span><strong>{scheduleModel.display_name || scheduleModel.upstream_model}</strong></div><button className="icon-button" type="button" aria-label={tx("收起分时设置")} onClick={() => setScheduleID("")}><X size={16} /></button></div>
-        <PricingPeriodsEditor value={(drafts[scheduleModel.id] ?? costDraft(scheduleModel)).periods} disabled={savingID !== ""} onChange={periods => update(scheduleModel.id, "periods", periods)} />
+        <PricingPeriodsEditor key={scheduleModel.id} value={(drafts[scheduleModel.id] ?? costDraft(scheduleModel)).periods} disabled={savingID !== ""} onChange={periods => update(scheduleModel.id, "periods", periods)} />
         <div className="provider-pricing-schedule-actions"><span>{tx("保存会同时更新基础成本与分时价格。")}</span><button className="button" type="button" disabled={savingID !== ""} onClick={() => void save(scheduleModel)}><Save size={14} />{tx(savingID === scheduleModel.id ? "保存中" : "保存成本与时段")}</button></div>
       </section> : null}
       <div className="retrieval-cost-list">

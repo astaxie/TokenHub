@@ -10,7 +10,7 @@ const inventoryModel: ProviderModel = {
   metadata: { pricing_status: "configured", fixture: "synthetic" },
 };
 
-function install(api: MockAPI, reject = false) {
+function install(api: MockAPI, reject = false, expectedInput: number | null = 1) {
   const stored = structuredClone(inventoryModel);
   api.respond("GET", "/api/admin/providers", { data: [provider] });
   api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
@@ -29,7 +29,10 @@ function install(api: MockAPI, reject = false) {
     expect(request.body).toMatchObject({ input_price_usd_per_1m: 2, cache_read_price_usd_per_1m: 0.2, output_price_usd_per_1m: 8, metadata: { pricing_status: "configured", fixture: "synthetic" } });
     const periods = (request.body as ProviderModel).pricing_periods;
     expect(periods).toHaveLength(1);
-    expect(periods![0]).toMatchObject({ name: "UI off-peak", timezone: "Asia/Shanghai", start_time: "23:00", end_time: "08:00", input_price_usd_per_1m: 1, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4 });
+    expect(periods![0]).toMatchObject({ name: "UI off-peak", timezone: "Asia/Shanghai", start_time: "23:00", end_time: "08:00", cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4 });
+    if (expectedInput === null) expect(periods![0]).not.toHaveProperty("input_price_usd_per_1m");
+    else expect(periods![0].input_price_usd_per_1m).toBe(expectedInput);
+    expect(periods![0]).not.toHaveProperty("invalidRateKeys");
     if (reject) return { status: 400, json: { error: { message: "Synthetic pricing schedule rejected" } } };
     Object.assign(stored, request.body);
     api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
@@ -43,7 +46,7 @@ async function open(page: Page) {
   await page.getByRole("row").filter({ hasText: provider.name }).getByRole("button", { name: "编辑", exact: true }).click();
   const dialog = page.locator(".provider-modal");
   await dialog.getByRole("tab", { name: "模型", exact: true }).click();
-  await dialog.getByRole("button", { name: /分时价格/ }).click();
+  await dialog.getByRole("row").filter({ hasText: inventoryModel.upstream_model }).getByRole("button", { name: /分时价格/ }).click();
   return dialog.getByRole("region", { name: "分时成本设置", exact: true });
 }
 
@@ -119,3 +122,71 @@ test("provider-pricing-periods saved-schedule-whitespace", async ({ page, api },
   expect(stored.pricing_periods[0].effective_until).toBe("2026-12-01T00:00:00Z");
   expect(stored.pricing_periods[0]).not.toHaveProperty("effective_from");
 });
+
+for (const saveFrom of ["schedule", "table", "collapsed", "reopened", "switched"]) {
+  test(`provider-pricing-periods invalid-number-is-not-inheritance-${saveFrom}`, async ({ page, api }) => {
+    const stored = install(api);
+    if (saveFrom === "switched") api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored, { ...inventoryModel, id: "pm_ui_alternate", upstream_model: "ui-alternate-chat", pricing_periods: [{ timezone: "UTC", start_time: "00:00", end_time: "08:00" }] }] });
+    const panel = await configure(page);
+    const rate = panel.getByLabel("输入（缓存未命中）USD/1M", { exact: true });
+    await rate.fill("1e999");
+    expect(await rate.evaluate((input: HTMLInputElement) => input.validity.badInput)).toBe(true);
+    await expect(rate).toHaveAttribute("aria-invalid", "true");
+    if (saveFrom === "collapsed" || saveFrom === "reopened") await panel.getByRole("button", { name: "收起分时设置" }).click();
+    if (saveFrom === "reopened") await page.locator(".provider-modal").getByRole("button", { name: /分时价格/ }).click();
+    if (saveFrom === "switched") {
+      await page.getByRole("row").filter({ hasText: "ui-alternate-chat" }).getByRole("button", { name: /分时价格/ }).click();
+      await expect(rate).not.toHaveAttribute("aria-invalid", "true");
+      expect(await rate.evaluate((input: HTMLInputElement) => input.validity.badInput)).toBe(false);
+      await page.getByRole("row").filter({ hasText: inventoryModel.upstream_model }).getByRole("button", { name: /分时价格/ }).click();
+    }
+    const save = saveFrom === "table" || saveFrom === "collapsed"
+      ? page.locator(".provider-model-inventory-table").getByRole("button", { name: "保存成本", exact: true })
+      : panel.getByRole("button", { name: "保存成本与时段", exact: true });
+    await save.click();
+    await expect(page.locator(".provider-model-inventory").getByRole("alert")).toContainText("分时价格无效");
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(0);
+    await expect(rate).toBeFocused();
+    await rate.fill("1");
+    await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+    await expect(page.locator(".provider-model-inventory")).toContainText("渠道成本价已保存");
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+  });
+}
+
+test("provider-pricing-periods invalid-schedule-does-not-block-another-model", async ({ page, api }) => {
+  const stored = install(api);
+  const other = { ...inventoryModel, id: "pm_ui_precise", upstream_model: "ui-precise-chat", input_price_usd_per_1m: 0.123456789 };
+  api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored, other] });
+  api.define("PATCH", `/api/admin/provider-models/${other.id}`, request => {
+    expect(request.body).toMatchObject({ input_price_usd_per_1m: other.input_price_usd_per_1m, pricing_periods: [] });
+    return { json: { ...other, ...request.body as object } };
+  });
+  const panel = await configure(page);
+  const rate = panel.getByLabel("输入（缓存未命中）USD/1M", { exact: true });
+  await rate.fill("1e999");
+  await expect(rate).toHaveAttribute("aria-invalid", "true");
+  await page.getByRole("row").filter({ hasText: other.upstream_model }).getByRole("button", { name: "保存成本", exact: true }).click();
+  await expect(page.locator(".provider-model-inventory")).toContainText(`${other.upstream_model} · 渠道成本价已保存`);
+  expect(api.calls.filter(call => call.method === "PATCH").map(call => call.path)).toEqual([`/api/admin/provider-models/${other.id}`]);
+});
+
+for (const reopen of [false, true]) {
+  test(`provider-pricing-periods invalid-number-can-be-cleared-to-inheritance-${reopen ? "reopened" : "native"}`, async ({ page, api }) => {
+    install(api, false, null);
+    const panel = await configure(page);
+    const rate = panel.getByLabel("输入（缓存未命中）USD/1M", { exact: true });
+    await rate.fill("1e999");
+    await expect(rate).toHaveAttribute("aria-invalid", "true");
+    if (reopen) {
+      await panel.getByRole("button", { name: "收起分时设置" }).click();
+      await page.locator(".provider-modal").getByRole("button", { name: /分时价格/ }).click();
+      await expect(rate).toHaveAttribute("aria-invalid", "true");
+    }
+    await rate.fill("");
+    await expect(rate).not.toHaveAttribute("aria-invalid", "true");
+    await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+    await expect(page.locator(".provider-model-inventory")).toContainText("渠道成本价已保存");
+    expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+  });
+}

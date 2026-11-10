@@ -97,4 +97,16 @@ describe("Provider time-based pricing", () => {
     expect(() => serializePricingPeriodDrafts(drafts)).toThrow("pricing_period_invalid_rate");
     expect(() => serializePricingPeriodDrafts(Array.from({ length: 65 }, () => drafts[0]))).toThrow("pricing_period_limit");
   });
+
+  it("rejects native invalid values and never serializes editor validity flags", () => {
+    const drafts = pricingPeriodDrafts(model.pricing_periods);
+    drafts[0].input_price_usd_per_1m = "";
+    drafts[0].invalidRateKeys = ["input_price_usd_per_1m"];
+    expect(() => serializePricingPeriodDrafts(drafts)).toThrow("pricing_period_invalid_rate");
+    drafts[0].invalidRateKeys = [];
+    expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("invalidRateKeys");
+    expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("input_price_usd_per_1m");
+    drafts[0].input_price_usd_per_1m = "0.123456789";
+    expect(serializePricingPeriodDrafts(drafts)[0].input_price_usd_per_1m).toBe(0.123456789);
+  });
 });

@@ -123,6 +123,30 @@ describe("Model pricing source", () => {
     expect(screen.getByText(/23:00 – 08:00/)).toHaveTextContent("23:00 – 08:00 · Asia/Shanghai");
   });
 
+  it.each([
+    { from: " 2026-11-01T20:30:00+08:00 ", until: "\t2026-11-03T20:30:00Z\n" },
+    { from: "2026-11-01T20:30:00+08:00", until: undefined },
+    { from: undefined, until: "2026-11-03T20:30:00Z" },
+  ])("renders original date bounds for an unsupported server-local timezone: $from / $until", ({ from, until }) => {
+    const period = { ...source.pricing_periods![0], timezone: " Local ", effective_from: from, effective_until: until };
+    render(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [period] }} />);
+    expect(screen.getByText(/^生效区间/)).toHaveTextContent(`${from?.trim() || "—"} – ${until?.trim() || "—"}`);
+    expect(screen.getByText(/23:00 – 08:00/)).toHaveTextContent("23:00 – 08:00 · Local");
+  });
+
+  it("keeps source previews available in editing and details with server-local date bounds", () => {
+    const data = fixture();
+    const period = { ...source.pricing_periods![0], timezone: "Local", effective_from: "2026-11-01T20:30:00+08:00", effective_until: "2026-11-03T20:30:00Z" };
+    data.providerModels = [{ ...source, pricing_periods: [period] }];
+    const linked = { ...model, metadata: { ...model.metadata, pricing_mode: "provider", pricing_provider_model_id: source.id } };
+    const edit = render(<EditModal state={{ config: modelConfig(), item: linked }} data={data} api={{ baseURL: "", adminToken: "" }} loading={false} onClose={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.getByLabelText(/^定价来源模型/)).toHaveValue(source.id);
+    expect(screen.getByLabelText("来源价格预览")).toHaveTextContent(`${period.effective_from} – ${period.effective_until}`);
+    edit.unmount();
+    render(<ModelDirectoryDetail model={linked} data={data} readOnly={false} onClose={vi.fn()} />);
+    expect(screen.getByLabelText("来源价格预览")).toHaveTextContent(`${period.effective_from} – ${period.effective_until}`);
+  });
+
   it("treats whitespace-only timezones and date bounds as absent", () => {
     const period = { timezone: " \t ", effective_from: " \n ", effective_until: "\t2026-11-03T20:30:00Z " };
     const view = render(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [period] }} />);

@@ -21,8 +21,22 @@ export function PricingPeriodsEditor({ value, onChange, disabled = false }: {
     { key: "cache_write_1h_price_usd_per_1m", label: tx("1 小时缓存写成本 USD/1M") },
   ];
   const days = [tx("周日"), tx("周一"), tx("周二"), tx("周三"), tx("周四"), tx("周五"), tx("周六")];
+  function updateRate(index: number, key: PricingPeriodRateKey, input: HTMLInputElement) {
+    const invalidRateKeys = (value[index].invalidRateKeys ?? []).filter(item => item !== key);
+    if (input.validity.badInput) invalidRateKeys.push(key);
+    update(index, { [key]: input.value, invalidRateKeys: invalidRateKeys.length ? invalidRateKeys : undefined });
+  }
   function priceField(index: number, rate: typeof rates[number]) {
-    return <label key={rate.key}><span>{rate.label}</span><input type="number" min="0" step="any" value={value[index][rate.key]} placeholder={tx("继承基础价格")} onChange={event => update(index, { [rate.key]: event.target.value })} /></label>;
+    // Native invalid text and an empty field both expose value="". Input events
+    // also capture clearing invalid text when React sees no value change.
+    const invalid = value[index].invalidRateKeys?.includes(rate.key) || undefined;
+    return <label key={rate.key}><span>{rate.label}</span><input type="number" min="0" step="any" value={value[index][rate.key]} aria-invalid={invalid} placeholder={tx("继承基础价格")}
+      onInput={event => updateRate(index, rate.key, event.currentTarget)} onChange={event => updateRate(index, rate.key, event.currentTarget)}
+      onKeyDown={event => {
+        // A remounted invalid field is already empty, so deleting it emits no input event.
+        if (invalid && (event.key === "Backspace" || event.key === "Delete") && event.currentTarget.value === "" && !event.currentTarget.validity.badInput) updateRate(index, rate.key, event.currentTarget);
+      }}
+    /></label>;
   }
   return <fieldset className="pricing-periods-editor" disabled={disabled}>
     <div className="pricing-periods-toolbar"><div><strong><Clock3 size={16} />{tx("分时价格")}</strong><p>{tx("留空继承基础价格，0 表示免费。时段外使用基础价格。")}</p></div><button className="secondary-button" type="button" disabled={value.length >= 64} onClick={() => onChange([...value, newPricingPeriodDraft()])}><Plus size={14} />{tx("添加时段")}</button></div>

@@ -52,9 +52,6 @@ func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute, opti
 }
 
 func createModelRecord(db *gorm.DB, model Model, options ...ModelCreateOptions) (Model, error) {
-	if err := validateModelPricingSource(db, &model); err != nil {
-		return Model{}, err
-	}
 	createOnly := len(options) > 0 && options[0].CreateOnly
 	if createOnly {
 		model = withExternalModelRole(model)
@@ -91,13 +88,20 @@ func createModelRecord(db *gorm.DB, model Model, options ...ModelCreateOptions) 
 		var existing Model
 		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&existing, "name = ?", model.Name)
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// Normalize only the insertion candidate. If another creator wins,
+			// merge the original metadata intent with that row before validating.
+			candidate := model
+			if err := validateModelPricingSource(tx, &candidate); err != nil {
+				return err
+			}
 			// A concurrent creator can win after the lookup. Do not overwrite its
 			// managed policy in that case; acquire its row lock before updating it.
-			inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model)
+			inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&candidate)
 			if inserted.Error != nil {
 				return inserted.Error
 			}
 			if inserted.RowsAffected == 1 {
+				model = candidate
 				return nil
 			}
 			result = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("name = ? OR id = ?", model.Name, model.ID).First(&existing)
