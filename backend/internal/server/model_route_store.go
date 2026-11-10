@@ -52,6 +52,9 @@ func (s *GormStore) CreateModelWithRoutes(model Model, routes []ModelRoute, opti
 }
 
 func createModelRecord(db *gorm.DB, model Model, options ...ModelCreateOptions) (Model, error) {
+	if err := validateModelPricingSource(db, &model); err != nil {
+		return Model{}, err
+	}
 	createOnly := len(options) > 0 && options[0].CreateOnly
 	if createOnly {
 		model = withExternalModelRole(model)
@@ -114,7 +117,10 @@ func createModelRecord(db *gorm.DB, model Model, options ...ModelCreateOptions) 
 			model.Status = existing.Status
 			model.CreatedAt = existing.CreatedAt
 		}
-		model.Metadata = preserveSemanticRoutingMetadata(existing.Metadata, model.Metadata)
+		model.Metadata = preserveSemanticRoutingMetadata(existing.Metadata, preserveModelPricingSourceMetadata(existing.Metadata, model.Metadata))
+		if err := validateModelPricingSource(tx, &model); err != nil {
+			return err
+		}
 		return tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
 	})
 	return model, err

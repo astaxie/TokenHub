@@ -2,11 +2,13 @@
 
 import { ModelCatalogNotices } from "./model-catalog-notices";
 import { StatementLauncher } from "./billing-statements";
-import { Save } from "lucide-react";
+import { PricingPeriodsEditor } from "./pricing-periods-editor";
+import { Clock3, Save, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type ApiContext, type ProviderModel } from "../core/types";
 import { configuredPriceFormValue } from "../domain/configured-pricing";
-import { tx } from "../i18n/runtime";
+import { pricingPeriodDrafts, serializePricingPeriodDrafts, type PricingPeriodDraft } from "../domain/pricing-period-draft";
+import { languageLocale, tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 
@@ -18,6 +20,7 @@ type CostDraft = {
   cacheWrite5m: string;
   cacheWrite1h: string;
   output: string;
+  periods: PricingPeriodDraft[];
 };
 
 function costDraft(model: ProviderModel): CostDraft {
@@ -29,6 +32,7 @@ function costDraft(model: ProviderModel): CostDraft {
     cacheWrite5m: configuredPriceFormValue(model.cache_write_5m_price_usd_per_1m, model.cache_write_5m_price_configured),
     cacheWrite1h: configuredPriceFormValue(model.cache_write_1h_price_usd_per_1m, model.cache_write_1h_price_configured),
     output: String(model.output_price_usd_per_1m ?? 0),
+    periods: pricingPeriodDrafts(model.pricing_periods),
   };
 }
 
@@ -45,12 +49,14 @@ export function ProviderModelInventory({
   const [savingID, setSavingID] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [scheduleID, setScheduleID] = useState("");
+  const scheduleModel = models.find(model => model.id === scheduleID);
 
   useEffect(() => {
     setDrafts(Object.fromEntries(models.map((model) => [model.id, costDraft(model)])));
   }, [models]);
 
-  function update(modelID: string, key: keyof CostDraft, value: string) {
+  function update<K extends keyof CostDraft>(modelID: string, key: K, value: CostDraft[K]) {
     setDrafts((current) => ({ ...current, [modelID]: { ...current[modelID], [key]: value } }));
   }
 
@@ -73,6 +79,12 @@ export function ProviderModelInventory({
     setError("");
     setNotice("");
     try {
+      let periods;
+      try {
+        periods = serializePricingPeriodDrafts(draft.periods);
+      } catch {
+        throw new Error(tx("分时价格无效：请检查时区、时间、生效日期和非负价格，最多 64 个时段。"));
+      }
       const resp = await adminFetch(api, `/api/admin/provider-models/${encodeURIComponent(model.id)}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -86,6 +98,7 @@ export function ProviderModelInventory({
           cache_write_1h_price_usd_per_1m: costs.cacheWrite1h,
           cache_write_1h_price_configured: draft.cacheWrite1h.trim() !== "",
           output_price_usd_per_1m: costs.output,
+          pricing_periods: periods,
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("保存渠道成本价")));
@@ -112,13 +125,18 @@ export function ProviderModelInventory({
       <div className="provider-model-inventory-head">
         <div>
           <strong>{tx("已引入模型与渠道成本")}</strong>
-          <span>{tx("渠道成本价用于请求审计和真实成本核算，不会改变模型目录中的对外统一价。")}</span>
+          <span>{tx("渠道成本价用于真实成本核算；选择跟随此上游模型的对外价格也会随之更新。")}</span>
           <span>{tx("保存成本会确认当前填写的价格，包括 0；未确认的零值不代表免费。")}</span>
         </div>
         <em>{models.length}</em>
       </div>
       {notice ? <p className="provider-inventory-notice success">{notice}</p> : null}
-      {error ? <p className="provider-inventory-notice error">{error}</p> : null}
+      {error ? <p className="provider-inventory-notice error" role="alert">{error}</p> : null}
+      {scheduleModel ? <section className="provider-pricing-schedule" aria-label={tx("分时成本设置")}>
+        <div className="provider-pricing-schedule-head"><div><span>{tx("分时成本设置")}</span><strong>{scheduleModel.display_name || scheduleModel.upstream_model}</strong></div><button className="icon-button" type="button" aria-label={tx("收起分时设置")} onClick={() => setScheduleID("")}><X size={16} /></button></div>
+        <PricingPeriodsEditor value={(drafts[scheduleModel.id] ?? costDraft(scheduleModel)).periods} disabled={savingID !== ""} onChange={periods => update(scheduleModel.id, "periods", periods)} />
+        <div className="provider-pricing-schedule-actions"><span>{tx("保存会同时更新基础成本与分时价格。")}</span><button className="button" type="button" disabled={savingID !== ""} onClick={() => void save(scheduleModel)}><Save size={14} />{tx(savingID === scheduleModel.id ? "保存中" : "保存成本与时段")}</button></div>
+      </section> : null}
       <div className="retrieval-cost-list">
         {models.filter((model) => model.modality === "embedding" || model.modality === "rerank").map((model) => {
           const draft = drafts[model.id] ?? costDraft(model);
@@ -153,7 +171,9 @@ export function ProviderModelInventory({
               const draft = drafts[model.id] ?? costDraft(model);
               return (
                 <tr key={model.id}>
-                  <td><strong>{model.display_name || model.upstream_model}</strong><span>{model.upstream_model}</span><ModelCatalogNotices metadata={model.metadata} />{model.call_supported === false ? <span>{tx("当前渠道暂不支持此模型调用")}</span> : null}{model.modality === "embedding" && (model.input_price_usd_per_1m ?? 0) === 0 ? <span>{tx(model.metadata?.retrieval_pricing_confirmed === "true" ? "输入成本已确认免费" : "输入成本尚未确认（不阻断已有线路）")}</span> : null}{model.modality === "rerank" ? <label><span>{tx("搜索单元价格 USD/次")}</span><input type="number" min="0" step="0.000001" value={draft.searchUnit} onChange={(event) => update(model.id, "searchUnit", event.target.value)} /></label> : null}</td>
+                  <td><strong>{model.display_name || model.upstream_model}</strong><span>{model.upstream_model}</span><ModelCatalogNotices metadata={model.metadata} />{model.call_supported === false ? <span>{tx("当前渠道暂不支持此模型调用")}</span> : null}
+                    <button className="text-button provider-pricing-schedule-toggle" type="button" aria-expanded={scheduleID === model.id} onClick={() => setScheduleID(scheduleID === model.id ? "" : model.id)}><Clock3 size={13} />{tx("分时价格")}<span>{new Intl.NumberFormat(languageLocale()).format(draft.periods.length)}</span></button>
+                  </td>
                   {(["input", "cache", "cacheWrite", "cacheWrite5m", "cacheWrite1h", "output"] as const).map((key) => (
                     <td key={key}>
                       <input min="0" onChange={(event) => update(model.id, key, event.target.value)} step="0.000001" type="number" value={draft[key]} />

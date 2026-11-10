@@ -61,6 +61,10 @@ func (s *GormStore) admitCallTransaction(ctx context.Context, tx *gorm.DB, key A
 	if !modelAllowedByScopes(privateProject, privateKey, modelName) {
 		return admission, ErrModelNotAllowed
 	}
+	model, err = resolveModelPricingSource(tx, model)
+	if err != nil {
+		return admission, err
+	}
 	keyLimits := privateKey.Limits
 	keyLimits.RateLimitRPM = 0
 	keyLimits.TokenLimitTPM = 0

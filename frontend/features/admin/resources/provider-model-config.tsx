@@ -5,6 +5,7 @@ import { findProvider, modelCapabilitySummary, modelPriceSummary, modelRouteDefa
 import { formatTime, modelToForm, routeStrategyLabel } from "../domain/formatting";
 import { providerTypeLabelFromData, resourceTypeLabel } from "../domain/labels";
 import { cacheReadPriceHelpText } from "../domain/model-pricing-policy";
+import { withPricingSourceFields } from "../domain/model-pricing-source";
 import { providerReasoningFieldConfigs, providerReasoningFormValues, providerTypeSupportsReasoningConfig } from "../domain/provider-reasoning";
 import { availableProviderModelSelectOptions } from "../domain/provider-model-selection";
 import { defaultProviderResourceTypeMetadata, isProviderAccountResourceForData, isProviderAccountResourceType, isProviderAccountResourceTypeForData, providerResourceAPIKeyType, providerResourceAuthTypeOptionsFromData, providerResourceTypeMetadataForResource, providerResourceTypeMetadataFromData, providerResourceTypeOptionOrder, providerTypeHasPluginMetadata } from "../domain/provider-resource-types";
@@ -490,7 +491,7 @@ export function modelConfig(): ResourceConfig<Model> {
     view: "models",
     title: "模型目录",
     eyebrow: "对外模型列表",
-    description: "维护客户端调用的统一模型名、能力和对外价格；不同 Provider 线路共享同一套对外定价。",
+    description: "维护客户端调用的统一模型名、能力和定价方式；可独立定价或跟随指定上游。",
     createLabel: "新增模型",
     columns: [
       { key: "name", label: "对外模型", render: (item, ctx) => <ModelNameCell model={item} data={ctx} /> },
@@ -501,7 +502,7 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "price", label: "对外统一价", render: (item) => modelPriceSummary(item) },
       { key: "status", label: "状态", render: (item) => <StatusPill status={item.status} /> },
     ],
-    fields: [
+    fields: withPricingSourceFields([
       { key: "name", label: "对外模型 ID", required: true, readOnlyOnEdit: true },
       { key: "display_name", label: "显示名称" },
       {
@@ -521,6 +522,7 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "modality", label: "能力", type: "select", options: ["chat", "embedding", "image", "video", "audio", "ocr", "rerank", "decision"], required: true },
       { key: "input_modalities", label: "输入模态", type: "tag-select", options: ["text", "image", "video", "audio", "pdf"], help: "选择模型实际支持的输入类型。" },
       { key: "context_window", label: "上下文窗口", type: "number" },
+      { key: "pricing_mode", label: "对外定价方式", type: "select", options: ["custom", "provider"], visible: (values) => values.modality === "chat" },
       { key: "input_price_usd_per_1m", label: "对外输入价 USD/1M", type: "number", help: "用于客户端用量计费和额度；实际 Provider 成本在 Provider 模型库存中单独维护。" },
       {
         key: "cache_read_price_usd_per_1m",
@@ -569,7 +571,7 @@ export function modelConfig(): ResourceConfig<Model> {
       { key: "capabilities", label: "能力标签，逗号分隔" },
       { key: "supported_parameters", label: "支持参数，逗号分隔" },
       { key: "status", label: "状态", type: "select", options: ["active", "disabled"], required: true },
-    ],
+    ]),
     list: (ctx) => ctx.models,
     create: (ctx, values) => adminMutate(ctx, "/api/admin/models", "POST", modelPayload(values)),
     update: (ctx, item, values) => adminMutate(ctx, `/api/admin/models/${encodeURIComponent(item.name)}`, "PATCH", modelPayload(values, item.metadata)),

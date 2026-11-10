@@ -1,0 +1,73 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ProviderModel } from "../core/types";
+import { pricingPeriodDrafts, serializePricingPeriodDrafts } from "../domain/pricing-period-draft";
+import { ProviderModelInventory } from "./provider-model-inventory";
+
+const model: ProviderModel = {
+  id: "schedule-test", provider_id: "synthetic-provider", upstream_model: "synthetic-chat", modality: "chat", status: "active",
+  input_price_usd_per_1m: 2, cache_read_price_usd_per_1m: 0.2, output_price_usd_per_1m: 8,
+  metadata: { custom_note: "preserve", pricing_status: "configured" },
+  pricing_periods: [{ name: "Off-peak", timezone: "Asia/Shanghai", start_time: "23:00", end_time: "08:00", weekdays: [1, 5], effective_from: "2026-11-01T00:00:00+08:00", effective_until: "2026-12-01T00:00:00+08:00", input_price_usd_per_1m: 1, cache_read_price_usd_per_1m: 0.1, output_price_usd_per_1m: 4, cache_write_5m_price_usd_per_1m: 0, cache_write_1h_price_usd_per_1m: 3 }],
+};
+afterEach(() => vi.unstubAllGlobals());
+
+async function setup(response = () => new Response("{}", { status: 200 })) {
+  const fetchMock = vi.fn<typeof fetch>(async () => response());
+  vi.stubGlobal("fetch", fetchMock);
+  const user = userEvent.setup();
+  const onSaved = vi.fn();
+  render(<ProviderModelInventory api={{ baseURL: "http://localhost:8080", adminToken: "synthetic" }} models={[model]} onSaved={onSaved} />);
+  await user.click(screen.getByRole("button", { name: /分时价格/ }));
+  return { user, fetchMock, onSaved, editor: within(screen.getByRole("region", { name: "分时成本设置" })) };
+}
+
+describe("Provider time-based pricing", () => {
+  it("persists free overrides and omitted inheritance while preserving advanced fields", async () => {
+    const { user, editor, fetchMock, onSaved } = await setup();
+    await user.clear(editor.getByLabelText("输入（缓存命中）USD/1M"));
+    await user.type(editor.getByLabelText("输入（缓存命中）USD/1M"), "0");
+    await user.clear(editor.getByLabelText("输出 USD/1M"));
+    await user.click(editor.getByRole("button", { name: "保存成本与时段" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload).toMatchObject({ input_price_usd_per_1m: 2, output_price_usd_per_1m: 8, metadata: model.metadata });
+    expect(payload.pricing_periods).toEqual([{ ...model.pricing_periods![0], cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: undefined }]);
+  });
+
+  it("removes all periods without silently restoring the saved schedule", async () => {
+    const { user, editor, fetchMock } = await setup();
+    await user.click(editor.getByRole("button", { name: "删除时段" }));
+    expect(editor.getByText("尚未配置时段，全天使用基础价格。")).toBeVisible();
+    await user.click(editor.getByRole("button", { name: "保存成本与时段" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).pricing_periods).toEqual([]);
+  });
+
+  it("rejects invalid time zones before making a request", async () => {
+    const { user, editor, fetchMock } = await setup();
+    await user.clear(editor.getByLabelText("时区（IANA）"));
+    await user.type(editor.getByLabelText("时区（IANA）"), "Mars/Olympus");
+    await user.click(editor.getByRole("button", { name: "保存成本与时段" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("分时价格无效");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(editor.getByLabelText("时区（IANA）")).toHaveValue("Mars/Olympus");
+  });
+
+  it("preserves drafts when the server rejects overlapping periods", async () => {
+    const { user, editor, fetchMock } = await setup(() => new Response(JSON.stringify({ error: { message: "Synthetic overlapping period" } }), { status: 400 }));
+    await user.click(editor.getByRole("button", { name: "添加时段" }));
+    await user.click(editor.getByRole("button", { name: "保存成本与时段" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Synthetic overlapping period");
+    expect(editor.getAllByLabelText("时区（IANA）")).toHaveLength(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).pricing_periods).toHaveLength(2);
+  });
+
+  it("rejects non-finite prices without converting them to inherited rates", () => {
+    const drafts = pricingPeriodDrafts(model.pricing_periods);
+    drafts[0].input_price_usd_per_1m = "1e999";
+    expect(() => serializePricingPeriodDrafts(drafts)).toThrow("pricing_period_invalid_rate");
+    expect(() => serializePricingPeriodDrafts(Array.from({ length: 65 }, () => drafts[0]))).toThrow("pricing_period_limit");
+  });
+});

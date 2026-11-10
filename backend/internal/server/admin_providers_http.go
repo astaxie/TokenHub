@@ -951,7 +951,7 @@ func (s *Server) serveAdminProviderResourceImport(w http.ResponseWriter, r *http
 }
 
 func (s *Server) serveAdminModelsGet(w http.ResponseWriter, user AdminUser) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.accessibleModelsForAdminUser(user)})
+	writeJSON(w, http.StatusOK, map[string]any{"data": modelPricingViews(s.accessibleModelsForAdminUser(user))})
 }
 
 func (s *Server) handleAdminModelsRestoreDefaults(w http.ResponseWriter, r *http.Request) {
@@ -977,7 +977,7 @@ func (s *Server) handleAdminModelsRestoreDefaults(w http.ResponseWriter, r *http
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"restored": len(models),
-		"data":     s.accessibleModelsForAdminUser(user),
+		"data":     modelPricingViews(s.accessibleModelsForAdminUser(user)),
 	})
 }
 

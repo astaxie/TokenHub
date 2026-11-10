@@ -98,6 +98,7 @@ func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model, "name = ?", name).Error; err != nil {
 			return notFound(err, "model_not_found", "Model not found")
 		}
+		previous := model
 		originalID := model.ID
 		originalName := model.Name
 		renamed := patch.Name != "" && patch.Name != name
@@ -129,9 +130,12 @@ func (s *GormStore) UpdateModel(name string, patch Model) (Model, error) {
 		if patch.SupportedParameters != nil {
 			model.SupportedParameters = patch.SupportedParameters
 		}
-		model.Metadata = preserveSemanticRoutingMetadata(model.Metadata, modelPricingMetadata(model.Metadata, patch))
+		model.Metadata = preserveSemanticRoutingMetadata(model.Metadata, preserveModelPricingSourceMetadata(model.Metadata, modelPricingMetadata(model.Metadata, patch)))
 		if patch.Status != "" {
 			model.Status = patch.Status
+		}
+		if err := validateUpdatedModelPricingSource(tx, previous, &model); err != nil {
+			return err
 		}
 		if renamed {
 			if err := tx.Delete(&Model{}, "id = ?", originalID).Error; err != nil {

@@ -214,7 +214,9 @@ func appendTenantStatement(out *statementResult, item *statementEvidence, model 
 			if err == nil && equalStatementMoney(charge.Amount, t.LegacyUSD) && t.Status == "estimated" {
 				row.Status = "estimated"
 				row.Reason = "recorded_tenant_charge"
-				row.Price = price
+				publicPrice := *price
+				publicPrice.ProviderReference = nil
+				row.Price = &publicPrice
 				row.Lines = charge.Lines
 			}
 		}

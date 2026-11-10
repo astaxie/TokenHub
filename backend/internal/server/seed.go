@@ -226,6 +226,11 @@ func seedDefaultModelCatalog(store Store, catalogFile string) error {
 			model.PricingPeriods = append([]ModelPricingPeriod(nil), existing.PricingPeriods...)
 		}
 		if _, err := store.CreateModelWithRoutes(model, nil); err != nil {
+			// An unavailable operator-selected pricing source must not prevent
+			// startup or be silently cleared by a catalog refresh.
+			if existingByName[model.Name].Metadata[modelPricingModeKey] == "provider" && AsHTTPError(err).Code == "invalid_model_pricing_source" {
+				continue
+			}
 			return fmt.Errorf("seed catalog model %q: %w", model.Name, err)
 		}
 	}

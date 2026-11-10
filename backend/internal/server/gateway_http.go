@@ -606,6 +606,11 @@ func (s *Server) handleAdminPlaygroundChat(w http.ResponseWriter, r *http.Reques
 		})
 		writeError(w, r, routeErr)
 	}
+	routed.Call.Model, err = resolvePlaygroundModelPricing(s.store, routed.Call.Model)
+	if err != nil {
+		finishRoutingFailure(err)
+		return
+	}
 	routes, err := s.store.SelectRouteCandidates(req.Model)
 	if err != nil {
 		finishRoutingFailure(err)

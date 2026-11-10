@@ -71,6 +71,7 @@ func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPrice
 		}
 	}
 	snapshot := meteringPriceSnapshot{Modality: model.Modality, AudioPricePerSecond: model.Metadata[audioSecondPriceKey], SearchUnitPrice: model.Metadata[retrievalSearchUnitPriceKey], Currency: "USD", Source: "legacy_float_configuration", At: at, Rates: rates}
+	snapshot.ProviderReference = model.pricingReference
 	for _, period := range model.PricingPeriods {
 		if pricingPeriodMatches(period, at) {
 			snapshot.Period = period.Name

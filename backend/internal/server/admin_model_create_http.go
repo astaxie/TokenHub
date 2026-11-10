@@ -64,7 +64,7 @@ func (s *Server) serveAdminModelsPost(w http.ResponseWriter, r *http.Request, us
 	req.Model = withExternalModelRole(req.Model)
 	model, err := s.store.CreateModelWithRoutes(req.Model, preparedRoutes, ModelCreateOptions{CreateOnly: req.CreateOnly})
 	if err != nil {
-		if AsHTTPError(err).Code == "model_conflict" {
+		if code := AsHTTPError(err).Code; code == "model_conflict" || code == "invalid_model_pricing_source" {
 			writeError(w, r, err)
 			return
 		}

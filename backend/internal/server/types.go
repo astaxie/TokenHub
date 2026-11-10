@@ -177,6 +177,8 @@ type QuotaPolicyUsage struct {
 
 type Model struct {
 	pricingPatch              *modelPricePatch
+	pricingReference          *modelPricingReference
+	pricingUnavailable        bool
 	ID                        string  `json:"id" gorm:"primaryKey"`
 	Name                      string  `json:"name" gorm:"uniqueIndex"`
 	Category                  string  `json:"category,omitempty" gorm:"index"`

@@ -352,9 +352,7 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 		Find(&models).Error; err != nil {
 		return nil
 	}
-	items := make([]Model, 0, len(models))
-	items = append(items, models...)
-	return items
+	return s.publicPricedModels(models)
 }
 
 func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket string, attributedUserIDs ...string) (QuotaBucket, error) {

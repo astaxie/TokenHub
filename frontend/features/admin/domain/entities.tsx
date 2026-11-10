@@ -1,4 +1,5 @@
 import { appRole } from "../core/navigation";
+import { followsProviderPricing } from "./model-pricing-source";
 import { type AdminResource, type AdminUser, type APIKey, type AppData, DEFAULT_PROJECT_ID, type Model, type ModelRoute, type Project, type Provider, type ProviderResource, type RequestLog, type RouteAttemptLog, type UsageBreakdownRow } from "../core/types";
 import { imageCapabilityProfileForModel, type ImageCapabilityProfile, providerImageCapabilityProfilesFromActions } from "./provider-image-capability";
 import { modelCategory, modelCategoryLabel } from "./catalog";
@@ -732,6 +733,8 @@ export function modelCapabilitySummary(model: Model) {
 }
 
 export function modelPriceSummary(model: Model) {
+  if (followsProviderPricing(model) && model.pricing_available === false) return tx("来源价格暂不可用");
+  if (followsProviderPricing(model)) return tx("跟随上游定价");
   const embedding = model.embedding_price_usd_per_1m || 0;
   if (model.modality === "embedding" || embedding > 0) {
     return `$${formatMoney(embedding)}/1M`;

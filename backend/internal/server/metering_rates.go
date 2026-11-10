@@ -27,17 +27,18 @@ type meteringRateCard struct {
 }
 
 type meteringPriceSnapshot struct {
-	Modality            string         `json:"modality,omitempty"`
-	AudioPricePerSecond string         `json:"audio_price_usd_per_second,omitempty"`
-	SearchUnitPrice     string         `json:"search_unit_price,omitempty"`
-	ExchangeRateVersion string         `json:"exchange_rate_version,omitempty"`
-	ExchangeRate        string         `json:"exchange_rate,omitempty"`
-	Version             string         `json:"version"`
-	Currency            string         `json:"currency"`
-	Source              string         `json:"source"`
-	At                  time.Time      `json:"at"`
-	Period              string         `json:"period,omitempty"`
-	Rates               metering.Rates `json:"rates"`
+	ProviderReference   *modelPricingReference `json:"provider_reference,omitempty"`
+	Modality            string                 `json:"modality,omitempty"`
+	AudioPricePerSecond string                 `json:"audio_price_usd_per_second,omitempty"`
+	SearchUnitPrice     string                 `json:"search_unit_price,omitempty"`
+	ExchangeRateVersion string                 `json:"exchange_rate_version,omitempty"`
+	ExchangeRate        string                 `json:"exchange_rate,omitempty"`
+	Version             string                 `json:"version"`
+	Currency            string                 `json:"currency"`
+	Source              string                 `json:"source"`
+	At                  time.Time              `json:"at"`
+	Period              string                 `json:"period,omitempty"`
+	Rates               metering.Rates         `json:"rates"`
 }
 
 func (card meteringRateCard) validate() error {

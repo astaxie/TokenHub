@@ -8,10 +8,13 @@ import { formatLocaleNumber, tx } from "../i18n/runtime";
 import { useModalFocus } from "../shared/modal-focus";
 import { StatusPill } from "../shared/ui";
 import { ModelDirectoryPrice } from "./model-directory-price";
+import { ModelPricingSourcePreview } from "./model-pricing-source";
+import { eligiblePricingSources, followsProviderPricing, pricingSourceLabel } from "../domain/model-pricing-source";
 
 export function ModelDirectoryDetail({ model, data, readOnly, onClose }: { model: Model; data: AppData; readOnly: boolean; onClose: () => void }) {
   const focus = useModalFocus(onClose);
   const routes = readOnly ? [] : modelRoutesFor(model, data);
+  const source = readOnly ? undefined : eligiblePricingSources(data).find(item => item.id === model.metadata?.pricing_provider_model_id);
   const facts = [
     { label: "模型能力", values: model.capabilities ?? [] },
     { label: "支持接口协议", values: modelEndpointProtocols(model.metadata) },
@@ -35,6 +38,7 @@ export function ModelDirectoryDetail({ model, data, readOnly, onClose }: { model
             <div><dt>{tx("上下文窗口")}</dt><dd>{model.context_window ? formatLocaleNumber(model.context_window) : "—"}</dd></div>
             <div className="model-detail-price"><dt>{tx("对外统一价")}</dt><dd><ModelDirectoryPrice model={model} /></dd></div>
           </dl>
+          {!readOnly && followsProviderPricing(model) ? <section className="model-pricing-source" aria-label={tx("定价来源模型")}>{source ? <><strong>{pricingSourceLabel(source, data)}</strong><ModelPricingSourcePreview source={source} /></> : <p className="inline-notice error">{tx("原定价来源已不可用或成本未确认。请选择有效来源，或切回独立定价。")}</p>}</section> : null}
           <section className="model-detail-capabilities" aria-label={tx("模型能力摘要")}>
             {facts.map((fact) => <div key={fact.label}><h3>{tx(fact.label)}</h3><div className="model-detail-tags">{fact.values.length ? fact.values.map((value, index) => <span key={`${value}-${index}`}>{value}</span>) : <span className="muted">—</span>}</div></div>)}
           </section>

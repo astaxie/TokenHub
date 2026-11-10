@@ -282,6 +282,9 @@ export function modelPayload(values: Record<string, string>, existingMetadata?: 
   }
   Object.assign(payload, modelMetadataPayload(existingMetadata, values.display_name ?? ""));
   const pricingMetadata = { ...(payload.metadata as Record<string, string> | undefined) };
+  pricingMetadata.pricing_mode = values.modality === "chat" ? values.pricing_mode || existingMetadata?.pricing_mode || "custom" : "custom";
+  pricingMetadata.pricing_provider_model_id = values.pricing_provider_model_id ?? existingMetadata?.pricing_provider_model_id ?? "";
+  if (pricingMetadata.pricing_mode === "provider" && !pricingMetadata.pricing_provider_model_id) throw new Error(tx("请选择已确认成本的上游模型"));
   if (values.modality !== "embedding" && configuredPriceEntered(values.cache_read_price_usd_per_1m)) {
     pricingMetadata.cache_read_price_configured = "true";
   } else {
@@ -519,6 +522,7 @@ export function defaultFormValues<T>(config: ResourceConfig<T>, data: AppData, c
   const values: Record<string, string> = {};
   for (const field of config.fields) {
     if (field.key === "status") values[field.key] = "active";
+    if (field.key === "pricing_mode") values[field.key] = "custom";
     if (field.key === "healthy") values[field.key] = "true";
     if (field.key === "priority") values[field.key] = config.view === "routes" ? "" : "10";
     if (field.key === "weight") values[field.key] = "100";

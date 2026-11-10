@@ -2,6 +2,8 @@ import type { SemanticRoutingPolicy } from "./semantic-routing-types";
 export type { SemanticRoutingPolicy, SemanticRoutingCandidate } from "./semantic-routing-types";
 import { Activity } from "lucide-react";
 import type { ResourceAction } from "./resource-action";
+import type { ModelPricingPeriod } from "./model-pricing-period-types";
+export type { ModelPricingPeriod } from "./model-pricing-period-types";
 
 export type Summary = {
   request_count: number;
@@ -737,18 +739,8 @@ export type ProviderResource = {
   updated_at?: string;
 };
 
-export type ModelPricingPeriod = {
-  name?: string;
-  timezone?: string;
-  start_time?: string;
-  end_time?: string;
-  effective_from?: string;
-  effective_until?: string;
-  input_price_usd_per_1m?: number;
-  output_price_usd_per_1m?: number;
-};
-
 export type Model = {
+  pricing_available?: boolean;
   id: string;
   name: string;
   category?: string;

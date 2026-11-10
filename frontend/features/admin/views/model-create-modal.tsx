@@ -1,8 +1,10 @@
 import { ModelCatalogNotices } from "./model-catalog-notices";
+import { ModelPricingSource } from "./model-pricing-source";
 import { Boxes, ChevronDown, ChevronRight, CircleCheck, Info, Search, SlidersHorizontal, X } from "lucide-react";
 import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { type AdminUser, type AppData, type FieldConfig, type Model, type ResourceConfig } from "../core/types";
-import { modelCategory, modelCategoryLabel, priceMetric } from "../domain/catalog";
+import { modelCategory, modelCategoryLabel } from "../domain/catalog";
+import { modelPriceSummary } from "../domain/entities";
 import { customModelTemplateID, externalModelTemplateValues, filterReferenceModelTemplates, referenceModelTemplates } from "../domain/model-create-wizard";
 import { compactNumber } from "../domain/formatting";
 import { initialModelRoutes } from "../domain/provider-model-selection";
@@ -119,7 +121,7 @@ export function ModelCreateModal({
 
   function fieldConfig(key: string, override?: Partial<FieldConfig>) {
     const field = config.fields.find((item) => item.key === key);
-    const priceRequired = selectedModel?.modality === "chat" && selectedModel.metadata?.pricing_status === "unverified" && ["input_price_usd_per_1m", "output_price_usd_per_1m"].includes(key);
+    const priceRequired = values.pricing_mode !== "provider" && selectedModel?.modality === "chat" && selectedModel.metadata?.pricing_status === "unverified" && ["input_price_usd_per_1m", "output_price_usd_per_1m"].includes(key);
     return field ? { ...field, ...override, ...(priceRequired ? { required: true } : {}) } : undefined;
   }
 
@@ -200,7 +202,7 @@ export function ModelCreateModal({
                   <button className={`model-create-template ${selected ? "selected" : ""}`} key={model.name} onClick={() => selectTemplate(model)} type="button">
                     <ModelBrandIcon category={modelCategoryKey} label={modelCategoryText} data={data} compact />
                     <span><strong>{model.name}</strong><small>{model.family || modelCategoryText} · {model.modality || "chat"}</small><ModelCatalogNotices metadata={model.metadata} /></span>
-                    <span className="model-create-template-metrics"><b>{compactNumber(model.context_window || 0)} ctx</b><small>{priceMetric(model.input_price_usd_per_1m)} / {priceMetric(model.output_price_usd_per_1m)}</small></span>
+                    <span className="model-create-template-metrics"><b>{compactNumber(model.context_window || 0)} ctx</b><small>{modelPriceSummary(model)}</small></span>
                     {selected ? <CircleCheck size={18} /> : <ChevronRight size={18} />}
                   </button>
                 );
@@ -212,7 +214,7 @@ export function ModelCreateModal({
             {submitError || validationError ? <p className="inline-notice error" ref={errorSummary} role="alert" tabIndex={-1}>{submitError || validationError}</p> : null}
             <section className="model-create-selection-summary">
               <div>{selectedModel ? <ModelBrandIcon category={modelCategory(selectedModel, data)} label={selectedModel.name} data={data} /> : <span className="model-create-custom-icon"><SlidersHorizontal size={18} /></span>}</div>
-              <div><span>{tx(selectedModel ? "已选择目录模型" : "自定义模型")}</span><strong>{selectedModel?.name || values.name || tx("尚未命名")}</strong><small>{tx("模型名可以作为对外别名调整；能力和价格不会随 Provider 线路变化。")}</small></div>
+              <div><span>{tx(selectedModel ? "已选择目录模型" : "自定义模型")}</span><strong>{selectedModel?.name || values.name || tx("尚未命名")}</strong><small>{tx("模型名可以作为对外别名调整；定价方式可在下方设置。")}</small></div>
               <button className="secondary-button" onClick={() => setStep(0)} type="button">{tx("重新选择")}</button>
             </section>
 
@@ -247,7 +249,8 @@ export function ModelCreateModal({
             </section>
 
             <section className="model-create-section">
-              <div className="model-create-section-head"><div><strong>{tx("对外统一价格")}</strong><span>{tx("所有 Provider 线路统一按这里的价格对外计费。")}</span></div></div>
+              <div className="model-create-section-head"><div><strong>{tx("对外统一价格")}</strong><span>{tx("选择独立价格或指定上游作为所有路由的统一定价来源。")}</span></div></div>
+              {values.modality === "chat" ? <ModelPricingSource data={data} values={values} onChange={updates => setValues(current => ({ ...current, ...updates }))} /> : null}
               <div className="model-create-form-grid">
                 {renderField("input_price_usd_per_1m")}
                 {renderField("cache_read_price_usd_per_1m")}
@@ -256,7 +259,7 @@ export function ModelCreateModal({
                 {renderField("search_unit_price_usd")}
                 {renderField("retrieval_pricing_confirmed")}
               </div>
-              <div className="model-create-pricing-note"><Info size={17} /><span>{tx("Provider 模型价格继续用于真实成本审计，不会覆盖此处的对外统一价格。")}</span></div>
+              <div className="model-create-pricing-note"><Info size={17} /><span>{tx(values.modality === "chat" && values.pricing_mode === "provider" ? "所选来源决定对外价格；各线路的真实成本仍按实际供应商核算。" : "Provider 模型价格继续用于真实成本审计，不会覆盖此处的对外统一价格。")}</span></div>
             </section>
           </div>
         )}
