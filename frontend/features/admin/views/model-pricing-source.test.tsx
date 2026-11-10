@@ -14,7 +14,7 @@ import { ModelDirectoryPrice } from "./model-directory-price";
 import { PlaygroundPanel } from "./playground";
 import { modelTokenPriceMetric } from "../domain/model-token-price";
 import { ModelPricingSourcePreview } from "./model-pricing-source";
-import { languageLocale } from "../i18n/runtime";
+import { type AppLanguage, languageLocale, setActiveLanguage } from "../i18n/runtime";
 
 const source: ProviderModel = { id: "source", provider_id: "provider", upstream_model: "private-upstream", status: "active", modality: "chat", input_price_usd_per_1m: 2, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4, metadata: { pricing_status: "configured" }, pricing_periods: [{ name: "Night", timezone: "Asia/Shanghai", start_time: "23:00", end_time: "08:00", input_price_usd_per_1m: 1, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 2, weekdays: [1, 2, 3] }] };
 const model: Model = { id: "model", name: "public-chat", category: "other", family: "test", modality: "chat", status: "active", input_price_usd_per_1m: 99, output_price_usd_per_1m: 198, cache_read_price_usd_per_1m: 9, metadata: { directory_role: "external", custom_note: "preserve" } };
@@ -123,6 +123,29 @@ describe("Model pricing source", () => {
     expect(screen.getByText(/23:00 – 08:00/)).toHaveTextContent("23:00 – 08:00 · Asia/Shanghai");
   });
 
+  it.each<{ language: AppLanguage; clocks: string }>([
+    { language: "en", clocks: "11:00 PM – 08:00 AM" },
+    { language: "ja", clocks: "23:00 – 08:00" },
+    { language: "zh-CN", clocks: "23:00 – 08:00" },
+  ])("formats wall-clock schedules in $language without converting the policy timezone", ({ language, clocks }) => {
+    setActiveLanguage(language);
+    const period = { ...source.pricing_periods![0], start_time: " 23:00 ", end_time: "\t08:00\n" };
+    const view = render(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [period] }} />);
+    expect(screen.getByText(content => content.startsWith(`${clocks} · Asia/Shanghai`))).toBeVisible();
+    view.rerender(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [{ ...period, timezone: "America/New_York" }] }} />);
+    expect(screen.getByText(content => content.startsWith(`${clocks} · America/New_York`))).toBeVisible();
+  });
+
+  it.each([
+    { start: undefined, end: " 08:00 ", clocks: "— – 08:00" },
+    { start: " 23:00 ", end: " \t ", clocks: "23:00 – —" },
+    { start: " 25:30 ", end: " 08:00 ", clocks: "25:30 – 08:00" },
+  ])("preserves missing or invalid stored clock bounds: $clocks", ({ start, end, clocks }) => {
+    const period = { ...source.pricing_periods![0], start_time: start, end_time: end };
+    render(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [period] }} />);
+    expect(screen.getByText(content => content.startsWith(`${clocks} · Asia/Shanghai`))).toBeVisible();
+  });
+
   it.each([
     { from: " 2026-11-01T20:30:00+08:00 ", until: "\t2026-11-03T20:30:00Z\n" },
     { from: "2026-11-01T20:30:00+08:00", until: undefined },
@@ -147,8 +170,8 @@ describe("Model pricing source", () => {
     expect(screen.getByLabelText("来源价格预览")).toHaveTextContent(`${period.effective_from} – ${period.effective_until}`);
   });
 
-  it("treats whitespace-only timezones and date bounds as absent", () => {
-    const period = { timezone: " \t ", effective_from: " \n ", effective_until: "\t2026-11-03T20:30:00Z " };
+  it("treats whitespace-only timezones and time bounds as absent", () => {
+    const period = { timezone: " \t ", start_time: " \t ", end_time: "\n ", effective_from: " \n ", effective_until: "\t2026-11-03T20:30:00Z " };
     const view = render(<ModelPricingSourcePreview source={{ ...source, pricing_periods: [period] }} />);
     const date = new Intl.DateTimeFormat(languageLocale(), { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
     expect(screen.getByText(/^生效区间/)).toHaveTextContent(`— – ${date.format(new Date(period.effective_until.trim()))}`);

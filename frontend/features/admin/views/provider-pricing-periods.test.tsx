@@ -51,6 +51,26 @@ describe("Provider time-based pricing", () => {
     expect(payload.pricing_periods[0]).not.toHaveProperty("effective_from");
   });
 
+  it.each(["existing", "new"])("saves %s Local schedules without substituting the browser timezone", async source => {
+    const period = { ...model.pricing_periods![0], timezone: "Local" };
+    const { user, editor, fetchMock, onSaved } = await setup(undefined, { ...model, pricing_periods: source === "existing" ? [period] : [] });
+    if (source === "new") {
+      await user.click(editor.getByRole("button", { name: "添加时段" }));
+      await user.clear(editor.getByLabelText("时区（IANA）"));
+      await user.type(editor.getByLabelText("时区（IANA）"), " Local ");
+      await user.click(editor.getByText("星期、生效日期与缓存写入"));
+      await user.type(editor.getByLabelText("生效开始（RFC 3339，可选）"), period.effective_from!);
+      await user.type(editor.getByLabelText("生效结束（RFC 3339，可选）"), period.effective_until!);
+    }
+    await user.click(source === "existing" ? screen.getByRole("button", { name: "保存成本" }) : editor.getByRole("button", { name: "保存成本与时段" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload.pricing_periods).toEqual([source === "existing" ? period : {
+      timezone: "Local", start_time: "00:00", end_time: "08:00", effective_from: period.effective_from, effective_until: period.effective_until,
+    }]);
+  });
+
   it("persists free overrides and omitted inheritance while preserving advanced fields", async () => {
     const { user, editor, fetchMock, onSaved } = await setup();
     await user.clear(editor.getByLabelText("输入（缓存命中）USD/1M"));
@@ -98,13 +118,14 @@ describe("Provider time-based pricing", () => {
     expect(() => serializePricingPeriodDrafts(Array.from({ length: 65 }, () => drafts[0]))).toThrow("pricing_period_limit");
   });
 
-  it("rejects native invalid values and never serializes editor validity flags", () => {
+  it("rejects native invalid values and never serializes editor state", () => {
     const drafts = pricingPeriodDrafts(model.pricing_periods);
     drafts[0].input_price_usd_per_1m = "";
     drafts[0].invalidRateKeys = ["input_price_usd_per_1m"];
     expect(() => serializePricingPeriodDrafts(drafts)).toThrow("pricing_period_invalid_rate");
     drafts[0].invalidRateKeys = [];
     expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("invalidRateKeys");
+    expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("draftID");
     expect(serializePricingPeriodDrafts(drafts)[0]).not.toHaveProperty("input_price_usd_per_1m");
     drafts[0].input_price_usd_per_1m = "0.123456789";
     expect(serializePricingPeriodDrafts(drafts)[0].input_price_usd_per_1m).toBe(0.123456789);

@@ -544,7 +544,7 @@ func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 		usage.CostUSD, usage.InputCostUSD, usage.OutputCostUSD = 0, 0, 0
 		usage.CacheReadCostUSD, usage.CacheWriteCostUSD = 0, 0
 	}
-	if evidence := usage.RetrievalEvidence; evidence != nil && (evidence.Quantity == nil || evidence.Source == "invalid" || (evidence.Unit == "token" && usage.MeteringInvalid)) {
+	if evidence := retrievalPricingEvidence(model.Modality, usage); evidence != nil && (evidence.Quantity == nil || evidence.Source == "invalid" || (evidence.Unit == "token" && usage.MeteringInvalid)) {
 		usage.CostUSD = 0
 		usage.InputCostUSD = 0
 		usage.OutputCostUSD = 0

@@ -41,7 +41,7 @@ export function PricingPeriodsEditor({ value, onChange, disabled = false }: {
   return <fieldset className="pricing-periods-editor" disabled={disabled}>
     <div className="pricing-periods-toolbar"><div><strong><Clock3 size={16} />{tx("分时价格")}</strong><p>{tx("留空继承基础价格，0 表示免费。时段外使用基础价格。")}</p></div><button className="secondary-button" type="button" disabled={value.length >= 64} onClick={() => onChange([...value, newPricingPeriodDraft()])}><Plus size={14} />{tx("添加时段")}</button></div>
     {value.length === 0 ? <p className="pricing-periods-empty">{tx("尚未配置时段，全天使用基础价格。")}</p> : null}
-    {value.map((period, index) => <section className="pricing-period-card" key={index} aria-label={tx("时段 {number}").replace("{number}", new Intl.NumberFormat(languageLocale()).format(index + 1))}>
+    {value.map((period, index) => <section className="pricing-period-card" key={period.draftID} aria-label={tx("时段 {number}").replace("{number}", new Intl.NumberFormat(languageLocale()).format(index + 1))}>
       <div className="pricing-period-card-head"><strong>{tx("时段 {number}").replace("{number}", new Intl.NumberFormat(languageLocale()).format(index + 1))}</strong><button className="text-button" type="button" onClick={() => onChange(value.filter((_, position) => position !== index))}><Trash2 size={14} />{tx("删除时段")}</button></div>
       <div className="pricing-period-schedule">
         <label><span>{tx("时段名称")}</span><input value={period.name ?? ""} placeholder={tx("例如：夜间优惠")} onChange={event => update(index, { name: event.target.value })} /></label>

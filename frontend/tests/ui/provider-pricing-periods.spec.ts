@@ -10,7 +10,7 @@ const inventoryModel: ProviderModel = {
   metadata: { pricing_status: "configured", fixture: "synthetic" },
 };
 
-function install(api: MockAPI, reject = false, expectedInput: number | null = 1) {
+function install(api: MockAPI, reject = false, expectedInput: number | null = 1, expectedTimezone = "Asia/Shanghai") {
   const stored = structuredClone(inventoryModel);
   api.respond("GET", "/api/admin/providers", { data: [provider] });
   api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
@@ -29,10 +29,11 @@ function install(api: MockAPI, reject = false, expectedInput: number | null = 1)
     expect(request.body).toMatchObject({ input_price_usd_per_1m: 2, cache_read_price_usd_per_1m: 0.2, output_price_usd_per_1m: 8, metadata: { pricing_status: "configured", fixture: "synthetic" } });
     const periods = (request.body as ProviderModel).pricing_periods;
     expect(periods).toHaveLength(1);
-    expect(periods![0]).toMatchObject({ name: "UI off-peak", timezone: "Asia/Shanghai", start_time: "23:00", end_time: "08:00", cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4 });
+    expect(periods![0]).toMatchObject({ name: "UI off-peak", timezone: expectedTimezone, start_time: "23:00", end_time: "08:00", cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4 });
     if (expectedInput === null) expect(periods![0]).not.toHaveProperty("input_price_usd_per_1m");
     else expect(periods![0].input_price_usd_per_1m).toBe(expectedInput);
     expect(periods![0]).not.toHaveProperty("invalidRateKeys");
+    expect(periods![0]).not.toHaveProperty("draftID");
     if (reject) return { status: 400, json: { error: { message: "Synthetic pricing schedule rejected" } } };
     Object.assign(stored, request.body);
     api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
@@ -63,6 +64,57 @@ async function configure(page: Page) {
   await panel.getByLabel("输出 USD/1M", { exact: true }).fill("4");
   return panel;
 }
+
+for (const invalidPeriod of ["removed", "remaining"]) {
+  test(`provider-pricing-periods deletion-preserves-native-validity-${invalidPeriod}`, async ({ page, api }) => {
+    const expectedInput = invalidPeriod === "removed" ? null : 1;
+    const stored = install(api, false, expectedInput);
+    const remainingPeriod = { name: "UI off-peak", timezone: "Asia/Shanghai", start_time: "23:00", end_time: "08:00", cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4 };
+    stored.pricing_periods = [
+      { name: "Delete this period", timezone: "UTC", start_time: "08:00", end_time: "09:00" },
+      remainingPeriod,
+    ];
+    api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
+    const panel = await open(page);
+    await panel.getByLabel("输入（缓存未命中）USD/1M", { exact: true }).nth(invalidPeriod === "removed" ? 0 : 1).fill("1e999");
+    await panel.getByRole("button", { name: "删除时段", exact: true }).first().click();
+    const rate = panel.getByLabel("输入（缓存未命中）USD/1M", { exact: true });
+    await expect(panel.getByLabel("时段名称", { exact: true })).toHaveValue("UI off-peak");
+    expect(await rate.evaluate((input: HTMLInputElement) => input.validity.badInput)).toBe(invalidPeriod === "remaining");
+    if (invalidPeriod === "remaining") {
+      await expect(rate).toHaveAttribute("aria-invalid", "true");
+      await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+      await expect(page.locator(".provider-model-inventory").getByRole("alert")).toContainText("分时价格无效");
+      expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(0);
+      await rate.fill("1");
+    } else {
+      await expect(rate).toHaveValue("");
+    }
+    await expect(rate).not.toHaveAttribute("aria-invalid", "true");
+    await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+    await expect(page.locator(".provider-model-inventory")).toContainText("渠道成本价已保存");
+    const patches = api.calls.filter(call => call.method === "PATCH");
+    expect(patches).toHaveLength(1);
+    expect((patches[0].body as ProviderModel).pricing_periods).toEqual([{ ...remainingPeriod, ...(expectedInput === null ? {} : { input_price_usd_per_1m: expectedInput }) }]);
+  });
+}
+
+test("provider-pricing-periods saved-local-timezone-preserves-server-meaning", async ({ page, api }) => {
+  const stored = install(api, false, 1, "Local");
+  const period = {
+    name: "UI off-peak", timezone: "Local", start_time: "23:00", end_time: "08:00",
+    input_price_usd_per_1m: 1, cache_read_price_usd_per_1m: 0, output_price_usd_per_1m: 4,
+    effective_from: "2026-11-01T00:00:00+08:00", effective_until: "2026-12-01T00:00:00+08:00",
+  };
+  stored.pricing_periods = [period];
+  api.replaceResponse("GET", "/api/admin/provider-models", { data: [stored] });
+  const panel = await open(page);
+  await expect(panel.getByLabel("时区（IANA）", { exact: true })).toHaveValue("Local");
+  await panel.getByRole("button", { name: "保存成本与时段", exact: true }).click();
+  await expect(page.locator(".provider-model-inventory")).toContainText("渠道成本价已保存");
+  expect(stored.pricing_periods).toEqual([period]);
+  expect(api.calls.filter(call => call.method === "PATCH")).toHaveLength(1);
+});
 
 for (const mobile of [false, true]) {
   const viewport = mobile ? "mobile" : "desktop";

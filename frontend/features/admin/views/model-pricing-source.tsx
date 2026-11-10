@@ -33,7 +33,15 @@ function scheduleTime(period: ModelPricingPeriod) {
   const start = period.start_time?.trim();
   const end = period.end_time?.trim();
   if (!start && !end) return tx("全天");
-  return `${start} – ${end}`;
+  const formatter = new Intl.DateTimeFormat(languageLocale(), { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+  const clock = (value: string | undefined) => {
+    if (!value) return "—";
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+    if (!match) return value;
+    // These are policy wall-clock times, so preserve their hours across timezones.
+    return formatter.format(new Date(Date.UTC(2026, 0, 1, Number(match[1]), Number(match[2]))));
+  };
+  return `${clock(start)} – ${clock(end)}`;
 }
 
 function scheduleDays(period: ModelPricingPeriod) {

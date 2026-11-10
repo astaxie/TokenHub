@@ -205,8 +205,8 @@ func appendTenantStatement(out *statementResult, item *statementEvidence, model 
 		}
 		if price != nil {
 			charge, err := metering.Price(price.Rates, t.Units, "USD", "")
-			if validNativeRetrievalEvidence(t.Evidence) {
-				charge, err = metering.PriceNative(t.Evidence.Unit, *t.Evidence.Quantity, price.SearchUnitPrice, "USD", "")
+			if evidence := retrievalPricingEvidence(price.Modality, Usage{RetrievalEvidence: t.Evidence}); validNativeRetrievalEvidence(evidence) {
+				charge, err = metering.PriceNative(evidence.Unit, *evidence.Quantity, price.SearchUnitPrice, "USD", "")
 			}
 			if price.Modality == "audio" && t.AudioEvidence != nil && t.AudioEvidence.BillingUnit == "audio_second" {
 				charge, err = priceAudioEvidence(t.AudioEvidence, price.AudioPricePerSecond)
