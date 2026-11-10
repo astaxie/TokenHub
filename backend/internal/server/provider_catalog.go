@@ -493,8 +493,26 @@ func catalogModelParameters(raw map[string]any, model ProviderCatalogModel) []st
 	if catalogBoolField(raw, "tool_call") {
 		parameters = append(parameters, "tools")
 	}
+	// Tool selection, sampling, and determinism flags are recorded separately:
+	// a model can accept tools without parallel calls or a fixed choice, and
+	// declaring them from tool_call alone would overstate the upstream.
+	if catalogBoolField(raw, "tool_choice") {
+		parameters = append(parameters, "tool_choice")
+	}
+	if catalogBoolField(raw, "parallel_tool_calls") {
+		parameters = append(parameters, "parallel_tool_calls")
+	}
 	if catalogBoolField(raw, "structured_output") {
 		parameters = append(parameters, "response_format")
+	}
+	if catalogBoolField(raw, "top_p") {
+		parameters = append(parameters, "top_p")
+	}
+	if catalogBoolField(raw, "stop") {
+		parameters = append(parameters, "stop")
+	}
+	if catalogBoolField(raw, "seed") {
+		parameters = append(parameters, "seed")
 	}
 	reasoning := catalogObjectField(raw, "reasoning")
 	if catalogBoolField(reasoning, "supported") {
