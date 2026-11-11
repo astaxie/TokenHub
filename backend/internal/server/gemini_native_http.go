@@ -503,7 +503,7 @@ func geminiModelAllowed(models []Model, name string) bool {
 // a plugin-declared Codex Responses bridge; media models need native Gemini
 // execution or a matching provider_call hook.
 func (s *Server) geminiAccessibleModels(key APIKey) []Model {
-	models := s.store.AccessibleModels(key)
+	models := accessibleModelMembership(s.store, key)
 	compatible := make([]Model, 0, len(models))
 	for _, model := range models {
 		if modelHasMediaOutput(model) {

@@ -270,7 +270,7 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func (s *GormStore) AccessibleModels(key APIKey) []Model {
+func (s *GormStore) AccessibleModelMembership(key APIKey) []Model {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -352,9 +352,7 @@ func (s *GormStore) AccessibleModels(key APIKey) []Model {
 		Find(&models).Error; err != nil {
 		return nil
 	}
-	items := make([]Model, 0, len(models))
-	items = append(items, models...)
-	return items
+	return models
 }
 
 func (s *GormStore) quotaBucketForUpdate(tx *gorm.DB, keyID, scope, bucket string, attributedUserIDs ...string) (QuotaBucket, error) {
@@ -540,13 +538,13 @@ func priceUsageAt(model Model, usage Usage, requestStartedAt time.Time) Usage {
 	if priced, handled := priceAudioUsage(model, usage); handled {
 		return restoreIndependentCacheEvidence(priced, cacheEvidence, hasCacheEvidence)
 	}
-	if model.Modality == "embedding" || model.Modality == "rerank" {
-		// Retrieval plugins supply usage evidence, never authoritative tenant fees.
-		// Reprice both paid and free requests using the host's tenant configuration.
+	if model.pricingReference != nil || model.Modality == "embedding" || model.Modality == "rerank" {
+		// Linked pricing and retrieval use the host's captured tenant rates.
+		// Adapter fees cannot override either paid or explicitly free policies.
 		usage.CostUSD, usage.InputCostUSD, usage.OutputCostUSD = 0, 0, 0
 		usage.CacheReadCostUSD, usage.CacheWriteCostUSD = 0, 0
 	}
-	if evidence := usage.RetrievalEvidence; evidence != nil && (evidence.Quantity == nil || evidence.Source == "invalid" || (evidence.Unit == "token" && usage.MeteringInvalid)) {
+	if evidence := retrievalPricingEvidence(model.Modality, usage); evidence != nil && (evidence.Quantity == nil || evidence.Source == "invalid" || (evidence.Unit == "token" && usage.MeteringInvalid)) {
 		usage.CostUSD = 0
 		usage.InputCostUSD = 0
 		usage.OutputCostUSD = 0

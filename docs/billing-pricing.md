@@ -10,6 +10,20 @@ The Model Directory cache-read field now preserves explicit zero through save an
 
 Tenant legacy pricing remains tied to admission. Routed Provider costs capture the Provider model configuration before each attempt, so an in-flight edit cannot change that attempt's cost. Missing Provider prices remain explicit in the new evidence instead of inventing a known cost.
 
+## Provider schedules and linked public pricing
+
+In **Provider Channels → Model mapping**, open **Time-based prices** for an imported model. Keep the ordinary input, cache-read and output costs as defaults, then add windows with an IANA timezone and local start/end times. Input is the cache-miss rate; cache read is the cache-hit rate. Advanced settings expose weekdays, RFC3339 effective dates and cache-write overrides. Empty overrides inherit the default, while `0` explicitly means free. Saving costs confirms the displayed base rates and saves the complete schedule together. The existing non-overlap, 64-period and overnight rules above still apply.
+
+For a chat model in **Model Directory**, choose **Follow a selected upstream model** as the pricing mode and select an active, confirmed chat model from an active Provider. Confirm the source costs in Provider inventory first, including any intentionally free prices. The source is a named pricing reference: all routes for this public model use its policy, even when routing or failover selects another Provider. Other modalities continue to use custom pricing.
+
+The source's complete token policy is read once at request admission, including all six token rates, configuration flags and time windows. Later source edits affect new requests only. In-flight requests and historical charges keep their captured values. Public model custom rates remain stored so switching back to custom pricing restores them. Catalog labels identify linked pricing instead of presenting those inactive custom rates as current prices.
+
+The admin model API stores the choice in `metadata.pricing_mode` (`custom` or `provider`) and `metadata.pricing_provider_model_id`. An omitted mode preserves custom behavior. Invalid source configuration is rejected on save. If the selected source is later removed, disabled, made incompatible or loses price confirmation, new requests fail with HTTP 503 `model_pricing_source_unavailable` before quota admission; there is no silent fallback to zero or the stored custom prices. Restore the source or switch the public model back to custom pricing. Source identity is retained in administrator pricing evidence and is not exposed as supplier metadata in ordinary-user model views.
+
+Before downgrading to a binary that does not support linked pricing, switch linked models to custom pricing and verify the intended rates. Older binaries ignore the source metadata and would charge the stored custom prices. Unavailable sources do not remove a model from discovery: scoped model responses report `pricing_available: false` and omit unavailable price fields, while direct requests fail as described above.
+
+Provider attempt costs still use the actual routed Provider's separate attempt-time snapshot. Consequently, linked customer pricing does not imply zero margin across different routes, retry attempts or a pricing boundary between admission and dispatch. Exact shadow cards remain independent comparisons and do not change actual customer charges. This feature follows administrator-maintained upstream policies; it does not fetch official prices, settle supplier invoices, or guarantee supplier-bill equivalence.
+
 ## Exact shadow pricing
 
 Platform administrators can open **Billing → Exact pricing and shadow comparison**, select a tenant model or Provider/model pair, enter decimal-string rates and time windows, preview a specific instant, and publish a new immutable shadow version. Preview success is required before publishing from the form. Changing the form invalidates that preview. Select at least one weekday in each form window.

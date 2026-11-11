@@ -68,7 +68,7 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 		"projects":           s.filterProjectsForUser(user, s.store.ListProjects()),
 		"providers":          providers,
 		"provider_resources": providerResources,
-		"models":             models,
+		"models":             modelPricingViews(models),
 		"alerts":             alerts,
 	})
 }

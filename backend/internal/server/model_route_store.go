@@ -88,13 +88,20 @@ func createModelRecord(db *gorm.DB, model Model, options ...ModelCreateOptions) 
 		var existing Model
 		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&existing, "name = ?", model.Name)
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// Normalize only the insertion candidate. If another creator wins,
+			// merge the original metadata intent with that row before validating.
+			candidate := model
+			if err := validateModelPricingSource(tx, &candidate); err != nil {
+				return err
+			}
 			// A concurrent creator can win after the lookup. Do not overwrite its
 			// managed policy in that case; acquire its row lock before updating it.
-			inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model)
+			inserted := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&candidate)
 			if inserted.Error != nil {
 				return inserted.Error
 			}
 			if inserted.RowsAffected == 1 {
+				model = candidate
 				return nil
 			}
 			result = tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("name = ? OR id = ?", model.Name, model.ID).First(&existing)
@@ -114,7 +121,10 @@ func createModelRecord(db *gorm.DB, model Model, options ...ModelCreateOptions) 
 			model.Status = existing.Status
 			model.CreatedAt = existing.CreatedAt
 		}
-		model.Metadata = preserveSemanticRoutingMetadata(existing.Metadata, model.Metadata)
+		model.Metadata = preserveSemanticRoutingMetadata(existing.Metadata, preserveModelPricingSourceMetadata(existing.Metadata, model.Metadata))
+		if err := validateModelPricingSource(tx, &model); err != nil {
+			return err
+		}
 		return tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&model).Error
 	})
 	return model, err

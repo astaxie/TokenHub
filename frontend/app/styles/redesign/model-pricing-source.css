@@ -1,0 +1,22 @@
+.model-pricing-source { grid-column: 1 / -1; display: grid; gap: 14px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); min-width: 0; }
+.model-pricing-source .field { margin: 0; min-width: 0; }
+.model-pricing-source select { width: 100%; max-width: 100%; }
+.model-pricing-source-help { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0; }
+.model-pricing-source-preview { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 16px; min-width: 0; }
+.model-pricing-source-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--accent); font-size: 13px; }
+.model-pricing-source-heading span { margin-left: auto; color: var(--muted); font-size: 11px; }
+.model-pricing-source-rates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 15px 0; }
+.model-pricing-source-rates > div { display: grid; gap: 6px; min-width: 0; }
+.model-pricing-source-rates dt { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.model-pricing-source-rates dd { color: var(--text); font-size: 17px; font-weight: 650; margin: 0; overflow-wrap: anywhere; }
+.model-pricing-source-cache { border-top: 1px solid var(--border); padding: 12px 0; color: var(--muted); font-size: 12px; }
+.model-pricing-source-cache summary { cursor: pointer; }
+.model-pricing-source-schedules { display: grid; gap: 10px; font-size: 12px; }
+.model-pricing-source-schedules > p { color: var(--muted); margin: 0 0 12px; }
+.model-pricing-source-period { background: var(--surface-soft); border-radius: 8px; padding: 12px; }
+.model-pricing-source-period > div:first-child { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; }
+.model-pricing-source-period span, .model-pricing-source-period small { color: var(--muted); overflow-wrap: anywhere; }
+.model-pricing-source-period .model-pricing-source-rates { margin-bottom: 0; }
+.model-pricing-source-period small { display: block; margin-top: 10px; }
+.model-pricing-source-preview > .model-pricing-source-help { margin-top: 12px; }
+@media (max-width: 600px) { .model-pricing-source { padding: 12px; } .model-pricing-source-preview { padding: 12px; } .model-pricing-source-rates { gap: 8px; } .model-pricing-source-rates dd { font-size: 14px; } }

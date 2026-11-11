@@ -71,6 +71,7 @@ func legacyMeteringPrice(model Model, at time.Time, provider bool) meteringPrice
 		}
 	}
 	snapshot := meteringPriceSnapshot{Modality: model.Modality, AudioPricePerSecond: model.Metadata[audioSecondPriceKey], SearchUnitPrice: model.Metadata[retrievalSearchUnitPriceKey], Currency: "USD", Source: "legacy_float_configuration", At: at, Rates: rates}
+	snapshot.ProviderReference = model.pricingReference
 	for _, period := range model.PricingPeriods {
 		if pricingPeriodMatches(period, at) {
 			snapshot.Period = period.Name
@@ -166,7 +167,11 @@ func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) mete
 		return shadowAudioPrice(result, usage)
 	}
 	result.Evidence = usage.RetrievalEvidence
-	if evidence := usage.RetrievalEvidence; evidence != nil {
+	evidence := usage.RetrievalEvidence
+	if price != nil {
+		evidence = retrievalPricingEvidence(price.Modality, usage)
+	}
+	if evidence != nil {
 		result.UsageSource = evidence.Source
 		if usage.MeteringInvalid && !validNativeRetrievalEvidence(evidence) {
 			result.Reason = "inconsistent_usage"
@@ -214,7 +219,7 @@ func shadowPrice(price *meteringPriceSnapshot, usage Usage, legacy float64) mete
 		return result
 	}
 	result.Units = units
-	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.RetrievalEvidence == nil {
+	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && evidence == nil {
 		result.Reason = "usage_presence_unknown"
 		return result
 	}

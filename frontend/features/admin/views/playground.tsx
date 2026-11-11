@@ -1,4 +1,6 @@
 import { providerBlockedAddressMessage } from "../resources/provider-network-errors";
+import { followsProviderPricing } from "../domain/model-pricing-source";
+import { modelPriceSummary } from "../domain/entities";
 import {
   ArrowDown,
   Check,
@@ -708,7 +710,7 @@ export function PlaygroundPanel({ api, data, canViewRoutes }: { api: ApiContext;
             </button>
             <span>
               {contextWindow ? `${formatPlaygroundInteger(contextWindow)} ${tx("上下文")}` : `${tx("上下文")} -`}
-              <em />{formatPlaygroundUSD(inputPrice)}/Mt {tx("输入")}<em />{formatPlaygroundUSD(outputPrice)}/Mt {tx("输出")}
+              <em />{selectedModel && followsProviderPricing(selectedModel) ? modelPriceSummary(selectedModel) : <>{formatPlaygroundUSD(inputPrice)}/Mt {tx("输入")}<em />{formatPlaygroundUSD(outputPrice)}/Mt {tx("输出")}</>}
               {canViewRoutes ? <><em />{countWithUnit(selectedModelRouteCount, "条启用路由", "active route", "件の有効ルート")}</> : null}
             </span>
           </div>

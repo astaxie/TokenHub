@@ -57,6 +57,8 @@ function formNumber(value?: number) {
 export function externalModelTemplateValues(model: ReferenceModelTemplate): Record<string, string> {
   return {
     name: model.name,
+    pricing_mode: "custom",
+    pricing_provider_model_id: "",
     category: model.category ?? "",
     family: model.family,
     modality: model.modality || "chat",

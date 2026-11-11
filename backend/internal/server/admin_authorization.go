@@ -563,7 +563,7 @@ func (s *Server) accessibleModelsForAdminUser(user AdminUser) []Model {
 			out = append(out, model)
 		}
 	}
-	return out
+	return publicPricedModels(s.store, out)
 }
 
 func (s *Server) activeRoutedModelNameSet() map[string]bool {

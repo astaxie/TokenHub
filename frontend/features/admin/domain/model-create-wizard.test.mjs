@@ -52,6 +52,8 @@ test("reference model templates expose only unpublished built-in catalog models"
 test("a reference template pre-fills the external model contract", () => {
   assert.deepEqual(externalModelTemplateValues(models[0]), {
     name: "qwen-max",
+    pricing_mode: "custom",
+    pricing_provider_model_id: "",
     category: "qwen",
     family: "qwen",
     modality: "chat",

@@ -67,3 +67,48 @@
 .retrieval-cost-fields input { width: 100%; min-width: 0; min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px; color: var(--text); background: var(--surface); }
 .retrieval-cost-actions { display: grid; gap: 8px; justify-items: start; }
 @media (max-width: 720px) { .retrieval-cost-row { grid-template-columns: minmax(0, 1fr); gap: 14px; } .retrieval-cost-actions { display: flex; flex-wrap: wrap; } }
+
+.provider-pricing-schedule-toggle { display: inline-flex; align-items: center; gap: 5px; justify-self: start; margin-top: 6px; }
+.provider-pricing-schedule-toggle > span { padding: 1px 6px; border-radius: 10px; background: var(--accent-weak); color: var(--accent); }
+.provider-pricing-schedule { padding: 16px; border-top: 1px solid var(--border); background: var(--surface-soft); }
+.provider-pricing-schedule-head,
+.provider-pricing-schedule-actions,
+.pricing-periods-toolbar,
+.pricing-period-card-head { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.provider-pricing-schedule-head { margin-bottom: 16px; }
+.provider-pricing-schedule-head > div { display: grid; gap: 5px; min-width: 0; }
+.provider-pricing-schedule-head strong { font-size: 16px; overflow-wrap: anywhere; }
+.provider-pricing-schedule-head span,
+.provider-pricing-schedule-actions > span { color: var(--muted); font-size: 11px; }
+.provider-pricing-schedule-actions { margin-top: 14px; }
+.provider-pricing-schedule-actions .button { display: inline-flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.pricing-periods-editor { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
+.pricing-periods-toolbar { align-items: start; }
+.pricing-periods-toolbar strong { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.pricing-periods-toolbar p,
+.pricing-periods-help { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.pricing-periods-toolbar > button { flex-shrink: 0; display: flex; align-items: center; gap: 5px; }
+.pricing-periods-empty { border: 1px dashed var(--border); padding: 18px; margin: 0; border-radius: 8px; color: var(--muted); font-size: 12px; }
+.pricing-period-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--surface); display: grid; gap: 14px; }
+.pricing-period-card-head strong { font-size: 12px; color: var(--accent); }
+.pricing-period-card-head button { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.pricing-period-schedule { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pricing-period-rates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pricing-period-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.pricing-period-card label { display: grid; gap: 7px; min-width: 0; font-size: 11px; color: var(--muted); }
+.pricing-period-card input { min-width: 0; width: 100%; min-height: 36px; border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; background: var(--surface); color: var(--text); font: inherit; }
+.pricing-period-card input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pricing-period-advanced summary { color: var(--muted); font-size: 11px; cursor: pointer; }
+.pricing-period-weekdays { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+.pricing-period-weekdays label { display: inline-flex; align-items: center; gap: 5px; }
+.pricing-period-weekdays input { width: 14px; min-height: 14px; accent-color: var(--accent); }
+@media (max-width: 720px) {
+  .provider-pricing-schedule { padding: 12px; }
+  .provider-pricing-schedule-actions { align-items: stretch; flex-direction: column; gap: 10px; }
+  .provider-pricing-schedule-actions .button { justify-content: center; }
+  .pricing-period-schedule { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pricing-period-rates,
+  .pricing-period-dates { grid-template-columns: minmax(0, 1fr); }
+  .pricing-period-card { padding: 12px; }
+  .pricing-periods-toolbar { gap: 10px; }
+}

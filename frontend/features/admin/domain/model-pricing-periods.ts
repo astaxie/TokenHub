@@ -41,6 +41,8 @@ const pricingPeriodPriceFields = [
 
 function validTimezone(value: unknown) {
   if (value == null || String(value).trim() === "") return true;
+  // Go resolves Local using the server timezone; preserve that meaning in API requests.
+  if (String(value).trim() === "Local") return true;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: String(value).trim() }).format(new Date(0));
     return true;

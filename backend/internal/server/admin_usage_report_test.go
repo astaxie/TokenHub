@@ -140,7 +140,8 @@ func TestUsageReportHourlyBucketsPreserveDSTCalls(t *testing.T) {
 		{name: "fall back", zone: "America/Chicago", now: "2026-11-02T05:30:00Z", calls: []string{"2026-11-01T06:30:00Z", "2026-11-01T07:30:00Z"}, wantLength: 25},
 		{name: "half hour fall back", zone: "Australia/Lord_Howe", now: "2026-04-05T13:15:00Z", calls: []string{"2026-04-04T14:45:00Z", "2026-04-04T15:15:00Z"}, wantLength: 25},
 		{name: "midnight spring forward", zone: "America/Santiago", now: "2026-09-07T02:30:00Z", calls: []string{"2026-09-06T04:30:00Z", "2026-09-06T05:30:00Z"}, wantLength: 23},
-		{name: "midnight fall back", zone: "America/Havana", now: "2026-11-02T04:30:00Z", calls: []string{"2026-11-01T04:30:00Z", "2026-11-01T05:30:00Z"}, wantLength: 25},
+		// Use a historical fold: tzdata 2026f removed Cuba's November 2026 fallback.
+		{name: "midnight fall back", zone: "America/Havana", now: "2025-11-03T04:30:00Z", calls: []string{"2025-11-02T04:30:00Z", "2025-11-02T05:30:00Z"}, wantLength: 25},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := NewMemoryStore()

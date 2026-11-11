@@ -27,9 +27,17 @@ test("pricing period parser rejects non-array JSON", () => {
   );
 });
 
+test("pricing period parser preserves the backend Local timezone", () => {
+  for (const timezone of ["Local", " Local "]) {
+    const periods = [{ timezone, start_time: "00:00", end_time: "08:00", effective_from: "2026-11-01T00:00:00+08:00", effective_until: "2026-12-01T00:00:00+08:00" }];
+    assert.deepEqual(parseModelPricingPeriods(JSON.stringify(periods)), periods);
+  }
+});
+
 test("pricing period parser rejects invalid period fields", () => {
   for (const periods of [
     [{ timezone: "Mars/Olympus", start_time: "00:00", end_time: "01:00" }],
+    [{ timezone: "local", start_time: "00:00", end_time: "01:00" }],
     [{ timezone: "UTC", start_time: "0:00", end_time: "01:00" }],
     [{ timezone: "UTC", start_time: "00:00" }],
     [{ effective_from: "tomorrow" }],

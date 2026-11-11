@@ -446,6 +446,8 @@ export function modelToForm(item: Model) {
     retrieval_pricing_confirmed: item.metadata?.retrieval_pricing_confirmed ?? "false",
     search_unit_price_usd: item.metadata?.search_unit_price_usd ?? "",
     ...stringifyForm(item),
+    pricing_mode: item.metadata?.pricing_mode || "custom",
+    pricing_provider_model_id: item.metadata?.pricing_provider_model_id || "",
     display_name: modelDisplayName(item.metadata, ""),
     cache_read_price_usd_per_1m: (item.cache_read_price_usd_per_1m || item.metadata?.cache_read_price_configured === "true")
       ? String(item.cache_read_price_usd_per_1m)

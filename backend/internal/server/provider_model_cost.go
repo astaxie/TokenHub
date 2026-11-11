@@ -72,9 +72,6 @@ func (s *GormStore) providerCostUSD(route RouteSelection, usage Usage) float64 {
 }
 
 func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, requestStartedAt time.Time) float64 {
-	if e := usage.RetrievalEvidence; e != nil && (e.Quantity == nil || e.Source == "invalid" || (e.Unit == "token" && usage.MeteringInvalid)) {
-		return 0
-	}
 	providerID := strings.TrimSpace(route.Provider.ID)
 	upstreamModel := strings.TrimSpace(route.ProviderModel)
 	if providerID == "" || upstreamModel == "" {
@@ -92,6 +89,9 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 	} else if err := s.db.Where("provider_id = ? AND upstream_model = ?", providerID, upstreamModel).First(&providerModel).Error; err != nil {
 		return 0
 	}
+	if e := retrievalPricingEvidence(providerModel.Modality, usage); e != nil && (e.Quantity == nil || e.Source == "invalid" || (e.Unit == "token" && usage.MeteringInvalid)) {
+		return 0
+	}
 	if providerModel.Modality == "audio" && invalidAudioDurationUsage(usage) {
 		return 0
 	}
@@ -102,7 +102,7 @@ func (s *GormStore) providerCostUSDAt(route RouteSelection, usage Usage, request
 	if cost, known := nativeRetrievalCost(providerModelCostModel(providerModel), usage); known {
 		return cost
 	}
-	if evidence := usage.RetrievalEvidence; evidence != nil && evidence.Unit == "search_unit" {
+	if evidence := retrievalPricingEvidence(providerModel.Modality, usage); evidence != nil && evidence.Unit == "search_unit" {
 		// Auxiliary token counters cannot price an unknown native-unit cost.
 		// The metering snapshot preserves why this legacy amount is unknown.
 		return 0

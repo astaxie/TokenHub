@@ -492,6 +492,11 @@ func (s *Server) newPlaygroundCallContext(user AdminUser, model string, startedA
 
 func (s *Server) preparePlaygroundRoutedCall(ctx context.Context, req ChatCompletionRequest, call CallContext) (RoutedCall, error) {
 	routed := RoutedCall{Call: call}
+	var err error
+	routed.Call.Model, err = resolvePlaygroundModelPricing(s.store, call.Model)
+	if err != nil {
+		return routed, err
+	}
 	routes, err := s.store.SelectRouteCandidates(req.Model)
 	if err != nil {
 		err = s.annotateRoutingPolicyForCandidateError(&routed.Call, err)
