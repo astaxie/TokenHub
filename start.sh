@@ -72,12 +72,20 @@ for var_entry in "${BACKEND_VAR_DEFAULTS[@]}"; do
   fi
 done
 
-# The variables below stay out of BACKEND_VAR_DEFAULTS because neither is a plain
+# The variables below stay out of BACKEND_VAR_DEFAULTS because none is a plain
 # default. TOKENHUB_DATABASE_URL must keep its empty value rather than gain one: if it
 # is not explicitly set in the shell, backend's godotenv loads it from backend/.env, so
 # PostgreSQL config there can take effect, and passing an empty value would override it.
 # If neither exists, backend falls back to its own default (SQLite).
 TOKENHUB_DATABASE_URL="${TOKENHUB_DATABASE_URL:-}"
+# The provider catalog pair also has to keep an explicitly empty value. The deployment
+# documentation offers an empty TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL as the air-gapped
+# setting that serves only the bundled catalog, and zero for
+# TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS as the switch that disables the daily
+# scheduler. The loop above substitutes on an empty value, so a single hyphen is used
+# here: only an unset variable takes the default.
+TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL="${TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL-https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json}"
+TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS="${TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS-86400}"
 # TOKENHUB_API_BASE_URL is derived: it falls back through NEXT_PUBLIC_API_BASE_URL to
 # the public base URL resolved above, so it has to be assigned after the loop.
 TOKENHUB_API_BASE_URL="${TOKENHUB_API_BASE_URL:-${NEXT_PUBLIC_API_BASE_URL:-$TOKENHUB_PUBLIC_BASE_URL}}"
@@ -195,6 +203,13 @@ log "Starting backend: $TOKENHUB_HTTP_ADDR"
   if [ -n "$TOKENHUB_DATABASE_URL" ]; then
     backend_env+=(TOKENHUB_DATABASE_URL="$TOKENHUB_DATABASE_URL")
   fi
+  # Both are always passed, including empty and zero: those values are the documented
+  # off switches, so dropping the variable here would silently restore the public
+  # upstream and the daily scheduler.
+  backend_env+=(
+    TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL="$TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL"
+    TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS="$TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS"
+  )
   exec env "${backend_env[@]}" "$BACKEND_BIN"
 ) &
 BACKEND_PID=$!

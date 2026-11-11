@@ -395,6 +395,8 @@ docker inspect --format 'memory={{.HostConfig.Memory}} memory_swap={{.HostConfig
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | 备份目录 |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | 托管部署中的标准模型目录文件 |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | 托管部署中的 Provider 模板与候选模型目录文件 |
+| `TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL` | `https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json` | 显式同步与每日后台刷新使用的公共目录；留空则只使用内置目录 |
+| `TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS` | `86400` | 定时公共目录同步的间隔秒数；`0` 表示禁用定时器 |
 | `TOKENHUB_PLUGIN_DIR` | `/app/plugins` | 持久化插件包目录，后端启动时扫描，并在插件生命周期操作后热加载；多实例部署必须协调所有副本使用相同插件版本 |
 | `TOKENHUB_PLUGIN_MARKETPLACE_URL` | 空 | HTTPS 插件市场索引 URL，供管理后台浏览插件列表；在线索引在完成验证前仅用于发现 |
 | `TOKENHUB_SEED_DEMO` | `false` | 是否写入演示数据 |
@@ -525,7 +527,7 @@ WAL 模式的文件型 SQLite 使用一个主连接处理写入、两个只读�
 
 更新当前配置的目录文件后，可以重启后端，也可以在「系统设置 → 基础设置」中点击「同步模型参考目录」。两种方式都会同步参考元数据、保留自定义对外模型，但不会发布任何模型。
 
-`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。`TOKENHUB_PLUGIN_DIR` 指向后端启动时扫描的持久化插件包目录。Docker Compose 部署中该目录由 `tokenhub-plugins` volume 承载，所以插件包状态会在镜像升级后保留。 容器入口脚本会校验 `TOKENHUB_PLUGIN_DIR` 为非根目录的绝对路径，并在降低 root 权限前创建目录、将其所有者设为运行时的 `node` 用户，首次使用新卷时也会执行。`TOKENHUB_PLUGIN_MARKETPLACE_URL` 可以指向一个 HTTPS JSON 索引，用于在管理后台浏览插件列表；在线索引在完成分离签名和吊销源验证前仅用于发现，离线镜像可作为安装来源。如需为启动加载和刷新回退使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。
+`data/model-catalog.yaml` 提供跟踪目录的参考元数据，它不是路由准入清单，也不会发布模型。`data/provider-catalog.json` 提供 Provider 模板，以及在 Provider 配置中可选择的上游模型。引入选中项只会创建持久化的 Provider 模型库存；对外模型及其统一对客价格需要在模型目录中单独创建，再到路由策略映射到已引入的 Provider 模型。`GET /v1/models` 只返回启用且至少存在一条启用路由的对外模型；配置 API Key 模型白名单时还会进一步过滤。`TOKENHUB_PLUGIN_DIR` 指向后端启动时扫描的持久化插件包目录。Docker Compose 部署中该目录由 `tokenhub-plugins` volume 承载，所以插件包状态会在镜像升级后保留。 容器入口脚本会校验 `TOKENHUB_PLUGIN_DIR` 为非根目录的绝对路径，并在降低 root 权限前创建目录、将其所有者设为运行时的 `node` 用户，首次使用新卷时也会执行。`TOKENHUB_PLUGIN_MARKETPLACE_URL` 可以指向一个 HTTPS JSON 索引，用于在管理后台浏览插件列表；在线索引在完成分离签名和吊销源验证前仅用于发现，离线镜像可作为安装来源。如需为启动加载和刷新回退使用自定义 Provider 目录，将 `TOKENHUB_PROVIDER_CATALOG_FILE` 指向具有相同 `providers` 结构的本地 JSON 文件。 管理后台的“同步供应商目录”操作与每日定时任务通过 `TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL` 刷新公共目录；拉取到的快照会存储在本地，并在 24 小时窗口内供目录读取复用，因此目录读取不要求上游可达。纯离线部署可把 `TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL` 置为空，仅使用内置目录。
 
 ### 连接 Kronk
 

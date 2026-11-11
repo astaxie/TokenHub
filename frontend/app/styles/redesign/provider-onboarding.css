@@ -44,3 +44,24 @@
   .provider-onboarding-card { min-height: 72px; }
   .provider-onboarding-connected { font-size: 10px; }
 }
+
+/* The sync button carries .secondary-button for its base look. These rules only add
+   the accent hover the category filters use and an explicit disabled state, so a
+   running sync reads as busy instead of merely dimmed. */
+.provider-onboarding-sync:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.provider-onboarding-sync:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.provider-onboarding-sync:disabled { cursor: progress; opacity: 0.75; }
+.provider-onboarding-sync svg { flex: 0 0 auto; }
+.provider-onboarding-sync-status.failed { color: var(--danger, #b42318); }
+
+/* The sync action sits with the title, not beside the close control: grouping it with
+   the dismiss button put a destructive-looking neighbour next to a dialog-ending one.
+   The title block takes the free space so the button trails the heading. */
+.provider-modal-header-title { flex: 1; min-width: 0; }
+.provider-modal-header-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.provider-modal-header-title-row h2 { margin: 0; }
+.provider-modal-header-title-row .provider-onboarding-sync-status { line-height: 1.4; }
+@media (max-width: 760px) {
+  .provider-modal-header-title-row { gap: 8px; }
+  .provider-modal-header-title-row .provider-onboarding-sync { min-height: 32px; font-size: 12px; }
+}

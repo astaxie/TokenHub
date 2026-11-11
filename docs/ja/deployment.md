@@ -395,6 +395,8 @@ docker inspect --format 'memory={{.HostConfig.Memory}} memory_swap={{.HostConfig
 | `TOKENHUB_SQLITE_BACKUP_DIR` | `/app/data/backups` | バックアップ出力ディレクトリ |
 | `TOKENHUB_MODEL_CATALOG_FILE` | `/opt/tokenhub/current/catalog/model-catalog.yaml` | 管理対象デプロイの標準モデルカタログファイル |
 | `TOKENHUB_PROVIDER_CATALOG_FILE` | `/opt/tokenhub/current/catalog/provider-catalog.json` | 管理対象デプロイの Provider テンプレートと候補モデルのカタログファイル |
+| `TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL` | `https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json` | 明示的同期と毎日のバックグラウンド更新で使う公開カタログ。空にすると同梱カタログのみを使用 |
+| `TOKENHUB_PROVIDER_CATALOG_SYNC_INTERVAL_SECONDS` | `86400` | 定期公開カタログ同期の間隔（秒）。`0` でスケジューラーを無効化 |
 | `TOKENHUB_PLUGIN_DIR` | `/app/plugins` | 起動時にスキャンされ、プラグインのライフサイクル操作後にホットリロードされる永続的なパッケージディレクトリ。複数インスタンス構成では全レプリカで同じプラグインバージョンを調整する必要があります |
 | `TOKENHUB_PLUGIN_MARKETPLACE_URL` | 空 | 管理画面がプラグイン一覧を閲覧するための HTTPS プラグイン市場インデックス URL（オンライン索引は検証まで探索専用） |
 | `TOKENHUB_SEED_DEMO` | `false` | デモデータを投入するか |
@@ -525,7 +527,7 @@ WAL の保守前には SQLite のバックアップ API または TokenHub の�
 
 設定済みカタログファイルを更新した後は、バックエンドを再起動するか、**システム設定 → 基本設定** で **モデル参照カタログを同期** を実行します。どちらも参照メタデータを同期し、カスタム外部モデルを保持しますが、モデルは公開しません。
 
-`data/model-catalog.yaml` は追跡対象カタログの参照メタデータを提供します。ルートの許可リストではなく、モデルを公開するものでもありません。`data/provider-catalog.json` は Provider テンプレートと、Provider 設定時に選択できる上流モデルを提供します。選択項目の取り込みでは永続化された Provider モデルインベントリだけが作成されます。外部モデルと統一された顧客向け価格は Model Directory で個別に作成し、Routing Policies で取り込み済みの Provider モデルへマッピングします。`GET /v1/models` は有効かつ 1 つ以上の有効なルートを持つ外部モデルだけを返し、API Key のモデル許可リストが設定されている場合はさらに絞り込みます。`TOKENHUB_PLUGIN_DIR` は、バックエンド起動時にスキャンされる永続的なプラグインパッケージディレクトリを指します。Docker Compose デプロイではこのディレクトリは `tokenhub-plugins` volume で保持されるため、パッケージ状態はイメージ更新後も残ります。 コンテナのエントリーポイントは `TOKENHUB_PLUGIN_DIR` がルートディレクトリ以外の絶対パスであることを検証し、root 権限を落とす前にディレクトリを作成して実行ユーザー `node` に所有権を設定します。新しいボリュームでも同様です。`TOKENHUB_PLUGIN_MARKETPLACE_URL` は、管理画面でプラグイン一覧を閲覧するための HTTPS JSON インデックスを指せます。オンライン索引は分離署名と失効フィードを検証するまで探索専用で、オフラインミラーはインストール元として利用できます。起動時の読み込みと更新時のフォールバックにカスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。
+`data/model-catalog.yaml` は追跡対象カタログの参照メタデータを提供します。ルートの許可リストではなく、モデルを公開するものでもありません。`data/provider-catalog.json` は Provider テンプレートと、Provider 設定時に選択できる上流モデルを提供します。選択項目の取り込みでは永続化された Provider モデルインベントリだけが作成されます。外部モデルと統一された顧客向け価格は Model Directory で個別に作成し、Routing Policies で取り込み済みの Provider モデルへマッピングします。`GET /v1/models` は有効かつ 1 つ以上の有効なルートを持つ外部モデルだけを返し、API Key のモデル許可リストが設定されている場合はさらに絞り込みます。`TOKENHUB_PLUGIN_DIR` は、バックエンド起動時にスキャンされる永続的なプラグインパッケージディレクトリを指します。Docker Compose デプロイではこのディレクトリは `tokenhub-plugins` volume で保持されるため、パッケージ状態はイメージ更新後も残ります。 コンテナのエントリーポイントは `TOKENHUB_PLUGIN_DIR` がルートディレクトリ以外の絶対パスであることを検証し、root 権限を落とす前にディレクトリを作成して実行ユーザー `node` に所有権を設定します。新しいボリュームでも同様です。`TOKENHUB_PLUGIN_MARKETPLACE_URL` は、管理画面でプラグイン一覧を閲覧するための HTTPS JSON インデックスを指せます。オンライン索引は分離署名と失効フィードを検証するまで探索専用で、オフラインミラーはインストール元として利用できます。起動時の読み込みと更新時のフォールバックにカスタム Provider カタログを使うには、同じ `providers` 構造を持つローカル JSON ファイルを `TOKENHUB_PROVIDER_CATALOG_FILE` に指定します。 管理画面の「プロバイダーカタログを同期」と毎日のスケジューラーは、`TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL` 経由で公開カタログを更新します。取得したスナップショットはローカルに保存され、24 時間のウィンドウ内でカタログ読み取りに再利用されるため、カタログの読み取りに上流の到達可能性は不要です。完全オフラインのデプロイでは `TOKENHUB_PROVIDER_CATALOG_UPSTREAM_URL` を空にし、同梱カタログのみを使用できます。
 
 ### Kronk への接続
 

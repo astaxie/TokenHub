@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
-import { notificationChannelDefaultType, notificationChannelTypes, type AdapterDescriptor, type AdminResource, type AdminUIContribution, type AdminUser, type AlertDelivery, type AlertEvent, type APIKey, type AppData, type ApprovalRequest, type AuditEvent, authExpiredEventName, type BillingConnector, type BillingRecord, type BillingSyncRun, type ConfirmState, type GatewayChainPlan, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, type PluginActionDescriptor, type PluginBackgroundJobDescriptor, type PluginBackgroundJobRunRecord, type PluginDescriptor, type PluginMarketplacePlugin, type Project, type Provider, type ProviderCatalogEntry, type ProviderModel, type ProviderMonitoringSnapshot, type ProviderResource, type ReconciliationRule, type ReconciliationRun, type ReportExportHistoryItem, type RequestLog, type ResourceAction, type ResourceConfig, type SettingsTabKey, type SQLiteBackup, type ToolbarAction, type UsageBreakdown, type UsageDaily, type UsagePoint, type ViewKey, viewRoutes } from "../core/types";
-import { emptyData, emptySummary, filterByModelCategory, filterRows } from "../domain/catalog";
+import { notificationChannelDefaultType, notificationChannelTypes, type AdminResource, type AdminUser, type APIKey, type AppData, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, type Project, type Provider, type ReportExportHistoryItem, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey, viewRoutes } from "../core/types";
+import { emptyData, filterByModelCategory, filterRows } from "../domain/catalog";
 import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
@@ -23,6 +23,8 @@ import { simRegistryFromPlugins } from "../domain/sim-registry";
 import { type AppLanguage, bulkDeleteConfirmMessage, deleteConfirmMessage, formatTranslationTemplate, importUsersDoneMessage, importUsersSkippedMessage, isIssuedAPIKey, readSavedLanguage, setActiveLanguage, tx } from "../i18n/runtime";
 import { createKeyWithCapture } from "../resources/generic-config";
 import { downloadReport } from "../resources/governance-config";
+import { fetchProviderCatalog } from "../resources/provider-catalog";
+import { applyViewPayload } from "../resources/view-payloads";
 import { adminFetch, adminMutate, importUsersFromCSVContent, isAuthExpiredError, loadRequestLabel, notificationChannelDefaults, permissionPartialLoadMessage, readAdminError, readLoadError, restoreDefaultModelCatalog } from "../resources/payloads";
 import { projectMemberConfig, projectMemberInitialValues } from "../resources/project-key-config";
 import { resourceConfigFor } from "../resources/settings-config";
@@ -401,6 +403,10 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     return () => window.removeEventListener("tokenhub-issued-key", onIssuedKey);
   }, []);
 
+  const reloadProviderCatalog = () => fetchProviderCatalog(api).then((catalog) => {
+    setData((current) => ({ ...current, providerCatalog: catalog }));
+  });
+
   async function load(view: ViewKey = activeView) {
     if (!adminToken || !currentUser) return;
     if (!canAccessView(currentUser, view)) return;
@@ -462,118 +468,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 
       const loaded: LoadedData = {};
       for (let index = 0; index < responses.length; index += 1) {
-        const name = requests[index].name;
-        const resp = responses[index];
-        if (!resp.ok) continue;
-        if (name === "overview") {
-          const overview = await resp.json();
-          loaded.summary = overview.summary ?? emptySummary();
-          loaded.projects = overview.projects ?? [];
-          loaded.providers = overview.providers ?? [];
-          loaded.providerResources = overview.provider_resources ?? [];
-          loaded.models = overview.models ?? [];
-          loaded.alerts = overview.alerts ?? [];
-        } else if (name === "providers") {
-          const payload = (await resp.json()) as { data: Provider[] };
-          loaded.providers = payload.data ?? [];
-        } else if (name === "provider-resources") {
-          const payload = (await resp.json()) as { data: ProviderResource[] };
-          loaded.providerResources = payload.data ?? [];
-        } else if (name === "provider-models") {
-          const payload = (await resp.json()) as { data: ProviderModel[] };
-          loaded.providerModels = payload.data ?? [];
-        } else if (name === "api-keys") {
-          const payload = (await resp.json()) as { data: APIKey[] };
-          loaded.keys = payload.data ?? [];
-        } else if (name === "routes") {
-          const payload = (await resp.json()) as { data: ModelRoute[] };
-          loaded.routes = payload.data ?? [];
-        } else if (name === "audit") {
-          const payload = (await resp.json()) as { data: RequestLog[] };
-          loaded.logs = payload.data ?? [];
-        } else if (name === "audit-events") {
-          const payload = (await resp.json()) as { data: AuditEvent[] };
-          loaded.auditEvents = payload.data ?? [];
-        } else if (name === "alerts") {
-          const payload = (await resp.json()) as { data: AlertEvent[] };
-          loaded.alerts = payload.data ?? [];
-        } else if (name === "alert-deliveries") {
-          const payload = (await resp.json()) as { data: AlertDelivery[] };
-          loaded.alertDeliveries = payload.data ?? [];
-        } else if (name === "approvals") {
-          const payload = (await resp.json()) as { data: ApprovalRequest[] };
-          loaded.approvals = payload.data ?? [];
-        } else if (name === "sqlite-backups") {
-          const payload = (await resp.json()) as { data: SQLiteBackup[] };
-          loaded.sqliteBackups = payload.data ?? [];
-        } else if (name === "daily-usage") {
-          loaded.dailyUsage = (await resp.json()) as UsageDaily;
-        } else if (name === "breakdown") {
-          loaded.breakdown = (await resp.json()) as UsageBreakdown;
-        } else if (name === "timeseries") {
-          const payload = (await resp.json()) as { data: UsagePoint[] };
-          loaded.timeseries = payload.data ?? [];
-        } else if (name === "users") {
-          const payload = (await resp.json()) as { data: AdminUser[] };
-          loaded.users = payload.data ?? [];
-        } else if (name === "provider-catalog") {
-          const payload = (await resp.json()) as { data: ProviderCatalogEntry[] };
-          loaded.providerCatalog = payload.data ?? [];
-        } else if (name === "provider-adapters") {
-          const payload = (await resp.json()) as { data: AdapterDescriptor[] };
-          loaded.providerAdapters = payload.data ?? [];
-        } else if (name === "provider-monitoring") {
-          const payload = (await resp.json()) as { data: ProviderMonitoringSnapshot[] };
-          loaded.providerMonitoring = payload.data ?? [];
-        } else if (name === "plugins") {
-          const payload = (await resp.json()) as { data: PluginDescriptor[] };
-          loaded.plugins = payload.data ?? [];
-        } else if (name === "plugin-marketplace") {
-          const payload = (await resp.json()) as {
-            data?: {
-              source_url?: string;
-              available?: boolean;
-              error?: string;
-              plugins?: PluginMarketplacePlugin[];
-            };
-          };
-          loaded.pluginMarketplace = payload.data?.plugins ?? [];
-          loaded.pluginMarketplaceSourceURL = payload.data?.source_url;
-          loaded.pluginMarketplaceAvailable = payload.data?.available;
-          loaded.pluginMarketplaceError = payload.data?.error;
-        } else if (name === "plugin-chain") {
-          const payload = (await resp.json()) as { data: GatewayChainPlan };
-          loaded.pluginChain = payload.data ? { ...payload.data, hooks: payload.data.hooks ?? [] } : { hooks: [] };
-        } else if (name === "plugin-ui") {
-          const payload = (await resp.json()) as { data: AdminUIContribution[] };
-          loaded.pluginUI = payload.data ?? [];
-        } else if (name === "plugin-actions") {
-          const payload = (await resp.json()) as { data: PluginActionDescriptor[] };
-          loaded.pluginActions = payload.data ?? [];
-        } else if (name === "plugin-background-jobs") {
-          const payload = (await resp.json()) as { data: PluginBackgroundJobDescriptor[]; runs?: PluginBackgroundJobRunRecord[] };
-          loaded.pluginBackgroundJobs = payload.data ?? [];
-          loaded.pluginBackgroundRuns = payload.runs ?? [];
-				} else if (name === "billing-connectors") {
-					const payload = (await resp.json()) as { data: BillingConnector[] };
-					loaded.billingConnectors = payload.data ?? [];
-				} else if (name === "billing-records") {
-					const payload = (await resp.json()) as { data: BillingRecord[] };
-					loaded.billingRecords = payload.data ?? [];
-				} else if (name === "billing-sync-runs") {
-					const payload = (await resp.json()) as { data: BillingSyncRun[] };
-					loaded.billingSyncRuns = payload.data ?? [];
-				} else if (name === "reconciliation-rules") {
-					const payload = (await resp.json()) as { data: ReconciliationRule[] };
-					loaded.reconciliationRules = payload.data ?? [];
-				} else if (name === "reconciliation-runs") {
-					const payload = (await resp.json()) as { data: ReconciliationRun[] };
-					loaded.reconciliationRuns = payload.data ?? [];
-        } else if (name.startsWith("resource:")) {
-          const kind = name.slice("resource:".length);
-          const payload = (await resp.json()) as { data: AdminResource[] };
-          loaded.resources = { ...(loaded.resources ?? {}), [kind]: payload.data ?? [] };
-        }
+        await applyViewPayload(loaded, requests[index].name, responses[index]);
       }
 
       setData((current) => mergeLoadedData(current, loaded));
@@ -1227,6 +1122,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             setProviderCreateOpen(false);
             await load();
           }}
+          onCatalogSynced={reloadProviderCatalog}
           setLoading={setLoading}
           setError={setError}
           setNotice={setNotice}

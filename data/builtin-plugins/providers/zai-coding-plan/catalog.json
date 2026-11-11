@@ -24,13 +24,13 @@
       },
       "metadata": {
         "upstream_source": "https://docs.z.ai/guides/vlm/glm-5.3-flash",
-        "verified_at": "2026-10-10",
+        "verified_at": "2026-11-10",
         "availability": "active",
         "reasoning_effort_options": "low,high,max",
         "thinking_can_disable": "false",
         "pricing_note": "Subscription points, not global pay-as-you-go USD rates.",
         "pricing_status": "unverified",
-        "catalog_reviewed_at": "2026-10-10",
+        "catalog_reviewed_at": "2026-11-10",
         "lifecycle_status": "active",
         "reasoning_effort_default": "max",
         "reasoning_supported": "true",
@@ -64,7 +64,13 @@
             "max"
           ]
         }
-      ]
+      ],
+      "structured_output": true,
+      "tool_choice": true,
+      "parallel_tool_calls": true,
+      "top_p": true,
+      "stop": true,
+      "seed": true
     },
     {
       "id": "glm-4.7",
@@ -345,13 +351,13 @@
       },
       "metadata": {
         "upstream_source": "https://docs.z.ai/guides/llm/glm-5.3",
-        "verified_at": "2026-10-10",
+        "verified_at": "2026-11-10",
         "availability": "active",
         "reasoning_effort_options": "low,high,max",
         "thinking_can_disable": "false",
         "pricing_note": "Subscription points, not global pay-as-you-go USD rates.",
         "pricing_status": "unverified",
-        "catalog_reviewed_at": "2026-10-10",
+        "catalog_reviewed_at": "2026-11-10",
         "lifecycle_status": "active",
         "reasoning_effort_default": "max",
         "reasoning_supported": "true",
@@ -386,7 +392,12 @@
           ]
         }
       ],
-      "structured_output": true
+      "structured_output": true,
+      "tool_choice": true,
+      "parallel_tool_calls": true,
+      "top_p": true,
+      "stop": true,
+      "seed": true
     }
   ]
 }
