@@ -13,6 +13,7 @@ import { adminFetch, readAdminError } from "../resources/payloads";
 import { StatusPill } from "../shared/ui";
 
 type CostDraft = {
+  dirty: boolean;
   searchUnit: string;
   input: string;
   cache: string;
@@ -25,6 +26,7 @@ type CostDraft = {
 
 function costDraft(model: ProviderModel): CostDraft {
   return {
+    dirty: false,
     searchUnit: model.metadata?.search_unit_price_usd ?? "",
     input: String(model.input_price_usd_per_1m ?? 0),
     cache: String(model.cache_read_price_usd_per_1m ?? 0),
@@ -54,11 +56,11 @@ export function ProviderModelInventory({
   const scheduleModel = models.find(model => model.id === scheduleID);
 
   useEffect(() => {
-    setDrafts(Object.fromEntries(models.map((model) => [model.id, costDraft(model)])));
+    setDrafts(current => Object.fromEntries(models.map(model => [model.id, current[model.id]?.dirty ? current[model.id] : costDraft(model)])));
   }, [models]);
 
-  function update<K extends keyof CostDraft>(modelID: string, key: K, value: CostDraft[K]) {
-    setDrafts((current) => ({ ...current, [modelID]: { ...current[modelID], [key]: value } }));
+  function update<K extends Exclude<keyof CostDraft, "dirty">>(modelID: string, key: K, value: CostDraft[K]) {
+    setDrafts((current) => ({ ...current, [modelID]: { ...current[modelID], [key]: value, dirty: true } }));
   }
 
   async function save(model: ProviderModel) {
@@ -107,6 +109,8 @@ export function ProviderModelInventory({
         }),
       });
       if (!resp.ok) throw new Error(await readAdminError(resp, tx("保存渠道成本价")));
+      // A later edit creates a different draft and must survive this save's refresh.
+      setDrafts(current => current[model.id] === draft ? { ...current, [model.id]: { ...draft, dirty: false } } : current);
       setNotice(`${model.upstream_model} · ${tx("渠道成本价已保存")}`);
       await onSaved?.();
     } catch (err) {

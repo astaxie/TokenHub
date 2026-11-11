@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderModel } from "../core/types";
@@ -24,6 +24,65 @@ async function setup(response = () => new Response("{}", { status: 200 }), store
 }
 
 describe("Provider time-based pricing", () => {
+  it("refreshes pristine rows while retaining edited schedules and their input nodes", async () => {
+    const api = { baseURL: "http://localhost:8080", adminToken: "synthetic" };
+    const other = { ...model, id: "other-model", upstream_model: "other-chat" };
+    const view = render(<ProviderModelInventory api={api} models={[model, other]} />);
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole("button", { name: /分时价格/ })[0]);
+    const name = screen.getByLabelText("时段名称");
+    await user.clear(name);
+    await user.type(name, "Unsaved schedule");
+    const refreshed = { ...other, input_price_usd_per_1m: 9, pricing_periods: [{ ...other.pricing_periods![0], name: "Server update" }] };
+    view.rerender(<ProviderModelInventory api={api} models={[{ ...model }, refreshed]} />);
+    expect(screen.getByLabelText("时段名称")).toBe(name);
+    expect(name).toHaveValue("Unsaved schedule");
+    const otherRow = screen.getByRole("row", { name: /other-chat/ });
+    expect(within(otherRow).getAllByRole("spinbutton")[0]).toHaveValue(9);
+    await user.click(within(otherRow).getByRole("button", { name: /分时价格/ }));
+    expect(screen.getByLabelText("时段名称")).toHaveValue("Server update");
+  });
+
+  it("preserves edits made during a save and marks only the submitted version clean", async () => {
+    const api = { baseURL: "http://localhost:8080", adminToken: "synthetic" };
+    let stored = model;
+    let finishSave = () => {};
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body).not.toHaveProperty("dirty");
+      if (fetchMock.mock.calls.length === 1) await new Promise<void>(resolve => { finishSave = resolve; });
+      stored = { ...stored, ...body };
+      return new Response("{}", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onSaved = vi.fn(() => { view.rerender(<ProviderModelInventory api={api} models={[stored]} onSaved={onSaved} />); });
+    const view = render(<ProviderModelInventory api={api} models={[stored]} onSaved={onSaved} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /分时价格/ }));
+    const name = screen.getByLabelText("时段名称");
+    await user.clear(name);
+    await user.type(name, "Submitted schedule");
+    const input = within(screen.getByRole("table")).getAllByRole("spinbutton")[0];
+    await user.clear(input);
+    await user.type(input, "3");
+    await user.click(screen.getByRole("button", { name: "保存成本与时段" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await user.clear(input);
+    await user.type(input, "5");
+    await act(async () => { finishSave(); });
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(stored.input_price_usd_per_1m).toBe(3);
+    expect(input).toHaveValue(5);
+    expect(screen.getByLabelText("时段名称")).toBe(name);
+    expect(name).toHaveValue("Submitted schedule");
+    await user.click(screen.getByRole("button", { name: "保存成本与时段" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2));
+    expect(stored.input_price_usd_per_1m).toBe(5);
+    expect(stored.pricing_periods![0].name).toBe("Submitted schedule");
+    view.rerender(<ProviderModelInventory api={api} models={[{ ...stored, input_price_usd_per_1m: 7 }]} onSaved={onSaved} />);
+    expect(input).toHaveValue(7);
+  });
+
   it("round-trips supported padded schedule fields without changing price overrides", () => {
     const period = model.pricing_periods![0];
     const padded = { ...period, timezone: " Asia/Shanghai ", start_time: " 23:00 ", end_time: "\t08:00\n", effective_from: ` ${period.effective_from} `, effective_until: `\t${period.effective_until}\n` };
