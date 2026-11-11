@@ -676,7 +676,6 @@ func TestResponsesImageStoreDropsMissingResponseWhenReplayExceedsLimit(t *testin
 		// close. Keep the stored turn under the limit and the recovered
 		// transcript over it.
 		if firstSize < limit-80 && nextSize > limit {
-			image = candidate
 			foundSize = true
 			break
 		}
