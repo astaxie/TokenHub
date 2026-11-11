@@ -1125,6 +1125,9 @@ type ResponsesRequest struct {
 	// imageStoreBoundary is the confirmed input-item hash list saved after a
 	// successful image continuation. It is not part of the Responses payload.
 	imageStoreBoundary string
+	// imageContinuation is shared by copies of this request. It is nil when
+	// this turn is not eligible to record or reuse a stored response.
+	imageContinuation *responsesImageContinuation
 }
 
 type ResponsesReasoning struct {
@@ -1300,19 +1303,20 @@ type RoutedCall struct {
 
 type CallContext struct {
 	// Cache keys bind retrieval results to their input, caller and route contracts.
-	RerankCacheKey          string
-	EmbeddingCacheKey       string
-	JevResponseBound        bool
-	jevResponseBinding      *pendingJevResponseBinding
-	RoutingStrategyOverride string
-	RouteProtocol           string
-	RequestID               string
-	Project                 Project
-	Key                     APIKey
-	Model                   Model
-	RoutingPolicyID         string
-	RoutingPolicyScope      string
-	RoutingPolicyPriority   int
+	RerankCacheKey             string
+	EmbeddingCacheKey          string
+	JevResponseBound           bool
+	jevResponseBinding         *pendingJevResponseBinding
+	responsesImageStoreBinding *responsesImageStoreBinding
+	RoutingStrategyOverride    string
+	RouteProtocol              string
+	RequestID                  string
+	Project                    Project
+	Key                        APIKey
+	Model                      Model
+	RoutingPolicyID            string
+	RoutingPolicyScope         string
+	RoutingPolicyPriority      int
 	// StartedAt is the database clock reading taken when the call was admitted:
 	// StartCall derives the quota buckets and the lease expiry from that reading
 	// so every replica agrees on them, and reports it here for callers that want

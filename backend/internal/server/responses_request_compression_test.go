@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -233,4 +234,126 @@ func TestSubscriptionPostRetries415WithoutReadingBody(t *testing.T) {
 	if elapsed > 2*time.Second {
 		t.Fatalf("415 body was read for %s", elapsed)
 	}
+}
+
+func TestCodexResponsesRetries415WithoutReadingBody(t *testing.T) {
+	body := &readCountingBody{closeAwareBody: closeAwareBody{closed: make(chan struct{})}}
+	var calls atomicInt
+	adapter := codexCompressionAdapter(&http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		call := calls.add()
+		if request.Header.Get("Content-Encoding") == "zstd" {
+			if call != 1 {
+				t.Errorf("compressed request was repeated")
+			}
+			return &http.Response{StatusCode: http.StatusUnsupportedMediaType, Body: body, Header: make(http.Header), Request: request}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: request}, nil
+	})})
+	started := time.Now()
+	response, err := adapter.OpenResponses(context.Background(), codexCompressionProvider(), "gpt-test", codexCompressionRequest(t), nil)
+	elapsed := time.Since(started)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if calls.get() != 2 || body.reads.get() != 0 {
+		t.Fatalf("calls=%d reads=%d", calls.get(), body.reads.get())
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("415 body blocked for %s", elapsed)
+	}
+}
+
+func TestCodexResponsesDoesNotWaitOnSilentCompressionError(t *testing.T) {
+	body := &closeAwareBody{closed: make(chan struct{})}
+	var calls atomicInt
+	adapter := codexCompressionAdapter(&http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		calls.add()
+		return &http.Response{StatusCode: http.StatusBadRequest, Body: body, Header: make(http.Header), Request: request}, nil
+	})})
+	adapter.StreamIdleTimeout = 20 * time.Millisecond
+	started := time.Now()
+	_, err := adapter.OpenResponses(context.Background(), codexCompressionProvider(), "gpt-test", codexCompressionRequest(t), nil)
+	elapsed := time.Since(started)
+	if err == nil || AsHTTPError(err).Code != "codex_stream_idle_timeout" {
+		t.Fatalf("silent 400 error = %v", err)
+	}
+	if calls.get() != 1 {
+		t.Fatalf("upstream calls = %d", calls.get())
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("silent error body blocked for %s", elapsed)
+	}
+}
+
+func TestCodexResponsesRetriesEncodingRejectionAfterBoundedRead(t *testing.T) {
+	var calls atomicInt
+	adapter := codexCompressionAdapter(&http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		if calls.add() == 1 {
+			return &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"unsupported content-encoding"}}`)),
+				Request:    request,
+			}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: request}, nil
+	})})
+	response, err := adapter.OpenResponses(context.Background(), codexCompressionProvider(), "gpt-test", codexCompressionRequest(t), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if calls.get() != 2 {
+		t.Fatalf("upstream calls = %d", calls.get())
+	}
+}
+
+type readCountingBody struct {
+	closeAwareBody
+	reads atomicInt
+}
+
+func (b *readCountingBody) Read(p []byte) (int, error) {
+	b.reads.add()
+	return b.closeAwareBody.Read(p)
+}
+
+type atomicInt struct {
+	n atomic.Int32
+}
+
+func (c *atomicInt) add() int {
+	return int(c.n.Add(1))
+}
+
+func (c *atomicInt) get() int {
+	return int(c.n.Load())
+}
+
+func codexCompressionAdapter(client *http.Client) CodexSubscriptionAdapter {
+	return CodexSubscriptionAdapter{
+		Client:            client,
+		StreamIdleTimeout: 20 * time.Millisecond,
+		RefreshCredentials: func(context.Context, string, bool) (ProviderResourceCredentials, error) {
+			return ProviderResourceCredentials{AccessToken: "access", AccountID: "account"}, nil
+		},
+	}
+}
+
+func codexCompressionProvider() Provider {
+	return Provider{
+		Type:    ProviderOpenAICodex,
+		BaseURL: "http://localhost/backend-api/codex",
+		Options: map[string]string{"resource_id": "rsrc_compress", responsesRequestCompressionOption: "on"},
+	}
+}
+
+func codexCompressionRequest(t *testing.T) ResponsesRequest {
+	t.Helper()
+	var request ResponsesRequest
+	if err := json.Unmarshal([]byte(`{"model":"gpt-test","input":"`+strings.Repeat("screenshot ", 4000)+`"}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	return request
 }

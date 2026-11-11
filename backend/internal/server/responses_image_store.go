@@ -54,6 +54,7 @@ func responsesImageStoreMigration() dbschema.Migration {
 type responsesImageStore interface {
 	LoadResponsesImageStore(context.Context, string) (responsesImageStoreBinding, bool, error)
 	SaveResponsesImageStore(context.Context, responsesImageStoreBinding) error
+	DeleteResponsesImageStore(context.Context, string) error
 }
 
 func (s *GormStore) LoadResponsesImageStore(ctx context.Context, key string) (responsesImageStoreBinding, bool, error) {
@@ -67,15 +68,26 @@ func (s *GormStore) LoadResponsesImageStore(ctx context.Context, key string) (re
 
 func (s *GormStore) SaveResponsesImageStore(ctx context.Context, binding responsesImageStoreBinding) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Bound each cleanup batch; expiration never requires an unbounded scan.
-		if err := tx.Exec("DELETE FROM responses_image_store_bindings WHERE key_hash IN (SELECT key_hash FROM responses_image_store_bindings WHERE expires_at <= ? LIMIT 100)", time.Now().Unix()).Error; err != nil {
-			return err
-		}
-		return tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "key_hash"}},
-			DoUpdates: clause.AssignmentColumns([]string{"route_id", "provider_id", "provider_model", "resource_id", "upstream_id", "input_boundary", "expires_at"}),
-		}).Create(&binding).Error
+		return saveResponsesImageStoreBinding(tx, binding)
 	})
+}
+
+func (s *GormStore) DeleteResponsesImageStore(ctx context.Context, key string) error {
+	if strings.TrimSpace(key) == "" {
+		return nil
+	}
+	return s.db.WithContext(ctx).Where("key_hash = ?", key).Delete(&responsesImageStoreBinding{}).Error
+}
+
+func saveResponsesImageStoreBinding(tx *gorm.DB, binding responsesImageStoreBinding) error {
+	// Bound each cleanup batch; expiration never requires an unbounded scan.
+	if err := tx.Exec("DELETE FROM responses_image_store_bindings WHERE key_hash IN (SELECT key_hash FROM responses_image_store_bindings WHERE expires_at <= ? LIMIT 100)", time.Now().Unix()).Error; err != nil {
+		return err
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key_hash"}},
+		DoUpdates: clause.AssignmentColumns([]string{"route_id", "provider_id", "provider_model", "resource_id", "upstream_id", "input_boundary", "expires_at"}),
+	}).Create(&binding).Error
 }
 
 // responsesDecodeLimit admits a Responses replay that is larger than the body
@@ -139,10 +151,14 @@ func (s *Server) prepareResponsesImageStore(ctx context.Context, routed *RoutedC
 			boundary = responsesImageStoreExtendedBoundary(binding.InputBoundary, suffix)
 		}
 		if matched && boundary != "" && pinResponsesImageStoreRoute(routed, binding) {
+			original := cloneResponsesRequest(*req)
 			forceResponsesStore(req)
 			setResponsesPreviousResponseID(req, binding.UpstreamID)
 			assignResponsesInput(req, suffix)
 			req.imageStoreBoundary = boundary
+			req.imageContinuation = &responsesImageContinuation{
+				key: key, boundary: boundary, rewritten: true, original: original,
+			}
 			return nil
 		}
 	}
@@ -153,7 +169,9 @@ func (s *Server) prepareResponsesImageStore(ctx context.Context, routed *RoutedC
 		return nil
 	}
 	forceResponsesStore(req)
-	req.imageStoreBoundary = responsesImageStoreBoundary(req.Input)
+	boundary := responsesImageStoreBoundary(req.Input)
+	req.imageStoreBoundary = boundary
+	req.imageContinuation = &responsesImageContinuation{key: key, boundary: boundary}
 	return nil
 }
 
@@ -190,35 +208,49 @@ func routesForwardFullResponsesReplay(routes []RouteSelection) bool {
 }
 
 func (s *Server) rememberResponsesImageStore(ctx context.Context, call CallContext, route RouteSelection, headers http.Header, req ResponsesRequest, response any) error {
-	if strings.TrimSpace(req.imageStoreBoundary) == "" || req.Store == nil || !*req.Store || !routeAllowsResponsesImageStore(route) {
-		return nil
-	}
-	upstreamID := strings.TrimSpace(jevResponseID(response))
-	if upstreamID == "" {
-		return nil
-	}
-	key, ok := s.responsesImageStoreKey(call, req, headers)
-	if !ok {
-		return nil
+	pending, err := s.pendingResponsesImageStore(call, route, headers, req, response)
+	if err != nil || pending == nil {
+		return err
 	}
 	store, ok := s.store.(responsesImageStore)
 	if !ok {
 		return nil
 	}
-	binding := responsesImageStoreBinding{
+	if err := store.SaveResponsesImageStore(ctx, *pending); err != nil {
+		return NewHTTPError(http.StatusServiceUnavailable, "responses_image_store_unavailable", "Responses image continuation could not be saved")
+	}
+	return nil
+}
+
+// pendingResponsesImageStore captures a binding without publishing it. Background
+// jobs commit that binding in the same transaction as an approved completion.
+func (s *Server) pendingResponsesImageStore(call CallContext, route RouteSelection, headers http.Header, req ResponsesRequest, response any) (*responsesImageStoreBinding, error) {
+	captureResponsesImageOutput(&req, response)
+	boundary := responsesImageBoundaryForSave(req)
+	if boundary == "" || req.Store == nil || !*req.Store || !routeAllowsResponsesImageStore(route) {
+		return nil, nil
+	}
+	upstreamID := strings.TrimSpace(jevResponseID(response))
+	if upstreamID == "" {
+		return nil, nil
+	}
+	key, ok := s.responsesImageStoreKey(call, req, headers)
+	if !ok {
+		return nil, nil
+	}
+	if _, ok := s.store.(responsesImageStore); !ok {
+		return nil, NewHTTPError(http.StatusServiceUnavailable, "responses_image_store_unavailable", "Responses image continuation could not be saved")
+	}
+	return &responsesImageStoreBinding{
 		KeyHash:       key,
 		RouteID:       route.Route.ID,
 		ProviderID:    route.Provider.ID,
 		ProviderModel: route.ProviderModel,
 		ResourceID:    routeResourceID(route),
 		UpstreamID:    upstreamID,
-		InputBoundary: req.imageStoreBoundary,
+		InputBoundary: boundary,
 		ExpiresAt:     time.Now().Add(responsesImageStoreTTL).Unix(),
-	}
-	if err := store.SaveResponsesImageStore(ctx, binding); err != nil {
-		return NewHTTPError(http.StatusServiceUnavailable, "responses_image_store_unavailable", "Responses image continuation could not be saved")
-	}
-	return nil
+	}, nil
 }
 
 func (s *Server) responsesImageStoreKey(call CallContext, req ResponsesRequest, headers http.Header) (string, bool) {
@@ -368,40 +400,43 @@ func responsesRawFieldPresent(request ResponsesRequest, key string) bool {
 }
 
 // responsesImageStoreNewItems returns the items that were not already accepted
-// into the stored response. An echo is skipped only when it is not the next
-// stored item. A stored assistant message still has to match, or a later turn
-// falls back to the full replay. A mismatch keeps the caller on a full replay.
+// into the stored response. Input items must match in order. Assistant and
+// tool-call echoes are removed only when they match the stored output; a
+// different answer falls back to the full replay. Omitting those echoes is
+// allowed because the stored response already contains them.
 func responsesImageStoreNewItems(input any, boundary string) ([]any, bool) {
 	items, ok := input.([]any)
 	if !ok || len(items) == 0 {
 		return nil, false
 	}
-	var expected []string
-	if json.Unmarshal([]byte(strings.TrimSpace(boundary)), &expected) != nil || len(expected) == 0 {
+	decoded, ok := decodeResponsesImageBoundary(boundary)
+	if !ok || len(decoded.Turns) == 0 {
 		return nil, false
 	}
 	index := 0
-	for _, hash := range expected {
-		matched := false
-		for index < len(items) {
-			if responsesInputItemHash(items[index]) == hash {
-				matched = true
-				index++
-				break
-			}
-			if !responsesImageStoreReplayEcho(items[index]) {
+	for _, turn := range decoded.Turns {
+		if len(turn.Input) == 0 {
+			return nil, false
+		}
+		for _, hash := range turn.Input {
+			if index >= len(items) || responsesInputItemHash(items[index]) != hash {
 				return nil, false
 			}
 			index++
 		}
-		if !matched {
-			return nil, false
+		if index < len(items) && responsesImageStoreReplayEcho(items[index]) {
+			for _, want := range turn.Output {
+				if index >= len(items) || !responsesImageStoreReplayEcho(items[index]) || responsesEchoIdentity(items[index]) != want {
+					return nil, false
+				}
+				index++
+			}
+			if index < len(items) && responsesImageStoreReplayEcho(items[index]) {
+				return nil, false
+			}
 		}
 	}
-	for index < len(items) && responsesImageStoreReplayEcho(items[index]) {
-		index++
-	}
-	if index >= len(items) {
+	if index >= len(items) || responsesImageStoreReplayEcho(items[index]) {
 		return nil, false
 	}
 	return append([]any{}, items[index:]...), true
@@ -422,14 +457,15 @@ func responsesImageStoreBoundary(input any) string {
 }
 
 func emptyResponsesImageStoreBoundary() string {
-	return "[]"
+	return `{"turns":[]}`
 }
 
 func responsesImageStoreExtendedBoundary(existing string, suffix []any) string {
-	var hashes []string
-	if err := json.Unmarshal([]byte(strings.TrimSpace(existing)), &hashes); err != nil {
+	decoded, ok := decodeResponsesImageBoundary(existing)
+	if !ok {
 		return ""
 	}
+	hashes := make([]string, 0, len(suffix))
 	for _, item := range suffix {
 		hash := responsesInputItemHash(item)
 		if hash == "" {
@@ -440,11 +476,8 @@ func responsesImageStoreExtendedBoundary(existing string, suffix []any) string {
 	if len(hashes) == 0 {
 		return ""
 	}
-	encoded, err := json.Marshal(hashes)
-	if err != nil {
-		return ""
-	}
-	return string(encoded)
+	decoded.Turns = append(decoded.Turns, responsesImageTurn{Input: hashes, Output: []string{}})
+	return encodeResponsesImageBoundary(decoded)
 }
 
 func responsesInputItemHash(item any) string {
@@ -504,4 +537,300 @@ func inlineImageDataURL(value string) bool {
 		return false
 	}
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "data:image/")
+}
+
+// responsesImageContinuation is shared by copies of one request. Background
+// completion and a missing-response retry both observe the same pointer.
+type responsesImageContinuation struct {
+	key          string
+	boundary     string
+	output       []string
+	outputOK     bool
+	outputFailed bool
+	rewritten    bool
+	tried        bool
+	original     ResponsesRequest
+}
+
+type responsesImageTurn struct {
+	Input  []string `json:"input"`
+	Output []string `json:"output"`
+}
+
+type responsesImageBoundary struct {
+	Turns []responsesImageTurn `json:"turns"`
+}
+
+func decodeResponsesImageBoundary(raw string) (responsesImageBoundary, bool) {
+	var decoded responsesImageBoundary
+	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &decoded) != nil || decoded.Turns == nil {
+		return responsesImageBoundary{}, false
+	}
+	return decoded, true
+}
+
+func encodeResponsesImageBoundary(boundary responsesImageBoundary) string {
+	if len(boundary.Turns) == 0 {
+		return ""
+	}
+	encoded, err := json.Marshal(boundary)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func responsesImageStoreApplyOutput(boundary string, output []string) string {
+	decoded, ok := decodeResponsesImageBoundary(boundary)
+	if !ok || len(decoded.Turns) == 0 {
+		return ""
+	}
+	if output == nil {
+		output = []string{}
+	}
+	decoded.Turns[len(decoded.Turns)-1].Output = output
+	return encodeResponsesImageBoundary(decoded)
+}
+
+func responsesImageStoreWithOutput(boundary string, response any) string {
+	identities, ok := responsesOutputIdentities(response)
+	if !ok {
+		return ""
+	}
+	return responsesImageStoreApplyOutput(boundary, identities)
+}
+
+func responsesImageBoundaryForSave(req ResponsesRequest) string {
+	state := req.imageContinuation
+	if state == nil || state.outputFailed || !state.outputOK {
+		return ""
+	}
+	boundary := state.boundary
+	if boundary == "" {
+		boundary = req.imageStoreBoundary
+	}
+	return responsesImageStoreApplyOutput(boundary, state.output)
+}
+
+func captureResponsesImageOutput(req *ResponsesRequest, response any) {
+	if req == nil || req.imageContinuation == nil || req.imageContinuation.outputOK || req.imageContinuation.outputFailed {
+		return
+	}
+	identities, ok := responsesOutputIdentities(response)
+	if !ok {
+		req.imageContinuation.outputFailed = true
+		req.imageContinuation.boundary = ""
+		return
+	}
+	req.imageContinuation.output = identities
+	req.imageContinuation.outputOK = true
+}
+
+func responsesOutputIdentities(response any) ([]string, bool) {
+	data, err := json.Marshal(response)
+	if err != nil || len(data) == 0 {
+		return nil, false
+	}
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal(data, &envelope) != nil {
+		return nil, false
+	}
+	raw, ok := envelope["output"]
+	if !ok || strings.TrimSpace(string(raw)) == "" || strings.TrimSpace(string(raw)) == "null" {
+		return nil, false
+	}
+	var items []map[string]any
+	if json.Unmarshal(raw, &items) != nil {
+		return nil, false
+	}
+	identities := make([]string, 0, len(items))
+	for _, item := range items {
+		if !responsesImageStoreReplayEcho(item) {
+			continue
+		}
+		identity := responsesEchoIdentity(item)
+		if identity == "" {
+			return nil, false
+		}
+		identities = append(identities, identity)
+	}
+	return identities, true
+}
+
+// prepareResponsesImageStoreRetry drops a stored response the upstream no longer
+// has and returns the original transcript for one retry. The retry stays under
+// the normal forward limit. A second miss does not retry again.
+func (s *Server) prepareResponsesImageStoreRetry(ctx context.Context, route RouteSelection, req *ResponsesRequest, err error) (ResponsesRequest, bool, error) {
+	if req == nil || req.imageContinuation == nil || !req.imageContinuation.rewritten || req.imageContinuation.tried || !responsesStoredResponseMissing(err) {
+		return ResponsesRequest{}, false, nil
+	}
+	state := req.imageContinuation
+	state.tried = true
+	store, ok := s.store.(responsesImageStore)
+	if !ok {
+		return ResponsesRequest{}, false, NewHTTPError(http.StatusServiceUnavailable, "responses_image_store_unavailable", "Responses image continuation could not be cleared")
+	}
+	if deleteErr := store.DeleteResponsesImageStore(ctx, state.key); deleteErr != nil {
+		return ResponsesRequest{}, false, NewHTTPError(http.StatusServiceUnavailable, "responses_image_store_unavailable", "Responses image continuation could not be cleared")
+	}
+	original := state.original
+	if responsesRequestHasInlineImages(original) && routeAllowsResponsesImageStore(route) {
+		forceResponsesStore(&original)
+	}
+	if limitErr := s.rejectOversizedResponsesRequest(original, []RouteSelection{route}); limitErr != nil {
+		state.boundary = ""
+		state.outputFailed = true
+		return ResponsesRequest{}, false, limitErr
+	}
+	state.output = nil
+	state.outputOK = false
+	state.outputFailed = false
+	if original.Store != nil && *original.Store {
+		boundary := responsesImageStoreBoundary(original.Input)
+		state.boundary = boundary
+		original.imageStoreBoundary = boundary
+	} else {
+		state.boundary = ""
+		state.outputFailed = true
+	}
+	original.imageContinuation = state
+	return original, true, nil
+}
+
+func responsesStoredResponseMissing(err error) bool {
+	httpErr := AsHTTPError(err)
+	if httpErr == nil || (httpErr.UpstreamStatus != http.StatusBadRequest && httpErr.Status != http.StatusBadRequest) {
+		return false
+	}
+	text := strings.ToLower(httpErr.Message)
+	if strings.Contains(text, "previous_response_not_found") {
+		return true
+	}
+	if !strings.Contains(text, "previous_response") && !strings.Contains(text, "previous response") {
+		return false
+	}
+	return strings.Contains(text, "not found") || strings.Contains(text, "not_found") || strings.Contains(text, "expired") || strings.Contains(text, "does not exist") || strings.Contains(text, "no longer available")
+}
+
+func cloneResponsesRequest(req ResponsesRequest) ResponsesRequest {
+	cloned := req
+	cloned.imageContinuation = nil
+	cloned.imageStoreBoundary = ""
+	if req.Store != nil {
+		value := *req.Store
+		cloned.Store = &value
+	}
+	if req.Reasoning != nil {
+		value := *req.Reasoning
+		cloned.Reasoning = &value
+	}
+	if req.raw != nil {
+		cloned.raw = cloneRawJSON(req.raw, 0)
+	}
+	return cloned
+}
+
+func responsesEchoIdentity(item any) string {
+	message, ok := item.(map[string]any)
+	if !ok {
+		return ""
+	}
+	canonical := canonicalResponsesEcho(message)
+	if canonical == nil {
+		return ""
+	}
+	return responsesInputItemHash(canonical)
+}
+
+func canonicalResponsesEcho(message map[string]any) map[string]any {
+	cloned := cloneJSONMap(message)
+	if cloned == nil || !responsesImageStoreReplayEcho(cloned) {
+		return nil
+	}
+	// id and status change between the stored response and a client replay.
+	// The remaining payload is what distinguishes one answer from another.
+	delete(cloned, "id")
+	delete(cloned, "status")
+	delete(cloned, "annotations")
+	kind := strings.ToLower(strings.TrimSpace(responsesScalarString(cloned["type"])))
+	role := strings.ToLower(strings.TrimSpace(responsesScalarString(cloned["role"])))
+	if kind == "" && role == "assistant" {
+		kind = "message"
+	}
+	if kind != "" {
+		cloned["type"] = kind
+	}
+	switch kind {
+	case "message":
+		if role != "" && role != "assistant" {
+			return nil
+		}
+		cloned["role"] = "assistant"
+		cloned["content"] = canonicalEchoContent(cloned["content"])
+	case "reasoning":
+		if _, ok := cloned["content"]; ok {
+			cloned["content"] = canonicalEchoContent(cloned["content"])
+		}
+		if _, ok := cloned["summary"]; ok {
+			cloned["summary"] = canonicalEchoContent(cloned["summary"])
+		}
+	}
+	if role != "" && kind != "message" {
+		cloned["role"] = role
+	}
+	return cloned
+}
+
+func canonicalEchoContent(value any) any {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case string:
+		return []any{map[string]any{"type": "output_text", "text": typed}}
+	case []any:
+		parts := make([]any, 0, len(typed))
+		for _, part := range typed {
+			payload, ok := part.(map[string]any)
+			if !ok {
+				continue
+			}
+			cloned := cloneJSONMap(payload)
+			if cloned == nil {
+				continue
+			}
+			delete(cloned, "id")
+			delete(cloned, "status")
+			delete(cloned, "annotations")
+			kind := strings.ToLower(strings.TrimSpace(responsesScalarString(cloned["type"])))
+			switch kind {
+			case "", "output_text", "input_text", "text", "summary_text":
+				cloned["type"] = "output_text"
+			default:
+				if kind != "" {
+					cloned["type"] = kind
+				}
+			}
+			parts = append(parts, cloned)
+		}
+		return parts
+	default:
+		return nil
+	}
+}
+
+func cloneJSONMap(value map[string]any) map[string]any {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var cloned map[string]any
+	if json.Unmarshal(data, &cloned) != nil {
+		return nil
+	}
+	return cloned
+}
+
+func responsesScalarString(value any) string {
+	text, _ := value.(string)
+	return text
 }

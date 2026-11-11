@@ -29,6 +29,21 @@ func (s *Server) executeRoutedResponsesContext(ctx context.Context, incoming htt
 		if providerResourceModelUnsupportedError(err) {
 			s.removeProviderResourceModel(ctx, route)
 		}
+		if err != nil {
+			retry, ok, retryErr := s.prepareResponsesImageStoreRetry(ctx, route, &upstreamReq, err)
+			if retryErr != nil {
+				return nil, usage, retryErr
+			}
+			if ok {
+				if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &retry); transformErr != nil {
+					return nil, Usage{}, transformErr
+				}
+				resp, usage, err = s.invokeResponsesAdapter(ctx, route, retry, incoming)
+				if providerResourceModelUnsupportedError(err) {
+					s.removeProviderResourceModel(ctx, route)
+				}
+			}
+		}
 		return resp, usage, err
 	})
 }

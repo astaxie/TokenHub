@@ -9,8 +9,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	pluginmeta "tokenhub/backend/internal/plugin"
 )
 
 func imageDataURL(fill string, count int) string {
@@ -34,7 +37,10 @@ func TestResponsesImageStoreNewItemsDropStoredHistory(t *testing.T) {
 		map[string]any{"type": "input_image", "image_url": latest},
 		map[string]any{"type": "input_image", "image_url": remote},
 	}}
-	boundary := responsesImageStoreBoundary([]any{first})
+	boundary := responsesImageStoreWithOutput(responsesImageStoreBoundary([]any{first}), map[string]any{"output": []any{assistant, call}})
+	if boundary == "" {
+		t.Fatal("stored output identity was not recorded")
+	}
 	suffix, ok := responsesImageStoreNewItems([]any{first, assistant, call, output, next}, boundary)
 	if !ok {
 		t.Fatal("matching replay was not continued")
@@ -56,6 +62,15 @@ func TestResponsesImageStoreNewItemsDropStoredHistory(t *testing.T) {
 	if _, ok := responsesImageStoreNewItems([]any{first, assistant}, boundary); ok {
 		t.Fatal("replay with no new input was continued")
 	}
+	other := map[string]any{"type": "message", "role": "assistant", "content": []any{
+		map[string]any{"type": "output_text", "text": "cat"},
+	}}
+	if _, ok := responsesImageStoreNewItems([]any{first, other, call, output, next}, boundary); ok {
+		t.Fatal("a different assistant answer matched the stored output")
+	}
+	if _, ok := responsesImageStoreNewItems([]any{first, assistant, call, output, next}, responsesImageStoreBoundary([]any{first})); ok {
+		t.Fatal("unverified assistant echo matched an output-less boundary")
+	}
 }
 
 func TestResponsesImageStoreNewItemsMatchStoredAssistantHistory(t *testing.T) {
@@ -69,10 +84,13 @@ func TestResponsesImageStoreNewItemsMatchStoredAssistantHistory(t *testing.T) {
 	firstImage := map[string]any{"type": "message", "role": "user", "content": []any{
 		map[string]any{"type": "input_image", "image_url": image},
 	}}
-	boundary := responsesImageStoreBoundary([]any{prior, assistant, firstImage})
 	later := map[string]any{"type": "message", "role": "assistant", "content": []any{
 		map[string]any{"type": "output_text", "text": "later"},
 	}}
+	boundary := responsesImageStoreWithOutput(responsesImageStoreBoundary([]any{prior, assistant, firstImage}), map[string]any{"output": []any{later}})
+	if boundary == "" {
+		t.Fatal("stored output identity was not recorded")
+	}
 	next := map[string]any{"type": "message", "role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "next-turn"},
 	}}
@@ -93,6 +111,48 @@ func TestResponsesImageStoreNewItemsMatchStoredAssistantHistory(t *testing.T) {
 	}
 	if _, ok := responsesImageStoreNewItems([]any{prior, next}, boundary); ok {
 		t.Fatal("replay that omitted the stored assistant matched")
+	}
+	different := map[string]any{"type": "message", "role": "assistant", "content": []any{
+		map[string]any{"type": "output_text", "text": "other"},
+	}}
+	if _, ok := responsesImageStoreNewItems([]any{prior, assistant, firstImage, different, next}, boundary); ok {
+		t.Fatal("a different later answer matched the stored output")
+	}
+	annotated := map[string]any{
+		"id": "msg_later", "status": "completed", "type": "message", "role": "assistant",
+		"content": []any{map[string]any{"type": "output_text", "text": "later", "annotations": []any{map[string]any{"type": "url"}}}},
+	}
+	if responsesEchoIdentity(annotated) == "" || responsesEchoIdentity(annotated) != responsesEchoIdentity(later) {
+		t.Fatal("response metadata changed the stored assistant identity")
+	}
+	searchA := map[string]any{"id": "ws_a", "status": "completed", "type": "web_search_call", "action": map[string]any{"type": "search", "query": "cat"}}
+	searchReplay := map[string]any{"type": "web_search_call", "action": map[string]any{"type": "search", "query": "cat"}}
+	searchB := map[string]any{"type": "web_search_call", "action": map[string]any{"type": "search", "query": "dog"}}
+	if responsesEchoIdentity(searchA) == "" || responsesEchoIdentity(searchA) != responsesEchoIdentity(searchReplay) {
+		t.Fatal("volatile web search metadata changed the stored identity")
+	}
+	if responsesEchoIdentity(searchA) == responsesEchoIdentity(searchB) {
+		t.Fatal("different web search queries collapsed to one identity")
+	}
+	generatedA := map[string]any{"id": "ig_a", "status": "completed", "type": "image_generation_call", "result": "cat-image"}
+	generatedB := map[string]any{"type": "image_generation_call", "result": "dog-image"}
+	if responsesEchoIdentity(generatedA) == "" || responsesEchoIdentity(generatedA) == responsesEchoIdentity(generatedB) {
+		t.Fatal("different generated images collapsed to one identity")
+	}
+	searchBoundary := responsesImageStoreWithOutput(responsesImageStoreBoundary([]any{prior}), map[string]any{"output": []any{searchA}})
+	if _, ok := responsesImageStoreNewItems([]any{prior, searchB, next}, searchBoundary); ok {
+		t.Fatal("a different web search was attached to the stored response")
+	}
+	suffix, ok = responsesImageStoreNewItems([]any{prior, searchReplay, next}, searchBoundary)
+	if !ok {
+		t.Fatal("the same web search with a new id was not continued")
+	}
+	encoded, err = json.Marshal(suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "cat") || !strings.Contains(string(encoded), "next-turn") {
+		t.Fatalf("matching web search was forwarded: %s", encoded)
 	}
 }
 
@@ -432,12 +492,381 @@ func TestResponsesImageStoreStreamingRemember(t *testing.T) {
 	}
 }
 
+// responsesImageStoreEchoOutput is the assistant and tool call that
+// continuedImageTurn replays. Extra id, status, and annotation fields must not
+// change the identity used to verify that echo.
+const responsesImageStoreEchoOutput = `[{"id":"msg_ok","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok","annotations":[]}]},{"id":"fc_noop","type":"function_call","name":"noop","arguments":"{}"}]`
+
+func TestPrepareResponsesImageStoreRetryIgnoresUnrelatedClientError(t *testing.T) {
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	server := NewWithConfig(store, Config{SecretKey: "retry-secret", MaxMultimodalRequestBytes: 8000})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	binding := responsesImageStoreBinding{
+		KeyHash: "retry-key", RouteID: "route", ProviderID: "provider", ProviderModel: "model",
+		UpstreamID: "resp_keep", InputBoundary: `{"turns":[{"input":["abc"],"output":[]}]}`,
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	}
+	if err := store.SaveResponsesImageStore(context.Background(), binding); err != nil {
+		t.Fatal(err)
+	}
+	request := ResponsesRequest{imageContinuation: &responsesImageContinuation{
+		key: binding.KeyHash, rewritten: true, original: ResponsesRequest{Input: "hello"},
+	}}
+	route := RouteSelection{Provider: Provider{Type: ProviderOpenAICompatible, Options: map[string]string{"responses_store": "on"}}, Route: ModelRoute{ID: "route"}}
+	unrelated := newProviderHTTPError(http.StatusBadRequest, nil, []byte(`{"error":{"message":"model not found"}}`))
+	if _, ok, err := server.prepareResponsesImageStoreRetry(context.Background(), route, &request, unrelated); err != nil || ok {
+		t.Fatalf("unrelated 400 retried: ok=%v err=%v", ok, err)
+	}
+	if _, found, err := store.LoadResponsesImageStore(context.Background(), binding.KeyHash); err != nil || !found {
+		t.Fatalf("unrelated 400 deleted the binding: found=%v err=%v", found, err)
+	}
+}
+
+func TestResponsesImageStoreKeepsDivergentAssistantBranch(t *testing.T) {
+	var mu sync.Mutex
+	var bodies [][]byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body, _ := io.ReadAll(req.Body)
+		mu.Lock()
+		bodies = append(bodies, append([]byte(nil), body...))
+		call := len(bodies)
+		mu.Unlock()
+		answer, id := "cat", "resp_cat"
+		if call > 1 {
+			answer, id = "dog", "resp_dog"
+		}
+		output := fmt.Sprintf(`[{"type":"message","role":"assistant","content":[{"type":"output_text","text":%q}]}]`, answer)
+		w.Header().Set("content-type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":%q,"status":"completed","output":%s,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`, id, output)
+	}))
+	t.Cleanup(upstream.Close)
+	server, _, secret := newImageContinuationServer(t, upstream.URL, "vision-branch", 8000)
+	small := imageDataURL("C", 1500)
+	const model = "vision-branch"
+	first := postResponses(t, server.Handler(), imageTurn(model, small), secret, "sess-branch")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first image turn: %d %s", first.Code, first.Body)
+	}
+	regenerated := postResponses(t, server.Handler(), imageTurn(model, small), secret, "sess-branch")
+	if regenerated.Code != http.StatusOK {
+		t.Fatalf("regenerated image turn: %d %s", regenerated.Code, regenerated.Body)
+	}
+	replay := postResponses(t, server.Handler(), answeredImageTurn(model, small, "cat", "use the cat"), secret, "sess-branch")
+	if replay.Code != http.StatusOK {
+		t.Fatalf("cat replay: %d %s", replay.Code, replay.Body)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 3 {
+		t.Fatalf("upstream calls = %d", len(bodies))
+	}
+	if strings.Contains(string(bodies[1]), `"previous_response_id"`) || !strings.Contains(string(bodies[1]), small) {
+		t.Fatalf("regenerated turn = %s", bodies[1])
+	}
+	forwarded := string(bodies[2])
+	if strings.Contains(forwarded, `"previous_response_id"`) || !strings.Contains(forwarded, small) || !strings.Contains(forwarded, "use the cat") {
+		t.Fatalf("divergent branch was attached to the regenerated response: %s", forwarded)
+	}
+}
+
+func TestResponsesImageStoreRecoversMissingUpstreamResponse(t *testing.T) {
+	var mu sync.Mutex
+	var bodies [][]byte
+	var nextID int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body, _ := io.ReadAll(req.Body)
+		mu.Lock()
+		bodies = append(bodies, append([]byte(nil), body...))
+		nextID++
+		id := fmt.Sprintf("resp_replay_%d", nextID)
+		mu.Unlock()
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		if _, ok := payload["previous_response_id"]; ok {
+			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":{"message":"Previous response with id not found","code":"previous_response_not_found"}}`)
+			return
+		}
+		if payload["stream"] == true {
+			w.Header().Set("content-type", "text/event-stream")
+			_, _ = fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":%q,\"status\":\"completed\",\"output\":%s,\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n", id, responsesImageStoreEchoOutput)
+			return
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":%q,"status":"completed","output":%s,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`, id, responsesImageStoreEchoOutput)
+	}))
+	t.Cleanup(upstream.Close)
+	server, store, secret := newImageContinuationServer(t, upstream.URL, "vision-missing", 8000)
+	const model = "vision-missing"
+	small := imageDataURL("M", 1500)
+	first := postResponses(t, server.Handler(), imageTurn(model, small), secret, "sess-missing")
+	if first.Code != http.StatusOK || !strings.Contains(first.Body, "resp_replay_1") {
+		t.Fatalf("first image turn: %d %s", first.Code, first.Body)
+	}
+	continued := continuedImageTurn(model, small, "next")
+	extended := strings.TrimSuffix(continued, "]}") + `,{"type":"message","role":"user","content":[{"type":"input_text","text":"after"}]}]}`
+	streamed := strings.TrimSuffix(strings.TrimSuffix(extended, "]}")+`,{"type":"message","role":"user","content":[{"type":"input_text","text":"streamed"}]}]}`, "}") + `,"stream":true}`
+	for _, followUp := range []string{continued, extended, streamed} {
+		response := postResponses(t, server.Handler(), followUp, secret, "sess-missing")
+		if response.Code != http.StatusOK {
+			t.Fatalf("follow-up: %d %s", response.Code, response.Body)
+		}
+	}
+	mu.Lock()
+	calls := len(bodies)
+	copied := append([][]byte(nil), bodies...)
+	mu.Unlock()
+	if calls != 7 {
+		t.Fatalf("upstream calls = %d", calls)
+	}
+	stale := previousResponseID(t, copied[1])
+	if stale == "" || previousResponseID(t, copied[2]) != "" || previousResponseID(t, copied[4]) != "" || previousResponseID(t, copied[6]) != "" {
+		t.Fatalf("recovery did not replace the stored response: %q / %q / %q / %q", stale, previousResponseID(t, copied[2]), previousResponseID(t, copied[4]), previousResponseID(t, copied[6]))
+	}
+	for i, body := range copied[3:] {
+		if previousResponseID(t, body) == stale {
+			t.Fatalf("stale response id was reused on call %d", i+3)
+		}
+	}
+	last := string(copied[6])
+	if !strings.Contains(last, small) || !strings.Contains(last, "streamed") {
+		t.Fatalf("recovered stream replay = %s", last)
+	}
+	var binding responsesImageStoreBinding
+	if err := store.db.First(&binding).Error; err != nil || binding.UpstreamID == "" || binding.UpstreamID == stale {
+		t.Fatalf("stale binding remained: %+v err=%v", binding, err)
+	}
+}
+
+func TestResponsesImageStoreDropsMissingResponseWhenReplayExceedsLimit(t *testing.T) {
+	var mu sync.Mutex
+	var bodies [][]byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body, _ := io.ReadAll(req.Body)
+		mu.Lock()
+		bodies = append(bodies, append([]byte(nil), body...))
+		mu.Unlock()
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		if _, ok := payload["previous_response_id"]; ok {
+			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":{"message":"Previous response with id not found","code":"previous_response_not_found"}}`)
+			return
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":"resp_fit","status":"completed","output":%s,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`, responsesImageStoreEchoOutput)
+	}))
+	t.Cleanup(upstream.Close)
+	const limit = 8000
+	const model = "vision-oversize"
+	server, store, secret := newImageContinuationServer(t, upstream.URL, model, limit)
+	image := imageDataURL("Q", 1500)
+	var firstBody, nextBody string
+	foundSize := false
+	for n := 0; n < 2000; n++ {
+		candidate := image + strings.Repeat("Q", n*10)
+		firstBody = imageTurn(model, candidate)
+		nextBody = continuedImageTurn(model, candidate, "next")
+		firstSize := marshaledResponsesSize(t, firstBody)
+		nextSize := marshaledResponsesSize(t, nextBody)
+		// The continuation adds only the echoed answer, so the two sizes stay
+		// close. Keep the stored turn under the limit and the recovered
+		// transcript over it.
+		if firstSize < limit-80 && nextSize > limit {
+			image = candidate
+			foundSize = true
+			break
+		}
+	}
+	if !foundSize {
+		t.Fatalf("could not bracket the forward limit: first=%d next=%d", marshaledResponsesSize(t, firstBody), marshaledResponsesSize(t, nextBody))
+	}
+	first := postResponses(t, server.Handler(), firstBody, secret, "sess-oversize")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first image turn: %d %s", first.Code, first.Body)
+	}
+	rejected := postResponses(t, server.Handler(), nextBody, secret, "sess-oversize")
+	if rejected.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized recovery: %d %s", rejected.Code, rejected.Body)
+	}
+	mu.Lock()
+	callsAfterReject := len(bodies)
+	var attempted []byte
+	if callsAfterReject >= 2 {
+		attempted = bodies[1]
+	}
+	mu.Unlock()
+	if callsAfterReject != 2 || !strings.Contains(string(attempted), `"previous_response_id"`) {
+		t.Fatalf("missing response was not attempted once: calls=%d body=%s", callsAfterReject, attempted)
+	}
+	again := postResponses(t, server.Handler(), nextBody, secret, "sess-oversize")
+	if again.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("second oversized replay: %d %s", again.Code, again.Body)
+	}
+	mu.Lock()
+	calls := len(bodies)
+	mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("stale response id was reused: calls=%d", calls)
+	}
+	var count int64
+	if err := store.db.Model(&responsesImageStoreBinding{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("binding count = %d err=%v", count, err)
+	}
+}
+
+func TestResponsesImageStoreBackgroundBindingWaitsForApproval(t *testing.T) {
+	for _, outcome := range []string{"approved", "denied", "cancelled"} {
+		t.Run(outcome, func(t *testing.T) {
+			var recorded recordedResponses
+			upstream := httptest.NewServer(recorded.handler("resp_background"))
+			t.Cleanup(upstream.Close)
+			server, store, secret := newImageContinuationServer(t, upstream.URL, "vision-background", 8000)
+			entered, release := make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			t.Cleanup(unblock)
+			var hookCalls atomic.Int32
+			hook := pluginmeta.GatewayHookDescriptor{PluginID: "tokenhub.test-image-approval", HookID: "approval", Stage: pluginmeta.StageGuardrailPost, Priority: 1000, FailurePolicy: pluginmeta.FailurePolicyFailClosed}
+			if err := server.gatewayChain.RegisterHook(hook); err != nil {
+				t.Fatal(err)
+			}
+			if err := server.gatewayHooks.RegisterHandler(hook, pluginmeta.GatewayHookHandlerFunc(func(ctx context.Context, _ pluginmeta.GatewayHookInput) (pluginmeta.GatewayHookResult, error) {
+				if hookCalls.Add(1) == 1 {
+					close(entered)
+					select {
+					case <-release:
+					case <-ctx.Done():
+						return pluginmeta.GatewayHookResult{}, ctx.Err()
+					}
+					if outcome == "denied" {
+						return pluginmeta.GatewayHookResult{Decision: pluginmeta.HookDecisionDeny}, nil
+					}
+				}
+				return pluginmeta.GatewayHookResult{}, nil
+			})); err != nil {
+				t.Fatal(err)
+			}
+			const model = "vision-background"
+			small := imageDataURL("B", 1500)
+			first := postResponses(t, server.Handler(), strings.TrimSuffix(imageTurn(model, small), "}")+`,"background":true}`, secret, "sess-background")
+			if first.Code != http.StatusOK {
+				t.Fatalf("background submission: %d %s", first.Code, first.Body)
+			}
+			var envelope map[string]any
+			if err := json.Unmarshal([]byte(first.Body), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			id, _ := envelope["id"].(string)
+			if id == "" {
+				t.Fatalf("missing background job id: %s", first.Body)
+			}
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("output hook not entered")
+			}
+			if count := imageStoreBindingCount(t, store); count != 0 {
+				t.Fatalf("binding published before approval: %d", count)
+			}
+			if outcome == "cancelled" {
+				cancelled := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses/"+id+"/cancel", nil, secret)
+				if cancelled.Code != http.StatusOK {
+					t.Fatalf("cancel: %d %s", cancelled.Code, cancelled.Body)
+				}
+			}
+			unblock()
+			status := "completed"
+			if outcome == "denied" {
+				status = "failed"
+			}
+			if outcome == "cancelled" {
+				status = "cancelled"
+			}
+			waitForResponseJobStatus(t, server.Handler(), secret, id, status)
+			want := int64(0)
+			if outcome == "approved" {
+				want = 1
+			}
+			if count := imageStoreBindingCount(t, store); count != want {
+				t.Fatalf("binding count = %d, want %d", count, want)
+			}
+			followUp := postResponses(t, server.Handler(), continuedImageTurn(model, small, "next"), secret, "sess-background")
+			if followUp.Code != http.StatusOK {
+				t.Fatalf("follow-up: %d %s", followUp.Code, followUp.Body)
+			}
+			forwarded := string(recorded.last())
+			if outcome == "approved" {
+				if !strings.Contains(forwarded, `"previous_response_id":"resp_background"`) || strings.Contains(forwarded, small) {
+					t.Fatalf("approved continuation = %s", forwarded)
+				}
+				return
+			}
+			if strings.Contains(forwarded, `"previous_response_id"`) || !strings.Contains(forwarded, small) {
+				t.Fatalf("unapproved output was reused: %s", forwarded)
+			}
+		})
+	}
+}
+
+func newImageContinuationServer(t *testing.T, upstreamURL string, model string, limit int64) (*Server, *GormStore, string) {
+	t.Helper()
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	project := store.CreateProject(Project{Name: "Image continuation", Status: StatusActive})
+	_, secret, err := store.CreateAPIKey(project.ID, APIKey{Name: "Image key", Allowed: []string{model}, Status: StatusActive}, "thk_image_"+model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.AddProvider(Provider{ID: "provider-image", Name: "Image", Type: ProviderOpenAICompatible, BaseURL: upstreamURL + "/v1", APIKey: "upstream-image", Status: StatusActive, Healthy: true, Options: map[string]string{"responses_store": "on"}})
+	store.AddModel(Model{Name: model, Modality: "chat", Status: StatusActive})
+	store.AddRoute(ModelRoute{ID: "route-image", ModelName: model, ProviderID: "provider-image", ProviderModel: "vendor-image", Status: StatusActive, Priority: 1, Weight: 100, Strategy: RouteStrategyPriorityOnly})
+	server := NewWithConfig(store, Config{AdminToken: "image-review-admin", SecretKey: "image-review-secret", MaxMultimodalRequestBytes: limit, ResponsePollIntervalMillis: 10})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	return server, store, secret
+}
+
+func imageStoreBindingCount(t *testing.T, store *GormStore) int64 {
+	t.Helper()
+	var count int64
+	if err := store.db.Model(&responsesImageStoreBinding{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
+func previousResponseID(t *testing.T, body []byte) string {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("upstream body: %v %s", err, body)
+	}
+	id, _ := payload["previous_response_id"].(string)
+	return id
+}
+
+func marshaledResponsesSize(t *testing.T, body string) int {
+	t.Helper()
+	encoded, err := json.Marshal(responsesRequestFromJSON(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(encoded)
+}
+
 func imageTurn(model string, image string) string {
 	return fmt.Sprintf(`{"model":%q,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":%q}]}]}`, model, image)
 }
 
 func continuedImageTurn(model string, image string, followUp string) string {
 	return fmt.Sprintf(`{"model":%q,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":%q}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]},{"type":"function_call","name":"noop","arguments":"{}"},{"type":"message","role":"user","content":[{"type":"input_text","text":%q}]}]}`, model, image, followUp)
+}
+
+func answeredImageTurn(model string, image string, answer string, followUp string) string {
+	return fmt.Sprintf(`{"model":%q,"store":false,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":%q}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":%q}]},{"type":"message","role":"user","content":[{"type":"input_text","text":%q}]}]}`, model, image, answer, followUp)
 }
 
 func postResponses(t *testing.T, handler http.Handler, body string, key string, session string) responseBody {
@@ -470,11 +899,11 @@ func (r *recordedResponses) handler(id string) http.HandlerFunc {
 		_ = json.Unmarshal(body, &probe)
 		if probe.Stream {
 			w.Header().Set("content-type", "text/event-stream")
-			_, _ = fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":%q,\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n", id)
+			_, _ = fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":%q,\"status\":\"completed\",\"output\":%s,\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n", id, responsesImageStoreEchoOutput)
 			return
 		}
 		w.Header().Set("content-type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"id":%q,"status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`, id)
+		_, _ = fmt.Fprintf(w, `{"id":%q,"status":"completed","output":%s,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`, id, responsesImageStoreEchoOutput)
 	}
 }
 

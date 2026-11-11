@@ -603,12 +603,13 @@ func (s *Server) processResponseJob(job ResponseJob, owner string, leaseTTL time
 	}
 	response, route, usage, attempts, invokeErr := s.executeRoutedResponsesContext(ctx, envelope.Headers, routed, request)
 	if invokeErr == nil {
-		// Persist this binding only with a successful, ownership-fenced completion.
-		// Capture the upstream ID before output hooks can rewrite the response.
+		// Persist these bindings only with a successful, ownership-fenced completion.
+		// Capture the upstream ID and output identity before output hooks rewrite the response.
+		captureResponsesImageOutput(&request, response)
 		routed.Call.jevResponseBinding, invokeErr = s.pendingJevResponseBinding(routed.Call, route, response, job.ID)
 	}
 	if invokeErr == nil {
-		invokeErr = s.rememberResponsesImageStore(ctx, routed.Call, route, envelope.Headers, request, response)
+		routed.Call.responsesImageStoreBinding, invokeErr = s.pendingResponsesImageStore(routed.Call, route, envelope.Headers, request, response)
 	}
 	if invokeErr == nil {
 		response, invokeErr = s.runGatewayResponsePostHooks(ctx, routed.Call, route, response, providerRouteProtocolResponses)

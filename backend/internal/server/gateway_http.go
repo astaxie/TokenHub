@@ -419,6 +419,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	upstreamResponseID := jevResponseID(resp)
+	captureResponsesImageOutput(&req, resp)
 	s.store.MarkRouteUsed(route.Route.ID)
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
 	resp, err = s.runGatewayResponsePostHooks(r.Context(), routed.Call, route, resp, providerRouteProtocolResponses)

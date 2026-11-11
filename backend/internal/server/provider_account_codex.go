@@ -266,14 +266,26 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 			resp.Body = newIdleTimeoutReadCloser(resp.Body, a.streamIdleTimeout(), errCodexStreamIdle)
 			return resp, nil
 		}
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
-		resp.Body.Close()
-		// One uncompressed retry when the backend refuses zstd. A normal 400
-		// is returned as-is so the same transcript is not posted twice.
-		if body.encoding != "" && responsesCompressionRejected(resp.StatusCode, data) {
+		// One uncompressed retry when the backend refuses zstd. HTTP 415 is that
+		// refusal from the status alone: a proxy can leave the body open, and this
+		// client has no total deadline. Any other error body is peeked under the
+		// stream idle budget. A normal 400 is returned as-is.
+		header := resp.Header.Clone()
+		status := resp.StatusCode
+		if body.encoding != "" && status == http.StatusUnsupportedMediaType {
+			resp.Body.Close()
 			continue
 		}
-		return nil, classifyCodexHTTPError(resp.StatusCode, resp.Header, data)
+		limited := newIdleTimeoutReadCloser(resp.Body, a.streamIdleTimeout(), errCodexStreamIdle)
+		data, readErr := io.ReadAll(io.LimitReader(limited, 4096))
+		limited.Close()
+		if body.encoding != "" && readErr == nil && responsesCompressionRejected(status, data) {
+			continue
+		}
+		if readErr != nil && len(data) == 0 {
+			return nil, readErr
+		}
+		return nil, classifyCodexHTTPError(status, header, data)
 	}
 	return nil, NewHTTPError(http.StatusBadGateway, "codex_request_failed", "Codex request failed")
 }
@@ -474,7 +486,24 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 			s.removeProviderResourceModel(ctx, route)
 		}
 		if err != nil {
-			return nil, subscriptionJSONFailureUsage(err), err
+			// Recover a missing stored response before any stream byte is written.
+			retry, ok, retryErr := s.prepareResponsesImageStoreRetry(ctx, prepared, &upstreamRequest, err)
+			if retryErr != nil {
+				return nil, subscriptionJSONFailureUsage(err), retryErr
+			}
+			if !ok {
+				return nil, subscriptionJSONFailureUsage(err), err
+			}
+			if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, prepared, &retry); transformErr != nil {
+				return nil, Usage{}, transformErr
+			}
+			opened, err = streamAdapter.OpenResponses(ctx, prepared.Provider, prepared.ProviderModel, retry, r.Header)
+			if providerResourceModelUnsupportedError(err) {
+				s.removeProviderResourceModel(ctx, route)
+			}
+			if err != nil {
+				return nil, subscriptionJSONFailureUsage(err), err
+			}
 		}
 		defer opened.Body.Close()
 		w.Header().Set("content-type", "text/event-stream")
@@ -541,6 +570,9 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 	s.store.MarkProviderResourceUsed(routeResourceID(route))
 	// The client already has the stream, so a binding save failure degrades the
 	// next turn to a full replay instead of failing a response it has received.
+	// Capture output identity from the completed stream before the save. An
+	// id-only envelope would otherwise publish a binding that cannot be checked.
+	captureResponsesImageOutput(&request, response)
 	if err := s.rememberResponsesImageStore(r.Context(), routed.Call, route, r.Header, request, response); err != nil && !streamStarted {
 		s.finishFailedRoutedCall(r, routed, attempts, usage, err, auditPayload)
 		writeError(w, r, err)
