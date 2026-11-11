@@ -403,7 +403,8 @@ func responsesRawFieldPresent(request ResponsesRequest, key string) bool {
 // into the stored response. Input items must match in order. Assistant and
 // tool-call echoes are removed only when they match the stored output; a
 // different answer falls back to the full replay. Omitting those echoes is
-// allowed because the stored response already contains them.
+// allowed because the stored response already contains them. A boundary saved
+// as a JSON array of hashes predates output identity and still skips echoes.
 func responsesImageStoreNewItems(input any, boundary string) ([]any, bool) {
 	items, ok := input.([]any)
 	if !ok || len(items) == 0 {
@@ -417,6 +418,14 @@ func responsesImageStoreNewItems(input any, boundary string) ([]any, bool) {
 	for _, turn := range decoded.Turns {
 		if len(turn.Input) == 0 {
 			return nil, false
+		}
+		if turn.Legacy {
+			next, matched := matchLegacyImageHashes(items, index, turn.Input)
+			if !matched {
+				return nil, false
+			}
+			index = next
+			continue
 		}
 		for _, hash := range turn.Input {
 			if index >= len(items) || responsesInputItemHash(items[index]) != hash {
@@ -555,6 +564,9 @@ type responsesImageContinuation struct {
 type responsesImageTurn struct {
 	Input  []string `json:"input"`
 	Output []string `json:"output"`
+	// Legacy marks hashes stored before output identity existed. Those turns
+	// skip assistant and tool-call echoes instead of verifying them.
+	Legacy bool `json:"legacy,omitempty"`
 }
 
 type responsesImageBoundary struct {
@@ -562,11 +574,64 @@ type responsesImageBoundary struct {
 }
 
 func decodeResponsesImageBoundary(raw string) (responsesImageBoundary, bool) {
-	var decoded responsesImageBoundary
-	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &decoded) != nil || decoded.Turns == nil {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return responsesImageBoundary{}, false
 	}
-	return decoded, true
+	var decoded responsesImageBoundary
+	if json.Unmarshal([]byte(trimmed), &decoded) == nil && decoded.Turns != nil {
+		return decoded, true
+	}
+	return decodeLegacyImageBoundary(trimmed)
+}
+
+// decodeLegacyImageBoundary reads the hash array written by the previous head.
+// An empty array, a blank hash, or a non-string element stays invalid.
+func decodeLegacyImageBoundary(raw string) (responsesImageBoundary, bool) {
+	if !strings.HasPrefix(raw, "[") {
+		return responsesImageBoundary{}, false
+	}
+	var hashes []string
+	if json.Unmarshal([]byte(raw), &hashes) != nil || len(hashes) == 0 {
+		return responsesImageBoundary{}, false
+	}
+	for _, hash := range hashes {
+		if hash == "" {
+			return responsesImageBoundary{}, false
+		}
+	}
+	return responsesImageBoundary{Turns: []responsesImageTurn{{
+		Input: hashes, Output: []string{}, Legacy: true,
+	}}}, true
+}
+
+// matchLegacyImageHashes matches input hashes while skipping echoes between
+// them and after the last one. A non-echo that is not the next hash fails.
+func matchLegacyImageHashes(items []any, index int, hashes []string) (int, bool) {
+	for _, hash := range hashes {
+		if hash == "" {
+			return 0, false
+		}
+		matched := false
+		for index < len(items) {
+			if responsesInputItemHash(items[index]) == hash {
+				matched = true
+				index++
+				break
+			}
+			if !responsesImageStoreReplayEcho(items[index]) {
+				return 0, false
+			}
+			index++
+		}
+		if !matched {
+			return 0, false
+		}
+	}
+	for index < len(items) && responsesImageStoreReplayEcho(items[index]) {
+		index++
+	}
+	return index, true
 }
 
 func encodeResponsesImageBoundary(boundary responsesImageBoundary) string {

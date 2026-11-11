@@ -90,7 +90,7 @@ Ingress のルーティングは `deploy/nginx.multi-instance.conf` と同じで
 | `/api`、`/v1`、`/v1beta`、`/docs`、`/openapi.json`、`/openapi.yaml`、`/healthz`、`/readyz`、`/livez` | `api`(8080) |
 | その他すべて | `console`(3000) |
 
-デフォルトの Ingress アノテーションはレスポンスバッファリングを無効化し、読み書きタイムアウトを 300 秒に引き上げてストリーミング応答を保護します。ボディサイズ上限は `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` に合わせて 32 MiB です。他の Ingress コントローラーや別の上限値が必要な場合は `ingress.annotations` を上書きしてください。ボディ上限はマルチモーダルリクエストの上限以上にしてください。
+デフォルトの Ingress アノテーションはレスポンスバッファリングを無効化し、読み書きタイムアウトを 300 秒に引き上げてストリーミング応答を保護します。ボディサイズ上限は 128 MiB で、`/v1/responses` の本文が TokenHub に届くようにします。他の Ingress コントローラーでは `ingress.annotations` を上書きしてください。`TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` を 128 MiB より大きくする場合は、`nginx.ingress.kubernetes.io/proxy-body-size` も合わせて上げてください。上限は `512m` です。
 
 ## ヘルスチェックとシャットダウン
 

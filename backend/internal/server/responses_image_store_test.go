@@ -156,6 +156,78 @@ func TestResponsesImageStoreNewItemsMatchStoredAssistantHistory(t *testing.T) {
 	}
 }
 
+func TestResponsesImageStoreReadsLegacyBoundary(t *testing.T) {
+	first := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": "look"},
+	}}
+	assistant := map[string]any{"type": "message", "role": "assistant", "content": []any{
+		map[string]any{"type": "output_text", "text": "ok"},
+	}}
+	call := map[string]any{"type": "function_call", "name": "noop", "arguments": "{}"}
+	second := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": "between"},
+	}}
+	next := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": "next"},
+	}}
+	other := map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": "other"},
+	}}
+	boundary := fmt.Sprintf("[%q,%q]", responsesInputItemHash(first), responsesInputItemHash(second))
+	suffix, ok := responsesImageStoreNewItems([]any{first, assistant, call, second, assistant, next}, boundary)
+	if !ok {
+		t.Fatal("legacy hash array did not skip echoes")
+	}
+	encoded, err := json.Marshal(suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "look") || strings.Contains(string(encoded), "between") || strings.Contains(string(encoded), `"ok"`) || !strings.Contains(string(encoded), "next") {
+		t.Fatalf("legacy suffix = %s", encoded)
+	}
+	if _, ok := responsesImageStoreNewItems([]any{first, assistant, other, next}, boundary); ok {
+		t.Fatal("a different input item matched the legacy boundary")
+	}
+	for _, raw := range []string{`[]`, `[""]`, `[1]`, `{"turns":null}`, `not-json`} {
+		if _, ok := decodeResponsesImageBoundary(raw); ok {
+			t.Fatalf("invalid boundary was accepted: %s", raw)
+		}
+	}
+	empty, ok := decodeResponsesImageBoundary(`{"turns":[]}`)
+	if !ok || len(empty.Turns) != 0 {
+		t.Fatal("empty turn list was rejected")
+	}
+	extended := responsesImageStoreExtendedBoundary(fmt.Sprintf("[%q]", responsesInputItemHash(first)), []any{next})
+	if !strings.Contains(extended, `"legacy":true`) || strings.HasPrefix(strings.TrimSpace(extended), "[") {
+		t.Fatalf("legacy boundary was not rewritten: %s", extended)
+	}
+	replay := []any{first, assistant, call, next, assistant, call, other}
+	if _, ok := responsesImageStoreNewItems(replay, extended); ok {
+		t.Fatal("unverified echo on the new turn matched a legacy upgrade")
+	}
+	withOutput := responsesImageStoreApplyOutput(extended, []string{responsesEchoIdentity(assistant), responsesEchoIdentity(call)})
+	if withOutput == "" {
+		t.Fatal("legacy upgrade did not record the new output")
+	}
+	suffix, ok = responsesImageStoreNewItems(replay, withOutput)
+	if !ok {
+		t.Fatal("verified new turn after a legacy prefix was not continued")
+	}
+	encoded, err = json.Marshal(suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "look") || strings.Contains(string(encoded), `"ok"`) || !strings.Contains(string(encoded), "other") {
+		t.Fatalf("verified suffix = %s", encoded)
+	}
+	different := map[string]any{"type": "message", "role": "assistant", "content": []any{
+		map[string]any{"type": "output_text", "text": "dog"},
+	}}
+	if _, ok := responsesImageStoreNewItems([]any{first, assistant, call, next, different, call, other}, withOutput); ok {
+		t.Fatal("a different answer on the new turn matched the legacy upgrade")
+	}
+}
+
 func TestResponsesDecodeLimitHonorsConfiguredCeiling(t *testing.T) {
 	server := &Server{config: Config{MaxMultimodalRequestBytes: 32 << 20}}
 	if server.responsesDecodeLimit() != responsesImageReplayBytes {
@@ -808,6 +880,97 @@ func TestResponsesImageStoreBackgroundBindingWaitsForApproval(t *testing.T) {
 				t.Fatalf("unapproved output was reused: %s", forwarded)
 			}
 		})
+	}
+}
+
+func TestResponsesImageStoreContinuesOversizedLegacyBoundary(t *testing.T) {
+	var mu sync.Mutex
+	var bodies [][]byte
+	var nextID atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body, _ := io.ReadAll(req.Body)
+		mu.Lock()
+		bodies = append(bodies, append([]byte(nil), body...))
+		mu.Unlock()
+		id := fmt.Sprintf("resp_legacy_%d", nextID.Add(1))
+		w.Header().Set("content-type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":%q,"status":"completed","output":%s,"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`, id, responsesImageStoreEchoOutput)
+	}))
+	t.Cleanup(upstream.Close)
+	const limit = 8000
+	const model = "vision-legacy"
+	server, store, secret := newImageContinuationServer(t, upstream.URL, model, limit)
+	image := imageDataURL("L", 12000)
+	continued := continuedImageTurn(model, image, "next")
+	if marshaledResponsesSize(t, continued) <= limit {
+		t.Fatalf("continuation size = %d, want above %d", marshaledResponsesSize(t, continued), limit)
+	}
+	parsed := responsesRequestFromJSON(t, continued)
+	items, ok := parsed.Input.([]any)
+	if !ok || len(items) == 0 {
+		t.Fatalf("input = %#v", parsed.Input)
+	}
+	var keyID string
+	for _, key := range store.ListAPIKeys() {
+		if key.Name == "Image key" {
+			keyID = key.ID
+		}
+	}
+	if keyID == "" {
+		t.Fatal("image api key was not created")
+	}
+	headers := http.Header{"Session-Id": []string{"sess-legacy"}}
+	storeKey, ok := server.responsesImageStoreKey(CallContext{Model: Model{Name: model}, Key: APIKey{ID: keyID}}, parsed, headers)
+	if !ok {
+		t.Fatal("missing session key")
+	}
+	if err := store.SaveResponsesImageStore(context.Background(), responsesImageStoreBinding{
+		KeyHash: storeKey, RouteID: "route-image", ProviderID: "provider-image", ProviderModel: "vendor-image",
+		UpstreamID: "resp_seeded", InputBoundary: fmt.Sprintf("[%q]", responsesInputItemHash(items[0])),
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first := postResponses(t, server.Handler(), continued, secret, "sess-legacy")
+	if first.Code != http.StatusOK {
+		t.Fatalf("legacy continuation: %d %s", first.Code, first.Body)
+	}
+	mu.Lock()
+	if len(bodies) != 1 {
+		t.Fatalf("upstream calls = %d", len(bodies))
+	}
+	forwarded := string(bodies[0])
+	mu.Unlock()
+	if !strings.Contains(forwarded, `"previous_response_id":"resp_seeded"`) || strings.Contains(forwarded, image) {
+		t.Fatalf("legacy continuation body = %s", forwarded)
+	}
+	var binding responsesImageStoreBinding
+	if err := store.db.First(&binding).Error; err != nil {
+		t.Fatal(err)
+	}
+	if binding.UpstreamID == "resp_seeded" || !strings.Contains(binding.InputBoundary, `"legacy":true`) || strings.HasPrefix(strings.TrimSpace(binding.InputBoundary), "[") {
+		t.Fatalf("saved boundary = %s id=%s", binding.InputBoundary, binding.UpstreamID)
+	}
+	divergent := strings.TrimSuffix(continued, "]}") + `,{"type":"message","role":"assistant","content":[{"type":"output_text","text":"dog"}]},{"type":"function_call","name":"noop","arguments":"{}"},{"type":"message","role":"user","content":[{"type":"input_text","text":"after"}]}]}`
+	rejected := postResponses(t, server.Handler(), divergent, secret, "sess-legacy")
+	if rejected.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("divergent legacy follow-up: %d %s", rejected.Code, rejected.Body)
+	}
+	mu.Lock()
+	calls := len(bodies)
+	mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("divergent follow-up called upstream %d times", calls)
+	}
+	correct := strings.TrimSuffix(continued, "]}") + `,{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]},{"type":"function_call","name":"noop","arguments":"{}"},{"type":"message","role":"user","content":[{"type":"input_text","text":"after"}]}]}`
+	second := postResponses(t, server.Handler(), correct, secret, "sess-legacy")
+	if second.Code != http.StatusOK {
+		t.Fatalf("verified follow-up: %d %s", second.Code, second.Body)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 2 || !strings.Contains(string(bodies[1]), `"previous_response_id":"`+binding.UpstreamID+`"`) || strings.Contains(string(bodies[1]), image) {
+		t.Fatalf("verified follow-up body = %s", bodies[1])
 	}
 }
 
