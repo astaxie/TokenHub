@@ -52,3 +52,16 @@ test("new media offers remain catalog-only until their adapters are verified", (
     assert.equal(model.metadata.call_support, "unsupported", `${provider}/${id}: unverified call support`);
   }
 });
+
+test("tool controls require the base tool capability", () => {
+  // tool_choice and parallel_tool_calls are derived from explicit catalog
+  // flags, so a catalog entry that sets them without tool_call would
+  // advertise controls the importer cannot back with the tools capability.
+  for (const [providerID, provider] of Object.entries(catalog.providers)) {
+    for (const model of provider.models ?? []) {
+      if (model.tool_choice || model.parallel_tool_calls) {
+        assert.equal(model.tool_call, true, `${providerID}/${model.id}: tool controls without tool_call`);
+      }
+    }
+  }
+});
