@@ -215,7 +215,7 @@ func (s *Server) validateJevBoundModel(ctx context.Context, requestID string, ro
 	}
 	for _, model := range models {
 		if model.ProviderID == route.Provider.ID && model.UpstreamModel == route.ProviderModel {
-			result := jevResponsesCompatibility(model, req)
+			result := jevResponsesCompatibilityForRoute(model, req, s.forwardsProtocolControls(route.Provider.Type))
 			if result.Reason == "" {
 				return nil
 			}

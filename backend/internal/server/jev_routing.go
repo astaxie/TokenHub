@@ -72,13 +72,16 @@ func jevTextContent(content any) (string, bool) {
 	return jevTextContent(strings.Join(texts, "\n"))
 }
 
-// forwardsProtocolControls reports whether the provider's adapter forwards the
-// OpenAI request body verbatim. Adapting providers (Anthropic, Gemini,
-// subscription workers, plugins) do not implement protocolControlForwarder, so
-// they keep the declaration gate for endpoint-neutral controls.
+// forwardsProtocolControls reports whether the effective adapter for the
+// provider type forwards the OpenAI request body verbatim. The adapter registry
+// is authoritative: a plugin may replace a built-in type, and only the adapter
+// that actually executes should be able to claim forwarding.
 func (s *Server) forwardsProtocolControls(providerType string) bool {
-	adapter, ok := s.builtinProviderAdapters[providerType]
-	if !ok {
+	if s.adapterRegistry == nil {
+		return false
+	}
+	adapter, err := s.adapterRegistry.Resolve(providerType)
+	if err != nil {
 		return false
 	}
 	forwarder, ok := adapter.(protocolControlForwarder)
