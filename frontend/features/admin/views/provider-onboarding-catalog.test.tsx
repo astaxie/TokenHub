@@ -1,14 +1,21 @@
 import { useState } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ProviderCatalogEntry } from "../core/types";
-import { ProviderOnboardingCatalog } from "./provider-onboarding-catalog";
+import { adminFetch } from "../resources/payloads";
+import { ProviderCatalogSyncButton, ProviderOnboardingCatalog } from "./provider-onboarding-catalog";
+
+vi.mock("../resources/payloads", async importOriginal => ({
+  ...(await importOriginal<typeof import("../resources/payloads")>()),
+  adminFetch: vi.fn(),
+}));
 
 const apiEntry: ProviderCatalogEntry = { id: "ui-api", name: "UI API", display_name: "UI API", type: "openai_compatible", base_url: "https://api.example.test/v1", models_count: 2, source: "test" };
 const accountEntry: ProviderCatalogEntry = { id: "ui-account", name: "UI Account", display_name: "UI Account", type: "example_account", base_url: "https://account.example.test", models_count: 1, source: "plugin" };
 const ollamaEntry: ProviderCatalogEntry = { id: "ollama", name: "Ollama", display_name: "Ollama", type: "local", base_url: "http://127.0.0.1:11434/v1", models_count: 1, source: "plugin" };
 const aggregatorEntry: ProviderCatalogEntry = { ...apiEntry, id: "openrouter", name: "OpenRouter", display_name: "OpenRouter", base_url: "https://router.example.test/v1" };
+const api = { baseURL: "http://localhost:8080", adminToken: "admin-token" };
 
 describe("ProviderOnboardingCatalog", () => {
   it("keeps configured cards actionable and selects metadata-driven account entries", async () => {
@@ -101,7 +108,7 @@ describe("ProviderOnboardingCatalog", () => {
   });
 
   it("shows only available connection modes and handles an empty catalog", () => {
-    const props = { directEntries: [apiEntry], accountEntries: [], providers: [], query: "", onQueryChange: vi.fn(), onSelect: vi.fn(), onCustom: vi.fn(), contributions: [] };
+    const props = { api, directEntries: [apiEntry], accountEntries: [], providers: [], query: "", onQueryChange: vi.fn(), onSelect: vi.fn(), onCustom: vi.fn(), contributions: [] };
     const { rerender } = render(<ProviderOnboardingCatalog {...props} />);
     const filters = within(screen.getByRole("group", { name: "供应商分类" }));
     expect(filters.queryByRole("button", { name: /订阅与账号/ })).not.toBeInTheDocument();
@@ -110,5 +117,76 @@ describe("ProviderOnboardingCatalog", () => {
     expect(filters.getByRole("button", { name: "全部 0" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("没有匹配的供应商，可使用自定义接入。")).toBeVisible();
     expect(screen.getByRole("button", { name: /自定义供应商/ })).toBeEnabled();
+  });
+
+});
+
+describe("ProviderCatalogSyncButton", () => {
+  async function clickSync(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: /同步供应商目录/ }));
+  }
+
+  it("posts to the explicit sync endpoint and reports the provider count", async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminFetch).mockResolvedValueOnce(new Response(JSON.stringify({ source: "upstream-provider-catalog", providers: 258, models_count: 9000, duration_ms: 1800 }), { status: 200 }));
+    render(<ProviderCatalogSyncButton api={api} />);
+    await clickSync(user);
+    expect(await screen.findByText("同步供应商目录完成：已加载 258 个供应商。")).toBeVisible();
+    expect(adminFetch).toHaveBeenCalledWith(api, "/api/admin/provider-catalog-sync", { method: "POST" });
+  });
+
+  it("shows a retryable failure message when the sync endpoint fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminFetch).mockResolvedValueOnce(new Response("upstream unavailable", { status: 502 }));
+    render(<ProviderCatalogSyncButton api={api} />);
+    await clickSync(user);
+    expect(await screen.findByText("目录同步失败，请稍后重试。")).toBeVisible();
+  });
+
+  it("disables the button and reports progress while the sync is running", async () => {
+    const user = userEvent.setup();
+    let release: (() => void) | undefined;
+    vi.mocked(adminFetch).mockImplementationOnce(() => new Promise<Response>(resolve => {
+      release = () => resolve(new Response(JSON.stringify({ source: "upstream-provider-catalog", providers: 2 }), { status: 200 }));
+    }));
+    render(<ProviderCatalogSyncButton api={api} />);
+    await clickSync(user);
+    const busy = await screen.findByRole("button", { name: /正在同步/ });
+    expect(busy).toBeDisabled();
+    release?.();
+    expect(await screen.findByText("同步供应商目录完成：已加载 2 个供应商。")).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: /同步供应商目录/ })).toBeEnabled());
+  });
+
+  it("calls the reload callback after a successful sync so imported providers appear", async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminFetch).mockResolvedValueOnce(new Response(JSON.stringify({ source: "upstream-provider-catalog", providers: 2, models_count: 9000, duration_ms: 1800 }), { status: 200 }));
+    const onSynced = vi.fn();
+    render(<ProviderCatalogSyncButton api={api} onSynced={onSynced} />);
+    await clickSync(user);
+    await waitFor(() => expect(onSynced).toHaveBeenCalledOnce());
+    expect(await screen.findByText("同步供应商目录完成：已加载 2 个供应商。")).toBeVisible();
+  });
+
+  it("reports the whole sync as failed when the reload callback rejects", async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminFetch).mockResolvedValueOnce(new Response(JSON.stringify({ source: "upstream-provider-catalog", providers: 2, models_count: 9000, duration_ms: 1800 }), { status: 200 }));
+    const onSynced = vi.fn().mockRejectedValue(new Error("catalog reload failed"));
+    render(<ProviderCatalogSyncButton api={api} onSynced={onSynced} />);
+    await clickSync(user);
+    // Announcing success while the cards still show the old catalog is the defect
+    // being fixed, so an unreloadable catalog is surfaced as a failed sync. Retrying
+    // repeats both steps and is safe: the upstream fetch is idempotent.
+    expect(await screen.findByText("目录同步失败，请稍后重试。")).toBeVisible();
+    expect(onSynced).toHaveBeenCalledOnce();
+  });
+
+  it("marks the failure message so it does not read as success", async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminFetch).mockResolvedValueOnce(new Response("upstream unavailable", { status: 502 }));
+    render(<ProviderCatalogSyncButton api={api} />);
+    await clickSync(user);
+    const status = await screen.findByRole("status");
+    expect(status).toHaveClass("failed");
   });
 });

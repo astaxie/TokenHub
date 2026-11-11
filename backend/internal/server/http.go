@@ -48,6 +48,7 @@ type Server struct {
 	credentialRefresh                *ProviderCredentialRefreshService
 	payloadRetention                 *requestPayloadRetentionService
 	providerMonitoring               *providerMonitoringScheduler
+	providerCatalogSync              *providerCatalogScheduler
 	mux                              *http.ServeMux
 	publicGatewayOperations          map[gatewayOperation]bool
 	config                           Config
@@ -190,6 +191,7 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		panic(err)
 	}
 	providerCatalog := newProviderCatalogService(store, config.ProviderCatalogFile, catalogClient)
+	providerCatalog.SetUpstreamURL(config.ProviderCatalogUpstreamURL)
 	providerCatalog.UsePluginCatalogTypes(pluginBootstrap.adapterRegistry)
 	s := &Server{
 		store:                            store,
@@ -241,6 +243,7 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		providerProxyPolicy: providerProxyPolicy,
 	}
 	s.providerMonitoring = newProviderMonitoringScheduler(store, s.runProviderMonitoring)
+	s.providerCatalogSync = newProviderCatalogScheduler(store, s.runProviderCatalogSync)
 	s.pluginBackgroundRunner.SetSchedulerSnapshotLocker(s.pluginRuntimeMu.RLocker())
 	s.installServerPluginHandlers(&pluginBootstrap)
 	if err := pluginmeta.NewRuntime(config.PluginDir).CompleteRuntimeRestart(); err != nil {
