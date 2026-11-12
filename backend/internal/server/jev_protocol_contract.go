@@ -25,6 +25,12 @@ func jevReject(reason, field string) jevCompatibility {
 const jevKnownFields = `model messages input instructions stream stream_options background store user metadata prompt_cache_key previous_response_id client_metadata max_tokens max_completion_tokens max_output_tokens temperature top_p top_logprobs logprobs tools tool_choice parallel_tool_calls response_format text reasoning reasoning_effort stop presence_penalty frequency_penalty min_p top_k include truncation service_tier safety_identifier prompt_cache_options prompt_cache_retention max_tool_calls`
 
 func jevChatCompatibility(model ProviderModel, req ChatCompletionRequest) jevCompatibility {
+	return jevChatCompatibilityForRoute(model, req, false)
+}
+
+// jevChatCompatibilityForRoute lets the caller state whether the route's
+// adapter forwards the OpenAI body verbatim.
+func jevChatCompatibilityForRoute(model ProviderModel, req ChatCompletionRequest, adapterForwards bool) jevCompatibility {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return jevReject("invalid_request", "")
@@ -33,7 +39,7 @@ func jevChatCompatibility(model ProviderModel, req ChatCompletionRequest) jevCom
 	if json.Unmarshal(data, &raw) != nil {
 		return jevReject("invalid_request", "")
 	}
-	result := jevCheckRequest(model, "chat/completions", raw, len(data), jevOutputBudget(raw, req.MaxTokens), req.Messages)
+	result := jevCheckRequestForRoute(model, "chat/completions", raw, len(data), jevOutputBudget(raw, req.MaxTokens), req.Messages, adapterForwards)
 	if result.Reason == "" && !catalogReasoningEffortFits(model, req.ReasoningEffort) {
 		return jevReject("reasoning_effort_unsupported", "reasoning_effort")
 	}
@@ -41,6 +47,10 @@ func jevChatCompatibility(model ProviderModel, req ChatCompletionRequest) jevCom
 }
 
 func jevResponsesCompatibility(model ProviderModel, req ResponsesRequest) jevCompatibility {
+	return jevResponsesCompatibilityForRoute(model, req, false)
+}
+
+func jevResponsesCompatibilityForRoute(model ProviderModel, req ResponsesRequest, adapterForwards bool) jevCompatibility {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return jevReject("invalid_request", "")
@@ -49,7 +59,7 @@ func jevResponsesCompatibility(model ProviderModel, req ResponsesRequest) jevCom
 	if json.Unmarshal(data, &raw) != nil {
 		return jevReject("invalid_request", "")
 	}
-	result := jevCheckRequest(model, "responses", raw, len(data), req.MaxTokens, req.Input)
+	result := jevCheckRequestForRoute(model, "responses", raw, len(data), req.MaxTokens, req.Input, adapterForwards)
 	if result.Reason == "" && !catalogReasoningEffortFits(model, responsesReasoningEffort(req)) {
 		return jevReject("reasoning_effort_unsupported", "reasoning")
 	}
@@ -57,6 +67,10 @@ func jevResponsesCompatibility(model ProviderModel, req ResponsesRequest) jevCom
 }
 
 func jevCheckRequest(model ProviderModel, endpoint string, raw map[string]json.RawMessage, size, budget int, input any) jevCompatibility {
+	return jevCheckRequestForRoute(model, endpoint, raw, size, budget, input, false)
+}
+
+func jevCheckRequestForRoute(model ProviderModel, endpoint string, raw map[string]json.RawMessage, size, budget int, input any, adapterForwards bool) jevCompatibility {
 	model.SupportedParameters = catalogReasoningParameters(model.SupportedParameters, model.Modality, model.Metadata)
 	if model.Status != StatusActive {
 		return jevReject("model_disabled", "")
@@ -107,6 +121,14 @@ func jevCheckRequest(model ProviderModel, endpoint string, raw map[string]json.R
 		if slices.Contains(strings.Fields(structural), key) {
 			continue
 		}
+		// Endpoint-neutral protocol controls stay independent of the opt-in
+		// request profile only when the route's adapter forwards the OpenAI
+		// body verbatim and the upstream serves the incoming endpoint. Protocol
+		// bridges and translating adapters drop these fields silently, so they
+		// keep the declaration gate.
+		if jevSharedProtocolControl(key) && adapterForwards && jevHasEndpoint(model.Metadata["endpoints"], endpoint) {
+			continue
+		}
 		if profile == jevOpenAIProfile {
 			if jevWrongEndpointField(endpoint, key) {
 				return jevReject("parameter_endpoint_mismatch", key)
@@ -152,8 +174,16 @@ func jevHasEndpoint(endpoints, wanted string) bool {
 	return false
 }
 
+// jevSharedProtocolControl reports the endpoint-neutral protocol controls. They
+// describe how a request is handled rather than a model capability, so a model
+// does not repeat them in supported_parameters; an explicit
+// request_parameter_denied entry still rejects them.
+func jevSharedProtocolControl(key string) bool {
+	return slices.Contains([]string{"service_tier", "safety_identifier", "prompt_cache_options", "prompt_cache_retention", "store"}, key)
+}
+
 func jevProtocolControl(endpoint, key string) bool {
-	if slices.Contains([]string{"service_tier", "safety_identifier", "prompt_cache_options", "prompt_cache_retention", "store"}, key) {
+	if jevSharedProtocolControl(key) {
 		return true
 	}
 	return endpoint == "responses" && slices.Contains([]string{"include", "truncation", "max_tool_calls", "text", "stream_options"}, key)
