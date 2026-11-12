@@ -145,6 +145,16 @@ redis.call("ZREM", KEYS[5], user_lease_id)
 return 1
 `)
 
+// Renewal reports member existence, not the ZADD added/changed count: an
+// existing lease is retained even when its expiration score is unchanged.
+var redisBillingRenewLeaseScript = redis.NewScript(`
+if redis.call("ZSCORE", KEYS[1], ARGV[1]) == false then
+  return 0
+end
+redis.call("ZADD", KEYS[1], "XX", ARGV[2], ARGV[1])
+return redis.call("PEXPIRE", KEYS[1], ARGV[3])
+`)
+
 type redisBillingCoordinator struct {
 	client   *redis.Client
 	leaseTTL time.Duration
@@ -328,11 +338,10 @@ func (c *redisBillingCoordinator) renewLease(ctx context.Context, scopeType stri
 	}
 	expiresAt := time.Now().UTC().Add(c.leaseTTL)
 	key := redisBillingLeaseKey(scopeType, scopeID)
-	updated, err := c.client.ZAddXX(ctx, key, redis.Z{Score: float64(expiresAt.UnixMilli()), Member: leaseID}).Result()
-	if err != nil || updated == 0 {
+	retained, err := redisBillingRenewLeaseScript.Run(ctx, c.client, []string{key}, leaseID, expiresAt.UnixMilli(), c.leaseTTL.Milliseconds()).Int64()
+	if err != nil || retained == 0 {
 		return 0, false, err
 	}
-	_ = c.client.PExpire(ctx, key, c.leaseTTL).Err()
 	return c.leaseTTL, true, nil
 }
 
