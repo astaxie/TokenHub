@@ -90,7 +90,7 @@ Ingress 路由与 `deploy/nginx.multi-instance.conf` 一致:
 | `/api`、`/v1`、`/v1beta`、`/docs`、`/openapi.json`、`/openapi.yaml`、`/healthz`、`/readyz`、`/livez` | `api`(8080) |
 | 其余所有路径 | `console`(3000) |
 
-默认 Ingress 注解关闭了响应缓冲,把读写超时提高到 300 秒以保证流式响应不被中断,并把请求体上限设为 32 MiB,与 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 一致。其他 Ingress 控制器或不同限制可以覆盖 `ingress.annotations`;请求体上限不要低于多模态请求限制。
+默认 Ingress 注解关闭了响应缓冲,把读写超时提高到 300 秒以保证流式响应不被中断,并把请求体上限设为 128 MiB,使 `/v1/responses` 的请求体能够到达 TokenHub。其他 Ingress 控制器可以覆盖 `ingress.annotations`。如果把 `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` 提高到 128 MiB 以上,也要把 `nginx.ingress.kubernetes.io/proxy-body-size` 一并提高,最大 `512m`。
 
 ## 健康检查与停机
 

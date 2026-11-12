@@ -381,6 +381,7 @@ func (s *Server) prepareRouteForUpstream(ctx context.Context, route RouteSelecti
 	if route.Resource == nil {
 		return route, nil
 	}
+	stampResponsesRequestCompression(&route.Provider, route.Resource)
 	// Account adapters own their credential/session lifecycle even when they
 	// have no native refresh handler. Bind the router's selected account first.
 	if s.store.IsProviderAccountResourceType(route.Provider.Type, route.Resource.ResourceType) {
