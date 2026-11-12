@@ -18,6 +18,17 @@ type ProviderEditSectionProps = {
   onUpdate: (key: string, value: string) => void;
 };
 
+export function ProviderHealthField({ values, onUpdate }: ProviderEditSectionProps) {
+  return (
+    <div className="field">
+      <label className="checkbox-line">
+        <input aria-label={tx("Provider 健康")} checked={values.healthy !== "false"} type="checkbox" onChange={(event) => onUpdate("healthy", String(event.target.checked))} />
+        <span>{tx("Provider 健康")}</span>
+      </label>
+    </div>
+  );
+}
+
 export function ProviderConnectionFields({
   values,
   onUpdate,

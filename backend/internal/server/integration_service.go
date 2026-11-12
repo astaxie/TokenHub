@@ -178,7 +178,8 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			return nil, err
 		}
 		if probeErr != nil {
-			_, _ = s.store.SetProviderHealth(providerID, false)
+			// Catalog discovery is not a reliable availability signal: some compatible
+			// APIs return HTTP 200 error payloads that decode as an empty model list.
 			return nil, probeErr
 		}
 		return s.store.SetProviderHealth(providerID, true)
