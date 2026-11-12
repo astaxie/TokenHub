@@ -257,6 +257,7 @@ func (s *GormStore) saveProviderResourceQuota(resourceID string, adapterType str
 }
 
 func saveProviderResourceQuota(db *gorm.DB, resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
+	snapshot = withNormalizedAllowance(snapshot, fetchedAt)
 	observation := ProviderResourceObservation{
 		ResourceID:     strings.TrimSpace(resourceID),
 		AdapterType:    strings.TrimSpace(adapterType),

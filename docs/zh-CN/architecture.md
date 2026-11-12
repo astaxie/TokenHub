@@ -245,3 +245,5 @@ SQLite 使用单连接和 5 秒 `busy_timeout`，适合单实例；不得让多�
 - [插件开发](plugin-development/README.md)：Plugin Devkit、Examples、插件家族、Manifest 契约、运行时能力面和迁移清单。
 - [普通用户指南](user-guide.md)：项目 API Key 与模型 API 调用方式。
 - [团队负责人指南](team-leader-guide.md)：团队、项目、成员和成本归因管理。
+
+账号额度标准化位于 `backend/internal/allowance/`，账号排序位于 `backend/internal/accountrouting/`。Core 提供已授权的线路位置、持久化额度观测和共享的账号轮换状态。账号规划不调用上游额度接口，也不能加入被策略排除的线路或账号。详见[账号额度与调度](administrator-guide.md#账号额度与调度)。

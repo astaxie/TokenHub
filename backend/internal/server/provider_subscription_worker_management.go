@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"tokenhub/backend/internal/allowance"
 )
 
 type subscriptionWorkerOptionsKey struct{}
@@ -74,6 +76,22 @@ func redactSubscriptionQuotaText(quota map[string]any, provider Provider) {
 		}
 	}
 	field(quota, "plan_type")
+	if projection, ok := quota["allowance"].(allowance.Snapshot); ok {
+		for i := range projection.Windows {
+			window := &projection.Windows[i]
+			window.Name, window.Unit = redact(window.Name), redact(window.Unit)
+			for j := range window.Models {
+				window.Models[j] = redact(window.Models[j])
+			}
+			for j := range window.ExcludedModels {
+				window.ExcludedModels[j] = redact(window.ExcludedModels[j])
+			}
+		}
+		if projection.Credits != nil {
+			projection.Credits.Unit = redact(projection.Credits.Unit)
+		}
+		quota["allowance"] = projection
+	}
 	if windows, ok := quota["windows"].([]map[string]any); ok {
 		for _, window := range windows {
 			field(window, "label")
@@ -161,6 +179,7 @@ func normalizeSubscriptionQuota(raw []byte, now time.Time) (map[string]any, erro
 		metrics = append(metrics, map[string]string{"label": "Plan expires", "value": until.UTC().Format(time.RFC3339)})
 	}
 	result := map[string]any{"plan_type": boundedSubscriptionText(source.Plan), "fetched_at": now.Unix(), "windows": windows, "additional_rate_limits": additional, "metrics": metrics}
+	result["allowance"] = allowance.Normalize(raw, now)
 	if len(windows) > 0 {
 		result["used_percent"], result["remaining_percent"] = maxUsed, 100-maxUsed
 		result["allowed"], result["limit_reached"] = maxUsed < 100, maxUsed >= 100

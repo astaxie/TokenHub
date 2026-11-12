@@ -344,12 +344,18 @@ func (s *Server) populateProviderQuotaSummaries(snapshots []ProviderMonitoringSn
 			account := ProviderQuotaAccountSummary{ResourceID: resource.ID, ResourceName: resource.Name}
 			if quota, ok := s.cachedProviderMonitoringQuota(resource.ID, 0); ok {
 				account.Quota = quota
+				if projection, ok := quotaObject(quota["allowance"]); ok && projection["status"] == "query_error" {
+					account.ErrorCode = quotaString(projection["error_code"])
+					if account.ErrorCode == "" {
+						account.ErrorCode = "provider_quota_unavailable"
+					}
+				}
 			} else {
 				account.ErrorCode = "quota_not_cached"
 			}
 			summary := &snapshots[providerIndex].Quota
 			summary.Accounts = append(summary.Accounts, account)
-			if len(account.Quota) == 0 {
+			if len(account.Quota) == 0 || account.ErrorCode != "" {
 				summary.FailedAccounts++
 				continue
 			}
@@ -399,10 +405,10 @@ const providerMonitoringQuotaTTL = 60 * time.Second
 
 func (s *Server) cachedProviderMonitoringQuota(resourceID string, ttl time.Duration) (ProviderAccountQuotaSnapshot, bool) {
 	observation, ok := s.store.GetProviderResourceObservation(resourceID)
-	if !ok || observation.QuotaFetchedAt == nil || strings.TrimSpace(observation.QuotaSnapshot) == "" {
+	if !ok || strings.TrimSpace(observation.QuotaSnapshot) == "" {
 		return nil, false
 	}
-	if ttl > 0 && time.Since(observation.QuotaFetchedAt.UTC()) > ttl {
+	if ttl > 0 && (observation.QuotaFetchedAt == nil || time.Since(observation.QuotaFetchedAt.UTC()) > ttl) {
 		return nil, false
 	}
 	return providerMonitoringQuotaSnapshotFromJSON(observation.QuotaSnapshot)

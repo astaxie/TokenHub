@@ -240,3 +240,5 @@ SQLite は単一接続と 5 秒の `busy_timeout` を使用し、バックエン
 - [プラグイン開発](plugin-development/README.md)：Plugin Devkit、Examples、プラグインファミリー、Manifest 契約、runtime 面、移行チェックリスト。
 - [利用者ガイド](user-guide.md)：Project API Key とモデル API 呼び出し。
 - [チームリーダーガイド](team-leader-guide.md)：チーム、Project、メンバー、コスト配賦。
+
+アカウントのクォータ正規化は `backend/internal/allowance/`、アカウントの並べ替えは `backend/internal/accountrouting/` にあります。Coreは許可済みルートの位置、保存済みクォータ観測、共有するdrain状態を渡します。アカウント計画は上流のクォータAPIを呼び出さず、ポリシーで除外されたルートやリソースを追加できません。[アカウントのクォータとルーティング](administrator-guide.md#アカウントのクォータとルーティング)を参照してください。

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -59,8 +60,10 @@ func (s *Server) executeEncodedPluginAction(ctx context.Context, user AdminUser,
 		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusInternalServerError, "plugin_action_payload_failed", "Plugin action payload could not be encoded")
 	}
 	actionCtx := s.capturePluginActionResourceRevision(ctx, rawPayload)
+	started := time.Now().UTC()
 	result, err := s.executeRawPluginAction(actionCtx, user, pluginID, actionID, rawPayload)
 	if err != nil {
+		s.recordQuotaActionFailure(actionCtx, pluginID, actionID, opts, err, started)
 		if opts.PreserveActionErrors {
 			return pluginmeta.ActionResult{}, err
 		}
@@ -70,6 +73,7 @@ func (s *Server) executeEncodedPluginAction(ctx context.Context, user AdminUser,
 		if descriptor, ok := s.pluginActions.Describe(pluginID, actionID); ok {
 			result, err = s.applyPluginActionSideEffects(actionCtx, descriptor, rawPayload, result)
 			if err != nil {
+				s.recordQuotaActionFailure(actionCtx, pluginID, actionID, opts, err, started)
 				return pluginmeta.ActionResult{}, err
 			}
 		}

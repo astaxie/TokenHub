@@ -743,6 +743,7 @@ func executeRoutedWithStore[T any](
 			continue
 		}
 		omitReasoningEffort := false
+		recordAccountRoutingOutcome(leaseCtx, store, route, false)
 		for {
 			// The attempt window covers the whole routed callback, including stream
 			// translation and writing to the client: a slow reader blocks the
@@ -778,6 +779,9 @@ func executeRoutedWithStore[T any](
 			// bad parameter is a client error, and dropping the effort is exactly
 			// how the gateway fixes it.
 			disposition := providerErrorDisposition(err)
+			if disposition == ProviderErrorQuotaExhausted {
+				recordAccountRoutingOutcome(leaseCtx, store, route, true)
+			}
 			retryWithoutEffort := allowReasoningEffortFallback &&
 				!omitReasoningEffort &&
 				disposition != ProviderErrorStreamCommitted &&
@@ -1035,7 +1039,7 @@ func (s *Server) planRouteOrderWithContext(ctx context.Context, call CallContext
 		}
 		ordered = ordered[end:]
 	}
-	return s.runGatewayRouteRankHooks(ctx, call, planned)
+	return s.planAccountOrder(ctx, call, s.runGatewayRouteRankHooks(ctx, call, planned))
 }
 
 type rendezvousRouteRanking struct {

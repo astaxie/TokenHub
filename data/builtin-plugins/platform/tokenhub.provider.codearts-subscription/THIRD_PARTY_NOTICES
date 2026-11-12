@@ -28,6 +28,13 @@ Magpie or include its graphical application. Claude Code itself is not bundled
 or licensed by this notice; its separately installed distribution retains its
 own terms.
 
+Account allowance normalization and ordering in `backend/internal/allowance/`
+and `backend/internal/accountrouting/` also reference Magpie's allowance windows,
+Smart, expiry, least-use, and drain semantics at commit
+`47b51c8225a66e753dd249cb782472b0dcbee6c4`. TokenHub supplies its own cache,
+authorization boundaries, PostgreSQL state, and execution integration. This is
+independent of the older pinned protocol integrations listed above.
+
 MIT License
 
 Copyright (c) 2026 yetone

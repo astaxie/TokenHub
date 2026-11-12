@@ -440,6 +440,7 @@ type ModelRoutePolicyRoute struct {
 }
 
 type ModelRoutePolicy struct {
+	AccountStrategy *string                 `json:"account_strategy,omitempty"`
 	SemanticRouting *SemanticRoutingPolicy  `json:"semantic_routing,omitempty"`
 	Strategy        string                  `json:"strategy"`
 	Routes          []ModelRoutePolicyRoute `json:"routes"`
@@ -1227,6 +1228,7 @@ func cloneRawJSON(source map[string]json.RawMessage, extra int) map[string]json.
 }
 
 type RouteSelection struct {
+	AccountRouting   *accountRoutingAttempt   `json:"-"`
 	MeteringSnapshot *meteringAttemptSnapshot `json:"-"`
 	Provider         Provider
 	Resource         *ProviderResource

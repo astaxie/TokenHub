@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"tokenhub/backend/internal/allowance"
 )
 
 const (
@@ -18,6 +20,7 @@ const (
 )
 
 type OpenAIAccountQuotaWindow struct {
+	usedPercentMissing bool
 	UsedPercent        float64 `json:"used_percent"`
 	LimitWindowSeconds int64   `json:"limit_window_seconds"`
 	ResetAfterSeconds  int64   `json:"reset_after_seconds"`
@@ -25,6 +28,7 @@ type OpenAIAccountQuotaWindow struct {
 }
 
 type OpenAIAccountRateLimit struct {
+	allowedMissing  bool
 	Allowed         bool                      `json:"allowed"`
 	LimitReached    bool                      `json:"limit_reached"`
 	PrimaryWindow   *OpenAIAccountQuotaWindow `json:"primary_window,omitempty"`
@@ -42,6 +46,8 @@ type OpenAIAccountRateLimitResetCredits struct {
 }
 
 type OpenAIAccountQuota struct {
+	Allowance             *allowance.Snapshot                 `json:"allowance,omitempty"`
+	Credits               map[string]any                      `json:"credits,omitempty"`
 	UserID                string                              `json:"user_id,omitempty"`
 	AccountID             string                              `json:"account_id,omitempty"`
 	Email                 string                              `json:"email,omitempty"`
@@ -82,6 +88,7 @@ func (s *Server) queryOpenAIAccountQuotaCached(ctx context.Context, resourceID s
 		startedAt := time.Now()
 		fetched, fetchErr := s.fetchOpenAIAccountQuota(leaseCtx, resourceID)
 		if fetchErr != nil {
+			s.recordProviderQuotaFailure(leaseCtx, resource, fetchErr, startedAt)
 			s.store.RecordProviderObservation(ProviderObservation{
 				ProviderID:  provider.ID,
 				ResourceID:  resourceID,
@@ -151,6 +158,9 @@ func pluginActionResultQuotaSnapshot(data any, now time.Time) (map[string]any, s
 	}
 	fetchedAt := quotaSnapshotFetchedAt(snapshot["fetched_at"], now)
 	snapshot["fetched_at"] = fetchedAt.Unix()
+	if snapshot["allowance"] == nil {
+		snapshot["allowance"] = allowance.Normalize(raw, fetchedAt)
+	}
 	raw, err = json.Marshal(snapshot)
 	if err != nil {
 		return nil, "", time.Time{}, false
@@ -253,9 +263,19 @@ func fetchOpenAIAccountQuotaWithClient(ctx context.Context, client *http.Client,
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return OpenAIAccountQuota{}, resp.StatusCode, openAIQuotaUpstreamError(resp.StatusCode, resp.Body)
 	}
-	var quota OpenAIAccountQuota
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
-	if err := decoder.Decode(&quota); err != nil {
+	var payload json.RawMessage
+	var quota OpenAIAccountQuota
+	if err := decoder.Decode(&payload); err != nil {
+		return OpenAIAccountQuota{}, resp.StatusCode, NewHTTPError(http.StatusBadGateway, "openai_quota_invalid_response", "OpenAI quota endpoint returned an invalid response")
+	}
+	var envelope struct {
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil || (len(envelope.Error) > 0 && string(envelope.Error) != "null") {
+		return OpenAIAccountQuota{}, resp.StatusCode, NewHTTPError(http.StatusBadGateway, "openai_quota_invalid_response", "OpenAI quota endpoint returned an invalid response")
+	}
+	if err := json.Unmarshal(payload, &quota); err != nil {
 		return OpenAIAccountQuota{}, resp.StatusCode, NewHTTPError(http.StatusBadGateway, "openai_quota_invalid_response", "OpenAI quota endpoint returned an invalid response")
 	}
 	quota.FetchedAt = time.Now().UTC().Unix()
