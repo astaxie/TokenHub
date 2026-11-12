@@ -191,23 +191,23 @@ TokenHub は、実際のエンタープライズ利用からのフィードバ�
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/excniesNIED">
-        <img src="https://avatars.githubusercontent.com/u/61446002?v=4" width="80px" alt="excniesNIED" />
-        <br /><sub><b>excniesNIED</b></sub>
+      <a href="https://github.com/kiddyt00">
+        <img src="https://avatars.githubusercontent.com/u/22384775?v=4" width="80px" alt="kiddyt00" />
+        <br /><sub><b>kiddyt00</b></sub>
       </a>
     </td>
   </tr>
   <tr>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/imaben">
-        <img src="https://avatars.githubusercontent.com/u/3390195?v=4" width="80px" alt="imaben" />
-        <br /><sub><b>imaben</b></sub>
+      <a href="https://github.com/excniesNIED">
+        <img src="https://avatars.githubusercontent.com/u/61446002?v=4" width="80px" alt="excniesNIED" />
+        <br /><sub><b>excniesNIED</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
-      <a href="https://github.com/kiddyt00">
-        <img src="https://avatars.githubusercontent.com/u/22384775?v=4" width="80px" alt="kiddyt00" />
-        <br /><sub><b>kiddyt00</b></sub>
+      <a href="https://github.com/imaben">
+        <img src="https://avatars.githubusercontent.com/u/3390195?v=4" width="80px" alt="imaben" />
+        <br /><sub><b>imaben</b></sub>
       </a>
     </td>
     <td align="center" valign="top" width="12.5%">
