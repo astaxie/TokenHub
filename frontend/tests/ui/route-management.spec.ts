@@ -38,12 +38,15 @@ for (const state of ["desktop", "mobile", "failure"] as const) {
     await expect(accounts).toHaveValue("default");
     await accounts.selectOption("drain");
     await expect(dialog.getByRole("tab", { name: "固定比例", exact: true })).toHaveAttribute("aria-selected", "true");
-    await capture(page, testInfo, dialog.locator(".account-routing-policy"), `account-routing-${state}`, "独立账号调度：保留模型策略和项目权限");
+    if (state !== "failure") {
+      await capture(page, testInfo, dialog, `account-routing-${state}`, "独立账号调度：账号与模型策略分别配置", "viewport");
+    }
     await dialog.getByRole("button", { name: "应用策略", exact: true }).click();
     if (state === "failure") {
       await expect(dialog.getByRole("alert")).toHaveText("Synthetic account policy save failed");
       await expect(accounts).toHaveValue("drain");
       await expect(dialog.getByRole("button", { name: "应用策略", exact: true })).toBeEnabled();
+      await capture(page, testInfo, dialog, "account-routing-failure", "账号调度：保存失败后保留所选策略", "viewport");
     } else {
       await expect(dialog.getByRole("button", { name: "应用策略", exact: true })).toBeDisabled();
       await page.reload();
