@@ -1,9 +1,9 @@
-import type { Provider } from "../../features/admin/core/types";
+import type { Provider, ProviderMonitoringSnapshot } from "../../features/admin/core/types";
 import type { Locator } from "@playwright/test";
 import { test, expect, capture } from "./harness";
-import type { MockAPI } from "./network";
+import type { MockAPI, MockResponse } from "./network";
 
-function installProviders(api: MockAPI) {
+function installProviders(api: MockAPI, monitoring?: () => Promise<MockResponse>) {
   const providers: Provider[] = [
     { id: "prv_ui_local", name: "UI Local Cluster", type: "mock", base_url: "", priority: 1, status: "active", healthy: true },
     { id: "prv_ui_internal", name: "UI Internal Cluster", type: "mock", base_url: "http://inference.example.test/v1", priority: 2, status: "active", healthy: true },
@@ -15,9 +15,10 @@ function installProviders(api: MockAPI) {
   api.respond("GET", "/api/admin/plugins", { data: [{ id: "tokenhub.provider.mock", name: "Mock Plugin", version: "1.0.0", source: "local_file", kinds: ["provider"], placements: ["gateway_chain"], capabilities: [{ kind: "provider_type", name: "mock" }] }] });
   api.respond("GET", "/api/admin/plugin-marketplace", { data: { available: true, plugins: [] } });
   api.respond("GET", "/api/admin/plugin-background-jobs", { data: [], runs: [] });
-  for (const path of ["provider-resources", "routing-rules", "audit/events", "providers/monitoring", "plugin-ui-manifest", "plugin-actions"]) {
+  for (const path of ["provider-resources", "routing-rules", "audit/events", "plugin-ui-manifest", "plugin-actions"]) {
     api.respond("GET", `/api/admin/${path}`, { data: [] });
   }
+  api.define("GET", "/api/admin/providers/monitoring", monitoring ?? (() => ({ json: { data: [] } })));
   api.define("GET", "/api/admin/audit/requests", () => ({ json: {
     data: [], pagination: { page: 1, page_size: 20, total: 0, total_pages: 0 },
     summary: { all: 0, ok: 0, error: 0, average_latency_ms: 0 },
@@ -25,6 +26,7 @@ function installProviders(api: MockAPI) {
     expect(Object.fromEntries(query)).toEqual({ page: "1", page_size: "20", status: "all", q: "" });
   });
 
+  return providers;
 }
 
 test("providers local-provider-labels", async ({ page, api }, testInfo) => {
@@ -205,3 +207,76 @@ for (const locale of [
     expect(providerReads(), "Resizing and changing language must not reload provider data").toBe(initialProviderReads);
   });
 }
+
+function monitoringSnapshot(provider: Provider): ProviderMonitoringSnapshot {
+  return {
+    provider, adapter: { type: provider.type, capabilities: ["chat"] },
+    route_count: 0, active_route_count: 0, resource_count: 0, active_resource_count: 0, healthy_resource_count: 0,
+    state: "down", status_label: "Functional Down", status_detail: "gateway_request:observed",
+    configuration: { state: "healthy", source: "configuration", samples: 0 },
+    resources: { state: "unknown", source: "resources", samples: 0 },
+    active_probe: { state: "unknown", source: "active_probe", samples: 0 },
+    gateway: { state: "down", source: "gateway_request", samples: 10, success_rate: 0 },
+    quota: { supported: false, limit_reached: false, successful_accounts: 0, failed_accounts: 0 },
+    quality_score: 0, trend: Array.from({ length: 30 }, () => "failure"),
+  };
+}
+
+for (const outcome of ["success", "failure"] as const) {
+  test(`providers independent-monitoring-${outcome}`, async ({ page, api }, testInfo) => {
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const providers = installProviders(api, async () => {
+      await pending;
+      return outcome === "success"
+        ? { json: { data: [monitoringSnapshot(providers[0])] } }
+        : { status: 503, json: { error: { code: "provider_monitoring_unavailable", message: "Synthetic monitoring unavailable" } } };
+    });
+    try {
+      await page.goto("/providers");
+      const row = page.getByRole("row").filter({ hasText: "UI Local Cluster" });
+      await expect(row).toBeVisible();
+      await expect(row.getByText("待观测", { exact: true })).toBeVisible();
+      await expect(row.getByRole("button", { name: "编辑", exact: true })).toBeEnabled();
+      await capture(page, testInfo, page.locator(".provider-channel-list"), `providers-monitoring-pending-${outcome}`, "监控尚未返回时供应商列表可用");
+      release();
+      if (outcome === "success") await expect(row.getByText("故障", { exact: true })).toBeVisible();
+      else {
+        await expect(page.getByText(/Synthetic monitoring unavailable/)).toBeVisible();
+        await expect(row.getByText("待观测", { exact: true })).toBeVisible();
+      }
+      await expect(row.getByRole("button", { name: "编辑", exact: true })).toBeEnabled();
+      await capture(page, testInfo, page.locator(".provider-channel-list"), `providers-monitoring-${outcome}`, "监控更新或失败均保留供应商列表");
+    } finally { release(); }
+  });
+}
+
+test("providers cancels-obsolete-monitoring", async ({ page, api }, testInfo) => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let reads = 0;
+  const providers = installProviders(api, async () => {
+    reads += 1;
+    if (reads > 1) return { json: { data: [] } };
+    await pending;
+    return { json: { data: [monitoringSnapshot(providers[0])] } };
+  });
+  try {
+    await page.goto("/providers");
+    await expect(page.getByRole("row").filter({ hasText: "UI Local Cluster" })).toBeVisible();
+    await expect.poll(() => reads).toBe(1);
+    const canceled = page.waitForEvent("requestfailed", request =>
+      request.url().endsWith("/api/admin/providers/monitoring"));
+    await page.locator(".sidebar").getByRole("button", { name: "成本账单", exact: true }).click();
+    await canceled;
+    await expect(page).toHaveURL(/\/billing$/);
+    await page.locator(".sidebar").getByRole("button", { name: "供应商", exact: true }).click();
+    await expect.poll(() => reads).toBe(2);
+    release();
+    const row = page.getByRole("row").filter({ hasText: "UI Local Cluster" });
+    await expect(row.getByText("待观测", { exact: true })).toBeVisible();
+    await expect(row.getByText("故障", { exact: true })).toHaveCount(0);
+    await capture(page, testInfo, page.locator(".provider-channel-list"),
+      "providers-monitoring-canceled", "离开页面取消旧监控请求，返回后保留新状态");
+  } finally { release(); }
+});

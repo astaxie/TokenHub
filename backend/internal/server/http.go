@@ -23,6 +23,7 @@ import (
 )
 
 type Server struct {
+	monitoringObservations           monitoringObservationCache
 	semanticRouter                   semanticEvaluator
 	pluginRuntimeMu                  sync.RWMutex
 	pluginLifecycleMu                sync.Mutex
