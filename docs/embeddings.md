@@ -6,6 +6,8 @@ Optional parameters are `dimensions`, `encoding_format` (`float` or `base64`), `
 
 The gateway accepts at most 2048 inputs per request; individual protocols may impose lower limits. `dimensions` must be between 1 and 65536. Specify either `task` or `input_type`, not both.
 
+For RAGFlow compatibility, `drop_params` is accepted as a client hint and discarded during request decoding. Boolean values `true` and `false` are accepted; `null` is treated as omitted. Other value types return HTTP 400. This field is not forwarded upstream and does not affect vector semantics or cache keys. It does not enable dropping other parameters: unknown fields and unsupported semantic options are still rejected, even with `drop_params: true`.
+
 ## Provider configuration
 
 In the Provider's advanced settings, open **Text embedding settings**. `embedding_protocol` selects `openai`, `cohere`, `jina`, `voyage`, `dashscope` or `tei`; Gemini uses its native adapter. An empty value uses the catalog default or OpenAI compatibility. Custom providers must select their actual protocol. The path is appended to the Provider Base URL; `embedding_path` overrides that relative endpoint without changing the host or credentials.
