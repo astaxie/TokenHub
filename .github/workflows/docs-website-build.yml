@@ -1,0 +1,38 @@
+# Builds the documentation website on pull requests that touch the docs or
+# the website tooling. The production deployment lives in docs-deploy.yml,
+# which only runs after merge to main; without this workflow, a website that
+# fails to build would reach main unnoticed.
+name: docs-website-build
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'website/**'
+      - '.github/workflows/docs-website-build.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-website-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+      - name: Build documentation site
+        working-directory: website
+        # The build includes the docs sync, the NUL-character sanitizer
+        # (react-dom #31134), and fails the job if any NUL remains.
+        run: npm run build
