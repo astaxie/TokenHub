@@ -1,17 +1,21 @@
 package server
 
-import "time"
+import (
+	"time"
+
+	"tokenhub/backend/internal/analytics"
+)
 
 const (
-	AnalyticsScopeOrganization = "organization"
-	AnalyticsScopeProject      = "project"
+	AnalyticsScopeOrganization = analytics.ScopeOrganization
+	AnalyticsScopeProject      = analytics.ScopeProject
 
-	TokenCostSchemaVersion = "1.0"
-	TokenCostStatusSuccess = "success"
-	TokenCostStatusError   = "error"
+	TokenCostSchemaVersion = analytics.SchemaVersion
+	TokenCostStatusSuccess = analytics.StatusSuccess
+	TokenCostStatusError   = analytics.StatusError
 
-	TokenCostIncrementalSnapshot = "snapshot"
-	TokenCostIncrementalChanges  = "changes"
+	TokenCostIncrementalSnapshot = analytics.IncrementalSnapshot
+	TokenCostIncrementalChanges  = analytics.IncrementalChanges
 	requestLogSequenceName       = "request_logs"
 	requestLogCheckpointLockName = "tokenhub:request-log-checkpoint"
 )
@@ -95,31 +99,9 @@ type TokenCostResponse struct {
 	Watermark     string                 `json:"watermark"`
 }
 
-// TokenCostPage keeps the exported rows and their checkpoint together so the
-// store can derive both from one consistent database snapshot.
 type TokenCostPage struct {
 	Rows       []TokenCostRow
 	HasMore    bool
 	Checkpoint int64
 }
-
-type TokenCostQuery struct {
-	From               time.Time
-	To                 time.Time
-	ProjectID          string
-	UserID             string
-	APIKeyID           string
-	ProviderID         string
-	Model              string
-	Status             string
-	Granularity        string
-	GroupBy            []string
-	Limit              int
-	AfterAt            time.Time
-	AfterID            string
-	Offset             int
-	AfterSequence      int64
-	ThroughSequence    int64
-	ThroughSequenceSet bool
-	Incremental        bool
-}
+type TokenCostQuery = analytics.Query

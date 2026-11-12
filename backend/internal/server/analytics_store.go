@@ -2,42 +2,51 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
+
+	"tokenhub/backend/internal/analytics"
 
 	"gorm.io/gorm"
 )
 
 func (s *GormStore) CreateAnalyticsCredential(credential AnalyticsCredential, rawSecret string) (AnalyticsCredential, string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	credential.Name = strings.TrimSpace(credential.Name)
 	credential.ScopeType = strings.ToLower(strings.TrimSpace(credential.ScopeType))
 	credential.ProjectID = strings.TrimSpace(credential.ProjectID)
-	if credential.Name == "" {
-		return AnalyticsCredential{}, "", NewHTTPError(http.StatusBadRequest, "invalid_analytics_credential", "Analytics credential name is required")
-	}
-	if credential.ScopeType != AnalyticsScopeOrganization && credential.ScopeType != AnalyticsScopeProject {
-		return AnalyticsCredential{}, "", NewHTTPError(http.StatusBadRequest, "invalid_analytics_scope", "Analytics scope_type must be organization or project")
+	if err := analytics.ValidateCredential(analytics.Credential{
+		Name: credential.Name, ScopeType: credential.ScopeType, ProjectID: credential.ProjectID,
+		ExpiresAt: credential.ExpiresAt,
+	}, time.Now().UTC()); err != nil {
+		return AnalyticsCredential{}, "", analyticsHTTPError(err)
 	}
 	if credential.ScopeType == AnalyticsScopeProject {
-		if credential.ProjectID == "" {
-			return AnalyticsCredential{}, "", NewHTTPError(http.StatusBadRequest, "invalid_analytics_scope", "project_id is required for a project analytics credential")
-		}
 		if err := s.db.First(&Project{}, "id = ?", credential.ProjectID).Error; err != nil {
 			return AnalyticsCredential{}, "", notFound(err, "project_not_found", "Project not found")
 		}
 	} else {
 		credential.ProjectID = ""
 	}
-	if credential.ExpiresAt != nil && !credential.ExpiresAt.After(time.Now().UTC()) {
-		return AnalyticsCredential{}, "", NewHTTPError(http.StatusBadRequest, "invalid_analytics_expiry", "expires_at must be in the future")
+	return s.createAnalyticsCredential(context.Background(), credential, rawSecret)
+}
+
+// CreateAnalyticsCredentialContext is the application adapter entry point.
+// Validation is performed by analytics.Service; this method only persists the
+// already-normalized projection and preserves the request context.
+func (s *GormStore) CreateAnalyticsCredentialContext(ctx context.Context, credential AnalyticsCredential, rawSecret string) (AnalyticsCredential, string, error) {
+	return s.createAnalyticsCredential(ctx, credential, rawSecret)
+}
+
+func (s *GormStore) createAnalyticsCredential(ctx context.Context, credential AnalyticsCredential, rawSecret string) (AnalyticsCredential, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if credential.ScopeType == AnalyticsScopeProject {
+		if err := s.db.WithContext(ctx).First(&Project{}, "id = ?", credential.ProjectID).Error; err != nil {
+			return AnalyticsCredential{}, "", notFound(err, "project_not_found", "Project not found")
+		}
 	}
 	if rawSecret == "" {
 		rawSecret = GenerateAPIKeyWithOptions("tha_", DefaultAPIKeyRandomLength)
@@ -51,36 +60,51 @@ func (s *GormStore) CreateAnalyticsCredential(credential AnalyticsCredential, ra
 	credential.Status = StatusActive
 	credential.CreatedAt = now
 	credential.UpdatedAt = now
-	if err := s.db.Create(&credential).Error; err != nil {
+	if err := s.db.WithContext(ctx).Create(&credential).Error; err != nil {
 		return AnalyticsCredential{}, "", writeConflict(err, "analytics_credential_conflict", "Analytics credential already exists")
 	}
 	return credential, rawSecret, nil
 }
 
 func (s *GormStore) ListAnalyticsCredentials() []AnalyticsCredential {
-	var credentials []AnalyticsCredential
-	_ = s.db.Order("created_at asc").Find(&credentials).Error
+	credentials, _ := s.ListAnalyticsCredentialsContext(context.Background())
 	return credentials
 }
 
+func (s *GormStore) ListAnalyticsCredentialsContext(ctx context.Context) ([]AnalyticsCredential, error) {
+	var credentials []AnalyticsCredential
+	err := s.db.WithContext(ctx).Order("created_at asc").Find(&credentials).Error
+	return credentials, err
+}
+
 func (s *GormStore) RevokeAnalyticsCredential(id string) (AnalyticsCredential, error) {
+	return s.RevokeAnalyticsCredentialContext(context.Background(), id)
+}
+
+func (s *GormStore) RevokeAnalyticsCredentialContext(ctx context.Context, id string) (AnalyticsCredential, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var credential AnalyticsCredential
-	if err := s.db.First(&credential, "id = ?", strings.TrimSpace(id)).Error; err != nil {
+	db := s.db.WithContext(ctx)
+	if err := db.First(&credential, "id = ?", strings.TrimSpace(id)).Error; err != nil {
 		return AnalyticsCredential{}, notFound(err, "analytics_credential_not_found", "Analytics credential not found")
 	}
 	credential.Status = StatusRevoked
 	credential.UpdatedAt = time.Now().UTC()
-	if err := s.db.Save(&credential).Error; err != nil {
+	if err := db.Save(&credential).Error; err != nil {
 		return AnalyticsCredential{}, err
 	}
 	return credential, nil
 }
 
 func (s *GormStore) ValidateAnalyticsCredential(rawSecret string) (AnalyticsCredential, error) {
+	return s.ValidateAnalyticsCredentialContext(context.Background(), rawSecret)
+}
+
+func (s *GormStore) ValidateAnalyticsCredentialContext(ctx context.Context, rawSecret string) (AnalyticsCredential, error) {
 	var credential AnalyticsCredential
-	if err := s.db.First(&credential, "key_hash = ?", HashSecret(strings.TrimSpace(rawSecret))).Error; err != nil {
+	db := s.db.WithContext(ctx)
+	if err := db.First(&credential, "key_hash = ?", HashSecret(strings.TrimSpace(rawSecret))).Error; err != nil {
 		return AnalyticsCredential{}, NewHTTPError(http.StatusUnauthorized, "invalid_analytics_credential", "Invalid analytics credential")
 	}
 	if credential.Status != StatusActive {
@@ -90,7 +114,7 @@ func (s *GormStore) ValidateAnalyticsCredential(rawSecret string) (AnalyticsCred
 	if credential.ExpiresAt != nil && !credential.ExpiresAt.After(now) {
 		return AnalyticsCredential{}, NewHTTPError(http.StatusUnauthorized, "analytics_credential_expired", "Analytics credential has expired")
 	}
-	if err := s.db.Model(&AnalyticsCredential{}).Where("id = ?", credential.ID).Updates(map[string]any{
+	if err := db.Model(&AnalyticsCredential{}).Where("id = ?", credential.ID).Updates(map[string]any{
 		"last_used_at": now,
 		"updated_at":   now,
 	}).Error; err != nil {
@@ -386,34 +410,7 @@ func tokenCostRows(databaseRows []tokenCostDatabaseRow, limit int, query TokenCo
 }
 
 func tokenCostDedupeKey(row TokenCostRow, query TokenCostQuery) string {
-	if query.Granularity == "request" {
-		return row.RequestID
-	}
-	data, _ := json.Marshal(struct {
-		Granularity string
-		GroupBy     []string
-		Filters     []string
-		Row         []string
-	}{
-		Granularity: query.Granularity,
-		GroupBy:     query.GroupBy,
-		Filters: []string{
-			query.ProjectID, query.UserID, query.APIKeyID,
-			query.ProviderID, query.Model, query.Status,
-		},
-		Row: []string{
-			row.Bucket, row.ProjectID, row.UserID, row.APIKeyID,
-			row.ProviderID, row.Model, row.Status,
-		},
-	})
-	if query.Incremental {
-		data, _ = json.Marshal(struct {
-			Base  json.RawMessage
-			After int64
-		}{Base: data, After: query.AfterSequence})
-	}
-	sum := sha256.Sum256(data)
-	return "aggregate_" + hex.EncodeToString(sum[:])
+	return analytics.DedupeKey(analyticsRowFromServer(row), query)
 }
 
 func (s *GormStore) TokenCostCheckpoint(ctx context.Context, query TokenCostQuery) (int64, error) {
