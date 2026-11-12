@@ -47,7 +47,7 @@ func TestJevSharedProtocolControlsRequireForwardingAdapter(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.body), &raw); err != nil {
 				t.Fatal(err)
 			}
-			result := jevCheckRequestForRoute(model, tc.endpoint, raw, 10, 0, "task", tc.forwards)
+			result := jevCheckAdmission(model, tc.endpoint, raw, 10, 0, "task", tc.forwards).first()
 			if result.Reason != tc.reason {
 				t.Fatalf("reason=%q want=%q", result.Reason, tc.reason)
 			}

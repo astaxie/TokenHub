@@ -307,7 +307,7 @@ Jev 在语义选模前检查请求接口、模型输入／输出能力、上下�
 
 GPT-6 Sol／Luna 系列目录条目已携带这些配置，已导入的库存不会自动重写，未启用协议配置的旧线路保留已有协议桥接行为。即使语义评估器关闭、Jev 使用确定性回退，准入检查仍会执行。升级已有 Jev 线路前，应检查其 Provider 模型并测试代表性请求，尤其要检查参数声明为空的库存。更新已有条目时只调整 metadata，保留其他元数据及已配置价格。重新导入会替换 Provider 模型记录，包括价格和状态，不能当作仅更新元数据的操作。其他供应商应使用已核实的自身声明；仅因接口接收 OpenAI 形状的 JSON，不能推断其支持该协议配置。
 
-管理员可在审计中查看 action 为 `routing.jev_admission` 的候选淘汰事件，其中记录候选或绑定路由、固定原因码及已识别的参数名；未知字段名统一替换为 `unknown`。事件不记录提示词、请求参数值、凭据或完整请求体。原因码包括 `parameter_not_declared`、`sampling_reasoning_conflict` 和 `parameter_endpoint_mismatch`。公开错误仍为 `jev_no_eligible_candidates`（503）或 `jev_previous_route_unavailable`（409），不披露候选库存。
+管理员可在审计中查看 action 为 `routing.jev_admission` 的候选淘汰事件，其中记录候选或绑定路由、固定原因码及已识别的参数名；未知字段名统一替换为 `unknown`。事件不记录提示词、请求参数值、凭据或完整请求体。原因码包括 `parameter_not_declared`、`sampling_reasoning_conflict` 和 `parameter_endpoint_mismatch`。公开错误仍为 `jev_no_eligible_candidates`（503）或 `jev_previous_route_unavailable`（409），不披露候选库存。`jev_no_eligible_candidates` 响应新增 `details`：`stage` 为 `jev_admission`、`upstream_attempted` 为 `false`，`reasons` 按参数对所有被拒候选聚合，每项包含 `candidate_count`，按参数名排序，超过十项时截断并标记 `truncated: true`；审计事件在逐候选明细旁记录同一份汇总。
 
 ### 作用域路由策略
 
