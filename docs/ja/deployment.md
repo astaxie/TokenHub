@@ -556,4 +556,5 @@ Liveness には `/livez`、Readiness には `/readyz` を使用します。デ�
 | `TOKENHUB_SEMANTIC_ROUTING_PROJECTS` | 空 | テキスト送信を許可する正確なプロジェクト ID のカンマ区切り。空ならすべて拒否。 |
 | `TOKENHUB_TYPESAFE_API_KEY` | 空 | サーバー専用の TypeSafe 認証情報。 |
 | `TOKENHUB_TYPESAFE_MODEL` | `jev-1.13.0` | 具体的な評価モデルのバージョン。 |
+| `TOKENHUB_TYPESAFE_BASE_URL` | `https://api.typesafe.ai/v1` | 判定 API のルート。評価器は `<base>/systemone` を呼び出します。デプロイが公開ホストへ到達できない場合は、内部の System One 互換分類サービスを指定できます。 |
 | `TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS` | `1000` | カタログ検索と評価のタイムアウト、1〜10000 ms。 |
