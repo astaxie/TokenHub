@@ -85,6 +85,15 @@
       "checksum": "6e711e07bffa5bda9d04679c54e2d82fa72766b0d83bb0d364778f4a8af35fa4",
       "lock_timeout_seconds": 30,
       "statement_budget": 2
+    },
+    {
+      "version": 11,
+      "name": "add-provider-allowance-management",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "ab08cbe3038351101d1b587370639b29b9502399f4f1ae600b4eefb81439d217",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 12
     }
   ]
 }

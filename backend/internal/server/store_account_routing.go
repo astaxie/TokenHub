@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 	"tokenhub/backend/internal/accountrouting"
 	"tokenhub/backend/internal/allowance"
+	"tokenhub/backend/internal/quotasource"
 )
 
 const accountRoutingStateKind = "account-routing-state"
@@ -30,6 +32,30 @@ func (s *GormStore) loadAccountRoutingData(ctx context.Context, resourceIDs, poo
 				fetched = *o.QuotaFetchedAt
 			}
 			data[o.ResourceID] = accountRoutingData{Allowance: allowance.Read([]byte(o.QuotaSnapshot), fetched)}
+		}
+		var settings []providerAllowanceSetting
+		if err := s.db.WithContext(ctx).Where("resource_id IN ?", ids).Find(&settings).Error; err != nil {
+			return err
+		}
+		for _, row := range settings {
+			entry := data[row.ResourceID]
+			if err := json.Unmarshal([]byte(row.PolicyJSON), &entry.Policy); err != nil {
+				return err
+			}
+			var source quotasource.Config
+			if err := json.Unmarshal([]byte(s.decryptSecret(row.SourceEncrypted)), &source); err != nil {
+				return err
+			}
+			var err error
+			entry.Allowance, err = s.withWalletObservations(ctx, row.ResourceID, entry.Allowance, source, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			entry.Allowance, err = s.withManualAllowance(ctx, row.ResourceID, entry.Allowance, entry.Policy.Wallet, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			data[row.ResourceID] = entry
 		}
 		var rows []struct {
 			ProviderResourceID string

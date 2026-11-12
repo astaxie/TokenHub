@@ -19,15 +19,15 @@ type CompatibilityManifest struct {
 }
 
 // CurrentCompatibilityManifest is this release's declaration. This release
-// requires all registered expansions, including version 10's persistent OAuth
-// host and registration tables. Older schema states cannot serve the complete
-// authorization flow. Startup applies these additive tables before admitting
+// requires all registered expansions, including version 11's quota settings,
+// history, entitlement events, sessions, and wallet counters. Older schema
+// states cannot serve quota management. Startup applies these tables before admitting
 // requests; historical releases keep their existing compatibility declarations.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: 10,
-		MinCompatible: 10,
-		MaxCompatible: 10,
+		TargetVersion: 11,
+		MinCompatible: 11,
+		MaxCompatible: 11,
 	}
 }
 

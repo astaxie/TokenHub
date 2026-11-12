@@ -25,6 +25,8 @@ func Normalize(data []byte, fetchedAt time.Time) Snapshot {
 			return existing
 		}
 	}
+	s.Plan = text(first(root, "plan", "plan_type"))
+	s.Source = text(root["source"])
 	s.ExpiresAt = timestamp(first(root, "expires_at", "until"))
 	appendWindow := func(value any, name string) {
 		if m, ok := value.(map[string]any); ok {
@@ -67,7 +69,7 @@ func Normalize(data []byte, fetchedAt time.Time) Snapshot {
 	}
 	if len(s.Windows) == 0 {
 		w := normalizeWindow(root, "account", fetchedAt)
-		if w.UsedPercent != nil || w.Balance != nil {
+		if w.UsedPercent != nil || w.Balance != nil || w.Unlimited {
 			s.Windows = append(s.Windows, w)
 		}
 	}
@@ -80,12 +82,22 @@ func Normalize(data []byte, fetchedAt time.Time) Snapshot {
 	}
 	// Largest allowance windows come first, as in Magpie's allowance model.
 	sort.SliceStable(s.Windows, func(i, j int) bool { return s.Windows[i].PeriodSeconds > s.Windows[j].PeriodSeconds })
+	if resets, ok := root["rate_limit_reset_credits"].(map[string]any); ok {
+		if count := number(resets["available_count"]); count != nil {
+			s.Resets = &ResetCredits{Count: int(*count), Unknown: *count > 0, CheckedAt: fetchedAt}
+		}
+	}
 	s.Status = s.For("", fetchedAt, 0).Status
 	return s
 }
 
 func normalizeWindow(m map[string]any, name string, now time.Time) Window {
-	w := Window{Name: name, UsedPercent: number(first(m, "used_percent", "used")), Amount: number(m["amount"]), Limit: number(m["limit"]), Balance: number(m["balance"]), Unit: text(m["unit"]), Models: stringsOf(m["models"]), ExcludedModels: stringsOf(first(m, "excluded_models", "notModels")), Informational: m["aside"] == true || m["informational"] == true, Credits: m["credits"] == true}
+	w := Window{Unlimited: m["unlimited"] == true, Period: text(m["period"]), Pool: text(m["pool"]), Unknown: m["unknown"] == true, Name: name, UsedPercent: number(first(m, "used_percent", "used")), Amount: number(m["amount"]), Limit: number(m["limit"]), Balance: number(m["balance"]), Unit: text(m["unit"]), Models: stringsOf(m["models"]), ExcludedModels: stringsOf(first(m, "excluded_models", "notModels")), Informational: m["aside"] == true || m["informational"] == true || m["text"] == true, Credits: m["credits"] == true}
+	if len(w.Models) == 0 {
+		if model := text(first(m, "model", "model_id")); model != "" {
+			w.Models = []string{model}
+		}
+	}
 	if value := text(first(m, "name", "label")); value != "" {
 		w.Name = value
 	}

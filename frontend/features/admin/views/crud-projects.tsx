@@ -17,6 +17,7 @@ import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
 import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
 import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent } from "./provider-account-ui";
+import { ProviderAllowanceConsole } from "./provider-allowance-console";
 import { ProviderManagementTable } from "./provider-management-table";
 import { latencyDisplay, requestLogFailed } from "./overview";
 import { PaginationControls, type PaginationState } from "../shared/pagination";
@@ -283,7 +284,7 @@ export function ProviderChannelTable({
   onDelete: (provider: Provider) => void;
   onEdit: (provider: Provider) => void;
 }) {
-  const [view, setView] = useState<"manage" | "monitoring">("manage");
+  const [view, setView] = useState<"manage" | "monitoring" | "allowances">("manage");
   const [quotaOverrides, setQuotaOverrides] = useState<Record<string, ProviderQuotaSummary>>({});
   const [quotaRefreshing, setQuotaRefreshing] = useState<Record<string, boolean>>({});
 
@@ -333,9 +334,10 @@ export function ProviderChannelTable({
     <section className={`provider-channel-list${view === "manage" ? " provider-channel-list-manage" : ""}`} aria-label={tx("供应商管理")}>
       <div className="provider-management-tabs" role="group" aria-label={tx("供应商管理")}>
         <button className={view === "manage" ? "active" : ""} aria-pressed={view === "manage"} onClick={() => setView("manage")} type="button">{tx("供应商列表")}</button>
+        <button className={view === "allowances" ? "active" : ""} aria-pressed={view === "allowances"} onClick={() => setView("allowances")} type="button">{tx("额度与权益")}</button>
         <button className={view === "monitoring" ? "active" : ""} aria-pressed={view === "monitoring"} onClick={() => setView("monitoring")} type="button">{tx("可用性监控")}</button>
       </div>
-      {view === "manage" ? <ProviderManagementTable rows={rows} data={data} config={config} currentUser={currentUser} onAction={onAction} onEdit={onEdit} onDelete={onDelete} /> : <>
+      {view === "allowances" && api ? <ProviderAllowanceConsole api={api} providers={providers} canWrite={providerID => { const provider = providers.find(item => item.id === providerID); return Boolean(provider && config.update && (config.canUpdate?.(provider,currentUser,data) ?? true)); }} /> : view === "manage" ? <ProviderManagementTable rows={rows} data={data} config={config} currentUser={currentUser} onAction={onAction} onEdit={onEdit} onDelete={onDelete} /> : <>
       <div className="provider-monitor-head">
         <div>
           <p className="eyebrow">{tx("上游可用性")}</p>

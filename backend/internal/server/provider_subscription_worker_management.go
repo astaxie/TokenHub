@@ -77,9 +77,11 @@ func redactSubscriptionQuotaText(quota map[string]any, provider Provider) {
 	}
 	field(quota, "plan_type")
 	if projection, ok := quota["allowance"].(allowance.Snapshot); ok {
+		projection.Plan, projection.Source = redact(projection.Plan), redact(projection.Source)
 		for i := range projection.Windows {
 			window := &projection.Windows[i]
 			window.Name, window.Unit = redact(window.Name), redact(window.Unit)
+			window.Pool, window.Period = redact(window.Pool), redact(window.Period)
 			for j := range window.Models {
 				window.Models[j] = redact(window.Models[j])
 			}

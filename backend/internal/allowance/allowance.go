@@ -21,6 +21,12 @@ const (
 const Version = 1
 
 type Window struct {
+	Unlimited      bool       `json:"unlimited,omitempty"`
+	Spent          *float64   `json:"spent,omitempty"`
+	SpentSince     *time.Time `json:"spent_since,omitempty"`
+	Period         string     `json:"period,omitempty"`
+	Pool           string     `json:"pool,omitempty"`
+	Unknown        bool       `json:"unknown,omitempty"`
 	Name           string     `json:"name,omitempty"`
 	UsedPercent    *float64   `json:"used_percent,omitempty"`
 	Amount         *float64   `json:"amount,omitempty"`
@@ -44,14 +50,17 @@ type Credits struct {
 }
 
 type Snapshot struct {
-	Version   int        `json:"version"`
-	Status    Status     `json:"status"`
-	Windows   []Window   `json:"windows,omitempty"`
-	Credits   *Credits   `json:"credits,omitempty"`
-	FetchedAt time.Time  `json:"fetched_at,omitzero"`
-	CheckedAt time.Time  `json:"checked_at,omitzero"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	ErrorCode string     `json:"error_code,omitempty"`
+	Version   int           `json:"version"`
+	Plan      string        `json:"plan,omitempty"`
+	Source    string        `json:"source,omitempty"`
+	Resets    *ResetCredits `json:"resets,omitempty"`
+	Status    Status        `json:"status"`
+	Windows   []Window      `json:"windows,omitempty"`
+	Credits   *Credits      `json:"credits,omitempty"`
+	FetchedAt time.Time     `json:"fetched_at,omitzero"`
+	CheckedAt time.Time     `json:"checked_at,omitzero"`
+	ExpiresAt *time.Time    `json:"expires_at,omitempty"`
+	ErrorCode string        `json:"error_code,omitempty"`
 	// ExplicitExhausted applies to an account-wide upstream refusal when no
 	// measurable windows were reported. It never widens a model-specific limit.
 	ExplicitExhausted bool `json:"explicit_exhausted,omitempty"`
@@ -88,7 +97,15 @@ func (s Snapshot) For(model string, now time.Time, maxAge time.Duration) View {
 	}
 	known, expired := false, false
 	for _, w := range s.Windows {
-		if w.Informational || !w.Applies(model) {
+		if w.Informational || !s.WindowApplies(w, model) {
+			continue
+		}
+		if w.Unlimited {
+			known = true
+			continue
+		}
+		if w.Unknown {
+			expired = true
 			continue
 		}
 		if w.ResetAt != nil && !now.Before(*w.ResetAt) {
@@ -117,13 +134,13 @@ func (s Snapshot) For(model string, now time.Time, maxAge time.Duration) View {
 				v.Renewals = append(v.Renewals, *w.ResetAt)
 			}
 		}
-		if w.Balance != nil && finite(*w.Balance) && *w.Balance >= 0 {
+		if w.Balance != nil && finite(*w.Balance) {
 			known = true
 			if v.Balance == nil || (v.Unit == w.Unit && *w.Balance < *v.Balance) {
 				balance := *w.Balance
 				v.Balance, v.Unit = &balance, w.Unit
 			}
-			if *w.Balance == 0 {
+			if *w.Balance <= 0 {
 				v.Status = Exhausted
 			}
 		}
@@ -172,3 +189,17 @@ func matchesAny(patterns []string, model string) bool {
 }
 
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+
+// WindowApplies limits pool-wide caps to the models actually assigned to the
+// pool. A pool label without membership never becomes an account-wide limit.
+func (s Snapshot) WindowApplies(w Window, model string) bool {
+	if w.Pool == "" || len(w.Models) > 0 || len(w.ExcludedModels) > 0 {
+		return w.Applies(model)
+	}
+	for _, member := range s.Windows {
+		if member.Pool == w.Pool && len(member.Models) > 0 && member.Applies(model) {
+			return true
+		}
+	}
+	return false
+}

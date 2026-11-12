@@ -33,6 +33,10 @@ func withNormalizedAllowance(snapshot string, fetchedAt time.Time) string {
 // The credential revision and request start fence late failures after refresh or
 // reauthorization, just as successful quota writes fence replaced accounts.
 func (s *GormStore) saveProviderQuotaFailure(ctx context.Context, expected ProviderResource, code string, started time.Time) error {
+	return s.saveProviderQuotaFailureWithRevision(ctx, expected, code, started, nil)
+}
+
+func (s *GormStore) saveProviderQuotaFailureWithRevision(ctx context.Context, expected ProviderResource, code string, started time.Time, revision *string) error {
 	return s.withClusterLease(ctx, providerResourceMutationLeaseName(expected.ID), func(leaseCtx context.Context) error {
 		return s.db.WithContext(leaseCtx).Transaction(func(tx *gorm.DB) error {
 			var resource ProviderResource
@@ -42,6 +46,15 @@ func (s *GormStore) saveProviderQuotaFailure(ctx context.Context, expected Provi
 			if !sameProviderAccountSnapshot(resource, expected) {
 				return nil
 			}
+			if revision != nil {
+				current, err := allowanceSettingRevision(tx, expected.ID)
+				if err != nil {
+					return err
+				}
+				if current != *revision {
+					return nil
+				}
+			}
 			var provider Provider
 			if err := tx.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {
 				return err
@@ -50,7 +63,7 @@ func (s *GormStore) saveProviderQuotaFailure(ctx context.Context, expected Provi
 			if err := tx.Where("resource_id = ?", expected.ID).First(&observation).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
-			if observation.QuotaFetchedAt != nil && observation.QuotaFetchedAt.After(started) {
+			if observation.UpdatedAt.After(started) || observation.QuotaFetchedAt != nil && observation.QuotaFetchedAt.After(started) {
 				return nil
 			}
 			fetched := time.Time{}

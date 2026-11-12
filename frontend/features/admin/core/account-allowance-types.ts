@@ -2,6 +2,9 @@ export type AccountRoutingStrategy = "default" | "quota_smart" | "expiry_first" 
 
 export type AccountAllowance = {
   version: number;
+  source?: string;
+  plan?: string;
+  resets?: { count: number; unknown?: boolean; checked_at?: string; cards?: Array<{ id?: string; expires_at?: string; window?: string }> };
   status: "unknown" | "available" | "exhausted" | "query_error";
   fetched_at?: string;
   checked_at?: string;
@@ -10,6 +13,12 @@ export type AccountAllowance = {
   credits?: { available?: boolean; unlimited?: boolean; balance?: number; unit?: string };
   windows?: Array<{
     name?: string;
+    period?: string;
+    pool?: string;
+    unknown?: boolean;
+    unlimited?: boolean;
+    spent?: number;
+    spent_since?: string;
     used_percent?: number;
     amount?: number;
     limit?: number;

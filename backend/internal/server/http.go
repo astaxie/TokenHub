@@ -23,6 +23,9 @@ import (
 )
 
 type Server struct {
+	allowanceWaitMu                  sync.Mutex
+	allowanceWaiters                 map[string]int
+	allowanceWaitCount               int
 	semanticRouter                   semanticEvaluator
 	pluginRuntimeMu                  sync.RWMutex
 	pluginLifecycleMu                sync.Mutex
@@ -48,6 +51,7 @@ type Server struct {
 	credentialRefresh                *ProviderCredentialRefreshService
 	payloadRetention                 *requestPayloadRetentionService
 	providerMonitoring               *providerMonitoringScheduler
+	providerAllowanceRefresh         *providerMonitoringScheduler
 	providerCatalogSync              *providerCatalogScheduler
 	mux                              *http.ServeMux
 	publicGatewayOperations          map[gatewayOperation]bool
@@ -243,6 +247,9 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		providerProxyPolicy: providerProxyPolicy,
 	}
 	s.providerMonitoring = newProviderMonitoringScheduler(store, s.runProviderMonitoring)
+	s.providerAllowanceRefresh = newProviderMonitoringScheduler(store, s.runProviderAllowanceRefresh)
+	s.providerAllowanceRefresh.taskName = "provider-allowance-refresh"
+	s.providerAllowanceRefresh.taskInterval = 30 * time.Second
 	s.providerCatalogSync = newProviderCatalogScheduler(store, s.runProviderCatalogSync)
 	s.pluginBackgroundRunner.SetSchedulerSnapshotLocker(s.pluginRuntimeMu.RLocker())
 	s.installServerPluginHandlers(&pluginBootstrap)

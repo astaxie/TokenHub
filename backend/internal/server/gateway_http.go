@@ -781,6 +781,7 @@ func executeRoutedWithStore[T any](
 			disposition := providerErrorDisposition(err)
 			if disposition == ProviderErrorQuotaExhausted {
 				recordAccountRoutingOutcome(leaseCtx, store, route, true)
+				recordAllowanceResetIntent(leaseCtx, store, routed.Call, route, routed.Routes)
 			}
 			retryWithoutEffort := allowReasoningEffortFallback &&
 				!omitReasoningEffort &&
