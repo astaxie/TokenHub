@@ -16,92 +16,152 @@ type jevCompatibility struct {
 }
 
 func jevReject(reason, field string) jevCompatibility {
-	if field != "" && !slices.Contains(strings.Fields(jevKnownFields), field) {
-		field = "unknown"
-	}
-	return jevCompatibility{Reason: reason, Parameter: field}
+	return jevCompatibility{Reason: reason, Parameter: jevKnownField(field)}
 }
 
-const jevKnownFields = `model messages input instructions stream stream_options background store user metadata prompt_cache_key previous_response_id client_metadata max_tokens max_completion_tokens max_output_tokens temperature top_p top_logprobs logprobs tools tool_choice parallel_tool_calls response_format text reasoning reasoning_effort stop presence_penalty frequency_penalty min_p top_k include truncation service_tier safety_identifier prompt_cache_options prompt_cache_retention max_tool_calls`
+// jevKnownField keeps fixed reason codes and recognized field names in audit
+// records; unknown user-controlled names collapse to "unknown".
+func jevKnownField(field string) string {
+	if field == "" || slices.Contains(strings.Fields(jevKnownFields), field) {
+		return field
+	}
+	return "unknown"
+}
 
+// jevParameterRejection is one parameter-level admission failure for a
+// candidate. Reason and Parameter are fixed codes or recognized field names.
+type jevParameterRejection struct {
+	Reason    string `json:"reason"`
+	Parameter string `json:"parameter"`
+}
+
+// jevAdmission is the complete admission outcome for one candidate: a fatal
+// rejection (Reason != ""), parameter-level rejections (Missing), or neither.
+type jevAdmission struct {
+	jevCompatibility
+	Missing []jevParameterRejection `json:"missing,omitempty"`
+}
+
+func (a jevAdmission) rejected() bool {
+	return a.Reason != "" || len(a.Missing) > 0
+}
+
+// first returns the single rejection earlier callers expect: the fatal reason
+// when present, otherwise the first parameter rejection in request-key order.
+func (a jevAdmission) first() jevCompatibility {
+	if a.Reason != "" || len(a.Missing) == 0 {
+		return a.jevCompatibility
+	}
+	return jevCompatibility{Reason: a.Missing[0].Reason, Parameter: a.Missing[0].Parameter}
+}
+
+// dedupeJevRejections removes repeats that appear when several unknown fields
+// collapse to the same "unknown" parameter name.
+func dedupeJevRejections(in []jevParameterRejection) []jevParameterRejection {
+	if len(in) < 2 {
+		return in
+	}
+	seen := make(map[jevParameterRejection]bool, len(in))
+	out := in[:0]
+	for _, rejection := range in {
+		if seen[rejection] {
+			continue
+		}
+		seen[rejection] = true
+		out = append(out, rejection)
+	}
+	return out
+}
+
+const jevKnownFields = `model messages input instructions stream stream_options background store user metadata prompt_cache_key previous_response_id client_metadata max_tokens max_completion_tokens max_output_tokens temperature top_p top_logprobs logprobs seed tools tool_choice parallel_tool_calls response_format text reasoning reasoning_effort stop presence_penalty frequency_penalty min_p top_k include truncation service_tier safety_identifier prompt_cache_options prompt_cache_retention max_tool_calls`
+
+// jevChatCompatibility reports the first reason the request cannot use the
+// model. jevChatAdmission keeps every parameter-level rejection for diagnostics.
 func jevChatCompatibility(model ProviderModel, req ChatCompletionRequest) jevCompatibility {
-	return jevChatCompatibilityForRoute(model, req, false)
+	return jevChatAdmission(model, req, false).first()
 }
 
-// jevChatCompatibilityForRoute lets the caller state whether the route's
-// adapter forwards the OpenAI body verbatim.
-func jevChatCompatibilityForRoute(model ProviderModel, req ChatCompletionRequest, adapterForwards bool) jevCompatibility {
+func jevChatAdmission(model ProviderModel, req ChatCompletionRequest, adapterForwards bool) jevAdmission {
 	data, err := json.Marshal(req)
 	if err != nil {
-		return jevReject("invalid_request", "")
+		return jevAdmission{jevCompatibility: jevReject("invalid_request", "")}
 	}
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) != nil {
-		return jevReject("invalid_request", "")
+		return jevAdmission{jevCompatibility: jevReject("invalid_request", "")}
 	}
-	result := jevCheckRequestForRoute(model, "chat/completions", raw, len(data), jevOutputBudget(raw, req.MaxTokens), req.Messages, adapterForwards)
-	if result.Reason == "" && !catalogReasoningEffortFits(model, req.ReasoningEffort) {
-		return jevReject("reasoning_effort_unsupported", "reasoning_effort")
+	result := jevCheckAdmission(model, "chat/completions", raw, len(data), jevOutputBudget(raw, req.MaxTokens), req.Messages, adapterForwards)
+	if !result.rejected() && !catalogReasoningEffortFits(model, req.ReasoningEffort) {
+		return jevAdmission{jevCompatibility: jevReject("reasoning_effort_unsupported", "reasoning_effort")}
 	}
 	return result
 }
 
+// jevResponsesCompatibility reports the first reason the request cannot use the
+// model. jevResponsesAdmission keeps every parameter-level rejection.
 func jevResponsesCompatibility(model ProviderModel, req ResponsesRequest) jevCompatibility {
-	return jevResponsesCompatibilityForRoute(model, req, false)
+	return jevResponsesAdmission(model, req, false).first()
 }
 
-func jevResponsesCompatibilityForRoute(model ProviderModel, req ResponsesRequest, adapterForwards bool) jevCompatibility {
+func jevResponsesAdmission(model ProviderModel, req ResponsesRequest, adapterForwards bool) jevAdmission {
 	data, err := json.Marshal(req)
 	if err != nil {
-		return jevReject("invalid_request", "")
+		return jevAdmission{jevCompatibility: jevReject("invalid_request", "")}
 	}
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) != nil {
-		return jevReject("invalid_request", "")
+		return jevAdmission{jevCompatibility: jevReject("invalid_request", "")}
 	}
-	result := jevCheckRequestForRoute(model, "responses", raw, len(data), req.MaxTokens, req.Input, adapterForwards)
-	if result.Reason == "" && !catalogReasoningEffortFits(model, responsesReasoningEffort(req)) {
-		return jevReject("reasoning_effort_unsupported", "reasoning")
+	result := jevCheckAdmission(model, "responses", raw, len(data), req.MaxTokens, req.Input, adapterForwards)
+	if !result.rejected() && !catalogReasoningEffortFits(model, responsesReasoningEffort(req)) {
+		return jevAdmission{jevCompatibility: jevReject("reasoning_effort_unsupported", "reasoning")}
 	}
 	return result
 }
 
+// jevCheckRequest reports the first reason the request cannot use the model.
 func jevCheckRequest(model ProviderModel, endpoint string, raw map[string]json.RawMessage, size, budget int, input any) jevCompatibility {
-	return jevCheckRequestForRoute(model, endpoint, raw, size, budget, input, false)
+	return jevCheckAdmission(model, endpoint, raw, size, budget, input, false).first()
 }
 
-func jevCheckRequestForRoute(model ProviderModel, endpoint string, raw map[string]json.RawMessage, size, budget int, input any, adapterForwards bool) jevCompatibility {
+// jevCheckAdmission evaluates the fixed checks first, then every request field.
+// Fatal failures stop the evaluation; parameter-level failures accumulate so one
+// rejection can explain every undeclared or unsupported field at once.
+func jevCheckAdmission(model ProviderModel, endpoint string, raw map[string]json.RawMessage, size, budget int, input any, adapterForwards bool) jevAdmission {
+	fatal := func(reason, field string) jevAdmission {
+		return jevAdmission{jevCompatibility: jevReject(reason, field)}
+	}
 	model.SupportedParameters = catalogReasoningParameters(model.SupportedParameters, model.Modality, model.Metadata)
 	if model.Status != StatusActive {
-		return jevReject("model_disabled", "")
+		return fatal("model_disabled", "")
 	}
 	if budget < 0 {
-		return jevReject("invalid_output_budget", "")
+		return fatal("invalid_output_budget", "")
 	}
 	if !catalogOutputBudgetFits(model, budget) {
-		return jevReject("output_limit_exceeded", "")
+		return fatal("output_limit_exceeded", "")
 	}
 	if len(model.OutputModalities) > 0 && !slices.Contains(model.OutputModalities, "text") {
-		return jevReject("output_modality_unsupported", "")
+		return fatal("output_modality_unsupported", "")
 	}
 	if (len(model.InputModalities) > 0 && !slices.Contains(model.InputModalities, "text")) || !jevInputModalitiesFit(model, input) {
-		return jevReject("input_modality_unsupported", "")
+		return fatal("input_modality_unsupported", "")
 	}
 	if model.ContextWindow > 0 && (int64(size) > model.ContextWindow || int64(budget) > model.ContextWindow-int64(size)) {
-		return jevReject("context_limit_exceeded", "")
+		return fatal("context_limit_exceeded", "")
 	}
 	profile := model.Metadata["request_parameter_profile"]
 	if profile != "" && strings.TrimSpace(model.Metadata["endpoints"]) == "" {
-		return jevReject("profile_endpoint_missing", "")
+		return fatal("profile_endpoint_missing", "")
 	}
 	if profile != "" && profile != jevOpenAIProfile {
-		return jevReject("unknown_parameter_profile", "")
+		return fatal("unknown_parameter_profile", "")
 	}
 	// Legacy catalog endpoints describe the upstream, which can be reached
 	// through a protocol bridge. Only an explicit request profile constrains
 	// the incoming protocol here; route adapters retain their own checks.
 	if profile != "" && !jevHasEndpoint(model.Metadata["endpoints"], endpoint) {
-		return jevReject("endpoint_unsupported", "")
+		return fatal("endpoint_unsupported", "")
 	}
 	structural := "model messages stream stream_options user metadata prompt_cache_key"
 	if endpoint == "responses" {
@@ -114,43 +174,54 @@ func jevCheckRequestForRoute(model ProviderModel, endpoint string, raw map[strin
 		}
 	}
 	slices.Sort(keys)
+	// Endpoint-neutral controls are only exempt when this route forwards the
+	// OpenAI body verbatim and the upstream serves the incoming endpoint.
+	nativeControls := adapterForwards && jevHasEndpoint(model.Metadata["endpoints"], endpoint)
+	missing := make([]jevParameterRejection, 0, 4)
 	for _, key := range keys {
+		reject := func(reason string) {
+			missing = append(missing, jevParameterRejection{Reason: reason, Parameter: jevKnownField(key)})
+		}
+		// An explicit deny is a parameter-level rejection: keep collecting the
+		// remaining fields so one response still explains every refused field.
 		if jevCSVContains(model.Metadata["request_parameter_denied"], key) {
-			return jevReject("parameter_explicitly_denied", key)
+			reject("parameter_explicitly_denied")
+			continue
 		}
 		if slices.Contains(strings.Fields(structural), key) {
 			continue
 		}
-		// Endpoint-neutral protocol controls stay independent of the opt-in
-		// request profile only when the route's adapter forwards the OpenAI
-		// body verbatim and the upstream serves the incoming endpoint. Protocol
-		// bridges and translating adapters drop these fields silently, so they
-		// keep the declaration gate.
-		if jevSharedProtocolControl(key) && adapterForwards && jevHasEndpoint(model.Metadata["endpoints"], endpoint) {
+		if jevSharedProtocolControl(key) && nativeControls {
 			continue
 		}
 		if profile == jevOpenAIProfile {
 			if jevWrongEndpointField(endpoint, key) {
-				return jevReject("parameter_endpoint_mismatch", key)
+				reject("parameter_endpoint_mismatch")
+				continue
 			}
 			if jevProtocolControl(endpoint, key) {
 				continue
 			}
 			if required := jevParameterCapability(key); required != "" {
 				if !jevHasCapability(model, required) {
-					return jevReject("capability_missing", key)
+					reject("capability_missing")
 				}
 				continue
 			}
 		}
 		if !slices.Contains(model.SupportedParameters, key) {
-			return jevReject("parameter_not_declared", key)
+			reject("parameter_not_declared")
 		}
 	}
-	if profile == jevOpenAIProfile {
-		return jevCheckConditions(model, endpoint, raw)
+	if len(missing) > 0 {
+		return jevAdmission{Missing: dedupeJevRejections(missing)}
 	}
-	return jevCompatibility{}
+	if profile == jevOpenAIProfile {
+		if result := jevCheckConditions(model, endpoint, raw); result.Reason != "" {
+			return jevAdmission{jevCompatibility: result}
+		}
+	}
+	return jevAdmission{}
 }
 
 // Normalize metadata lists, not request values. Empty entries never grant
@@ -174,10 +245,9 @@ func jevHasEndpoint(endpoints, wanted string) bool {
 	return false
 }
 
-// jevSharedProtocolControl reports the endpoint-neutral protocol controls. They
-// describe how a request is handled rather than a model capability, so a model
-// does not repeat them in supported_parameters; an explicit
-// request_parameter_denied entry still rejects them.
+// jevSharedProtocolControl reports the endpoint-neutral protocol controls. A
+// route whose adapter forwards the OpenAI body accepts them without a model
+// declaration; an explicit request_parameter_denied entry still rejects them.
 func jevSharedProtocolControl(key string) bool {
 	return slices.Contains([]string{"service_tier", "safety_identifier", "prompt_cache_options", "prompt_cache_retention", "store"}, key)
 }

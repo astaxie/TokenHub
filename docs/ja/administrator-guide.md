@@ -307,7 +307,7 @@ Jev は意味に基づく選択の前に、リクエストのエンドポイン�
 
 GPT-6 Sol／Luna 系のカタログにはこの設定が含まれますが、既存のインポート済みインベントリは自動更新されません。プロファイル未設定の既存ルートでは従来のプロトコルブリッジを維持します。意味評価器が無効で Jev が決定的フォールバックを使う場合も准入検査は実行されます。既存 Jev ルートのアップグレード前に Provider モデルと代表的なリクエストを確認し、特に空のパラメーター宣言を点検してください。既存項目は他の metadata と設定価格を保持して更新します。再インポートは価格と状態を含む Provider モデルのレコードを置き換えるため、metadata だけの更新として使用しないでください。他のプロバイダーには検証済みの宣言を使い、OpenAI 形式の JSON を受け付けるだけでこの設定に対応すると推測しないでください。
 
-管理者監査の action `routing.jev_admission` は候補除外を記録します。候補または固定ルート、固定理由コード、認識済みパラメーター名だけを記録し、未知の名前は `unknown` に置換します。プロンプト、リクエスト値、認証情報、完全なペイロードは含めません。理由には `parameter_not_declared`、`sampling_reasoning_conflict`、`parameter_endpoint_mismatch` があります。公開エラーは `jev_no_eligible_candidates`（503）または `jev_previous_route_unavailable`（409）のままで、候補インベントリは公開しません。
+管理者監査の action `routing.jev_admission` は候補除外を記録します。候補または固定ルート、固定理由コード、認識済みパラメーター名だけを記録し、未知の名前は `unknown` に置換します。プロンプト、リクエスト値、認証情報、完全なペイロードは含めません。理由には `parameter_not_declared`、`sampling_reasoning_conflict`、`parameter_endpoint_mismatch` があります。公開エラーは `jev_no_eligible_candidates`（503）または `jev_previous_route_unavailable`（409）のままで、候補インベントリは公開しません。`jev_no_eligible_candidates` の応答には `details` が付き、`stage` は `jev_admission`、`upstream_attempted` は `false`、`reasons` は拒否された全候補の理由とパラメーターをまとめた配列です。各項目は `candidate_count` を持ち、パラメーター名で並び、十件を超えると `truncated: true` で打ち切られます。監査イベントにも同じ要約を候補ごとの詳細と並べて記録します。
 
 ### スコープルーティングポリシー
 

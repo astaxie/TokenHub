@@ -193,8 +193,8 @@ func (s *Server) applyJevResponsesRouting(ctx context.Context, routed *RoutedCal
 	if _, ok := compatibilitySessionIdentifier(headers, *req); ok {
 		eligible = false
 	}
-	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel, adapterForwards bool) jevCompatibility {
-		return jevResponsesCompatibilityForRoute(model, *req, adapterForwards)
+	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel, adapterForwards bool) jevAdmission {
+		return jevResponsesAdmission(model, *req, adapterForwards)
 	})
 }
 
@@ -215,7 +215,7 @@ func (s *Server) validateJevBoundModel(ctx context.Context, requestID string, ro
 	}
 	for _, model := range models {
 		if model.ProviderID == route.Provider.ID && model.UpstreamModel == route.ProviderModel {
-			result := jevResponsesCompatibilityForRoute(model, req, s.forwardsProtocolControls(route.Provider.Type))
+			result := jevResponsesAdmission(model, req, s.forwardsProtocolControls(route.Provider.Type)).first()
 			if result.Reason == "" {
 				return nil
 			}
