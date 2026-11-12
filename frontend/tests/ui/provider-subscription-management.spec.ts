@@ -2,7 +2,7 @@ import type { AdminUIContribution, PluginActionDescriptor, Provider, ProviderAcc
 import { test, expect, capture } from "./harness";
 import type { MockAPI } from "./network";
 
-function installManagement(api: MockAPI, kind: "qoder" | "factory", failCheckin = false, quotaState: "standard" | "balance" | "exhausted" = "standard") {
+function installManagement(api: MockAPI, kind: "qoder" | "factory", failCheckin = false, quotaState: "standard" | "balance" | "exhausted" = "standard", quotaOverride?: ProviderAccountQuota) {
   const type = `${kind}_subscription`, pluginID = `tokenhub.provider.${kind}-subscription`;
   const provider: Provider = { id: "prv_ui_subscription", name: `UI ${kind} subscription`, type, base_url: "", priority: 1, healthy: true, status: "active", options: { catalog_id: kind, ...(kind === "factory" ? { standard_only: "false" } : {}) } };
   const catalog: ProviderCatalogEntry = { id: kind, name: provider.name, display_name: provider.name, type, source: "ui-fixture", models_count: 0, models: [] };
@@ -22,9 +22,9 @@ function installManagement(api: MockAPI, kind: "qoder" | "factory", failCheckin 
   api.respond("GET", "/api/admin/plugin-actions", { data: actions });
   api.respond("GET", "/api/admin/plugin-ui-manifest", { data: panels });
   api.respond("GET", "/api/admin/plugin-background-jobs", { data: [], runs: [] });
-  const accountQuota: ProviderAccountQuota = quotaState === "balance"
+  const accountQuota: ProviderAccountQuota = quotaOverride ?? (quotaState === "balance"
     ? { plan_type: "Synthetic Pro", status_label: "Quota reported", metrics: [{ label: "Balance", value: "1250" }], fetched_at: 1792929600 }
-    : { plan_type: "Synthetic Pro", remaining_percent: quotaState === "exhausted" ? 0 : 65, limit_reached: quotaState === "exhausted", fetched_at: 1792929600 };
+    : { plan_type: "Synthetic Pro", remaining_percent: quotaState === "exhausted" ? 0 : 65, limit_reached: quotaState === "exhausted", fetched_at: 1792929600 });
   const monitoring: ProviderMonitoringSnapshot = {
     provider, adapter: { type, capabilities: ["chat", "quota"] }, route_count: 0, active_route_count: 0,
     resource_count: 1, active_resource_count: 1, healthy_resource_count: 1, state: "unknown", status_label: "待观测", status_detail: "",
@@ -40,7 +40,7 @@ function installManagement(api: MockAPI, kind: "qoder" | "factory", failCheckin 
   });
   api.define("POST", `/api/admin/plugins/${pluginID}/actions/${type}.quota.read`, input => {
     expect(input.body).toMatchObject({ provider_id: provider.id, resource_id: resource.id });
-    if (quotaState !== "standard") return { json: { data: accountQuota } };
+    if (quotaOverride || quotaState !== "standard") return { json: { data: accountQuota } };
     return { json: { data: { plan_type: "Synthetic Pro", allowed: true, limit_reached: false, used_percent: 35, remaining_percent: 65, windows: [{ label: "5 hours", used_percent: 35, reset_at: 1792936800 }], additional_rate_limits: [{ limit_name: "Core allowance", metered_feature: "synthetic-core-model", rate_limit: { allowed: false, limit_reached: true, primary_window: { used_percent: 100, reset_at: 1792936800 } } }], metrics: [{ label: "Credits", value: "1250" }], fetched_at: 1792929600 } } };
   });
   api.define("POST", `/api/admin/plugins/${pluginID}/actions/${type}.checkin.run`, input => {
@@ -57,13 +57,13 @@ function installManagement(api: MockAPI, kind: "qoder" | "factory", failCheckin 
 }
 
 for (const mobile of [false, true]) {
-  for (const state of ["balance", "exhausted"] as const) test(`subscription monitoring ${state} quota and refresh ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
+  for (const state of ["standard", "balance", "exhausted"] as const) test(`subscription monitoring ${state} quota and refresh ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
     installManagement(api, "factory", false, state);
     await page.goto("/providers");
     await page.getByRole("button", { name: "可用性监控", exact: true }).click();
     const summary = page.locator("button.provider-account-quota");
-    const expected = state === "balance" ? "-" : "0%";
+    const expected = state === "balance" ? "-" : state === "exhausted" ? "0%" : "65%";
     await expect(summary.locator("strong")).toHaveText(expected);
     await summary.focus();
     const tooltip = page.getByRole("tooltip");
@@ -74,7 +74,29 @@ for (const mobile of [false, true]) {
     await summary.focus();
     await expect(tooltip).toContainText(`Synthetic Pro · ${expected} ·`);
     await expect(tooltip).not.toContainText("100%");
-    await capture(page, testInfo, tooltip, `subscription-monitoring-${state}-${mobile ? "mobile" : "desktop"}`, state === "balance" ? "账号监控：未知比例保留为空" : "账号监控：明确耗尽显示零", "viewport");
+    await capture(page, testInfo, tooltip, `subscription-monitoring-${state}-${mobile ? "mobile" : "desktop"}`, state === "balance" ? "账号监控：未知比例保留为空" : state === "exhausted" ? "账号监控：明确耗尽显示零" : "账号监控：余量与账号刷新入口", "viewport");
+  });
+
+  for (const state of ["unknown", "query_error", "exhausted"] as const) test(`subscription allowance ${state} ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const used = state === "exhausted" ? 100 : 35;
+    const reported: ProviderAccountQuota = {
+      plan_type: "Synthetic Pro", status_label: "Quota reported", allowed: state !== "exhausted", limit_reached: state === "exhausted",
+      used_percent: used, remaining_percent: 100 - used, fetched_at: 1792929600,
+      primary_window: { used_percent: used, reset_at: 1792936800 },
+      allowance: { version: 1, status: state, fetched_at: "2026-10-25T12:00:00Z", checked_at: "2026-10-25T12:01:00Z", ...(state === "query_error" ? { error_code: "provider_quota_unavailable" } : {}) },
+    };
+    const provider = installManagement(api, "factory", false, "standard", reported);
+    await page.goto("/providers");
+    await page.getByRole("row").filter({ hasText: provider.name }).getByRole("button", { name: "编辑", exact: true }).click();
+    const editor = page.locator(".provider-modal");
+    await editor.getByRole("tab", { name: "高级", exact: true }).click();
+    const quota = editor.locator("section.provider-quota-panel");
+    await expect(quota.locator(".provider-quota-status")).toHaveText(state === "query_error" ? "查询失败" : state === "unknown" ? "额度未知" : "已达上限");
+    await expect(quota.locator(".provider-quota-usage strong")).toHaveText(state === "query_error" ? "查询失败" : state === "unknown" ? "-" : "100%");
+    await expect(quota.getByRole("progressbar")).toHaveCount(state === "exhausted" ? 1 : 0);
+    await quota.evaluate(el => el.scrollIntoView({ block: "center" }));
+    await capture(page, testInfo, quota, `subscription-allowance-${state}-${mobile ? "mobile" : "desktop"}`, state === "unknown" ? "订阅额度：未知状态不显示零用量" : state === "query_error" ? "订阅额度：查询失败不沿用可用标签" : "订阅额度：确认耗尽后显示已达上限", "viewport");
   });
 
   test(`subscription management balance-only quota ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {

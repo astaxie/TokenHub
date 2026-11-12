@@ -1,5 +1,6 @@
 export const accountRoutingTranslations = {
   en: {
+    "额度未知": "Quota unknown",
     "查询失败": "Query failed",
     "账号调度": "Account routing",
     "沿用原有账号顺序": "Keep existing account order",
@@ -15,6 +16,7 @@ export const accountRoutingTranslations = {
     "仅调整同一 Provider 线路、同一账号优先级内的已授权账号；额度仅读取后台缓存。": "Reorder authorized accounts only within the same Provider route and account priority. Quota is read from the background cache.",
   },
   ja: {
+    "额度未知": "クォータ不明",
     "查询失败": "照会に失敗しました",
     "账号调度": "アカウントルーティング",
     "沿用原有账号顺序": "既存のアカウント順序を維持",
@@ -30,6 +32,7 @@ export const accountRoutingTranslations = {
     "仅调整同一 Provider 线路、同一账号优先级内的已授权账号；额度仅读取后台缓存。": "同じProviderルートとアカウント優先度内で、許可済みアカウントだけを並べ替えます。クォータはバックグラウンドキャッシュから読み取ります。",
   },
   ru: {
+    "额度未知": "Квота неизвестна",
     "查询失败": "Ошибка запроса",
     "账号调度": "Маршрутизация аккаунтов",
     "沿用原有账号顺序": "Сохранить порядок аккаунтов",
