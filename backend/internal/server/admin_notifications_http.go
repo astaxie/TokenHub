@@ -503,16 +503,16 @@ func notificationChannelPayloadForChannel(channel AdminResource, payload map[str
 			return nil, nil, fmt.Errorf("access_token is required")
 		}
 		return map[string]any{
-				"messaging_product": "whatsapp",
-				"to":                recipient,
-				"type":              "text",
-				"text": map[string]any{
-					"preview_url": false,
-					"body":        text,
-				},
-			}, map[string]string{
-				"authorization": "Bearer " + accessToken,
-			}, nil
+			"messaging_product": "whatsapp",
+			"to":                recipient,
+			"type":              "text",
+			"text": map[string]any{
+				"preview_url": false,
+				"body":        text,
+			},
+		}, map[string]string{
+			"authorization": "Bearer " + accessToken,
+		}, nil
 	default:
 		return notificationChannelPayload(stringField(fields, "type"), payload, alert), nil, nil
 	}

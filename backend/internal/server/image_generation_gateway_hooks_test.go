@@ -385,7 +385,7 @@ func TestImagePostUsageAndCacheWriteHooksRunAfterProviderInvoke(t *testing.T) {
 	if !strings.Contains(response.Body, "post-stage revised prompt") || !strings.Contains(response.Body, `"total_tokens":9`) {
 		t.Fatalf("image response was not post-processed: %s", response.Body)
 	}
-	if !strings.Contains(response.Body, encodeBase64(transformedImageBytes)) || strings.Contains(response.Body, encodeBase64(imageBytes)) {
+	if !strings.Contains(response.Body, `"b64_json":"`+encodeBase64(transformedImageBytes)+`"`) {
 		t.Fatalf("image response body did not use transformed image bytes: %s", response.Body)
 	}
 	if !sawCacheWrite {
