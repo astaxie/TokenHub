@@ -221,7 +221,7 @@ export function RouteStrategyView({
             const routes = modelRoutesFor(selectedModel, data);
             return routes.length === 0 ? <div className="empty route-empty">{tx("该统一模型还没有 Provider 线路")}</div> : (
               <ModelRoutingPolicyEditor
-                key={`${revision}:${modelRoutePolicySignature(routes)}:${selectedModel.metadata?.tokenhub_semantic_routing ?? ""}`}
+                key={`${revision}:${modelRoutePolicySignature(routes)}:${selectedModel.metadata?.tokenhub_semantic_routing ?? ""}:${selectedModel.metadata?.tokenhub_account_strategy ?? ""}`}
                 model={selectedModel}
                 routes={routes}
                 data={data}
@@ -305,7 +305,7 @@ export function RouteModelCard({
         <div className="empty route-empty">{tx("该统一模型还没有 Provider 线路")}</div>
       ) : (
         <ModelRoutingPolicyEditor
-          key={`${modelRoutePolicySignature(routes)}:${model.metadata?.tokenhub_semantic_routing ?? ""}`}
+          key={`${modelRoutePolicySignature(routes)}:${model.metadata?.tokenhub_semantic_routing ?? ""}:${model.metadata?.tokenhub_account_strategy ?? ""}`}
           model={model}
           routes={routes}
           data={data}

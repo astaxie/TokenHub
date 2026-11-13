@@ -261,6 +261,9 @@ func (s *GormStore) DeleteProvider(id string) error {
 		if err := tx.Where("provider_id = ?", id).Delete(&ProviderModel{}).Error; err != nil {
 			return err
 		}
+		if err := clearProviderAllowanceResources(tx, resourceIDs); err != nil {
+			return err
+		}
 		if len(resourceIDs) > 0 {
 			if err := tx.Where("scope_type = ? AND scope_id IN ?", "provider_resource", resourceIDs).Delete(&InFlightLease{}).Error; err != nil {
 				return err
@@ -610,6 +613,7 @@ func (s *GormStore) updateProviderResourceLocked(ctx context.Context, id string,
 		resource.Options[providerCredentialReplacementGenerationOption] = strconv.FormatInt(credentialReplacementGeneration+1, 10)
 	}
 	afterCredentials := s.providerResourceCredentialsForRuntimeForProvider(provider.Type, resource)
+	allowanceChanged := s.prepareAllowanceCredentialMutation(provider.Type, before, beforeCredentials, &resource, afterCredentials, patch, credentialReplacementGeneration)
 	imageCapabilityProfiles := mergeProviderImageCapabilityRouteProfiles(
 		beforeImageCapabilityProfiles,
 		s.providerImageCapabilityRouteProfilesForResource(provider, resource),
@@ -640,7 +644,10 @@ func (s *GormStore) updateProviderResourceLocked(ctx context.Context, id string,
 		); err != nil {
 			return err
 		}
-		if patch.Credentials != nil && patch.Credentials.Replace {
+		if allowanceChanged {
+			if err := clearProviderAllowanceResources(tx, []string{resource.ID}); err != nil {
+				return err
+			}
 			if err := tx.Model(&ProviderResourceObservation{}).Where("resource_id = ?", resource.ID).
 				Updates(map[string]any{"quota_snapshot": "", "quota_fetched_at": nil}).Error; err != nil {
 				return err
@@ -781,6 +788,9 @@ func (s *GormStore) DeleteProviderResource(id string) error {
 		var resource ProviderResource
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&resource, "id = ?", id).Error; err != nil {
 			return notFound(err, "provider_resource_not_found", "Provider resource not found")
+		}
+		if err := clearProviderAllowanceResources(tx, []string{id}); err != nil {
+			return err
 		}
 		var provider Provider
 		if err := tx.First(&provider, "id = ?", resource.ProviderID).Error; err != nil {

@@ -22,7 +22,7 @@ test("gateway OpenAPI docs render as self-hosted Swagger UI", async ({ page }) =
   await expect(page.getByText("/v1/chat/completions")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open JSON" })).toHaveAttribute("href", "/openapi.json");
 
-  await expect(page.getByRole("button", { name: "Authorize" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Authorize", exact: true })).toBeVisible();
   await expect(page.locator(".opblock-summary-path").first()).toContainText("/v1/");
   await expect(page.locator("pre, code, .microlight").first()).toBeVisible();
   await expectReadableCodeSamples(page);
@@ -32,7 +32,7 @@ test("gateway OpenAPI docs render as self-hosted Swagger UI", async ({ page }) =
     ".opblock-summary-path",
   ]);
 
-  const authorizeButton = page.getByRole("button", { name: "Authorize" });
+  const authorizeButton = page.getByRole("button", { name: "Authorize", exact: true });
   await focusByKeyboard(page, authorizeButton);
   await page.keyboard.press("Enter");
   const projectAuth = page.locator(".auth-container").filter({

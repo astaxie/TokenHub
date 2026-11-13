@@ -52,6 +52,12 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 		return
 	}
 	call := CallContext{RequestID: NewID("sim"), Project: project, Key: key, Model: Model{Name: modelName}}
+	for _, model := range s.store.ListModels() {
+		if model.Name == modelName {
+			call.Model = model
+			break
+		}
+	}
 	var routes []RouteSelection
 	var err error
 	if modelName == codexImageModelName || modelName == openAIImageModelName {
@@ -94,6 +100,7 @@ func (s *Server) handleAdminRoutingPolicySimulation(w http.ResponseWriter, r *ht
 	planned := s.planRouteOrderWithContext(r.Context(), call, filtered)
 	if len(planned) > 0 {
 		resolution.SelectedRouteID = planned[0].Route.ID
+		resolution.SelectedResourceID = routeResourceID(planned[0])
 	}
 	writeJSON(w, http.StatusOK, resolution)
 }

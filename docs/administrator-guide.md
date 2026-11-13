@@ -540,3 +540,22 @@ behavior is preserved; only `starttls` and `ssl` write the field.
 ## Screenshot
 
 ![Routing policies](assets/screenshots/admin-management/routes.png)
+
+## Account allowance and routing
+
+Model routing and account routing are configured separately. In a model's routing editor, choose **Account routing** and apply the policy. `default` preserves existing behavior. An account strategy only reorders the already-authorized resource accounts belonging to one Provider route and one resource-priority tier. It preserves the model strategy, Provider positions, project/API key restrictions, and stateful session bindings. Exhausted accounts remain last-resort candidates; cached quota does not prove live availability or authorize spending credits.
+
+| Account strategy | Behavior |
+| --- | --- |
+| `quota_smart` | Prefer confirmed available quota, then earlier renewals, comparing longer periods first; use expiry and remaining balance as tie-breakers. |
+| `expiry_first` | Prefer confirmed available quota whose next reset or expiry occurs first. |
+| `least_used` | Among confirmed available accounts, prefer fewer tokens consumed by invoked attempts over the last hour. Capacity skips do not count. |
+| `drain` | Keep the current account until a fresh quota reading or an actual attempt confirms exhaustion. Temporary failures do not permanently advance the pool. |
+
+The model-policy API accepts an independent `account_strategy` field. Omit it to preserve the saved setting, or send `default` to restore existing ordering. Ordinary model edits and imports preserve this managed setting. Drain state is stored in existing `AdminResource` rows of kind `account-routing-state`, shared by backend instances and retained in database backups. Pools are scoped by project, route, priority, and the eligible account set. Simulation reads state without advancing it and returns `selected_resource_id` alongside the selected route. No schema migration is required.
+
+Provider quota results and persisted snapshots include a versioned `allowance` projection: usage percentages, period seconds, reset/expiry times, included/excluded model families or glob patterns, numeric balances and their units, credits, and observation timestamps. Unknown values remain absent. A query error retains the last successful reading and its original `fetched_at`, records `checked_at` and a sanitized error code, and is not treated as spare quota. A model-specific exhausted window does not exhaust unrelated models; informational windows do not stop an account. Wallet balances in different units are never compared.
+
+Account planning reads only the persisted cache. Existing backend monitoring refreshes supported quotas every five minutes; explicit administrator refreshes remain immediate. Observations older than ten minutes, or windows whose reset has passed without a fresh observation, are unknown to the planner. This feature does not add automatic reset-credit redemption or paid-credit controls. Existing adapter-specific checks, such as Factory Standard-only, remain in force.
+
+**Providers → Availability monitoring** shows quota summaries and per-account refresh controls. **Providers → Edit → Advanced → Subscription account quota** shows adapter-reported usage, reset times, balances, and model-specific windows. The status badge follows the normalized allowance state; unknown and failed queries do not show stale percentages as current availability. The complete normalized projection is available in the quota response; this change does not add a unified detail view for every field.

@@ -1,4 +1,6 @@
 import type { SemanticRoutingPolicy } from "./semantic-routing-types";
+import type { AccountAllowance, AccountRoutingStrategy } from "./account-allowance-types";
+export type { AccountAllowance, AccountRoutingStrategy } from "./account-allowance-types";
 export type { SemanticRoutingPolicy, SemanticRoutingCandidate } from "./semantic-routing-types";
 import { Activity } from "lucide-react";
 import type { ResourceAction } from "./resource-action";
@@ -579,6 +581,7 @@ export type ProviderQuotaMetric = {
 export type ProviderQuotaRateLimit = { allowed: boolean; limit_reached: boolean; primary_window?: ProviderQuotaWindow; secondary_window?: ProviderQuotaWindow };
 
 export type ProviderAccountQuota = {
+	allowance?: AccountAllowance;
   account_id?: string;
   email?: string;
   plan_type?: string;
@@ -796,6 +799,7 @@ export type ModelRoutePolicyRoute = {
 };
 
 export type ModelRoutePolicy = {
+	account_strategy?: AccountRoutingStrategy;
   semantic_routing?: SemanticRoutingPolicy;
   strategy: ModelRouteStrategy;
   routes: ModelRoutePolicyRoute[];

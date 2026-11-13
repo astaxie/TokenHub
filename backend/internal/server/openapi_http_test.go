@@ -526,7 +526,7 @@ func assertCommonGatewayHeadersAndErrors(t *testing.T, document map[string]any) 
 				if _, ok := responses["429"]; !ok {
 					t.Fatalf("%s %s missing quota response 429", operation.Method, operation.Path)
 				}
-			} else if _, ok := responses["429"]; ok {
+			} else if _, ok := responses["429"]; ok && operation.Path != "/v1/allowance" {
 				t.Fatalf("%s %s documents quota response 429, but runtime does not admit or rate-limit the call", operation.Method, operation.Path)
 			}
 		}
@@ -618,7 +618,8 @@ func providerCapabilityOperation(operation gatewayOperation) bool {
 
 func modelAccessControlledOperation(operation gatewayOperation) bool {
 	switch operation.Path {
-	case "/v1/chat/completions",
+	case "/v1/allowance",
+		"/v1/chat/completions",
 		"/v1/responses",
 		"/v1/responses/compact",
 		"/v1/messages",

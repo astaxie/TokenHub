@@ -15,8 +15,10 @@ const (
 )
 
 type providerMonitoringScheduler struct {
-	store Store
-	run   func(context.Context) error
+	store        Store
+	taskName     string
+	taskInterval time.Duration
+	run          func(context.Context) error
 
 	schedulerMu   sync.Mutex
 	schedulerStop context.CancelFunc
@@ -34,8 +36,16 @@ func (s *providerMonitoringScheduler) RunDue(ctx context.Context, now time.Time)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	revision := now.UTC().Truncate(providerMonitoringSchedulerInterval).Unix()
-	return s.store.RunClusterTask(ctx, providerMonitoringTaskName, revision, s.run)
+	interval := s.taskInterval
+	if interval <= 0 {
+		interval = providerMonitoringSchedulerInterval
+	}
+	name := s.taskName
+	if name == "" {
+		name = providerMonitoringTaskName
+	}
+	revision := now.UTC().Truncate(interval).Unix()
+	return s.store.RunClusterTask(ctx, name, revision, s.run)
 }
 
 func (s *providerMonitoringScheduler) StartScheduler(interval time.Duration) {

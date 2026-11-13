@@ -17,6 +17,45 @@ function installRouteFixtures(api: MockAPI) {
   for (const path of ["provider-resources", "plugins", "provider-adapters", "plugin-ui-manifest", "plugin-actions", "plugin-background-jobs", "provider-catalog"]) api.respond("GET", `/api/admin/${path}`, { data: [] });
 }
 
+for (const state of ["desktop", "mobile", "failure"] as const) {
+  test(`account-routing ${state}`, async ({ page, api }, testInfo) => {
+    if (state === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    installRouteFixtures(api);
+    const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
+    api.define("PATCH", `/api/admin/model-routing-policies/${model.name}`, input => {
+      const policy = input.body as ModelRoutePolicy;
+      expect(policy.account_strategy).toBe("drain");
+      expect(policy.strategy).toBe(route.strategy);
+      expect(policy.routes).toEqual([{ route_id: route.id, weight: 100, quality_score: 50, cost_score: 50 }]);
+      if (state === "failure") return { status: 500, json: { error: { message: "Synthetic account policy save failed" } } };
+      api.replaceResponse("GET", "/api/admin/overview", { ...overview, providers: [provider], models: [{ ...model, metadata: { tokenhub_account_strategy: "drain" } }, unmapped] });
+      return { json: { strategy: policy.strategy, account_strategy: "drain", data: [route] } };
+    });
+    await page.goto("/routes");
+    await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "配置模型路由", exact: true });
+    const accounts = dialog.getByLabel("账号调度");
+    await expect(accounts).toHaveValue("default");
+    await accounts.selectOption("drain");
+    await expect(dialog.getByRole("tab", { name: "固定比例", exact: true })).toHaveAttribute("aria-selected", "true");
+    if (state !== "failure") {
+      await capture(page, testInfo, dialog, `account-routing-${state}`, "独立账号调度：账号与模型策略分别配置", "viewport");
+    }
+    await dialog.getByRole("button", { name: "应用策略", exact: true }).click();
+    if (state === "failure") {
+      await expect(dialog.getByRole("alert")).toHaveText("Synthetic account policy save failed");
+      await expect(accounts).toHaveValue("drain");
+      await expect(dialog.getByRole("button", { name: "应用策略", exact: true })).toBeEnabled();
+      await capture(page, testInfo, dialog, "account-routing-failure", "账号调度：保存失败后保留所选策略", "viewport");
+    } else {
+      await expect(dialog.getByRole("button", { name: "应用策略", exact: true })).toBeDisabled();
+      await page.reload();
+      await page.getByRole("button", { name: `配置路由：${model.name}`, exact: true }).click();
+      await expect(page.getByLabel("账号调度")).toHaveValue("drain");
+    }
+  });
+}
+
 test("route-management nested-editor-focus-and-save-failure", async ({ page, api }, testInfo) => {
   installRouteFixtures(api);
   api.define("PATCH", `/api/admin/routing-rules/${route.id}`, input => {

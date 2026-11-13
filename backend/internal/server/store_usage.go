@@ -232,7 +232,9 @@ func (s *GormStore) GetProviderResourceObservation(resourceID string) (ProviderR
 }
 
 func (s *GormStore) SaveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
-	return s.saveProviderResourceQuota(resourceID, adapterType, snapshot, fetchedAt)
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		return saveProviderResourceQuota(tx, resourceID, adapterType, snapshot, fetchedAt)
+	})
 }
 
 func (s *GormStore) SaveProviderResourceQuotaIfCurrent(ctx context.Context, resourceID string, adapterType string, snapshot string, fetchedAt time.Time, expected ProviderResource) error {
@@ -252,11 +254,18 @@ func (s *GormStore) SaveProviderResourceQuotaIfCurrent(ctx context.Context, reso
 	})
 }
 
-func (s *GormStore) saveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
-	return saveProviderResourceQuota(s.db, resourceID, adapterType, snapshot, fetchedAt)
-}
-
 func saveProviderResourceQuota(db *gorm.DB, resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
+	var previous ProviderResourceObservation
+	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).First(&previous, "resource_id = ?", resourceID).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if previous.QuotaFetchedAt != nil && previous.QuotaFetchedAt.After(fetchedAt) {
+		return nil
+	}
+	snapshot = withNormalizedAllowance(snapshot, fetchedAt)
+	if previous.QuotaFetchedAt != nil {
+		snapshot = retainAllowanceResetDetails(snapshot, previous.QuotaSnapshot, *previous.QuotaFetchedAt, fetchedAt)
+	}
 	observation := ProviderResourceObservation{
 		ResourceID:     strings.TrimSpace(resourceID),
 		AdapterType:    strings.TrimSpace(adapterType),
@@ -264,8 +273,15 @@ func saveProviderResourceQuota(db *gorm.DB, resourceID string, adapterType strin
 		QuotaFetchedAt: &fetchedAt,
 		UpdatedAt:      time.Now().UTC(),
 	}
+	if err := recordAllowanceWalletCounters(db, resourceID, snapshot, fetchedAt); err != nil {
+		return err
+	}
+	if err := recordProviderAllowancePoint(db, resourceID, snapshot, fetchedAt); err != nil {
+		return err
+	}
 	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "resource_id"}},
+		Where:   clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "provider_resource_observations.quota_fetched_at IS NULL OR provider_resource_observations.quota_fetched_at <= excluded.quota_fetched_at"}}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"adapter_type",
 			"quota_snapshot",

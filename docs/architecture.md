@@ -240,3 +240,5 @@ The deployment has no Redis, message broker, or service mesh dependency. Synchro
 - [Plugin Development](plugin-development/README.md): Plugin Devkit, examples, plugin families, manifest contracts, runtime surfaces, and migration checklist.
 - [User Guide](user-guide.md): project API keys and model API calls.
 - [Team Leader Guide](team-leader-guide.md): teams, projects, members, and cost attribution.
+
+Account quota normalization lives in `backend/internal/allowance/`; account ordering lives in `backend/internal/accountrouting/`. Core supplies authorized route slots, persisted quota observations, and shared drain state. The account planner performs no upstream quota calls and cannot introduce a route or resource excluded by policy. See [Account allowance and routing](administrator-guide.md#account-allowance-and-routing).
