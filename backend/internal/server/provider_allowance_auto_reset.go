@@ -147,6 +147,13 @@ func (s *Server) runAllowanceReset(ctx context.Context, resource ProviderResourc
 		if !exists || !sameProviderAccountSnapshot(actual, resource) {
 			return nil
 		}
+		data, _, err := store.loadAccountRoutingData(ctx, []string{resource.ID}, nil)
+		if err != nil {
+			return err
+		}
+		if allowance.ResetHeldByCap(data[resource.ID].Allowance, current.Policy, time.Now().UTC(), accountAllowanceMaxAge) {
+			return nil
+		}
 		if reason == "weekly_exhausted" && !s.allowanceResetIntentCurrent(ctx, resource.ID, time.Now().UTC()) {
 			return nil
 		}

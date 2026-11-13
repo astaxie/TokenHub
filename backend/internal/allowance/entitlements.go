@@ -132,21 +132,7 @@ func Evaluate(s Snapshot, p Policy, model string, now time.Time, maxAge time.Dur
 		return d
 	}
 	for _, w := range s.Windows {
-		if !s.WindowApplies(w, model) || w.Unlimited || w.Unknown || w.ResetAt != nil && !now.Before(*w.ResetAt) || w.ExpiresAt != nil && !now.Before(*w.ExpiresAt) {
-			continue
-		}
-		cap, own := p.Windows[strings.ToLower(w.Name)]
-		if !own {
-			cap = p.Cap
-		}
-		if w.Informational && !own && w.Pool == "" {
-			continue
-		}
-		amount := w.Amount
-		if amount == nil {
-			amount = w.Spent
-		}
-		if cap.Percent > 0 && w.UsedPercent != nil && *w.UsedPercent >= cap.Percent || cap.Amount > 0 && amount != nil && *amount >= cap.Amount {
+		if s.WindowApplies(w, model) && windowCapReached(w, p, now) {
 			d.Held = true
 			d.Reason = "usage_cap"
 			return d

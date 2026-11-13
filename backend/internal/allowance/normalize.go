@@ -126,6 +126,9 @@ func normalizeWindow(m map[string]any, name string, now time.Time) Window {
 		used := 100.0
 		w.UsedPercent = &used
 	}
+	if !w.Unlimited && !w.Informational && w.UsedPercent == nil && w.Balance == nil {
+		w.Unknown = true
+	}
 	return w
 }
 

@@ -1,5 +1,7 @@
+import type { AllowanceFieldRow } from "../core/provider-allowance-rows";
 import type { AdminResource } from "../core/types";
 import type {
+  AllowanceCap,
   AllowanceConfig,
   AllowancePolicy,
 } from "../core/provider-allowance";
@@ -21,8 +23,12 @@ export function AllowancePolicyFields({
   draft,
   channels,
   onChange,
+  caps,
+  onCapsChange,
 }: {
   draft: AllowanceConfig;
+  caps: AllowanceFieldRow<AllowanceCap>[];
+  onCapsChange: (rows: AllowanceFieldRow<AllowanceCap>[]) => void;
   channels: AdminResource[];
   onChange: (value: AllowanceConfig) => void;
 }) {
@@ -65,31 +71,41 @@ export function AllowancePolicyFields({
             />
           </label>
         </div>
-        {Object.entries(p.windows ?? {}).map(([name, cap], index) => (
-          <div className="allowance-inline" key={index}>
+        {caps.map((row) => (
+          <div className="allowance-inline" key={row.id}>
             <input
               aria-label={tx("窗口名称")}
-              value={name}
-              onChange={(event) => {
-                const windows = { ...p.windows };
-                delete windows[name];
-                windows[event.target.value.toLowerCase()] = cap;
-                set({ windows });
-              }}
+              value={row.name}
+              onChange={(event) =>
+                onCapsChange(
+                  caps.map((item) =>
+                    item.id === row.id
+                      ? { ...item, name: event.target.value }
+                      : item,
+                  ),
+                )
+              }
             />
             <input
               aria-label={tx("窗口比例上限")}
               type="number"
               min={0}
               max={100}
-              value={cap.percent ?? ""}
+              value={row.value.percent ?? ""}
               onChange={(event) =>
-                set({
-                  windows: {
-                    ...p.windows,
-                    [name]: { ...cap, percent: Number(event.target.value) },
-                  },
-                })
+                onCapsChange(
+                  caps.map((item) =>
+                    item.id === row.id
+                      ? {
+                          ...item,
+                          value: {
+                            ...item.value,
+                            percent: Number(event.target.value),
+                          },
+                        }
+                      : item,
+                  ),
+                )
               }
             />
             <input
@@ -97,23 +113,28 @@ export function AllowancePolicyFields({
               type="number"
               min={0}
               step="any"
-              value={cap.amount ?? ""}
+              value={row.value.amount ?? ""}
               onChange={(event) =>
-                set({
-                  windows: {
-                    ...p.windows,
-                    [name]: { ...cap, amount: Number(event.target.value) },
-                  },
-                })
+                onCapsChange(
+                  caps.map((item) =>
+                    item.id === row.id
+                      ? {
+                          ...item,
+                          value: {
+                            ...item.value,
+                            amount: Number(event.target.value),
+                          },
+                        }
+                      : item,
+                  ),
+                )
               }
             />
             <button
               type="button"
-              onClick={() => {
-                const windows = { ...p.windows };
-                delete windows[name];
-                set({ windows });
-              }}
+              onClick={() =>
+                onCapsChange(caps.filter((item) => item.id !== row.id))
+              }
             >
               {tx("删除")}
             </button>
@@ -122,7 +143,12 @@ export function AllowancePolicyFields({
         <button
           type="button"
           className="secondary"
-          onClick={() => set({ windows: { ...p.windows, "": {} } })}
+          onClick={() =>
+            onCapsChange([
+              ...caps,
+              { id: crypto.randomUUID(), name: "", value: {} },
+            ])
+          }
         >
           {tx("添加窗口限额")}
         </button>

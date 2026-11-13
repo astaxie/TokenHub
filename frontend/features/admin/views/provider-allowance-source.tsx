@@ -1,3 +1,7 @@
+import {
+  allowanceFieldRows,
+  type AllowanceFieldRow,
+} from "../core/provider-allowance-rows";
 import type {
   AllowanceConfig,
   AllowanceEntry,
@@ -12,8 +16,12 @@ export function AllowanceSourceFields({
   entries,
   presets,
   onChange,
+  headers,
+  onHeadersChange,
 }: {
   draft: AllowanceConfig;
+  headers: AllowanceFieldRow<string>[];
+  onHeadersChange: (rows: AllowanceFieldRow<string>[]) => void;
   entries: AllowanceEntry[];
   presets: AllowancePreset[];
   onChange: (value: AllowanceConfig) => void;
@@ -54,6 +62,7 @@ export function AllowanceSourceFields({
                 set({ preset: "", expression: "", windows: [] });
                 return;
               }
+              onHeadersChange(allowanceFieldRows(preset.config.headers));
               onChange({
                 ...draft,
                 source: {
@@ -249,35 +258,40 @@ export function AllowanceSourceFields({
       <fieldset>
         <legend>{tx("额度请求头")}</legend>
         <p>{tx("请求头加密保存；已保存的值不会再次显示。")}</p>
-        {Object.entries(source.headers ?? {}).map(([name, value], index) => (
-          <div className="allowance-inline" key={index}>
+        {headers.map((row) => (
+          <div className="allowance-inline" key={row.id}>
             <input
               aria-label={tx("请求头名称")}
-              value={name}
-              onChange={(event) => {
-                const headers = { ...source.headers };
-                delete headers[name];
-                headers[event.target.value] = value;
-                set({ headers });
-              }}
+              value={row.name}
+              onChange={(event) =>
+                onHeadersChange(
+                  headers.map((item) =>
+                    item.id === row.id
+                      ? { ...item, name: event.target.value }
+                      : item,
+                  ),
+                )
+              }
             />
             <input
               type="password"
               aria-label={tx("请求头值")}
-              value={value}
+              value={row.value}
               onChange={(event) =>
-                set({
-                  headers: { ...source.headers, [name]: event.target.value },
-                })
+                onHeadersChange(
+                  headers.map((item) =>
+                    item.id === row.id
+                      ? { ...item, value: event.target.value }
+                      : item,
+                  ),
+                )
               }
             />
             <button
               type="button"
-              onClick={() => {
-                const headers = { ...source.headers };
-                delete headers[name];
-                set({ headers });
-              }}
+              onClick={() =>
+                onHeadersChange(headers.filter((item) => item.id !== row.id))
+              }
             >
               {tx("删除")}
             </button>
@@ -286,7 +300,12 @@ export function AllowanceSourceFields({
         <button
           type="button"
           className="secondary"
-          onClick={() => set({ headers: { ...source.headers, "": "" } })}
+          onClick={() =>
+            onHeadersChange([
+              ...headers,
+              { id: crypto.randomUUID(), name: "", value: "" },
+            ])
+          }
         >
           {tx("添加请求头")}
         </button>
@@ -399,13 +418,10 @@ export function AllowanceSourceFields({
               <label>
                 {tx("适用模型（逗号分隔）")}
                 <input
-                  value={(window.models ?? []).join(", ")}
+                  value={(window.models ?? []).join(",")}
                   onChange={(event) =>
                     updateWindow(index, {
-                      models: event.target.value
-                        .split(",")
-                        .map((value) => value.trim())
-                        .filter(Boolean),
+                      models: event.target.value.split(","),
                     })
                   }
                 />
@@ -413,13 +429,10 @@ export function AllowanceSourceFields({
               <label>
                 {tx("排除模型（逗号分隔）")}
                 <input
-                  value={(window.excluded_models ?? []).join(", ")}
+                  value={(window.excluded_models ?? []).join(",")}
                   onChange={(event) =>
                     updateWindow(index, {
-                      excluded_models: event.target.value
-                        .split(",")
-                        .map((value) => value.trim())
-                        .filter(Boolean),
+                      excluded_models: event.target.value.split(","),
                     })
                   }
                 />

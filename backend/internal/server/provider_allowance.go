@@ -60,10 +60,10 @@ func (s *GormStore) saveProviderQuotaFailureWithRevision(ctx context.Context, ex
 				return err
 			}
 			var observation ProviderResourceObservation
-			if err := tx.Where("resource_id = ?", expected.ID).First(&observation).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("resource_id = ?", expected.ID).First(&observation).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
-			if observation.UpdatedAt.After(started) || observation.QuotaFetchedAt != nil && observation.QuotaFetchedAt.After(started) {
+			if observation.QuotaFetchedAt != nil && observation.QuotaFetchedAt.After(started) {
 				return nil
 			}
 			fetched := time.Time{}
@@ -71,6 +71,9 @@ func (s *GormStore) saveProviderQuotaFailureWithRevision(ctx context.Context, ex
 				fetched = *observation.QuotaFetchedAt
 			}
 			normalized := allowance.Read([]byte(observation.QuotaSnapshot), fetched)
+			if normalized.CheckedAt.After(started) {
+				return nil
+			}
 			normalized.Status, normalized.ErrorCode, normalized.CheckedAt = allowance.QueryError, code, time.Now().UTC()
 			var data map[string]any
 			if json.Unmarshal([]byte(observation.QuotaSnapshot), &data) != nil || data == nil {

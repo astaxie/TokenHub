@@ -79,3 +79,34 @@ func TestNativeCreditsAndUnknownModelLimitsArePreserved(t *testing.T) {
 		t.Fatal("unscoped additional limit exhausted the whole account")
 	}
 }
+
+func TestNormalizePartiallyUnreadableNativeWindows(t *testing.T) {
+	now := time.Now().UTC()
+	for _, missing := range []string{``, `"used_percent":null,`, `"used_percent":"invalid",`} {
+		for _, prefix := range []string{"", "rate_limit"} {
+			t.Run(prefix+missing, func(t *testing.T) {
+				raw := `{"primary_window":{` + missing + `"limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":20,"reset_after_seconds":604800}}`
+				if prefix != "" {
+					raw = `{"rate_limit":` + raw + `}`
+				}
+				s := Normalize([]byte(raw), now)
+				if got := s.For("synthetic-model", now, time.Hour).Status; got != Unknown {
+					t.Fatalf("unreadable required window became %s", got)
+				}
+				if len(s.Windows) != 2 || !s.Windows[0].Unknown {
+					t.Fatalf("missing window did not retain unknown state: %+v", s.Windows)
+				}
+			})
+		}
+	}
+	for _, raw := range []string{
+		`{"windows":[{"unlimited":true},{"used_percent":20}]}`,
+		`{"windows":[{"informational":true},{"used_percent":20}]}`,
+		`{"windows":[{"balance":10},{"used_percent":20}]}`,
+		`{"windows":[{"amount":2,"limit":10},{"used_percent":20}]}`,
+	} {
+		if got := Normalize([]byte(raw), now).For("synthetic-model", now, time.Hour).Status; got != Available {
+			t.Fatalf("known or informational window became %s: %s", got, raw)
+		}
+	}
+}

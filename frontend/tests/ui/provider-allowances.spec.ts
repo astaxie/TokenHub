@@ -395,3 +395,118 @@ for (const state of ["empty", "failure"] as const)
       "viewport",
     );
   });
+
+for (const mobile of [false, true]) {
+  test(`provider allowance editing ${mobile ? "mobile" : "desktop"}`, async ({
+    page,
+    api,
+  }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    installAllowances(api);
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "额度与权益", exact: true }).click();
+    const console = page.getByRole("region", {
+      name: "额度与权益",
+      exact: true,
+    });
+    await console.getByRole("button", { name: /Synthetic Fusecode/ }).click();
+    await console
+      .getByRole("tab", { name: "采集与权益策略", exact: true })
+      .click();
+    const mode = mobile ? "mobile" : "desktop";
+    await console
+      .getByRole("button", { name: "添加请求头", exact: true })
+      .click();
+    const headerNames = console.getByLabel("请求头名称", { exact: true });
+    await headerNames.nth(1).fill("X-Second");
+    await console
+      .getByLabel("请求头值", { exact: true })
+      .nth(1)
+      .fill("synthetic-second");
+    await headerNames.first().fill("");
+    await headerNames.first().pressSequentially("X-New");
+    await expect(headerNames.first()).toHaveValue("X-New");
+    await expect(headerNames.nth(1)).toHaveValue("X-Second");
+    await positionSegment(console.getByText("额度请求头", { exact: true }));
+    await capture(
+      page,
+      testInfo,
+      console,
+      `allowance-edit-headers-${mode}`,
+      "请求头逐字改名与行顺序",
+      "viewport",
+    );
+    const models = console.getByLabel("适用模型（逗号分隔）", { exact: true });
+    const excluded = console.getByLabel("排除模型（逗号分隔）", {
+      exact: true,
+    });
+    await models.fill("");
+    await models.pressSequentially("gpt-*, claude-*,");
+    await excluded.pressSequentially("gpt-mini*, claude-haiku*,");
+    await expect(models).toHaveValue("gpt-*, claude-*,");
+    await expect(excluded).toHaveValue("gpt-mini*, claude-haiku*,");
+    await positionSegment(models);
+    await capture(
+      page,
+      testInfo,
+      console,
+      `allowance-edit-models-${mode}`,
+      "模型范围保留逗号并在保存时拆分",
+      "viewport",
+    );
+    await console
+      .getByRole("button", { name: "使用与权益", exact: true })
+      .click();
+    await console
+      .getByRole("button", { name: "添加窗口限额", exact: true })
+      .click();
+    const capNames = console.getByLabel("窗口名称", { exact: true });
+    await capNames.nth(1).fill("monthly");
+    await console.getByLabel("窗口比例上限", { exact: true }).nth(1).fill("90");
+    await capNames.first().fill("");
+    await capNames.first().pressSequentially("monthly");
+    await capNames.first().fill("");
+    await capNames.first().pressSequentially("daily");
+    await expect(capNames.first()).toHaveValue("daily");
+    await expect(capNames.nth(1)).toHaveValue("monthly");
+    await positionSegment(console.getByText("账号使用上限", { exact: true }));
+    await capture(
+      page,
+      testInfo,
+      console,
+      `allowance-edit-caps-${mode}`,
+      "窗口限额逐字改名并保留原值",
+      "viewport",
+    );
+    await console
+      .getByRole("button", { name: "额度采集", exact: true })
+      .click();
+    await expect(headerNames.first()).toHaveValue("X-New");
+    await console
+      .getByRole("button", { name: "保存额度配置", exact: true })
+      .click();
+    await expect
+      .poll(() => api.calls.filter((call) => call.method === "PUT").length)
+      .toBe(1);
+    expect(api.calls.find((call) => call.method === "PUT")?.body).toMatchObject(
+      {
+        source: {
+          headers: { "X-New": "[redacted]", "X-Second": "synthetic-second" },
+          windows: [
+            {
+              models: ["gpt-*", "claude-*"],
+              excluded_models: ["gpt-mini*", "claude-haiku*"],
+            },
+          ],
+        },
+        policy: {
+          windows: {
+            daily: { percent: 85, amount: 75 },
+            monthly: { percent: 90 },
+          },
+        },
+      },
+    );
+    expect(api.calls.filter((call) => call.method === "POST")).toHaveLength(0);
+  });
+}

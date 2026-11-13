@@ -31,7 +31,24 @@ func (s *Server) refreshConfiguredAllowance(ctx context.Context, resource Provid
 	}
 	var out quotasource.Result
 	err = s.store.RunClusterOperation(ctx, "provider-quota:"+resource.ID, func(ctx context.Context) error {
-		cfg, err = store.providerAllowanceConfig(ctx, resource.ID)
+		// Load destination and credentials together after waiting for the refresh
+		// lease. Account edits and collection-rule edits use the mutation lease.
+		var current ProviderResource
+		var provider Provider
+		err := store.withClusterLease(ctx, providerResourceMutationLeaseName(resource.ID), func(ctx context.Context) error {
+			var found bool
+			current, found = s.store.GetProviderResource(resource.ID)
+			if !found {
+				return NewHTTPError(404, "provider_resource_not_found", "Provider resource not found")
+			}
+			provider, found = s.store.GetProvider(current.ProviderID)
+			if !found {
+				return NewHTTPError(404, "provider_not_found", "Provider not found")
+			}
+			var loadErr error
+			cfg, loadErr = store.providerAllowanceConfig(ctx, current.ID)
+			return loadErr
+		})
 		if err != nil {
 			return err
 		}
@@ -51,19 +68,11 @@ func (s *Server) refreshConfiguredAllowance(ctx context.Context, resource Provid
 				}
 			}
 		}
-		provider, found := s.store.GetProvider(resource.ProviderID)
-		if !found {
-			return NewHTTPError(404, "provider_not_found", "Provider not found")
-		}
-		source, err := quotasource.Resolve(cfg.Source, firstNonEmpty(resource.BaseURL, provider.BaseURL))
+		source, err := quotasource.Resolve(cfg.Source, firstNonEmpty(current.BaseURL, provider.BaseURL))
 		if err != nil {
 			return NewHTTPError(400, "invalid_allowance_source", "Quota source configuration is invalid")
 		}
 		started := time.Now().UTC()
-		current, found := s.store.GetProviderResource(resource.ID)
-		if !found {
-			return NewHTTPError(404, "provider_resource_not_found", "Provider resource not found")
-		}
 		token := cfg.Token
 		if token == "" {
 			token = current.APIKey

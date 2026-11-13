@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import type { AdminResource, ApiContext } from "../core/types";
 import type {
+  AllowanceCap,
   AllowanceConfig,
   AllowanceEntry,
   AllowancePreset,
 } from "../core/provider-allowance";
+import { allowanceFieldRows } from "../core/provider-allowance-rows";
 import { tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
 import { AllowanceSourceFields } from "./provider-allowance-source";
@@ -27,6 +29,12 @@ export function ProviderAllowanceConfigForm({
 }) {
   const [draft, setDraft] = useState<AllowanceConfig>(() =>
     structuredClone(entry.config),
+  );
+  const [headers, setHeaders] = useState(() =>
+    allowanceFieldRows(draft.source.headers),
+  );
+  const [caps, setCaps] = useState(() =>
+    allowanceFieldRows<AllowanceCap>(draft.policy.windows),
   );
   const [tab, setTab] = useState<"source" | "policy">("source");
   const [saving, setSaving] = useState(false);
@@ -64,11 +72,42 @@ export function ProviderAllowanceConfigForm({
       const response = await adminFetch(
         api,
         `/api/admin/provider-resources/${encodeURIComponent(entry.resource_id)}/allowance/config`,
-        { method: "PUT", body: JSON.stringify(draft) },
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            ...draft,
+            source: {
+              ...draft.source,
+              headers: headers.length
+                ? Object.fromEntries(
+                    headers.map((row) => [row.name, row.value]),
+                  )
+                : undefined,
+              windows: draft.source.windows?.map((window) => ({
+                ...window,
+                models: window.models
+                  ?.map((value) => value.trim())
+                  .filter(Boolean),
+                excluded_models: window.excluded_models
+                  ?.map((value) => value.trim())
+                  .filter(Boolean),
+              })),
+            },
+            policy: {
+              ...draft.policy,
+              windows: Object.fromEntries(
+                caps.map((row) => [row.name.toLowerCase(), row.value]),
+              ),
+            },
+          }),
+        },
       );
       if (!response.ok)
         throw new Error(await readAdminError(response, tx("额度配置保存失败")));
-      setDraft(await response.json());
+      const config: AllowanceConfig = await response.json();
+      setDraft(config);
+      setHeaders(allowanceFieldRows(config.source.headers));
+      setCaps(allowanceFieldRows(config.policy.windows));
       setSaved(true);
       await onSaved();
     } catch (cause) {
@@ -106,12 +145,16 @@ export function ProviderAllowanceConfigForm({
             entries={entries}
             presets={presets}
             onChange={setDraft}
+            headers={headers}
+            onHeadersChange={setHeaders}
           />
         ) : (
           <AllowancePolicyFields
             channels={channels}
             draft={draft}
             onChange={setDraft}
+            caps={caps}
+            onCapsChange={setCaps}
           />
         )}
       </fieldset>

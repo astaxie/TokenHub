@@ -88,7 +88,7 @@ func (s *Server) refreshAllowanceEntitlements(ctx context.Context, resource Prov
 	// An exhausted reset additionally requires an execution-created intent whose
 	// candidates came from that request's already authorized route plan.
 	noAlternative := s.allowanceResetIntentCurrent(ctx, resource.ID, now)
-	if allowance.Evaluate(a, cfg.Policy, "", now, accountAllowanceMaxAge).Held {
+	if allowance.Evaluate(a, cfg.Policy, "", now, accountAllowanceMaxAge).Held || allowance.ResetHeldByCap(a, cfg.Policy, now, accountAllowanceMaxAge) {
 		return
 	}
 	card, reason, eligible := allowance.ResetCandidate(a, cfg.Policy.Reset, now, noAlternative)
