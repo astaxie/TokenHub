@@ -8,6 +8,7 @@ import (
 
 type UsageReportRequest struct {
 	CreatedAt  time.Time
+	ErrorCode  string
 	StatusCode int
 }
 
@@ -51,7 +52,7 @@ func (s *GormStore) streamUsageReportRequests(ctx context.Context, scope UsageSu
 	if err != nil {
 		return err
 	}
-	rows, err := query.Where("COALESCE(project_id, '') <> ?", "admin_playground").Select("created_at, status_code").Rows()
+	rows, err := query.Where("COALESCE(project_id, '') <> ?", "admin_playground").Select("created_at, status_code, error_code").Rows()
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -103,7 +102,7 @@ func (a *usageReportAggregate) addRequest(log UsageReportRequest) {
 	bucket := usageReportBucket(a.buckets, usageReportBucketKey(log.CreatedAt, a.location, a.granularity))
 	a.summary.RequestCount++
 	bucket.RequestCount++
-	if log.StatusCode >= http.StatusBadRequest {
+	if isOperationalError(log.StatusCode, log.ErrorCode) {
 		a.summary.Errors++
 		bucket.Errors++
 	}

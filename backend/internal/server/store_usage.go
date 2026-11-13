@@ -31,7 +31,7 @@ func summarizeUsage(records []UsageRecord, logs []RequestLog) map[string]any {
 		if isPlaygroundRequestLog(log) {
 			continue
 		}
-		if log.StatusCode >= 400 {
+		if isOperationalError(log.StatusCode, log.ErrorCode) {
 			errorsCount++
 		}
 	}
