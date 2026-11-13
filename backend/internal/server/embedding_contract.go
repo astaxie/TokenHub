@@ -28,13 +28,18 @@ type EmbeddingsRequest struct {
 
 func (r *EmbeddingsRequest) UnmarshalJSON(data []byte) error {
 	type wire EmbeddingsRequest
-	var value wire
+	// RAGFlow sends drop_params as a client compatibility hint. Accept it only
+	// while decoding; it must not affect semantic options or reach the upstream.
+	var value struct {
+		wire
+		DropParams *bool `json:"drop_params"`
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&value); err != nil {
 		return err
 	}
-	*r = EmbeddingsRequest(value)
+	*r = EmbeddingsRequest(value.wire)
 	return nil
 }
 

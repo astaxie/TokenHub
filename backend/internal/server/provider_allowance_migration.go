@@ -3,7 +3,7 @@ package server
 import "tokenhub/backend/internal/dbschema"
 
 func providerAllowanceMigration() dbschema.Migration {
-	return dbschema.Migration{Version: 11, Name: "add-provider-allowance-management", StatementBudget: 12, Statements: []string{
+	return dbschema.Migration{Version: 12, Name: "add-provider-allowance-management", StatementBudget: 12, Statements: []string{
 		`CREATE TABLE IF NOT EXISTS "provider_allowance_settings" (
  "resource_id" text PRIMARY KEY, "shared_account_id" text NOT NULL DEFAULT '', "revision" text NOT NULL, "source_encrypted" text NOT NULL,
  "token_encrypted" text NOT NULL, "policy_json" text NOT NULL, "wallet_snapshot" text NOT NULL DEFAULT '', "updated_at" timestamp NOT NULL)`,

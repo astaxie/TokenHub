@@ -90,7 +90,7 @@ The ingress mirrors `deploy/nginx.multi-instance.conf`:
 | `/api`, `/v1`, `/v1beta`, `/docs`, `/openapi.json`, `/openapi.yaml`, `/healthz`, `/readyz`, `/livez` | `api` (8080) |
 | everything else | `console` (3000) |
 
-The default ingress annotations turn response buffering off and raise the read/send timeouts to 300 seconds so streaming responses survive, and set the body size limit to 32 MiB, matching `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES`. Override `ingress.annotations` for other ingress controllers or different limits; keep the body limit at or above the multimodal request limit.
+The default ingress annotations turn response buffering off and raise the read/send timeouts to 300 seconds so streaming responses survive, and set the body size limit to 128 MiB so a `/v1/responses` body can reach TokenHub. Override `ingress.annotations` for other ingress controllers. If `TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES` is raised above 128 MiB, raise `nginx.ingress.kubernetes.io/proxy-body-size` as well, up to `512m`.
 
 ## Health and shutdown
 

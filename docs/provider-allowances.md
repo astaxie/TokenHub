@@ -44,7 +44,7 @@ Administrator APIs require provider permissions:
 
 Project API keys can read `GET /v1/allowance?model=<alias>`, optionally with `wait_seconds=0..60`. This returns aggregate cached availability for authorized routes, without supplier identities, wallet amounts or configuration. Waiting never queries the supplier.
 
-Schema expansion 11 adds indexed settings, sessions, history, entitlement events and wallet counters. It is additive and does not alter the frozen adoption baseline. No new environment variables are required. See [Database evolution](database-evolution.md).
+Schema expansion 12 adds indexed settings, sessions, history, entitlement events and wallet counters. It is additive and does not alter the frozen adoption baseline. No new environment variables are required. See [Database evolution](database-evolution.md).
 
 ## Magpie provenance
 

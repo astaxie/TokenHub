@@ -31,8 +31,8 @@ func (s *Server) applySemanticRouting(ctx context.Context, routed *RoutedCall, r
 	}
 	text, eligible := jevChatText(req)
 	_, scope := chatCompletionSessionIdentifier(headers, req)
-	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel) jevCompatibility {
-		return jevChatCompatibility(model, req)
+	return s.applyJevRouting(ctx, routed, text, eligible && scope == sessionScopeNone, func(model ProviderModel, adapterForwards bool) jevAdmission {
+		return jevChatAdmission(model, req, adapterForwards)
 	})
 }
 
@@ -72,7 +72,23 @@ func jevTextContent(content any) (string, bool) {
 	return jevTextContent(strings.Join(texts, "\n"))
 }
 
-func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text string, eligible bool, fits func(ProviderModel) jevCompatibility) error {
+// forwardsProtocolControls reports whether the effective adapter for the
+// provider type forwards the OpenAI request body verbatim. The adapter registry
+// is authoritative: a plugin may replace a built-in type, and only the adapter
+// that actually executes should be able to claim forwarding.
+func (s *Server) forwardsProtocolControls(providerType string) bool {
+	if s.adapterRegistry == nil {
+		return false
+	}
+	adapter, err := s.adapterRegistry.Resolve(providerType)
+	if err != nil {
+		return false
+	}
+	forwarder, ok := adapter.(protocolControlForwarder)
+	return ok && forwarder.ForwardsProtocolControls()
+}
+
+func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text string, eligible bool, fits func(ProviderModel, bool) jevAdmission) error {
 	policy := modelSemanticRoutingPolicy(routed.Call.Model)
 	timeout := s.config.SemanticRoutingTimeoutMS
 	if timeout <= 0 {
@@ -105,6 +121,12 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 	for _, model := range models {
 		metadata[semanticModelKey{model.ProviderID, model.UpstreamModel}] = model
 	}
+	// Adapter capability is a property of the route's provider, not of the
+	// model declaration, so it is looked up before admission runs.
+	providerTypes := map[semanticModelKey]string{}
+	for _, route := range routed.Routes {
+		providerTypes[semanticKey(route)] = route.Provider.Type
+	}
 	groups := map[string][]RouteSelection{}
 	candidates := []semanticCandidate{}
 	rejections := []jevCandidateRejection{}
@@ -115,8 +137,14 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 			rejections = append(rejections, jevCandidateRejection{CandidateID: candidate.ID, jevCompatibility: jevReject("model_metadata_missing", "")})
 			continue
 		}
-		if result := fits(model); result.Reason != "" {
-			rejections = append(rejections, jevCandidateRejection{CandidateID: candidate.ID, jevCompatibility: result})
+		if admission := fits(model, s.forwardsProtocolControls(providerTypes[key])); admission.rejected() {
+			// Keep the established single-reason audit contract (first reason)
+			// and attach every parameter rejection alongside it.
+			rejections = append(rejections, jevCandidateRejection{
+				CandidateID:      candidate.ID,
+				jevCompatibility: admission.first(),
+				Missing:          admission.Missing,
+			})
 			continue
 		}
 		for _, route := range routed.Routes {
@@ -132,7 +160,16 @@ func (s *Server) applyJevRouting(ctx context.Context, routed *RoutedCall, text s
 	}
 	s.recordJevAdmission(routed.Call.RequestID, rejections)
 	if len(candidates) == 0 {
-		return NewHTTPError(503, "jev_no_eligible_candidates", "No configured Jev model can serve this request")
+		err := NewHTTPError(503, "jev_no_eligible_candidates", "No configured Jev model can serve this request")
+		if reasons, truncated := summarizeJevRejections(rejections); len(reasons) > 0 {
+			err.Details = map[string]any{
+				"stage":              "jev_admission",
+				"upstream_attempted": false,
+				"reasons":            reasons,
+				"truncated":          truncated,
+			}
+		}
+		return err
 	}
 	// The default leads deterministic failover. Resource ordering within each
 	// provider/model remains the order produced by the existing planner.

@@ -233,6 +233,7 @@ type Store interface {
 	ListRequestLogs() []RequestLog
 	QueryRequestLogs(query RequestLogQuery) (RequestLogPage, error)
 	ListProviderObservations(since time.Time) []ProviderObservation
+	ProviderMonitoringObservations(context.Context, time.Time, []string) (map[string]ProviderObservationSummary, error)
 	RecordProviderObservation(observation ProviderObservation)
 	GetProviderResourceObservation(resourceID string) (ProviderResourceObservation, bool)
 	SaveProviderResourceQuota(resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error

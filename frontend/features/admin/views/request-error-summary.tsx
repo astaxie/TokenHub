@@ -8,7 +8,10 @@ export function requestErrorInfo(responseBody?: string) {
     if (!error || typeof error !== "object") return null;
     const message = "message" in error && typeof error.message === "string" ? error.message : "";
     const details = "details" in error ? error.details : null;
-    const beforeUpstream = !!details && typeof details === "object" && "stage" in details && details.stage === "route_selection" && "upstream_attempted" in details && details.upstream_attempted === false;
+    // Routing diagnostics mark rejected requests before any upstream attempt.
+    // Jev admission now sets the same flag, so the stage name is not required.
+    const beforeUpstream = !!details && typeof details === "object" &&
+      (details as Record<string, unknown>).upstream_attempted === false;
     return { message, beforeUpstream };
   } catch { return null; }
 }

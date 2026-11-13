@@ -835,6 +835,11 @@ func (s *GormStore) FinalizeResponseJob(call CallContext, id string, owner strin
 					return err
 				}
 			}
+			if status == responseJobStatusSucceeded && call.responsesImageStoreBinding != nil {
+				if err := saveResponsesImageStoreBinding(tx, *call.responsesImageStoreBinding); err != nil {
+					return err
+				}
+			}
 			job.Status = status
 			if call.RequestID != "" {
 				job.RequestID = call.RequestID

@@ -6,6 +6,8 @@ TokenHub 通过 `POST /v1/embeddings` 提供文本向量，复用 API Key 权限
 
 网关每次最多接收 2048 条输入，具体协议可能有更低上限。`dimensions` 范围为 1–65536；`task` 与 `input_type` 只能指定其中一个。
 
+为兼容 RAGFlow，网关接受客户端提示字段 `drop_params`，并在请求解码时移除。支持布尔值 `true`、`false`；`null` 视为未提供，其他类型返回 HTTP 400。该字段不会转发给上游，也不影响向量语义或缓存键。它不会开启丢弃其他参数的行为：即使设置 `drop_params: true`，未知字段和不支持的语义参数仍会被拒绝。
+
 ## 配置上游
 
 在 Provider 高级设置中打开“文本 Embedding 配置”。协议可选 `openai`、`cohere`、`jina`、`voyage`、`dashscope`、`tei`；Gemini 走原生适配器。留空采用目录默认值或 OpenAI 兼容协议，自定义渠道应明确选择实际协议。

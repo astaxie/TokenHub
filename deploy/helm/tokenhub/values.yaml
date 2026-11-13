@@ -80,8 +80,10 @@ imageStorage:
 # to the API port, every other path serves the console port. The default
 # annotations assume ingress-nginx; override them for other controllers.
 # Streaming responses (SSE) need buffering off and read/send timeouts above
-# TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS. Keep proxy-body-size at or
-# above TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES (32 MiB by default).
+# TOKENHUB_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS. The default proxy-body-size
+# is 128m so a /v1/responses body can reach TokenHub. If
+# TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES is raised above 128 MiB, override
+# nginx.ingress.kubernetes.io/proxy-body-size as well, up to 512m.
 ingress:
   enabled: false
   className: ""

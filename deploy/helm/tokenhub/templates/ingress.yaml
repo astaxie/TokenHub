@@ -9,7 +9,7 @@ metadata:
   labels:
     {{- include "tokenhub.labels" . | nindent 4 }}
   {{- $defaultAnnotations := dict
-      "nginx.ingress.kubernetes.io/proxy-body-size" "32m"
+      "nginx.ingress.kubernetes.io/proxy-body-size" "128m"
       "nginx.ingress.kubernetes.io/proxy-buffering" "off"
       "nginx.ingress.kubernetes.io/proxy-request-buffering" "off"
       "nginx.ingress.kubernetes.io/proxy-read-timeout" "300"

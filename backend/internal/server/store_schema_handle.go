@@ -93,6 +93,7 @@ func SchemaMigrationRegistry() []dbschema.Migration {
 		mediaTaskBindingMigration(),
 		usageWindowIndexesMigration(),
 		subscriptionOAuthRegistrationMigration(),
+		responsesImageStoreMigration(),
 		providerAllowanceMigration(),
 		{
 			Version:          2,

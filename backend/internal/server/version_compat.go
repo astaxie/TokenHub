@@ -19,15 +19,15 @@ type CompatibilityManifest struct {
 }
 
 // CurrentCompatibilityManifest is this release's declaration. This release
-// requires all registered expansions, including version 11's quota settings,
-// history, entitlement events, sessions, and wallet counters. Older schema
-// states cannot serve quota management. Startup applies these tables before admitting
-// requests; historical releases keep their existing compatibility declarations.
+// requires all registered expansions, including version 11's Responses image
+// continuations and version 12's allowance management. Startup applies these
+// additive tables before admitting requests; historical releases keep their
+// existing compatibility declarations.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: 11,
-		MinCompatible: 11,
-		MaxCompatible: 11,
+		TargetVersion: 12,
+		MinCompatible: 12,
+		MaxCompatible: 12,
 	}
 }
 

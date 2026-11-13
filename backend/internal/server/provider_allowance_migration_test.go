@@ -20,7 +20,7 @@ func TestSQLiteProviderAllowanceMigrationPreservesExistingData(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.db.Exec("DELETE FROM schema_migrations WHERE version = 11").Error; err != nil {
+	if err := store.db.Exec("DELETE FROM schema_migrations WHERE version = ?", providerAllowanceMigration().Version).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {

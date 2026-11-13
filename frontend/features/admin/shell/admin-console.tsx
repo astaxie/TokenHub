@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-loading";
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
@@ -74,6 +74,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     Object.fromEntries(allNavGroupTitles.map((title) => [title, true])),
   );
   const [activeView, setActiveView] = useState<ViewKey>(routeView);
+  const monitoringRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => { monitoringRequest.current?.abort(); }, [adminToken, baseURL, activeView]);
   const [activePluginPageKey, setActivePluginPageKey] = useState(() => pluginPageKeyFromLocation());
   const [pluginManagerTab, setPluginManagerTab] = useState<PluginManagerTabKey>("installed");
   const [data, setData] = useState<AppData>(emptyData());
@@ -437,7 +439,24 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.users, "users", "/api/admin/users");
       queue(plan.providerCatalog, "provider-catalog", "/api/admin/provider-catalog");
       queue(plan.providerAdapters, "provider-adapters", "/api/admin/provider-adapters");
-      queue(plan.providerMonitoring, "provider-monitoring", "/api/admin/providers/monitoring");
+      monitoringRequest.current?.abort();
+      if (plan.providerMonitoring) {
+        const controller = new AbortController();
+        monitoringRequest.current = controller;
+        setData((current) => ({ ...current, providerMonitoring: [] }));
+        void (async () => {
+          try {
+            const response = await adminFetch(api, "/api/admin/providers/monitoring", { signal: controller.signal });
+            if (!response.ok) throw new Error(await readLoadError(response, "provider-monitoring"));
+            const monitoring: LoadedData = {};
+            await applyViewPayload(monitoring, "provider-monitoring", response);
+            if (!controller.signal.aborted) setData((current) => mergeLoadedData(current, monitoring));
+          } catch (err) {
+            if (controller.signal.aborted || isAuthExpiredError(err)) return;
+            setError(err instanceof Error ? err.message : tx("连接失败"));
+          }
+        })();
+      }
       queue(plan.plugins, "plugins", "/api/admin/plugins");
       queue(plan.pluginMarketplace, "plugin-marketplace", "/api/admin/plugin-marketplace");
       queue(plan.pluginChain, "plugin-chain", "/api/admin/plugin-chain");

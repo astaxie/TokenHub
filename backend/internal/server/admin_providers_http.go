@@ -62,7 +62,12 @@ func (s *Server) handleAdminProviderMonitoring(w http.ResponseWriter, r *http.Re
 	if _, ok := s.requireAdmin(w, r, "provider", r.Method); !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.providerMonitoringSnapshots("")})
+	snapshots, err := s.providerMonitoringSnapshots(r.Context())
+	if err != nil {
+		writeError(w, r, NewHTTPError(http.StatusServiceUnavailable, "provider_monitoring_unavailable", "Provider monitoring is temporarily unavailable"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": snapshots})
 }
 
 func (s *Server) handleAdminProviderCatalogGet(w http.ResponseWriter, r *http.Request) {

@@ -303,9 +303,11 @@ Jev は意味に基づく選択の前に、リクエストのエンドポイン�
 
 インポート済み Provider モデルの metadata では、明示的な `endpoints` とともに `request_parameter_profile: openai-chat-responses-v1` を指定できます。このオプトイン設定は `include`、`truncation`、`service_tier`、`safety_identifier` などの共通制御と、ツール能力に基づく制御フィールドを提供します。Responses の `text.format` で構造化形式を要求する場合は構造化出力能力が必要です。サンプリングフィールドはモデル固有です。`reasoning_effort_options` と `reasoning_effort_default` は推論レベルを示し、`sampling_requires_reasoning_effort` はサンプリング条件を、`chat_tools_requires_reasoning_effort` は Chat ツール呼び出しに必要なレベルまたは `unsupported` を指定します。任意の `request_parameter_denied` はカンマ区切りの拒否リストで、許可規則より優先されます。この設定は上流アカウントの権限を付与せず、上流のスキーマ検証も置き換えません。
 
+`service_tier`、`safety_identifier`、`prompt_cache_options`、`prompt_cache_retention`、`store` のようなエンドポイント非依存の制御フィールドは、アダプターが OpenAI リクエスト本文をそのまま転送し、上流が受信エンドポイントを提供するルートではモデル能力として宣言せずに受け入れます。プロトコルブリッジ（Anthropic、Gemini）や独自プロトコルへ変換するアダプター（サブスクリプションワーカー）は宣言済みのフィールド集合を維持するため、それらが落とす制御は引き続き拒否されます。`request_parameter_denied` による拒否は引き続き優先されます。`include`、`truncation`、`max_tool_calls`、`text`、`stream_options` は Responses 専用のため、従来どおりプロファイル設定で制御します（レガシー橋接では理解できない可能性があるため）。`store` は Responses のリクエスト封筒の一部として `/v1/responses` では以前から受け入れられており、`/v1/chat/completions` でも同じ扱いになりました。
+
 GPT-6 Sol／Luna 系のカタログにはこの設定が含まれますが、既存のインポート済みインベントリは自動更新されません。プロファイル未設定の既存ルートでは従来のプロトコルブリッジを維持します。意味評価器が無効で Jev が決定的フォールバックを使う場合も准入検査は実行されます。既存 Jev ルートのアップグレード前に Provider モデルと代表的なリクエストを確認し、特に空のパラメーター宣言を点検してください。既存項目は他の metadata と設定価格を保持して更新します。再インポートは価格と状態を含む Provider モデルのレコードを置き換えるため、metadata だけの更新として使用しないでください。他のプロバイダーには検証済みの宣言を使い、OpenAI 形式の JSON を受け付けるだけでこの設定に対応すると推測しないでください。
 
-管理者監査の action `routing.jev_admission` は候補除外を記録します。候補または固定ルート、固定理由コード、認識済みパラメーター名だけを記録し、未知の名前は `unknown` に置換します。プロンプト、リクエスト値、認証情報、完全なペイロードは含めません。理由には `parameter_not_declared`、`sampling_reasoning_conflict`、`parameter_endpoint_mismatch` があります。公開エラーは `jev_no_eligible_candidates`（503）または `jev_previous_route_unavailable`（409）のままで、候補インベントリは公開しません。
+管理者監査の action `routing.jev_admission` は候補除外を記録します。候補または固定ルート、固定理由コード、認識済みパラメーター名だけを記録し、未知の名前は `unknown` に置換します。プロンプト、リクエスト値、認証情報、完全なペイロードは含めません。理由には `parameter_not_declared`、`sampling_reasoning_conflict`、`parameter_endpoint_mismatch` があります。公開エラーは `jev_no_eligible_candidates`（503）または `jev_previous_route_unavailable`（409）のままで、候補インベントリは公開しません。`jev_no_eligible_candidates` の応答には `details` が付き、`stage` は `jev_admission`、`upstream_attempted` は `false`、`reasons` は拒否された全候補の理由とパラメーターをまとめた配列です。各項目は `candidate_count` を持ち、パラメーター名で並び、十件を超えると `truncated: true` で打ち切られます。監査イベントにも同じ要約を候補ごとの詳細と並べて記録します。
 
 ### スコープルーティングポリシー
 

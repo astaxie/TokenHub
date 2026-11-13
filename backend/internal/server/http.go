@@ -23,6 +23,7 @@ import (
 )
 
 type Server struct {
+	monitoringObservations           monitoringObservationCache
 	allowanceWaitMu                  sync.Mutex
 	allowanceWaiters                 map[string]int
 	allowanceWaitCount               int

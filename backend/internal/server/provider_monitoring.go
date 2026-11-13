@@ -60,19 +60,26 @@ type ProviderMonitoringSnapshot struct {
 	Trend                []string                 `json:"trend"`
 }
 
-func (s *Server) providerMonitoringSnapshots(providerID string) []ProviderMonitoringSnapshot {
+func (s *Server) providerMonitoringSnapshots(ctx context.Context) ([]ProviderMonitoringSnapshot, error) {
 	providers := s.store.ListProviders()
 	resources := s.store.ListProviderResources()
 	routes := s.store.ListRoutes()
-	observations := s.store.ListProviderObservations(time.Now().UTC().Add(-30 * 24 * time.Hour))
 	now := time.Now().UTC()
+	providerIDs := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		providerIDs = append(providerIDs, provider.ID)
+	}
+	sort.Strings(providerIDs)
+	observations, err := s.monitoringObservations.get(ctx, strings.Join(providerIDs, "\x00"), func(queryCtx context.Context) (map[string]ProviderObservationSummary, error) {
+		return s.store.ProviderMonitoringObservations(queryCtx, now, providerIDs)
+	})
+	if err != nil {
+		return nil, err
+	}
 	snapshots := make([]ProviderMonitoringSnapshot, 0, len(providers))
 	for _, provider := range providers {
-		if providerID != "" && provider.ID != providerID {
-			continue
-		}
 		descriptor, _ := s.adapterRegistry.Describe(provider.Type)
-		snapshot := buildProviderMonitoringSnapshot(now, provider, descriptor, resources, routes, observations)
+		snapshot := buildProviderMonitoringSnapshot(provider, descriptor, resources, routes, observations[provider.ID])
 		snapshots = append(snapshots, snapshot)
 	}
 	s.populateProviderQuotaSummaries(snapshots, resources)
@@ -82,10 +89,10 @@ func (s *Server) providerMonitoringSnapshots(providerID string) []ProviderMonito
 		}
 		return snapshots[i].Provider.Name < snapshots[j].Provider.Name
 	})
-	return snapshots
+	return snapshots, nil
 }
 
-func buildProviderMonitoringSnapshot(now time.Time, provider Provider, descriptor AdapterDescriptor, resources []ProviderResource, routes []ModelRoute, observations []ProviderObservation) ProviderMonitoringSnapshot {
+func buildProviderMonitoringSnapshot(provider Provider, descriptor AdapterDescriptor, resources []ProviderResource, routes []ModelRoute, observations ProviderObservationSummary) ProviderMonitoringSnapshot {
 	var providerResources []ProviderResource
 	activeResources := 0
 	healthyResources := 0
@@ -112,23 +119,10 @@ func buildProviderMonitoringSnapshot(now time.Time, provider Provider, descripto
 			activeRouteCount++
 		}
 	}
-	var probeObservations []ProviderObservation
-	var gatewayObservations []ProviderObservation
-	for _, observation := range observations {
-		if observation.ProviderID != provider.ID {
-			continue
-		}
-		switch observation.Source {
-		case "active_probe":
-			probeObservations = append(probeObservations, observation)
-		case "gateway_request":
-			gatewayObservations = append(gatewayObservations, observation)
-		}
-	}
 	configuration := configurationMonitoringSignal(provider)
 	resourceSignal := resourceMonitoringSignal(activeResources, healthyResources)
-	activeProbe := observationMonitoringSignal(now, "active_probe", probeObservations)
-	gateway := observationMonitoringSignal(now, "gateway_request", gatewayObservations)
+	activeProbe := observations.ActiveProbe
+	gateway := observations.Gateway
 	state, detail := aggregateProviderMonitoringState(configuration, resourceSignal, activeProbe, gateway)
 	quality := providerMonitoringQuality(state, gateway, activeResources, healthyResources)
 	return ProviderMonitoringSnapshot{
@@ -148,7 +142,7 @@ func buildProviderMonitoringSnapshot(now time.Time, provider Provider, descripto
 		Gateway:              gateway,
 		Quota:                ProviderQuotaSummary{Supported: adapterSupports(descriptor, AdapterCapabilityQuota)},
 		QualityScore:         quality,
-		Trend:                providerObservationTrend(now, append(probeObservations, gatewayObservations...)),
+		Trend:                observations.Trend,
 	}
 }
 
@@ -174,54 +168,6 @@ func resourceMonitoringSignal(active int, healthy int) ProviderMonitoringSignal 
 		return ProviderMonitoringSignal{State: "degraded", Source: "configuration", Detail: "some_resources_unhealthy", Samples: active, SuccessRate: successRate}
 	default:
 		return ProviderMonitoringSignal{State: "healthy", Source: "configuration", Detail: "resources_healthy", Samples: active, SuccessRate: successRate}
-	}
-}
-
-func observationMonitoringSignal(now time.Time, source string, observations []ProviderObservation) ProviderMonitoringSignal {
-	if len(observations) == 0 {
-		return ProviderMonitoringSignal{State: "unknown", Source: source, Detail: "no_samples"}
-	}
-	sort.Slice(observations, func(i, j int) bool { return observations[i].ObservedAt.After(observations[j].ObservedAt) })
-	cutoff := now.Add(-24 * time.Hour)
-	var recent []ProviderObservation
-	for _, observation := range observations {
-		if !observation.ObservedAt.Before(cutoff) {
-			recent = append(recent, observation)
-		}
-	}
-	if len(recent) == 0 {
-		latest := observations[0]
-		return ProviderMonitoringSignal{State: "unknown", Source: source, Detail: "samples_stale", ErrorCode: latest.ErrorCode, ObservedAt: &latest.ObservedAt}
-	}
-	successes := 0
-	var successfulLatencies []int64
-	for _, observation := range recent {
-		if observation.Success {
-			successes++
-			if observation.LatencyMS > 0 {
-				successfulLatencies = append(successfulLatencies, observation.LatencyMS)
-			}
-		}
-	}
-	rate := float64(successes) / float64(len(recent)) * 100
-	state := "healthy"
-	if source == "active_probe" && !recent[0].Success {
-		state = "degraded"
-	} else if !recent[0].Success && rate < 90 {
-		state = "down"
-	} else if rate < 99 {
-		state = "degraded"
-	}
-	latest := recent[0]
-	return ProviderMonitoringSignal{
-		State:       state,
-		Source:      source,
-		Detail:      "observed",
-		Samples:     len(recent),
-		SuccessRate: rate,
-		LatencyMS:   medianLatency(successfulLatencies),
-		ErrorCode:   latest.ErrorCode,
-		ObservedAt:  &latest.ObservedAt,
 	}
 }
 
@@ -282,49 +228,6 @@ func providerMonitoringQuality(state string, gateway ProviderMonitoringSignal, a
 		score = math.Min(score, 80)
 	}
 	return int(math.Round(math.Max(0, math.Min(100, score))))
-}
-
-func medianLatency(values []int64) int64 {
-	if len(values) == 0 {
-		return 0
-	}
-	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
-	return values[(len(values)-1)/2]
-}
-
-func providerObservationTrend(now time.Time, observations []ProviderObservation) []string {
-	trend := make([]string, 30)
-	for index := range trend {
-		trend[index] = "none"
-	}
-	for day := 0; day < 30; day++ {
-		start := startOfUTCDay(now.AddDate(0, 0, day-29))
-		end := start.Add(24 * time.Hour)
-		total := 0
-		success := 0
-		for _, observation := range observations {
-			if observation.ObservedAt.Before(start) || !observation.ObservedAt.Before(end) {
-				continue
-			}
-			total++
-			if observation.Success {
-				success++
-			}
-		}
-		if total == 0 {
-			continue
-		}
-		rate := float64(success) / float64(total) * 100
-		switch {
-		case rate >= 99:
-			trend[day] = "success"
-		case rate >= 90:
-			trend[day] = "warning"
-		default:
-			trend[day] = "failure"
-		}
-	}
-	return trend
 }
 
 func startOfUTCDay(value time.Time) time.Time {
