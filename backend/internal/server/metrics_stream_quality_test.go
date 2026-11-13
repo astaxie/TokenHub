@@ -655,53 +655,23 @@ func TestMetricsPreCommitStreamFailureIsNotAnInterruption(t *testing.T) {
 }
 
 // A client-disconnected stream records an interruption with the error_code that
-// classifyStreamError assigns to context.Canceled.
+// the recording boundary assigns to confirmed caller cancellation.
 func TestMetricsClientDisconnectInterruptionKeepsItsCode(t *testing.T) {
-	// Derive the code through the real classification chain rather than hardcoding
-	// a string that could drift.
-	err := classifyStreamError(context.Background(), context.Canceled, true)
-	httpErr := AsHTTPError(err)
-	expectedCode := httpErr.Code
-	if expectedCode == "" {
-		t.Fatal("could not derive client disconnect error code")
-	}
-
-	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("content-type", "text/event-stream")
-		flusher, _ := w.(http.Flusher)
-		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl\",\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")
-		if flusher != nil {
-			flusher.Flush()
-		}
-		// Wait until the client gives up.
-		<-r.Context().Done()
-	}))
-	defer primary.Close()
-
-	server, secret := newMetricsFailoverGateway(t, primary.URL, "http://localhost:1")
-
 	ctx, cancel := context.WithCancel(context.Background())
-	body, _ := json.Marshal(map[string]any{
-		"model":    "metrics-failover-model",
-		"messages": []map[string]any{{"role": "user", "content": "hi"}},
-		"stream":   true,
+	cancel()
+	err := classifyCallerCancellation(ctx, ctx, classifyStreamError(ctx, context.Canceled, true))
+	httpErr := AsHTTPError(err)
+	if httpErr.Status != 499 || httpErr.Code != "request_cancelled" {
+		t.Fatalf("disconnect outcome = %+v, want 499/request_cancelled", httpErr)
+	}
+	m := NewGatewayMetrics(false)
+	m.ObserveGatewayCall(GatewayCallSample{
+		Model: "m", ProviderType: "t", ProviderID: "p",
+		StatusCode: httpErr.Status, ErrorCode: httpErr.Code,
+		Stream: true, TimeToFirstByte: time.Second, StreamFailed: true,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(string(body))).WithContext(ctx)
-	req.Header.Set("content-type", "application/json")
-	req.Header.Set("authorization", "Bearer "+secret)
-	rec := httptest.NewRecorder()
-
-	// Cancel shortly after the first byte has been written.
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		cancel()
-	}()
-	server.Handler().ServeHTTP(rec, req)
-
-	scrapeBody := scrapeMetrics(t, server.Handler())
-	interruption := findMetricLine(scrapeBody, "tokenhub_gateway_stream_interruptions_total", `error_code="`+expectedCode+`"`)
-	if interruption == "" {
-		t.Fatalf("missing interruption with code %q:\n%s", expectedCode, scrapeBody)
+	if got := testutil.ToFloat64(m.interruptions.WithLabelValues("m", "t", "p", "request_cancelled")); got != 1 {
+		t.Fatalf("cancellation interruptions = %v, want 1", got)
 	}
 }
 

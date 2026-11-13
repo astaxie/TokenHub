@@ -65,7 +65,7 @@ func (s *GormStore) QueryUsageSummary(ctx context.Context, query UsageSummaryQue
 	}
 	if err := requestQuery.Select(
 		"COALESCE(SUM(CASE WHEN COALESCE(project_id, '') <> ? THEN 1 ELSE 0 END), 0) AS request_count, "+
-			"COALESCE(SUM(CASE WHEN COALESCE(project_id, '') <> ? AND status_code >= 400 THEN 1 ELSE 0 END), 0) AS errors",
+			"COALESCE(SUM(CASE WHEN COALESCE(project_id, '') <> ? AND "+operationalErrorSQL("")+" THEN 1 ELSE 0 END), 0) AS errors",
 		"admin_playground",
 		"admin_playground",
 	).Scan(&requests).Error; err != nil {

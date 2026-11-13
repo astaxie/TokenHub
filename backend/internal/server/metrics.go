@@ -280,7 +280,7 @@ func NewGatewayMetrics(projectLabel bool) *GatewayMetrics {
 		Namespace: metricsNamespace,
 		Subsystem: metricsSubsystem,
 		Name:      "stream_interruptions_total",
-		Help:      "Streamed requests that failed after the first byte was written. error_code is the final classified error code: HTTP-level upstream failures keep their code, while transport-level failures and client disconnects both collapse to internal_error.",
+		Help:      "Streamed requests that failed after the first byte was written. error_code is the final classified error code: HTTP-level upstream failures keep their code, confirmed caller cancellations use request_cancelled, and other transport-level failures collapse to internal_error.",
 	}, withProject("model", "provider_type", "provider_id", "error_code"))
 
 	m.registry.MustRegister(m.requests, m.duration, m.inFlight, m.tokens, m.cost, m.rateLimitHits, m.traceCompletions, m.traceSpans, m.routeAttempts, m.attemptDuration, m.routedRequests, m.overhead, m.responseQueueDepth, m.responseQueueWait, m.responseExecution, m.responseJobs, m.responseRecoveries, m.timeToFirstByte, m.interruptions)

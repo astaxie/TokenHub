@@ -171,6 +171,11 @@ func (s *Server) finishSuccessfulRoutedCall(r *http.Request, routed RoutedCall, 
 // response. The reported route is the last candidate attempted, so the failure is
 // attributed to something rather than to nothing.
 func (s *Server) finishFailedRoutedCall(r *http.Request, routed RoutedCall, attempts []RouteAttempt, usage Usage, err error, requestPayload any) {
+	// Failed attempts were classified with their lease context at execution time.
+	// Only classify failures before invocation or after a successful attempt here.
+	if len(attempts) == 0 || attempts[len(attempts)-1].Status < http.StatusBadRequest {
+		err = classifyCallerCancellation(r.Context(), r.Context(), err)
+	}
 	httpErr := AsHTTPError(err)
 	s.finishRoutedCall(r, GatewayCallCompletion{
 		Call:            routed.Call,
@@ -191,6 +196,7 @@ func (s *Server) finishFailedRoutedCall(r *http.Request, routed RoutedCall, atte
 // admittedAt is when the request was accepted for routing, so the span covers the
 // admission work that led to the refusal instead of collapsing to zero width.
 func (s *Server) finishRejectedCall(r *http.Request, admittedAt time.Time, project Project, key APIKey, model string, stream bool, err error, requestPayload any) string {
+	err = classifyCallerCancellation(r.Context(), r.Context(), err)
 	httpErr := AsHTTPError(err)
 	requestID := s.store.RecordRejectedRequest(project, key, model, stream, httpErr.Status, httpErr.Code, s.clientIP(r), r.UserAgent())
 	s.finishRoutedCall(r, GatewayCallCompletion{
