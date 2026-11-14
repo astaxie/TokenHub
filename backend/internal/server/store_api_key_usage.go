@@ -6,7 +6,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"gorm.io/gorm"
@@ -216,7 +215,7 @@ func (s *GormStore) apiKeyUsageBaseQuery(db *gorm.DB, query APIKeyUsageQuery) *g
 
 func apiKeyUsageMetricSelect() string {
 	return `COUNT(*) AS request_count,
-		COALESCE(SUM(CASE WHEN rl.status_code >= 400 THEN 1 ELSE 0 END), 0) AS error_count,
+		COALESCE(SUM(CASE WHEN ` + operationalErrorSQL("rl.") + ` THEN 1 ELSE 0 END), 0) AS error_count,
 		COALESCE(AVG(rl.latency_ms), 0) AS average_latency,
 		COALESCE(SUM(usage_agg.input_tokens), 0) AS input_tokens,
 		COALESCE(SUM(usage_agg.cached_input_tokens), 0) AS cached_input_tokens,
@@ -271,7 +270,7 @@ func queryAPIKeyUsageBreakdown(base *gorm.DB, group, selection, order string) ([
 
 func queryAPIKeyUsageErrors(base *gorm.DB) ([]APIKeyUsageBreakdownRow, error) {
 	var rows []apiKeyUsageDatabaseRow
-	if err := base.Where("rl.status_code >= ?", http.StatusBadRequest).
+	if err := base.Where(operationalErrorSQL("rl.")).
 		Select(`CASE WHEN COALESCE(rl.error_code, '') = '' THEN 'http_' || CAST(rl.status_code AS TEXT) ELSE rl.error_code END AS id,
 			rl.status_code, rl.error_code, MAX(rl.created_at) AS last_occurred_at, ` + apiKeyUsageMetricSelect()).
 		Group("rl.status_code, rl.error_code").Order("request_count DESC, last_occurred_at DESC").Limit(maxAPIKeyUsageBreakdownRows).Scan(&rows).Error; err != nil {

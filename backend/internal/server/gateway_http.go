@@ -469,7 +469,8 @@ func (s *Server) admitRoutedCall(w http.ResponseWriter, r *http.Request, project
 	w.Header().Set("x-request-id", call.RequestID)
 	writeRateLimitHeaders(w.Header(), call.RateLimitHeaders)
 	if call.requestContext != nil {
-		*r = *r.WithContext(call.requestContext)
+		// Admission leases can be canceled independently of the original caller.
+		*r = *r.WithContext(context.WithValue(call.requestContext, gatewayCallerContextKey{}, r.Context()))
 	}
 	return call, nil
 }
@@ -719,6 +720,7 @@ func executeRoutedWithStore[T any](
 	// without invoking the callback, so a local counter would undercount them.
 	call func(context.Context, RouteSelection, bool, int) (T, Usage, error),
 ) (T, RouteSelection, Usage, []RouteAttempt, error) {
+	callerCtx := ctx
 	ctx = withSubscriptionCaller(ctx, routed.Call.Project.ID, routed.Call.Key.ID)
 	var zero T
 	var lastErr error = ErrProviderMissing
@@ -727,7 +729,7 @@ func executeRoutedWithStore[T any](
 	var err error
 	routed, affinityBindings, err = applyAdapterSessionAffinity(ctx, store, routed)
 	if err != nil {
-		return zero, RouteSelection{}, Usage{}, nil, err
+		return zero, RouteSelection{}, Usage{}, nil, classifyCallerCancellation(callerCtx, ctx, err)
 	}
 	attempts := make([]RouteAttempt, 0, len(routed.Routes)+1)
 	for _, route := range routed.Routes {
@@ -739,6 +741,7 @@ func executeRoutedWithStore[T any](
 		routeIsBound := hasBinding && binding.ResourceID == resourceID
 		leaseID, leaseCtx, err := store.CheckProviderResourceCapacity(ctx, resourceID)
 		if err != nil {
+			err = classifyCallerCancellation(callerCtx, ctx, err)
 			status, code := statusAndCode(err)
 			attempts = append(attempts, RouteAttempt{
 				Selection:      route,
@@ -766,7 +769,7 @@ func executeRoutedWithStore[T any](
 				prepared, prepareErr := recorder.PrepareMeteringAttempt(routed.Call.RequestID, len(attempts)+1, route, attemptStartedAt.UTC())
 				if prepareErr != nil {
 					store.ReleaseProviderResourceCapacity(resourceID, leaseID)
-					return zero, route, Usage{RateLimitTokens: cumulativeTokens}, attempts, prepareErr
+					return zero, route, Usage{RateLimitTokens: cumulativeTokens}, attempts, classifyCallerCancellation(callerCtx, leaseCtx, prepareErr)
 				}
 				route = prepared
 			}
@@ -779,6 +782,7 @@ func executeRoutedWithStore[T any](
 			if leaseErr := coordinationLeaseError(leaseCtx); leaseErr != nil {
 				err = leaseErr
 			}
+			err = classifyCallerCancellation(callerCtx, leaseCtx, err)
 			// Neither a committed stream nor a client disconnect may be retried,
 			// not even via the effort fallback on the same route. These checks are
 			// load-bearing: ProviderInvocationError implements Unwrap, so
@@ -827,6 +831,7 @@ func executeRoutedWithStore[T any](
 			lastErr = err
 			if retryWithoutEffort {
 				if retryErr := store.CheckProviderResourceRetryCapacity(leaseCtx, resourceID, leaseID); retryErr != nil {
+					retryErr = classifyCallerCancellation(callerCtx, leaseCtx, retryErr)
 					store.ReleaseProviderResourceCapacity(resourceID, leaseID)
 					status, code = statusAndCode(retryErr)
 					attempts = append(attempts, RouteAttempt{

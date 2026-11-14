@@ -363,6 +363,16 @@ GPT-6 Sol／Luna 系列目录条目已携带这些配置，已导入的库存不
 
 「请求日志」中的每条记录会显示 Token 总量和对外计费金额。拥有全局运维可见权限的管理员还可以在详情面板查看根据命中 Provider 模型计算的真实成本；其他用户不会收到该成本字段。详情面板会在上游返回数据时保留完整计费明细，包括缓存读、缓存写和音频输入 Token，以及推理、音频、接受预测和拒绝预测输出 Token；Provider 未返回的字段显示为 0。输入和输出总量已经包含对应明细，不能再次相加，否则会重复计算。
 
+## 调用方取消
+
+确认的调用方断开会在请求及其已调用的路由尝试中记录为 `499/request_cancelled`。分类要求原始调用方上下文已取消，并且错误来自取消或可识别的连接断开。内部取消、协调租约丢失、带类型的供应商或护栏失败以及超时仍属于需要处理的错误。成功完成后发生的调用方取消不会改变成功结果。取消不会触发供应商故障转移或推理强度重试，也不会惩罚或恢复供应商熔断器。已提交的 SSE 响应保留原有 HTTP 状态；记录的 499 不会替换该响应，也不会追加成功结束标记。
+
+只有精确的 `499/request_cancelled` 组合会从请求日志的错误视图以及运营用量、API Key 和用量报表的错误总数中排除。这些请求仍计入总流量、延迟、Token 和费用统计，但不计为成功。在 **请求日志 > 全部** 中搜索 `request_cancelled` 可查看这些请求；搜索 `499` 还会包含其他仍计为错误的 499 结果。历史记录不会被改写。仅保留适配器已报告的用量，不会估算上游用量帧到达之前消耗的 Token。
+
+使用 `sum(tokenhub_gateway_requests_total{status_code="499",error_code="request_cancelled"})` 统计取消数量，或使用 `sum(rate(tokenhub_gateway_requests_total{status_code="499",error_code="request_cancelled"}[5m]))` 查看取消速率。请求和尝试指标保留这些结果，已输出字节的取消流会增加 `tokenhub_gateway_stream_interruptions_total{error_code="request_cancelled"}`。根追踪和尝试追踪保留状态与错误码，但观察级别和 OpenTelemetry 状态不标记为错误。
+
+版本化 Token 费用分析 API 保持现有的 `success`/`error` 契约：取消请求在该导出及其相关指标中仍归为 `error`。这一点与运营失败总数不同，且不会新增导出状态。现有 Responses 作业取消和工作进程丢失的状态转换保持不变；`response_cancelled_worker_lost` 仍属于运营错误。
+
 ## 指标
 
 TokenHub 可以在 `GET /metrics` 暴露 Prometheus 指标。该功能默认关闭，需设置 `TOKENHUB_METRICS_ENABLED=true` 才会启用；关闭时不采集任何数据，端点返回 404。该端点始终需要鉴权：指标会泄露模型名、Provider 和资源标识以及花费，因此不允许匿名访问。请使用 `Authorization: Bearer <token>`，令牌取自 `TOKENHUB_METRICS_TOKEN`；该变量为空时回落到管理员令牌。建议配置独立令牌，避免把管理员凭据放进 Prometheus 抓取配置。通过查询参数传令牌会被拒绝，因为它会被记进访问日志。
@@ -376,7 +386,7 @@ TokenHub 可以在 `GET /metrics` 暴露 Prometheus 指标。该功能默认关�
 | `tokenhub_gateway_routed_requests_total` | counter | 至少发起过一次候选尝试的逻辑请求数——失败转移深度比率的尝试承载分母。其 `provider_type` 标签为最后一个尝试的候选；跨 Provider 失败转移时，请按 `model` 而非 `provider_type` 聚合深度比率。 |
 | `tokenhub_gateway_overhead_seconds` | histogram | 网关自身开销的近似值：端到端耗时减去被调用尝试耗时之和，负值截断为 0。已在路由阶段被接纳、但在任何尝试前失败的请求，其开销计为完整端到端耗时。图像作业的端到端耗时包含队列等待，因此其开销为上限估计。 |
 | `tokenhub_gateway_time_to_first_byte_seconds` | histogram | 流式请求的客户端体感首字节延迟，从本地受理参考点开始计算，因此包含失败转移重试时间。空 body 的 200 响应会在流结束时记录首字节。 |
-| `tokenhub_gateway_stream_interruptions_total` | counter | 首字节写出后失败的流式请求。`error_code` 为最终分类的错误码：上游 HTTP 级失败保留其错误码，传输级失败与客户端断开均归一为 `internal_error`。 |
+| `tokenhub_gateway_stream_interruptions_total` | counter | 首字节写出后失败的流式请求。`error_code` 为最终分类的错误码：上游 HTTP 级失败保留其错误码，确认的调用方取消使用 `request_cancelled`，其他传输级失败归一为 `internal_error`。 |
 | `tokenhub_gateway_requests_in_flight` | gauge | 正在处理的模型 API 请求数，不含管理后台流量和抓取请求。 |
 | `tokenhub_gateway_tokens_total` | counter | 按类型统计的 Token：`prompt`、`completion`、`cached`、`cache_write`、`reasoning`。 |
 | `tokenhub_gateway_cost_usd_total` | counter | 使用模型目录价格计算的统一对外计费估算；Provider 真实成本只保留在有权限的请求审计中，不进入该指标。 |

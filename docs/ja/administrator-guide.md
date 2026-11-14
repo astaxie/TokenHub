@@ -363,6 +363,16 @@ GPT-6 Sol／Luna 系のカタログにはこの設定が含まれますが、既
 
 「Request Logs」の各行には Token 合計と外部請求額が表示されます。グローバル運用の可視権限を持つ管理者は、選択された Provider モデルから算出した実コストも詳細パネルで確認できます。その他のユーザーには、このコストフィールドは返されません。上流が返した場合、詳細パネルにはキャッシュ読み取り、キャッシュ書き込み、音声入力 Token、および推論、音声、採用予測、却下予測の出力 Token が保持されます。Provider が返さない項目は 0 と表示されます。入力・出力の合計には各詳細項目がすでに含まれるため、詳細値を合計へ再加算しないでください。
 
+## 呼び出し元によるキャンセル
+
+確認された呼び出し元の切断は、リクエストと実行済みの試行に `499/request_cancelled` として記録されます。分類には、元の呼び出し元コンテキストのキャンセルと、キャンセルまたは識別可能な切断エラーの両方が必要です。内部キャンセル、調整リースの喪失、型付きのプロバイダーまたはガードレールの失敗、タイムアウトは引き続き対処すべきエラーです。正常完了後に呼び出し元がキャンセルしても成功結果は変わりません。キャンセルはプロバイダーのフェイルオーバーや推論強度の再試行を起こさず、プロバイダーのサーキットブレーカーを悪化させたり復旧させたりしません。送信済みの SSE レスポンスは元の HTTP ステータスを保持します。記録上の 499 でレスポンスを置き換えたり、成功を示す終端マーカーを追加したりしません。
+
+正確な `499/request_cancelled` の組み合わせだけが、リクエストログのエラー表示と、運用上の使用量、API Key、使用量レポートのエラー件数から除外されます。これらのリクエストは総トラフィック、レイテンシー、トークン、費用の集計に残りますが、成功件数には含まれません。**リクエストログ > すべて** で `request_cancelled` を検索すると確認できます。`499` を検索すると、引き続きエラーとして扱われる他の 499 結果も表示されます。過去の記録は変更されません。アダプターがすでに報告した使用量のみを保持し、上流の使用量フレームが届く前に消費されたトークンは推定しません。
+
+キャンセル件数は `sum(tokenhub_gateway_requests_total{status_code="499",error_code="request_cancelled"})`、発生率は `sum(rate(tokenhub_gateway_requests_total{status_code="499",error_code="request_cancelled"}[5m]))` で確認できます。リクエストと試行のメトリクスには結果が残り、バイト送信後にキャンセルされたストリームでは `tokenhub_gateway_stream_interruptions_total{error_code="request_cancelled"}` が増加します。ルートと試行のトレースはステータスとコードを保持し、観測レベルと OpenTelemetry ステータスをエラーにしません。
+
+バージョン付きトークン費用分析 API は既存の `success`/`error` 契約を維持します。キャンセルされた呼び出しは、このエクスポートと関連メトリクスでは引き続き `error` です。これは運用上の失敗件数とは異なり、新しいエクスポート状態は追加しません。既存の Responses ジョブのキャンセルやワーカー喪失の状態遷移は変更されず、`response_cancelled_worker_lost` は引き続き運用上のエラーです。
+
 ## メトリクス
 
 TokenHub は `GET /metrics` で Prometheus メトリクスを公開できます。既定では無効で、有効にするには `TOKENHUB_METRICS_ENABLED=true` を設定してください。無効の間は何も収集されず、エンドポイントは 404 を返します。このエンドポイントは常に認証を要求します。メトリクスにはモデル名、Provider とリソースの識別子、コストが含まれるため、匿名アクセスは許可されません。`Authorization: Bearer <token>` を送信してください。トークンは `TOKENHUB_METRICS_TOKEN` を使用し、未設定の場合は管理者トークンにフォールバックします。Prometheus のスクレイプ設定に管理者資格情報を置かずに済むよう、専用トークンの設定を推奨します。クエリ文字列でのトークン指定はアクセスログに残るため拒否されます。
@@ -376,7 +386,7 @@ TokenHub は `GET /metrics` で Prometheus メトリクスを公開できます�
 | `tokenhub_gateway_routed_requests_total` | counter | 候補を 1 回以上試行した論理リクエスト数。フェイルオーバー深度比率の試行分母です。`provider_type` ラベルは最後に試行した候補です。Provider をまたぐフェイルオーバーでは、深度比率は `provider_type` ではなく `model` で集約してください。 |
 | `tokenhub_gateway_overhead_seconds` | histogram | ゲートウェイ自身のオーバーヘッドの近似値：エンドツーエンド所要時間から invoked な試行の所要時間合計を差し引き、負値は 0 にクリップします。ルーティングに受理されたものの試行前に失敗したリクエストは、その全所要時間をオーバーヘッドとして計上します。画像ジョブの所要時間にはキューの待機が含まれるため、画像のオーバーヘッドは上限値です。 |
 | `tokenhub_gateway_time_to_first_byte_seconds` | histogram | ストリーミングリクエストのクライアント体感・最初のバイトまでのレイテンシ。ローカル受理参照点から測定するため、フェイルオーバー再試行時間も含みます。空 body の 200 レスポンスはストリーム終了時に最初のバイトを記録します。 |
-| `tokenhub_gateway_stream_interruptions_total` | counter | 最初のバイト書き込み後に失敗したストリーミングリクエスト。`error_code` は最終的に分類されたエラーコードです。上流の HTTP レベル障害はそのコードを保持し、トランスポートレベルの障害とクライアント切断はどちらも `internal_error` に集約されます。 |
+| `tokenhub_gateway_stream_interruptions_total` | counter | 最初のバイト書き込み後に失敗したストリーミングリクエスト。`error_code` は最終的に分類されたエラーコードです。上流の HTTP レベル障害はそのコードを保持し、確認された呼び出し元のキャンセルは `request_cancelled`、その他のトランスポートレベルの障害は `internal_error` に集約されます。 |
 | `tokenhub_gateway_requests_in_flight` | gauge | 処理中のモデル API リクエスト数。管理トラフィックとスクレイプは含みません。 |
 | `tokenhub_gateway_tokens_total` | counter | 種別ごとの Token：`prompt`、`completion`、`cached`、`cache_write`、`reasoning`。 |
 | `tokenhub_gateway_cost_usd_total` | counter | Model Directory 価格による統一外部請求見積もり。Provider 実コストは権限付きリクエスト監査にのみ保持され、このメトリクスには含まれません。 |
