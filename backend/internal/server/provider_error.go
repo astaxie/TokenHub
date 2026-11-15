@@ -95,7 +95,7 @@ func providerAttemptOutcome(err error) AttemptOutcome {
 		return AttemptSucceeded
 	}
 	switch providerErrorDisposition(err) {
-	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorModelUnsupported, ProviderErrorEgress, ProviderErrorRouteSkipped:
+	case ProviderErrorClient, ProviderErrorPolicy, ProviderErrorModelUnsupported, ProviderErrorEgress, ProviderErrorRouteSkipped, ProviderErrorQuotaExhausted:
 		return AttemptNeutral
 	default:
 		return AttemptFailed

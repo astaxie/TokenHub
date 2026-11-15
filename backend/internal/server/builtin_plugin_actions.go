@@ -522,7 +522,7 @@ func registerBuiltinPluginActions(server *Server, actions builtinActionRegistrar
 		}
 		probe, err := adapter.Probe(ctx, provider, ProviderResource{}, adapter.DefaultProbeRequest())
 		if err != nil {
-			_, _ = server.store.SetProviderHealth(provider.ID, false)
+			_, _ = server.store.SetProviderHealth(provider.ID, providerProbeHealthy(err))
 			return pluginmeta.ActionResult{}, err
 		}
 		if _, err := server.store.SetProviderHealth(provider.ID, true); err != nil {

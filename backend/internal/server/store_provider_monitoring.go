@@ -132,7 +132,9 @@ func (s *GormStore) providerMonitoringSignal(ctx context.Context, providerID, so
 	signal.Detail = "observed"
 	signal.Samples = int(total.Recent)
 	signal.SuccessRate = float64(total.RecentSuccesses) / float64(total.Recent) * 100
-	if source == "active_probe" && !latest.Success {
+	if !latest.Success && providerQuotaExhaustedCode(latest.ErrorCode) {
+		signal.State = "exhausted"
+	} else if source == "active_probe" && !latest.Success {
 		signal.State = "degraded"
 	} else if !latest.Success && signal.SuccessRate < 90 {
 		signal.State = "down"

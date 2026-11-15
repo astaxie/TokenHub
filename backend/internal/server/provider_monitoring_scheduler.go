@@ -161,7 +161,7 @@ func (s *Server) checkProviderMonitoring(ctx context.Context, provider Provider)
 	if ctx.Err() != nil {
 		return
 	}
-	_, _ = s.store.SetProviderHealth(provider.ID, probeErr == nil)
+	_, _ = s.store.SetProviderHealth(provider.ID, providerProbeHealthy(probeErr))
 	_, errorCode := statusAndCode(probeErr)
 	s.store.RecordProviderObservation(ProviderObservation{
 		ProviderID:  provider.ID,

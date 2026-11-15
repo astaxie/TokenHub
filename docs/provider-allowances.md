@@ -2,6 +2,9 @@
 
 Open **Providers → Quota and entitlements**. This manages upstream accounts. Customer and team budgets remain under **Quota policies**.
 
+Provider lists and availability monitoring show quota exhaustion separately from service faults. Explicit quota or balance denials still fail the request and allow failover, but do not add resource breaker failures or mark the provider unhealthy. Cached quota marks a whole provider exhausted only when every active account has fresh, account-wide exhaustion; missing, stale, model-only or available alternatives prevent that conclusion. A newer network or authentication failure retains its fault status.
+
+
 ## Collection
 
 Quota is cached independently of inference health. Ordinary requests read cached quota; explicitly enabling `capCareful` permits Magpie-style checks before a request. A cluster-coordinated worker checks due accounts with four concurrent collectors. Custom refresh intervals range from 30 seconds to one day; the default is 60 seconds. Failed reads retain the previous successful values and timestamps. Routing distinguishes available, exhausted, unknown and query failure. Observations older than ten minutes, missing required windows and passed reset times cannot establish spare capacity.

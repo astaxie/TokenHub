@@ -554,7 +554,7 @@ export type PluginBackgroundJobRunRecord = {
 };
 
 export type ProviderMonitoringSignal = {
-  state: "healthy" | "degraded" | "down" | "unknown";
+  state: "healthy" | "degraded" | "down" | "unknown" | "exhausted";
   source: "configuration" | "active_probe" | "gateway_request" | string;
   detail?: string;
   samples: number;
@@ -626,7 +626,7 @@ export type ProviderMonitoringSnapshot = {
   resource_count: number;
   active_resource_count: number;
   healthy_resource_count: number;
-  state: "healthy" | "degraded" | "down" | "unknown";
+  state: "healthy" | "degraded" | "down" | "unknown" | "exhausted";
   status_label: string;
   status_detail: string;
   configuration: ProviderMonitoringSignal;

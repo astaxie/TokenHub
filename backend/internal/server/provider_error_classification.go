@@ -124,6 +124,8 @@ func providerErrorMessage(class providerErrorClass, upstreamStatus int, data []b
 		return "The gateway's credential for this provider was rejected"
 	case "provider_payment_required":
 		return "The gateway's account with this provider cannot be billed"
+	case "provider_quota_exhausted":
+		return "The gateway's account with this provider has exhausted its quota or balance"
 	}
 	message := strings.TrimSpace(string(data))
 	if message == "" {
@@ -193,7 +195,7 @@ func lookupProviderErrorProfileDescriptor(profile string) (providerErrorProfileD
 func newProfiledProviderHTTPError(profile providerErrorProfileDescriptor, upstreamStatus int, headers http.Header, data []byte) error {
 	profileCode := providerErrorProfileCode(profile, data)
 	normalized := normalizeProviderErrorProfileBody(profile, data)
-	class := classifyProviderStatus(upstreamStatus)
+	class := classifyProviderResponse(upstreamStatus, normalized)
 	if override, ok := profile.CodeClassOverrides[profileCode]; ok {
 		class = override
 	}
@@ -397,7 +399,7 @@ func providerSecretRepresentations(value string) []string {
 // provider-specific fields for callers; malformed JSON may already have been
 // replaced by a fail-closed mask because its string boundaries are ambiguous.
 func newProviderHTTPError(upstreamStatus int, headers http.Header, data []byte) error {
-	class := classifyProviderStatus(upstreamStatus)
+	class := classifyProviderResponse(upstreamStatus, data)
 	httpErr := NewHTTPError(class.status, class.code, providerErrorMessage(class, upstreamStatus, data))
 	httpErr.UpstreamStatus = upstreamStatus
 	return &ProviderInvocationError{
