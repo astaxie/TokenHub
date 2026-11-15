@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { importMagpieBalance } from "../core/magpie-balance";
+import { AllowanceMagpieImport } from "./provider-allowance-magpie-import";
 import { ProviderAllowanceConfigForm } from "./provider-allowance-config";
 import {
   allowanceEntries,
@@ -12,36 +12,57 @@ const api = { baseURL: "http://localhost:8080", adminToken: "synthetic-admin" };
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Magpie balance migration", () => {
-  it("imports balance settings without importing inference keys or changing policies", () => {
+  it("reads native provider files and selects the account", async () => {
     const current = allowanceEntries()[0].config;
-    const imported = importMagpieBalance(
-      JSON.stringify({
-        key: "ignored-inference-key",
-        balanceURL: "https://relay.example/v1/usage",
-        balancePath: "$remaining; 周: used / limit %",
-        balanceMethod: "post",
-        headers: { "X-Key": "{token}" },
-      }),
-      current,
+    const onImported = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify(current), { status: 200 }),
     );
-    expect(imported.source).toEqual({
-      enabled: true,
-      auth: "magpie",
-      url: "https://relay.example/v1/usage",
-      expression: "$remaining; 周: used / limit %",
-      method: "POST",
-      headers: { "X-Key": "{token}" },
-      refresh_seconds: 60,
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <AllowanceMagpieImport
+        api={api}
+        draft={current}
+        onImported={onImported}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByText("导入 Magpie 额度配置"));
+    await user.click(
+      screen.getByRole("textbox", { name: "Magpie 供应商 JSON" }),
+    );
+    await user.paste(
+      JSON.stringify({
+        providers: [
+          { id: "other" },
+          {
+            id: "codex",
+            accountCaps: { "one@example.test": 70, "two@example.test": 80 },
+          },
+        ],
+      }),
+    );
+    await user.selectOptions(screen.getByLabelText("Magpie 供应商"), "codex");
+    await user.type(
+      screen.getByLabelText("Magpie 账号或 Key ID"),
+      "two@example.test",
+    );
+    await user.click(screen.getByRole("button", { name: "填入额度配置" }));
+    await waitFor(() => expect(onImported).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      provider_id: "codex",
+      account_ref: "two@example.test",
+      revision: current.revision,
+      providers: {
+        providers: [
+          { id: "other" },
+          {
+            id: "codex",
+            accountCaps: { "one@example.test": 70, "two@example.test": 80 },
+          },
+        ],
+      },
     });
-    expect(imported.policy).toEqual(current.policy);
-    expect(imported.clear_token).toBe(true);
-    expect(JSON.stringify(imported)).not.toContain("ignored-inference-key");
-    expect(() =>
-      importMagpieBalance(
-        '{"balanceURL":"https://relay.example/balance","balanceToken":{"set":true}}',
-        current,
-      ),
-    ).toThrow();
   });
 
   it("checks the unsaved form with saved credentials and preserves it on failure", async () => {
@@ -81,9 +102,7 @@ describe("Magpie balance migration", () => {
     await user.clear(field);
     await user.type(field, "$remaining; 周: used / limit %");
     await user.click(screen.getByRole("button", { name: "POST" }));
-    await user.click(
-      screen.getByRole("button", { name: "查询余额" }),
-    );
+    await user.click(screen.getByRole("button", { name: "查询余额" }));
     expect(await screen.findByLabelText("余额查询结果")).toHaveTextContent(
       "余额 $0.00 · 周 100.7% · 月 25.2%",
     );
@@ -100,9 +119,7 @@ describe("Magpie balance migration", () => {
     fail = true;
     await user.type(field, "; Missing: absent");
     expect(screen.queryByLabelText("余额查询结果")).not.toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: "查询余额" }),
-    );
+    await user.click(screen.getByRole("button", { name: "查询余额" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Synthetic refusal",
     );
@@ -110,9 +127,7 @@ describe("Magpie balance migration", () => {
       "$remaining; 周: used / limit %; Missing: absent",
     );
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "查询余额" }),
-      ).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "查询余额" })).toBeEnabled(),
     );
   });
 });

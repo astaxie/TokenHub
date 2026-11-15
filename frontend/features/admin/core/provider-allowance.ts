@@ -20,6 +20,7 @@ export type AllowanceWindowRule = {
   optional?: boolean;
 };
 export type AllowanceSource = {
+  no_balance_probe?: boolean;
   enabled: boolean;
   access_key_id?: string;
   region?: string;
@@ -40,6 +41,14 @@ export type AllowanceSource = {
   shared_account_revision?: string;
 };
 export type AllowancePolicy = {
+  cap_stop?: boolean;
+  cap_careful?: boolean;
+  spend_cap?: {
+    usd: number;
+    period: "day" | "month" | "total";
+    since?: string;
+    timezone?: string;
+  };
   cap: AllowanceCap;
   windows?: Record<string, AllowanceCap>;
   credits?: string;
@@ -57,12 +66,20 @@ export type AllowancePolicy = {
     unused_before_reset_seconds?: number;
   };
   wallet: {
+    refill?: { every: "week" | "month"; day: number };
+    timezone?: string;
     enabled: boolean;
     balance: number;
     unit: string;
     as_of?: string;
     cost_per_usd?: number;
-    grants?: Array<{ id: string; amount: number; expires_at?: string }>;
+    grants?: Array<{
+      id: string;
+      amount: number;
+      expires_at?: string;
+      at?: string;
+      until?: string;
+    }>;
     refill_amount?: number;
     refill_seconds?: number;
     refill_at?: string;
@@ -97,6 +114,8 @@ export type AllowancePreset = {
   config: AllowanceSource;
 };
 export type AllowanceQueryResult = {
+  query_url?: string;
+  query_expression?: string;
   balance_parts?: Array<{
     label?: string;
     text: string;

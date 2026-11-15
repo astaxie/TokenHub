@@ -6,6 +6,7 @@ import type {
   AllowancePolicy,
 } from "../core/provider-allowance";
 import { tx } from "../i18n/runtime";
+import { AllowanceNativePolicyFields } from "./provider-allowance-native-policy";
 
 function localDate(value?: string) {
   if (!value) return "";
@@ -38,6 +39,7 @@ export function AllowancePolicyFields({
   const wallet = p.wallet;
   return (
     <>
+      <AllowanceNativePolicyFields draft={draft} onChange={onChange} />
       <fieldset>
         <legend>{tx("账号使用上限")}</legend>
         <p>
@@ -101,6 +103,7 @@ export function AllowancePolicyFields({
                           value: {
                             ...item.value,
                             percent: Number(event.target.value),
+                            amount: undefined,
                           },
                         }
                       : item,
@@ -123,6 +126,7 @@ export function AllowancePolicyFields({
                           value: {
                             ...item.value,
                             amount: Number(event.target.value),
+                            percent: undefined,
                           },
                         }
                       : item,
@@ -161,7 +165,7 @@ export function AllowancePolicyFields({
             value={p.credits ?? ""}
             onChange={(event) => set({ credits: event.target.value })}
           >
-            <option value="">{tx("沿用原有行为")}</option>
+            <option value="">{tx("允许使用积分（默认）")}</option>
             <option value="never">{tx("禁止使用积分")}</option>
             <option value="allow">{tx("允许使用积分")}</option>
             <option value="first">{tx("积分优先")}</option>
@@ -192,17 +196,17 @@ export function AllowancePolicyFields({
         </label>
         <div className="allowance-form-grid">
           <label>
-            {tx("到期前提前量（秒）")}
+            {tx("到期前提前量（分钟）")}
             <input
               type="number"
-              min={0}
-              max={86400}
-              value={p.reset.lead_seconds || 1800}
+              min={3}
+              max={1440}
+              value={(p.reset.lead_seconds || 1800) / 60}
               onChange={(event) =>
                 set({
                   reset: {
                     ...p.reset,
-                    lead_seconds: Number(event.target.value),
+                    lead_seconds: Number(event.target.value) * 60,
                   },
                 })
               }
@@ -249,9 +253,9 @@ export function AllowancePolicyFields({
             {tx("高用量阈值（%）")}
             <input
               type="number"
-              min={1}
+              min={0}
               max={100}
-              value={p.alerts.used_percent || 90}
+              value={p.alerts.used_percent ?? 0}
               onChange={(event) =>
                 set({
                   alerts: {
@@ -283,17 +287,22 @@ export function AllowancePolicyFields({
             />
           </label>
           <label>
-            {tx("额度重置前提醒（秒）")}
+            {tx("额度重置前提醒（小时）")}
             <input
               type="number"
               min={0}
-              max={86400}
-              value={p.alerts.unused_before_reset_seconds ?? ""}
+              max={168}
+              value={
+                p.alerts.unused_before_reset_seconds !== undefined
+                  ? p.alerts.unused_before_reset_seconds / 3600
+                  : ""
+              }
               onChange={(event) =>
                 set({
                   alerts: {
                     ...p.alerts,
-                    unused_before_reset_seconds: Number(event.target.value),
+                    unused_before_reset_seconds:
+                      Number(event.target.value) * 3600,
                   },
                 })
               }
@@ -355,7 +364,6 @@ export function AllowancePolicyFields({
             {tx("起始余额")}
             <input
               type="number"
-              min={0}
               step="any"
               value={wallet.balance}
               onChange={(event) =>
@@ -404,61 +412,73 @@ export function AllowancePolicyFields({
               }
             />
           </label>
-          <label>
-            {tx("定期补充金额")}
-            <input
-              type="number"
-              min={0}
-              step="any"
-              value={wallet.refill_amount ?? ""}
-              onChange={(event) =>
-                set({
-                  wallet: {
-                    ...wallet,
-                    refill_amount: Number(event.target.value),
-                  },
-                })
-              }
-            />
-          </label>
-          <label>
-            {tx("补充间隔（秒）")}
-            <input
-              type="number"
-              min={3600}
-              value={wallet.refill_seconds ?? ""}
-              onChange={(event) =>
-                set({
-                  wallet: {
-                    ...wallet,
-                    refill_seconds: Number(event.target.value),
-                  },
-                })
-              }
-            />
-          </label>
-          <label>
-            {tx("下次补充时间")}
-            <input
-              type="datetime-local"
-              value={localDate(wallet.refill_at)}
-              onChange={(event) =>
-                set({
-                  wallet: { ...wallet, refill_at: isoDate(event.target.value) },
-                })
-              }
-            />
-          </label>
-          <label className="allowance-check">
-            <input
-              type="checkbox"
-              checked={wallet.carry_over}
-              onChange={(event) =>
-                set({ wallet: { ...wallet, carry_over: event.target.checked } })
-              }
-            />
-            {tx("补充时保留未用余额")}
-          </label>
+          {!wallet.refill &&
+          (wallet.refill_seconds ||
+            wallet.refill_amount ||
+            wallet.refill_at) ? (
+            <>
+              <label>
+                {tx("定期补充金额")}
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={wallet.refill_amount ?? ""}
+                  onChange={(event) =>
+                    set({
+                      wallet: {
+                        ...wallet,
+                        refill_amount: Number(event.target.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                {tx("补充间隔（秒）")}
+                <input
+                  type="number"
+                  min={3600}
+                  value={wallet.refill_seconds ?? ""}
+                  onChange={(event) =>
+                    set({
+                      wallet: {
+                        ...wallet,
+                        refill_seconds: Number(event.target.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                {tx("下次补充时间")}
+                <input
+                  type="datetime-local"
+                  value={localDate(wallet.refill_at)}
+                  onChange={(event) =>
+                    set({
+                      wallet: {
+                        ...wallet,
+                        refill_at: isoDate(event.target.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label className="allowance-check">
+                <input
+                  type="checkbox"
+                  checked={wallet.carry_over}
+                  onChange={(event) =>
+                    set({
+                      wallet: { ...wallet, carry_over: event.target.checked },
+                    })
+                  }
+                />
+                {tx("补充时保留未用余额")}
+              </label>
+            </>
+          ) : null}
         </div>
         {(wallet.grants ?? []).map((grant, index) => (
           <div className="allowance-inline" key={grant.id}>
@@ -483,15 +503,21 @@ export function AllowancePolicyFields({
             />
             <input
               aria-label={tx("补充额度到期时间")}
-              type="datetime-local"
-              value={localDate(grant.expires_at)}
+              type={grant.until !== undefined ? "date" : "datetime-local"}
+              value={grant.until ?? localDate(grant.expires_at)}
               onChange={(event) =>
                 set({
                   wallet: {
                     ...wallet,
                     grants: wallet.grants?.map((item, i) =>
                       i === index
-                        ? { ...item, expires_at: isoDate(event.target.value) }
+                        ? grant.until !== undefined
+                          ? {
+                              ...item,
+                              until: event.target.value,
+                              expires_at: undefined,
+                            }
+                          : { ...item, expires_at: isoDate(event.target.value) }
                         : item,
                     ),
                   },
@@ -522,7 +548,12 @@ export function AllowancePolicyFields({
                 ...wallet,
                 grants: [
                   ...(wallet.grants ?? []),
-                  { id: crypto.randomUUID(), amount: 0 },
+                  {
+                    id: crypto.randomUUID(),
+                    amount: 0,
+                    at: new Date().toISOString(),
+                    until: "",
+                  },
                 ],
               },
             })

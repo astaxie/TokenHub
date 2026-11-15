@@ -13,15 +13,24 @@ type Spend struct {
 type walletBucket struct {
 	amount  float64
 	expires *time.Time
+	at      time.Time
 }
 
-// WalletBalance consumes expiring grants first and applies calendar-independent
-// recurring refills. It is a deterministic estimate from recorded provider cost,
+// WalletBalance consumes expiring grants first and applies calendar or legacy
+// interval refills. It is a deterministic estimate from recorded provider cost,
 // never a claim that the upstream reported this balance.
 func WalletBalance(w ManualWallet, spends []Spend, now time.Time) float64 {
-	buckets := []walletBucket{{amount: w.Balance}}
+	buckets := []walletBucket{{amount: w.Balance, at: w.AsOf}}
+	start := w.AsOf
 	for _, g := range w.Grants {
-		buckets = append(buckets, walletBucket{amount: g.Amount, expires: g.ExpiresAt})
+		at := g.At
+		if at.IsZero() {
+			at = w.AsOf
+		}
+		if at.Before(start) {
+			start = at
+		}
+		buckets = append(buckets, walletBucket{amount: g.Amount, expires: GrantExpiry(g, w.Timezone), at: at})
 	}
 	expire := func(at time.Time) {
 		for i, b := range buckets {
@@ -40,7 +49,22 @@ func WalletBalance(w ManualWallet, spends []Spend, now time.Time) float64 {
 	if w.RefillAt != nil {
 		next = *w.RefillAt
 	}
+	lastRefill := w.AsOf
 	refill := func(at time.Time) {
+		if w.Refill != nil {
+			last := w.Refill.Last(at.In(walletLocation(w.Timezone)))
+			if last.After(lastRefill) {
+				for i := range buckets {
+					if buckets[i].expires == nil && buckets[i].at.Equal(lastRefill) {
+						buckets[i].amount = w.Balance
+						buckets[i].at = last
+						break
+					}
+				}
+				lastRefill = last
+			}
+			return
+		}
 		if next.IsZero() || w.RefillSeconds < 3600 || w.RefillAmount <= 0 || at.Before(next) {
 			return
 		}
@@ -65,13 +89,16 @@ func WalletBalance(w ManualWallet, spends []Spend, now time.Time) float64 {
 		next = next.Add(time.Duration(count*w.RefillSeconds) * time.Second)
 	}
 	for _, spend := range spends {
-		if spend.At.Before(w.AsOf) || spend.At.After(now) || !finite(spend.Amount) || spend.Amount <= 0 {
+		if spend.At.Before(start) || spend.At.After(now) || !finite(spend.Amount) || spend.Amount <= 0 {
 			continue
 		}
 		expire(spend.At)
 		refill(spend.At)
 		left := spend.Amount
 		for i := range buckets {
+			if buckets[i].at.After(spend.At) {
+				continue
+			}
 			used := min(max(0, buckets[i].amount), left)
 			buckets[i].amount -= used
 			left -= used
@@ -79,12 +106,23 @@ func WalletBalance(w ManualWallet, spends []Spend, now time.Time) float64 {
 				break
 			}
 		}
+		if left > 0 && !spend.At.Before(w.AsOf) {
+			for i := range buckets {
+				if buckets[i].expires == nil {
+					buckets[i].amount -= left
+					break
+				}
+			}
+		}
 	}
 	expire(now)
 	refill(now)
 	total := 0.0
 	for _, b := range buckets {
-		total += max(0, b.amount)
+		if b.at.After(now) {
+			continue
+		}
+		total += b.amount
 	}
 	return total
 }

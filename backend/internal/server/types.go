@@ -1234,6 +1234,7 @@ func cloneRawJSON(source map[string]json.RawMessage, extra int) map[string]json.
 }
 
 type RouteSelection struct {
+	AllowanceHold    *HTTPError               `json:"-"`
 	AccountRouting   *accountRoutingAttempt   `json:"-"`
 	MeteringSnapshot *meteringAttemptSnapshot `json:"-"`
 	Provider         Provider

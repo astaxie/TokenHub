@@ -10,6 +10,7 @@ import type {
 import { allowanceFieldRows } from "../core/provider-allowance-rows";
 import { tx } from "../i18n/runtime";
 import { adminFetch, readAdminError } from "../resources/payloads";
+import { AllowanceMagpieImport } from "./provider-allowance-magpie-import";
 import { AllowanceSourceFields } from "./provider-allowance-source";
 import { AllowancePolicyFields } from "./provider-allowance-policy";
 
@@ -208,22 +209,33 @@ export function ProviderAllowanceConfigForm({
         className="allowance-fields"
       >
         {tab === "source" ? (
-          <AllowanceSourceFields
-            draft={draft}
-            entries={entries}
-            presets={presets}
-            onChange={changeDraft}
-            headers={headers}
-            onHeadersChange={(rows) => {
-              setHeaders(rows);
-              setQueryResult(undefined);
-              setQueryError("");
-            }}
-            onQuery={() => void query()}
-            querying={querying}
-            result={queryResult}
-            queryError={queryError}
-          />
+          <>
+            <AllowanceMagpieImport
+              api={api}
+              draft={draft}
+              onImported={(config) => {
+                changeDraft(config);
+                setHeaders(allowanceFieldRows(config.source.headers));
+                setCaps(allowanceFieldRows(config.policy.windows));
+              }}
+            />
+            <AllowanceSourceFields
+              draft={draft}
+              entries={entries}
+              presets={presets}
+              onChange={changeDraft}
+              headers={headers}
+              onHeadersChange={(rows) => {
+                setHeaders(rows);
+                setQueryResult(undefined);
+                setQueryError("");
+              }}
+              onQuery={() => void query()}
+              querying={querying}
+              result={queryResult}
+              queryError={queryError}
+            />
+          </>
         ) : (
           <AllowancePolicyFields
             channels={channels}

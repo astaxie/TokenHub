@@ -7,6 +7,19 @@ import (
 	"time"
 )
 
+func TestTencentNativePlanListKeepsTeamsSeparate(t *testing.T) {
+	c := Config{Preset: "tencent", Auth: "tencent", AccessKeyID: "synthetic-id"}
+	req, err := CloudRequest(context.Background(), c, "synthetic-secret", time.Now().UTC())
+	if err != nil || req.Header.Get("X-TC-Action") != "DescribeTokenPlanList" {
+		t.Fatalf("native plan discovery changed: %v", err)
+	}
+	body := []byte(`{"Response":{"TokenPlanSet":[{"TeamId":"one","PackageInfo":{"CycleQuota":100,"TotalUsed":25}},{"TeamId":"two","PackageInfo":{"CycleQuota":200,"TotalUsed":100}}]}}`)
+	result, err := ParsePlan(body, c, time.Now().UTC())
+	if err != nil || len(result.Allowance.Windows) != 2 || result.Allowance.Windows[0].Name == result.Allowance.Windows[1].Name || !result.Allowance.Windows[0].Informational {
+		t.Fatalf("team plans combined: %+v %v", result, err)
+	}
+}
+
 func TestCloudSignaturesBindKnownHostAndRegion(t *testing.T) {
 	now := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	for _, auth := range []string{"volcengine", "tencent", "alibaba"} {

@@ -21,6 +21,7 @@ const (
 const Version = 1
 
 type Window struct {
+	LocalLimit     bool       `json:"local_limit,omitempty"`
 	Unlimited      bool       `json:"unlimited,omitempty"`
 	Spent          *float64   `json:"spent,omitempty"`
 	SpentSince     *time.Time `json:"spent_since,omitempty"`

@@ -4,9 +4,9 @@ Open **Providers → Quota and entitlements**. This manages upstream accounts. C
 
 ## Collection
 
-Quota is cached independently of inference health. Gateway requests never call a quota endpoint. A cluster-coordinated worker checks due accounts with four concurrent collectors. Custom refresh intervals range from 30 seconds to one day; the default is 60 seconds. Failed reads retain the previous successful values and timestamps. Routing distinguishes available, exhausted, unknown and query failure. Observations older than ten minutes, missing required windows and passed reset times cannot establish spare capacity.
+Quota is cached independently of inference health. Ordinary requests read cached quota; explicitly enabling `capCareful` permits Magpie-style checks before a request. A cluster-coordinated worker checks due accounts with four concurrent collectors. Custom refresh intervals range from 30 seconds to one day; the default is 60 seconds. Failed reads retain the previous successful values and timestamps. Routing distinguishes available, exhausted, unknown and query failure. Observations older than ten minutes, missing required windows and passed reset times cannot establish spare capacity.
 
-Subscription providers use their existing quota adapters. API-key accounts can enable a separate collector. Presets cover Fusecode, DeepSeek, Moonshot, OpenRouter, StepFun, AiHubMix, ModelScope, GLM/Z.ai, Kimi Code, OpenCode Go, MiniMax, Command Code, Ollama, Mistral, NewAPI, Sub2API, Volcengine and Alibaba/Tencent cloud plans. Presets are reading rules, not a guarantee that a provider grants every key quota access. Cloud plan queries require account access keys and the relevant cloud permissions. Tencent requires an explicit TeamId so independent plans are not added together. Mistral queries the key kind before selecting its API or Vibe budget. StepFun's web plan query requires a valid session in encrypted request headers.
+Subscription providers use their existing quota adapters. API-key accounts discover balance queries automatically and can configure a separate collector. Presets cover Fusecode, DeepSeek, Moonshot, OpenRouter, SiliconFlow, StepFun, AiHubMix, ModelScope, GLM/Z.ai, Kimi Code, OpenCode Go, MiniMax, Command Code, Ollama, Mistral, NewAPI, Sub2API, Volcengine and Alibaba/Tencent cloud plans. Presets are reading rules, not a guarantee that a provider grants every key quota access. Cloud plan queries require account access keys and the relevant cloud permissions. Tencent reads the native plan list and each plan's details, retaining list values if a detail query fails. Mistral queries the key kind before selecting its API or Vibe budget. StepFun's web plan query requires a valid session in encrypted request headers.
 
 For Fusecode, select its preset or enter your Magpie rules:
 
@@ -19,15 +19,33 @@ The expression reader supports labeled parts, currencies, percentages, arithmeti
 
 Use the account key, a separate encrypted quota token, or encrypted custom headers. `{key}` substitutes the runtime key in an endpoint or header. Saved header values are redacted in read APIs. Renaming a saved header requires re-entering its value; leaving the separate token blank retains it. Explicitly select its removal to delete it. Outbound requests use the gateway's existing URL, DNS, redirect and proxy guards. Cloud signing uses fixed control-plane hosts. Alibaba console tokens are encrypted and cached for twenty minutes.
 
-### Migrate Magpie balance settings
+### Migrate Magpie balance and quota settings directly
 
-The form uses Magpie's Balance URL, Balance field, Account balance and GET/POST controls. Check balance queries the current form before saving. It preserves currency symbols, labels, percentages and `—` for missing fields without writing quota caches, history or entitlement records. Save and refresh to update the readings used by routing.
+Magpie `47b51c8` defines the field syntax, defaults and quota behavior. The primary form keeps Balance URL, GET/POST, Balance field and Account balance. No compatibility switch is required. Additional collection controls are collapsed.
 
-Expand Import Magpie balance settings and paste one provider's original JSON object. `balanceURL`, `balancePath`, `balanceMethod`, `balanceToken` and `headers` map to the URL, field, method, account token and headers. Import leaves the API key, routes and usage policies unchanged. An omitted account token clears the target account's previous separate quota token. Masked token objects and headers are rejected.
+API-key accounts discover known balance/plan endpoints from their provider address. Unknown relays are queried at `/v1/usage`, then `/api/usage/token`. Hits last 24 hours, misses six hours, and transport failures five minutes. The shared encrypted cache is fenced by account identity and config revision. `noBalanceProbe` disables relay probing. Check balance rechecks the current form and can fill the discovered URL without saving observations, history or entitlement settings.
 
-Import selects Use Magpie authentication; select it for a manual migration too. API keys default to Bearer. Account tokens keep an explicit scheme, JWTs receive Bearer, and opaque tokens are sent verbatim. `{key}`, `{apiKey}`, `{api_key}`, `{API_KEY}`, `{token}`, `{{key}}` and `${API_KEY}` all name the API key, not the account token. POST has no body by default.
+Import Magpie quota settings accepts a complete `providers.json`, a provider array or one provider, plus optional `settings.json`. Select the provider and account. Without an explicit account, match the current API key's Magpie ID (the first five SHA-256 bytes) or account name; ambiguous configurations require selection. Import fills the form; saving applies it.
 
-Known panel URLs allow an empty balance field: `/v1/usage` uses `$remaining`, `/api/usage/token` uses `$data.total_available / 500000`, `/api/user/self` uses `$data.quota / 500000`, `/api/v1/user/profile` uses `$data.balance`, and `/dashboard/billing/credit_grants` uses `$total_available`. Without an account token or explicit Authorization/Cookie header, the two account URLs query their corresponding key URLs without changing the saved URL. Key URLs reject account tokens. Queries retain TokenHub authorization, timeout, response-size and URL security limits. Unconfigured URLs are not probed. This imports balance settings, not a complete Magpie configuration file.
+| Native fields | Migrated behavior |
+| --- | --- |
+| `balanceURL`, `balancePath`, `balanceMethod`, `balanceToken`, `headers`, `noBalanceProbe` | Original endpoint, expression, method, account token, headers and probe switch |
+| `accountCaps`, `accountWindowCaps`, `accountWindowAmounts` | Account percentages and per-window shares or amounts; 100 removes the user cap on that window |
+| `capStop`, `capCareful` | Stop with 429 when all accounts are held; refresh near caps and hold unknown readings |
+| `keySpendCaps` | Local calendar day/month or total spending; raising a total limit preserves its origin |
+| `keyOwnBalances` | USD/CNY balances, weekly/monthly refills and expiring grants with their original start times |
+| `codexNoCredits`, `codexCreditsFirst`, `codexCreditsLast` | Reported credits allowed by default, or disabled/first/last |
+| `codexAutoReset`, `codexAutoResetOnly`, `codexResetLead` | Exhaustion/expiry resets and lead time in minutes; off by default, one automatic reset per week |
+| `usageAlert`, `balanceAlert`, `resetReminder` | Usage, balance and reset reminders; zero disables each, reminders use hours |
+| `accessKeyID`, `secretAccessKey` | Separate encrypted Volcengine, Tencent and Alibaba plan credentials |
+
+Account tokens retain explicit schemes; JWTs gain Bearer, opaque tokens are verbatim, and tokens equal to the inference key use key authentication. All Magpie key-placeholder aliases are retained, including `{token}`, which names the inference key. POST has no body by default. Known relay fields can be blank. Account URLs fall back to the corresponding key URL without an account token or explicit Authorization/Cookie header.
+
+Calendar refills restore the configured balance at local midnight, without carry-over, clamping missing month days to month end. Grant expiry dates include that entire day; grants are consumed by earliest expiry. Manual balances may be negative and fall back behind fresh vendor money balances. CNY uses configured exchange rates; spending with no rate remains unknown.
+
+Ordinary requests read cached quota. Opt-in `capCareful` refreshes a reading older than 15 seconds within five percentage points of its cap, or any reading older than five minutes, waiting at most ten seconds and retrying failed reads no faster than every 15 seconds. Alerts tolerate ten-minute reset drift, deduplicate each cycle and include expiring reset cards. Tencent without TeamId uses a sole plan for account caps. Multiple plans remain separate informational windows; an explicit TeamId binds one plan to account caps.
+
+Import does not replace inference keys or routes. TokenHub supplies project authorization, encryption, shared persistence and guarded HTTP. Desktop notifications use existing notification channels. Imported enabled entitlement policies apply after saving. Development and acceptance use synthetic accounts only.
 
 
 ## Usage and entitlement policies
@@ -36,11 +54,11 @@ Model routing and account routing remain separate. Account policies only reorder
 
 Account and per-window caps can hold an account before its supplier limit. Window cap names must be unique after trimming whitespace and ignoring case; duplicates block saving and retain the form. Amounts stay in their reported unit. Informational windows are excluded unless explicitly capped; pool caps apply only to their member models. Wallet amount caps use durable observed spending counters. Top-ups do not erase spending, and stale readings, restarts or history pruning cannot rewind a counter. Windows without a reset use a UTC day.
 
-Credit policies are existing behavior, never, allow, first and last. Explicit first/last ordering stays within the same authorized route and priority tier. User caps cannot be bypassed by credits or automatic resets.
+Reported credits are allowed by default; policies also support never, first and last. Explicit first/last ordering stays within the same authorized route and priority tier. User caps cannot be bypassed by credits or automatic resets.
 
 Automatic Codex resets are off by default. Enable weekly exhaustion, impending card expiry, or both. Weekly exhaustion additionally requires an actual exhausted invocation and a recent intent containing only that request's authorized candidates; an available or unknown alternative prevents spending. Expiry handling requires used windows and prefers the earliest expiring card. The default lead is thirty minutes and the default weekly automatic limit is one. Durable reservations and the existing reconciled reset executor prevent duplicate spending. An uncertain outcome stops automatic retries. Operation records remain visible in the console.
 
-Manual wallet estimates are computed in the background and read from a revision-fenced cache. Failed computations retain the last value and its age; stale or uncollected estimates remain unknown. Manual wallets track a starting balance, expiring grants and optional recurring refills. They consume expiring grants first and can carry unused balance forward. Estimates deduct recorded provider costs only; spending outside this gateway is absent. Non-USD wallets require an explicit conversion rate. Shared wallets must be selected explicitly and are pinned to the source account's identity. Equal balances do not establish sharing. Shared manual wallets count gateway spending across linked accounts; model limits remain independent. Replacing account credentials or an API key clears the old quota configuration and observations.
+Manual wallet estimates are computed in the background and read from a revision-fenced cache. Failed computations retain the last value and its age; stale or uncollected estimates remain unknown. Manual wallets track a starting balance, expiring grants and optional recurring refills. They consume expiring grants first. Calendar refills do not carry balances forward; older interval configurations retain their carry-over option. Estimates deduct recorded provider costs only; spending outside this gateway is absent. CNY wallets use the configured exchange rate or remain unknown after spending when no rate is available. Other units require an explicit conversion rate. Shared wallets must be selected explicitly and are pinned to the source account's identity. Equal balances do not establish sharing. Shared manual wallets count gateway spending across linked accounts; model limits remain independent. Replacing account credentials or an API key clears the old quota configuration and observations.
 
 ## History, alerts and API
 
@@ -52,6 +70,7 @@ Administrator APIs require provider permissions:
 - `GET|PUT /api/admin/provider-resources/{id}/allowance/config`: redacted configuration with revision-based updates.
 - `GET /api/admin/provider-resources/{id}/allowance/history` and `/events`: bounded history and operation records.
 - `POST /api/admin/provider-resources/{id}/allowance/refresh`: explicit upstream refresh.
+- `POST /api/admin/provider-resources/{id}/allowance/preview` and `/import-magpie`: query the form or stage native settings without saving.
 
 Project API keys can read `GET /v1/allowance?model=<alias>`, optionally with `wait_seconds=0..60`. This returns aggregate cached availability for authorized routes, without supplier identities, wallet amounts or configuration. Waiting never queries the supplier.
 

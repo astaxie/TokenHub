@@ -43,12 +43,13 @@ func CloudRequest(ctx context.Context, c Config, secret string, now time.Time) (
 		if region == "" {
 			region = "ap-guangzhou"
 		}
-		if c.PlanID == "" {
-			return nil, errors.New("the Tencent quota requires an explicit TeamId to avoid combining different plans")
-		}
 		body, _ := json.Marshal(map[string]any{"TeamId": c.PlanID})
 		const host = "tokenhub.tencentcloudapi.com"
-		const action = "DescribeTokenPlan"
+		action := "DescribeTokenPlan"
+		if c.PlanID == "" {
+			action = "DescribeTokenPlanList"
+			body = []byte(`{"Offset":0,"Limit":100}`)
+		}
 		req, err = http.NewRequestWithContext(ctx, "POST", "https://"+host+"/", bytes.NewReader(body))
 		if err != nil {
 			return nil, err
@@ -128,6 +129,30 @@ func parseCloud(body []byte, c Config, now time.Time) (Result, error) {
 			ws = volcReadCodingPlan(r.Result)
 		}
 	case "tencent":
+		if c.PlanID == "" {
+			var list struct {
+				Response struct {
+					TokenPlanSet []tencentPlan
+					Error        any
+				}
+			}
+			if json.Unmarshal(body, &list) == nil && len(list.Response.TokenPlanSet) > 0 && list.Response.Error == nil {
+				var all []QuotaWindow
+				for _, p := range list.Response.TokenPlanSet {
+					if p.TeamID == "" {
+						continue
+					}
+					if w, ok := p.window(now); ok {
+						if len(list.Response.TokenPlanSet) > 1 {
+							w.Name = p.TeamID + " · " + w.Name
+							w.Aside = true
+						}
+						all = append(all, w)
+					}
+				}
+				return planResult("Token Plan Enterprise", all, c, now)
+			}
+		}
 		var r struct {
 			Response struct {
 				tencentPlan

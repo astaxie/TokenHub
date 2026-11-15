@@ -19,7 +19,7 @@ func parseSub2API(body []byte, c Config, now time.Time) (Result, error) {
 	}
 	_ = json.Unmarshal(body, &r)
 	// quota_limited mode need not include a wallet balance at all.
-	if _, err := ReadNumber(body, "remaining"); err != nil {
+	if _, err := ReadNumber(body, "remaining"); err != nil && c.Expression == "$remaining" {
 		c.Expression = ""
 	}
 	out, err := Parse(body, c, now)

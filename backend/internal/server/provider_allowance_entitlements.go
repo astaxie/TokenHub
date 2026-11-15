@@ -2,13 +2,9 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
 	"time"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"tokenhub/backend/internal/allowance"
 )
 
@@ -30,11 +26,11 @@ func (s *Server) refreshAllowanceEntitlements(ctx context.Context, resource Prov
 	if err := store.refreshManualAllowance(ctx, resource.ID, cfg, now); err != nil {
 		return
 	}
-	a, err := store.withManualAllowance(ctx, resource.ID, a, cfg.Policy.Wallet, now)
+	a, err := store.withLocalAllowance(ctx, resource.ID, a, cfg.Policy, now)
 	if err != nil {
 		return
 	}
-	if cfg.Policy.Wallet.Enabled {
+	if cfg.Policy.Wallet.Enabled || cfg.Policy.SpendCap != nil {
 		data, _ := json.Marshal(map[string]any{"allowance": a})
 		_ = recordProviderAllowancePoint(store.db.WithContext(ctx), resource.ID, string(data), now)
 	}
@@ -103,7 +99,7 @@ func (s *GormStore) recordAllowanceAlerts(ctx context.Context, resource Provider
 		return nil
 	}
 	for _, w := range a.Windows {
-		if w.Unknown || w.Informational || w.ResetAt != nil && !now.Before(*w.ResetAt) {
+		if w.Unknown || w.Informational && !(w.Pool != "" && w.PeriodSeconds == 7*86400) || w.ResetAt != nil && !now.Before(*w.ResetAt) {
 			continue
 		}
 		cycle := "wallet"
@@ -112,53 +108,33 @@ func (s *GormStore) recordAllowanceAlerts(ctx context.Context, resource Provider
 		}
 		conditions := map[string]bool{}
 		threshold := p.UsedPercent
-		if threshold == 0 {
-			threshold = 90
-		}
-		if w.UsedPercent != nil {
+		if w.UsedPercent != nil && threshold > 0 {
 			conditions["allowance_high_usage"] = *w.UsedPercent >= threshold
 		}
 		if p.LowBalance != nil && w.Balance != nil {
 			conditions["allowance_low_balance"] = *w.Balance <= *p.LowBalance
 		}
-		if p.UnusedBeforeResetSeconds > 0 && w.ResetAt != nil && w.UsedPercent != nil {
-			conditions["allowance_unused_before_reset"] = w.ResetAt.Sub(now) <= time.Duration(p.UnusedBeforeResetSeconds)*time.Second && *w.UsedPercent < threshold
+		if p.UnusedBeforeResetSeconds > 0 && w.ResetAt != nil && w.UsedPercent != nil && w.PeriodSeconds >= 7*86400 {
+			conditions["allowance_unused_before_reset"] = w.ResetAt.Sub(now) <= time.Duration(p.UnusedBeforeResetSeconds)*time.Second && *w.UsedPercent < 90
 		}
 		for kind, active := range conditions {
-			digest := sha256.Sum256([]byte(resource.ID + "\x00" + allowanceWalletKey(w) + "\x00" + cycle + "\x00" + kind))
-			id := fmt.Sprintf("ala_%x", digest[:])
-			err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-				row := providerAllowanceEvent{ID: id, ResourceID: resource.ID, Kind: kind, Cycle: cycle, State: "armed", CreatedAt: now, UpdatedAt: now, Details: w.Name}
-				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
-					return err
-				}
-				if !active {
-					return tx.Model(&providerAllowanceEvent{}).Where("id = ?", id).Updates(map[string]any{"state": "armed", "updated_at": now}).Error
-				}
-				changed := tx.Model(&providerAllowanceEvent{}).Where("id = ? AND state = ?", id, "armed").Updates(map[string]any{"state": "fired", "updated_at": now})
-				if changed.Error != nil {
-					return changed.Error
-				}
-				if changed.RowsAffected == 0 {
-					return nil
-				}
-				alert := AlertEvent{ID: NewID("alt"), ScopeType: "provider", ScopeID: resource.ProviderID, ResourceID: resource.ID, Severity: "warning", Code: kind, Message: fmt.Sprintf("Provider account %s: %s (%s)", resource.ID, kind, w.Name), CreatedAt: now}
-				if err := tx.Create(&alert).Error; err != nil {
-					return err
-				}
-				for _, channel := range p.ChannelIDs {
-					payload, _ := json.Marshal(allowanceAlertDelivery{AlertID: alert.ID, ChannelID: channel})
-					event := providerAllowanceEvent{ID: NewID("alad"), ResourceID: resource.ID, Kind: "alert_delivery", Cycle: cycle, State: "queued", CreatedAt: now, UpdatedAt: now, Details: string(payload)}
-					if err := tx.Create(&event).Error; err != nil {
-						return err
-					}
-				}
-				return nil
-			})
+			err := s.recordOneAllowanceAlert(ctx, resource, p, allowanceWalletKey(w), w.Name, kind, cycle, active, now)
 			if err != nil {
 				return err
 			}
 		}
 	}
+	if p.UnusedBeforeResetSeconds > 0 && a.Resets != nil && !a.Resets.Unknown && now.Sub(a.Resets.CheckedAt) <= 5*time.Minute {
+		for _, card := range a.Resets.Cards {
+			if card.ID == "" || card.ExpiresAt == nil {
+				continue
+			}
+			active := now.Before(*card.ExpiresAt) && card.ExpiresAt.Sub(now) <= time.Duration(p.UnusedBeforeResetSeconds)*time.Second
+			if err := s.recordOneAllowanceAlert(ctx, resource, p, "reset:"+card.ID, "Reset credit "+card.ID, "allowance_reset_expiring", card.ExpiresAt.UTC().Format(time.RFC3339), active, now); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }

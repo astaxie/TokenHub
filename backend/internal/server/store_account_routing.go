@@ -51,7 +51,7 @@ func (s *GormStore) loadAccountRoutingData(ctx context.Context, resourceIDs, poo
 			if err != nil {
 				return err
 			}
-			entry.Allowance, err = s.withManualAllowance(ctx, row.ResourceID, entry.Allowance, entry.Policy.Wallet, time.Now().UTC())
+			entry.Allowance, err = s.withLocalAllowance(ctx, row.ResourceID, entry.Allowance, entry.Policy, time.Now().UTC())
 			if err != nil {
 				return err
 			}

@@ -255,6 +255,8 @@ func (s *GormStore) SaveProviderResourceQuotaIfCurrent(ctx context.Context, reso
 }
 
 func saveProviderResourceQuota(db *gorm.DB, resourceID string, adapterType string, snapshot string, fetchedAt time.Time) error {
+	// SQLite compares stored timestamps lexically; keep every observation in UTC.
+	fetchedAt = fetchedAt.UTC()
 	var previous ProviderResourceObservation
 	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).First(&previous, "resource_id = ?", resourceID).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err

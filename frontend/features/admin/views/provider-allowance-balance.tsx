@@ -1,13 +1,10 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 import type {
   AllowanceConfig,
   AllowanceQueryResult,
   AllowanceSource,
 } from "../core/provider-allowance";
-import {
-  importMagpieBalance,
-  magpieBalancePlaceholder,
-} from "../core/magpie-balance";
+import { magpieBalancePlaceholder } from "../core/magpie-balance";
 import { tx } from "../i18n/runtime";
 
 export function AllowanceBalanceFields({
@@ -26,11 +23,17 @@ export function AllowanceBalanceFields({
   queryError: string;
 }) {
   const id = useId();
-  const [importText, setImportText] = useState("");
-  const [importError, setImportError] = useState("");
   const source = draft.source;
   const set = (patch: Partial<AllowanceSource>) =>
-    onChange({ ...draft, source: { ...source, ...patch } });
+    onChange({
+      ...draft,
+      source: {
+        ...source,
+        ...patch,
+        enabled: patch.url?.trim() ? true : source.enabled,
+        auth: source.auth || "magpie",
+      },
+    });
   return (
     <section className="allowance-balance" aria-label={tx("余额配置")}>
       <div className="allowance-balance-row">
@@ -59,7 +62,7 @@ export function AllowanceBalanceFields({
             type="url"
             value={source.url ?? ""}
             onChange={(event) => set({ url: event.target.value })}
-            placeholder="https://fusecode.ai/v1/usage"
+            placeholder={tx("留空自动识别余额接口")}
           />
         </div>
       </div>
@@ -110,6 +113,14 @@ export function AllowanceBalanceFields({
               ...draft,
               token: event.target.value,
               clear_token: false,
+              source: {
+                ...source,
+                auth: ["volcengine", "tencent", "alibaba"].includes(
+                  source.auth ?? "",
+                )
+                  ? source.auth
+                  : "magpie",
+              },
             })
           }
           placeholder={
@@ -119,6 +130,28 @@ export function AllowanceBalanceFields({
           }
         />
       </div>
+      {result?.query_url && !source.url ? (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() =>
+            set({
+              url: result.query_url,
+              expression: source.expression || result.query_expression,
+            })
+          }
+        >
+          {tx("使用已找到的余额查询地址")}
+        </button>
+      ) : null}
+      <label className="allowance-check">
+        <input
+          type="checkbox"
+          checked={source.no_balance_probe ?? false}
+          onChange={(event) => set({ no_balance_probe: event.target.checked })}
+        />
+        {tx("不自动探测余额接口")}
+      </label>
       {draft.has_token ? (
         <label className="allowance-check">
           <input
@@ -148,49 +181,6 @@ export function AllowanceBalanceFields({
           subscription.weekly_limit_usd %; 月: subscription.monthly_usage_usd /
           subscription.monthly_limit_usd %
         </code>
-      </details>
-      <details>
-        <summary>{tx("导入 Magpie 余额配置")}</summary>
-        <label>
-          {tx("Magpie 供应商 JSON")}
-          <textarea
-            rows={4}
-            value={importText}
-            onChange={(event) => setImportText(event.target.value)}
-            placeholder={
-              '{"balanceURL":"https://fusecode.ai/v1/usage","balancePath":"$remaining","balanceMethod":"GET"}'
-            }
-          />
-        </label>
-        <small>
-          {tx(
-            "粘贴一个供应商的 JSON。只导入余额地址、方法、字段、账户令牌和请求头。",
-          )}
-        </small>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            try {
-              onChange(importMagpieBalance(importText, draft));
-              setImportText("");
-              setImportError("");
-            } catch {
-              setImportError(
-                tx(
-                  "请输入一个含 balanceURL 的 Magpie 供应商 JSON；令牌和请求头须为原始字符串。",
-                ),
-              );
-            }
-          }}
-        >
-          {tx("填入余额配置")}
-        </button>
-        {importError ? (
-          <p role="alert" className="error-banner">
-            {importError}
-          </p>
-        ) : null}
       </details>
     </section>
   );

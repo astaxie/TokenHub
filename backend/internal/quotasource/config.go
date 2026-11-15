@@ -9,6 +9,7 @@ import (
 // Config contains only public collection rules. Authentication material belongs
 // in the gateway's encrypted credential store, never in an endpoint or rule.
 type Config struct {
+	NoBalanceProbe        bool              `json:"no_balance_probe,omitempty"`
 	AccessKeyID           string            `json:"access_key_id,omitempty"`
 	Region                string            `json:"region,omitempty"`
 	PlanID                string            `json:"plan_id,omitempty"`
@@ -49,8 +50,8 @@ type WindowRule struct {
 }
 
 func (c Config) Validate() error {
-	hasDefault := c.Auth == "magpie" && DefaultBalanceExpression(c.URL) != ""
-	if c.Enabled && c.Preset == "" && (c.URL == "" || c.Expression == "" && len(c.Windows) == 0 && !hasDefault) {
+	hasDefault := c.Auth == "magpie" && (c.URL == "" || DefaultBalanceExpression(c.URL) != "")
+	if c.Enabled && c.Preset == "" && !hasDefault && (c.URL == "" || c.Expression == "" && len(c.Windows) == 0) {
 		return errors.New("custom quota collection requires an endpoint and reading rules")
 	}
 	for _, path := range []string{c.PlanPath, c.ExpiresPath} {

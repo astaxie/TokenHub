@@ -37,13 +37,15 @@ independent of the older pinned protocol integrations listed above.
 
 
 The quota collection and entitlement extension also adapts
-`internal/provider/balance.go`, `planquota.go`, `volcengine_usage.go`,
+`internal/provider/balance.go`, `balance_probe.go`, `planquota.go`, `volcengine_usage.go`,
 `tencent_usage.go`, `alibaba_usage.go`, `stepfun_plan.go`, `account_caps.go`,
-`key_balance_own.go`, `wallet_spend.go`, `quota_history.go`, `balance_history.go`,
+`key_balance_own.go`, `key_spend.go`, `wallet_spend.go`, `quota_history.go`, `balance_history.go`,
 `quota_alert.go`, `codex_credits.go`, `codex_autoreset.go`, and
 `codex_expiring.go` at the same `47b51c8225a66e753dd249cb782472b0dcbee6c4`
 reference. TokenHub's `backend/internal/quotasource/` contains adapted pure
-expression, plan-response, and signing readers. The server allowance modules
+expression, plan-response, and signing readers. Native configuration import,
+calendar refill and expiry rules, careful/stop caps, and reminder semantics
+retain the same reference. The server allowance modules
 supply encrypted credentials, guarded HTTP, indexed history, atomic wallet
 counters, notifications, project-scoped availability, and durable reset
 coordination. No upstream account files or credentials are bundled.

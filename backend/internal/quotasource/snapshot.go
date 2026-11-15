@@ -12,8 +12,10 @@ import (
 )
 
 type Result struct {
-	Allowance allowance.Snapshot `json:"allowance"`
-	Parts     []BalancePart      `json:"balance_parts,omitempty"`
+	QueryURL        string             `json:"query_url,omitempty"`
+	QueryExpression string             `json:"query_expression,omitempty"`
+	Allowance       allowance.Snapshot `json:"allowance"`
+	Parts           []BalancePart      `json:"balance_parts,omitempty"`
 }
 
 // Parse applies public collection rules to a bounded response. Each configured

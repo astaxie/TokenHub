@@ -73,10 +73,49 @@ func (s *Server) planAccountOrder(ctx context.Context, call CallContext, planned
 		log.Printf("[tokenhub] account routing cache unavailable: %s", AsHTTPError(err).Code)
 		return nil
 	}
+	if s.refreshCarefulAllowances(ctx, planned, data) {
+		data, states, err = store.loadAccountRoutingData(ctx, resourceIDs, pools)
+		if err != nil {
+			return nil
+		}
+	}
 	now := time.Now().UTC()
+	type capGroup struct{ allHeld, stop bool }
+	capGroups := map[string]capGroup{}
+	hasStop := false
+	for _, entry := range data {
+		if entry.Policy.CapStop {
+			hasStop = true
+			break
+		}
+	}
+	groupKey := func(r RouteSelection) string { return r.Route.ID + "\x00" + r.Provider.ID + "\x00" + r.ProviderModel }
+	for _, route := range planned {
+		if !hasStop {
+			break
+		}
+		if route.Resource != nil {
+			key := groupKey(route)
+			g, seen := capGroups[key]
+			if !seen {
+				g.allHeld = true
+			}
+			entry := data[route.Resource.ID]
+			g.allHeld = g.allHeld && allowance.Evaluate(entry.Allowance, entry.Policy, route.ProviderModel, now, accountAllowanceMaxAge).Held
+			g.stop = g.stop || entry.Policy.CapStop
+			capGroups[key] = g
+		}
+	}
 	filtered := make([]RouteSelection, 0, len(planned))
 	for _, route := range planned {
 		if route.Resource != nil {
+			if hasStop {
+				if g := capGroups[groupKey(route)]; g.allHeld && g.stop {
+					route.AllowanceHold = NewHTTPError(429, "provider_usage_cap_reached", "All authorized accounts reached their usage cap")
+					filtered = append(filtered, route)
+					break
+				}
+			}
 			entry := data[route.Resource.ID]
 			if allowance.Evaluate(entry.Allowance, entry.Policy, route.ProviderModel, now, accountAllowanceMaxAge).Held {
 				continue

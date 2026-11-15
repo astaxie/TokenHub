@@ -17,7 +17,7 @@ func ParsePlan(body []byte, c Config, now time.Time) (Result, error) {
 	if len(body) > MaxResponseBytes {
 		return Result{}, errors.New("quota response exceeds size limit")
 	}
-	if c.Preset == "sub2api" && c.Expression == "$remaining" && len(c.Windows) == 0 {
+	if c.Preset == "sub2api" && len(c.Windows) == 0 {
 		return parseSub2API(body, c, now)
 	}
 	if c.Preset == "deepseek" && len(c.Windows) == 0 && strings.Contains(c.Expression, "balance_infos") {

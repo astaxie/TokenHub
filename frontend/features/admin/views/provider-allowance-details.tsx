@@ -366,6 +366,7 @@ export function allowanceEventKind(kind: string) {
     allowance_high_usage: tx("高用量告警"),
     allowance_low_balance: tx("低余额告警"),
     allowance_unused_before_reset: tx("重置前额度提醒"),
+    allowance_reset_expiring: tx("重置卡到期提醒"),
     alert_delivery: tx("通知投递"),
   };
   return labels[kind] ?? kind;

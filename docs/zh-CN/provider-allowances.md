@@ -4,9 +4,9 @@
 
 ## 采集
 
-额度缓存独立于推理健康检测。网关请求不会访问额度接口。后台任务在集群内协调执行，最多同时采集四个账号。自定义刷新间隔为 30 秒至一天，默认 60 秒。查询失败保留上次成功的数据和时间。调度区分可用、耗尽、未知和查询失败。超过十分钟、必需窗口缺失或重置时间已过的数据，不能证明仍有可用额度。
+额度缓存独立于推理健康检测。普通网关请求不会访问额度接口；显式启用 capCareful 时按 Magpie 规则重查。后台任务在集群内协调执行，最多同时采集四个账号。自定义刷新间隔为 30 秒至一天，默认 60 秒。查询失败保留上次成功的数据和时间。调度区分可用、耗尽、未知和查询失败。超过十分钟、必需窗口缺失或重置时间已过的数据，不能证明仍有可用额度。
 
-订阅账号继续使用现有额度适配器。API Key 账号可启用独立采集。预设涵盖 Fusecode、DeepSeek、Moonshot、OpenRouter、StepFun、AiHubMix、ModelScope、GLM/Z.ai、Kimi Code、OpenCode Go、MiniMax、Command Code、Ollama、Mistral、NewAPI、Sub2API，以及火山、阿里、腾讯云套餐。预设提供读取规则，供应商仍可能限制查询权限。云套餐需要账号 AccessKey 和对应云权限。腾讯需要明确的 TeamId，防止把不同套餐相加。Mistral 先确认密钥类型，再选择 API 或 Vibe 预算。StepFun 网页套餐需要在加密请求头中提供有效会话。
+订阅账号继续使用现有额度适配器。API Key 账号默认自动识别余额接口，也可配置独立采集。预设涵盖 Fusecode、DeepSeek、Moonshot、OpenRouter、SiliconFlow、StepFun、AiHubMix、ModelScope、GLM/Z.ai、Kimi Code、OpenCode Go、MiniMax、Command Code、Ollama、Mistral、NewAPI、Sub2API，以及火山、阿里、腾讯云套餐。预设提供读取规则，供应商仍可能限制查询权限。云套餐需要账号 AccessKey 和对应云权限。腾讯读取原生套餐列表并补查各套餐详情；详情失败时保留列表值。Mistral 先确认密钥类型，再选择 API 或 Vibe 预算。StepFun 网页套餐需要在加密请求头中提供有效会话。
 
 Fusecode 可直接选择预设，也可填写 Magpie 的规则：
 
@@ -19,15 +19,33 @@ Expression: $remaining; Week: subscription.weekly_usage_usd / subscription.weekl
 
 认证可使用账号密钥、独立加密令牌或加密请求头。URL 和请求头中的 `{key}` 在运行时替换为密钥。读取接口遮盖已保存的请求头值。重命名已保存的请求头后，必须重新输入值。独立令牌留空会保留，勾选删除才会移除。请求沿用网关已有的 URL、DNS、跳转和代理限制。云签名只发送到固定控制面域名。阿里控制台令牌加密缓存二十分钟。
 
-### 从 Magpie 迁移余额配置
+### 直接迁移 Magpie 的余额与额度配置
 
-配置页使用与 Magpie 相同的“余额查询地址”“余额字段”“账户余额”和 GET/POST 控件。“查询余额”按当前表单查询，无需先保存；结果保留币种符号、标签、百分比和缺失字段的 `—`，不会写入额度缓存、历史或权益记录。保存后再刷新，才会更新调度读取的额度。
+以 Magpie `47b51c8` 的实现为准，沿用余额字段、表达式、默认值和限额行为。常用配置与 Magpie 一致：余额查询地址、GET/POST、余额字段、账户余额。无需另选兼容模式。高级采集字段折叠显示。
 
-可展开“导入 Magpie 余额配置”，粘贴一个供应商的原始 JSON。`balanceURL`、`balancePath`、`balanceMethod`、`balanceToken`、`headers` 分别映射到地址、字段、方法、账户令牌和请求头。导入不会修改 API Key、路由或使用策略；未提供账户令牌时会清除目标账号原有的独立额度令牌。已遮盖的令牌对象和请求头不能导入。
+API Key 账号默认按供应商地址识别余额或套餐接口。未知中转站依次查 `/v1/usage`、`/api/usage/token`。找到接口后缓存 24 小时，未找到缓存 6 小时，连接失败缓存 5 分钟；缓存加密保存并绑定账号身份和配置版本。“不自动探测余额接口”关闭中转站探测。手动“查询余额”按当前表单重新查找，可将找到的地址填回表单。查询不保存额度、历史或权益策略。
 
-导入自动选择“沿用 Magpie 认证”。手动迁移时也可选择它：API Key 默认以 Bearer 发送；独立账户令牌保留原认证前缀，JWT 自动加 Bearer，其他令牌原样发送。`{key}`、`{apiKey}`、`{api_key}`、`{API_KEY}`、`{token}`、`{{key}}`、`${API_KEY}` 均指 API Key，不指账户令牌。POST 默认无请求体。
+展开“导入 Magpie 额度配置”，选择或粘贴完整 `providers.json`（也接受供应商数组或单个对象），以及可选的 `settings.json`。选择供应商和账号；省略账号时，按当前 API Key 的 Magpie Key ID（SHA-256 前五字节）或账号名匹配。多个账号无法匹配时，要求明确选择。导入先填入表单，保存后生效。
 
-已知面板地址的余额字段可留空：`/v1/usage` 使用 `$remaining`，`/api/usage/token` 使用 `$data.total_available / 500000`，`/api/user/self` 使用 `$data.quota / 500000`，`/api/v1/user/profile` 使用 `$data.balance`，`/dashboard/billing/credit_grants` 使用 `$total_available`。没有独立账户令牌和自定义 Authorization/Cookie 时，两个账户地址分别改查对应的密钥地址；保存的地址不变。密钥地址拒绝账户令牌。查询仍遵守 TokenHub 的权限、超时、响应大小和 URL 安全限制；不会自动探测未配置的地址。此入口迁移余额配置，不是 Magpie 整份配置文件导入。
+| 原生字段 | 迁入的行为 |
+| --- | --- |
+| `balanceURL`、`balancePath`、`balanceMethod`、`balanceToken`、`headers`、`noBalanceProbe` | 原地址、表达式、方法、账户令牌、请求头和探测开关 |
+| `accountCaps`、`accountWindowCaps`、`accountWindowAmounts` | 账号比例、窗口比例或窗口固定用量；窗口的 100 表示取消该窗口的用户限额 |
+| `capStop`、`capCareful` | 全部账号受限时返回 429；接近限额时先重查，未知时暂停 |
+| `keySpendCaps` | 按本地日、月或启用以来的总开销限制；提高总上限不清零起算时间 |
+| `keyOwnBalances` | USD/CNY 手动余额、每周/每月补充、到期赠额及各自起算时间 |
+| `codexNoCredits`、`codexCreditsFirst`、`codexCreditsLast` | 默认允许已报告的积分，或禁止、优先、最后使用 |
+| `codexAutoReset`、`codexAutoResetOnly`、`codexResetLead` | 耗尽或到期时用卡，提前量按分钟；默认关闭，每周最多自动使用一张 |
+| `usageAlert`、`balanceAlert`、`resetReminder` | 用量、低余额和重置提醒；0 表示关闭，提醒按小时 |
+| `accessKeyID`、`secretAccessKey` | 火山、腾讯、阿里套餐的独立云凭据，加密保存 |
+
+账户令牌保留原认证前缀；JWT 自动加 Bearer，其他令牌原样发送。与 API Key 相同的令牌按 API Key 处理。`{key}`、`{apiKey}`、`{api_key}`、`{API_KEY}`、`{token}`、`{{key}}`、`${API_KEY}` 都表示推理 API Key。POST 默认无请求体。已知面板的字段可留空；没有账户令牌和自定义 Authorization/Cookie 时，账户查询自动退回对应密钥查询。
+
+日历补充在所选时区的零点恢复原余额，不结转；月份缺少指定日时使用月末。赠额的截止日包含当天，并优先消费最早到期的赠额。手动余额可显示负值；供应商已报告新鲜货币余额时，优先显示供应商余额。CNY 使用已配置的汇率；有消费而汇率未知时显示未知，不当成零。
+
+普通请求读取缓存。启用 `capCareful` 后，接近限额五个百分点且读数超过 15 秒，或读数超过五分钟时，会在请求前重查，最多等待 10 秒；失败后至少隔 15 秒重试。提醒对同一周期去重，容忍重置时间十分钟内的漂移，并涵盖即将到期的重置卡。腾讯未指定 TeamId 且只有一个套餐时，将它用于账号限额；多个套餐分别显示为参考窗口，不相加。也可绑定 TeamId 指定套餐。
+
+迁移不替换目标账号的推理密钥和路由。TokenHub 继续负责项目权限、加密存储、共享数据库和 HTTP 安全限制。桌面通知映射到现有通知渠道。原生已启用的权益策略在保存后生效；开发与验收只使用合成账号。
 
 
 ## 使用与权益策略
@@ -36,11 +54,11 @@ Expression: $remaining; Week: subscription.weekly_usage_usd / subscription.weekl
 
 账号和单窗口限额可在供应商额度耗尽前停用账号。窗口限额名称忽略大小写及首尾空格后不能重复；重复时阻止保存并保留表单。金额使用供应商报告的单位。参考窗口默认不参与限额，显式配置时除外。额度池限额只作用于池内模型。钱包金额限额使用独立持久化消费计数器；充值不会抹掉消费，旧数据、重启和历史清理也不会回退计数。没有重置时间的钱包按 UTC 日计数。
 
-积分策略包括沿用原有行为、禁止、允许、优先和最后使用。积分顺序仍限定在同一获准路由及优先级内。积分和自动重置不能绕过用户限额。
+默认允许已报告的积分，也可禁止、优先或最后使用。积分顺序仍限定在同一获准路由及优先级内。积分和自动重置不能绕过用户限额。
 
 Codex 自动重置默认关闭。可选择周额度耗尽、卡即将到期，或两者都启用。周额度耗尽还要求真实调用已报额度耗尽，且近期执行记录中的候选全部来自该请求的授权范围；存在可用或未知候选时不会消耗重置卡。到期策略要求窗口已有用量，优先使用最早到期的卡。默认提前三十分钟，每周默认最多自动使用一张。持久化预留和现有幂等重置执行器防止重复消费。结果未知时停止自动重试。界面保留执行记录。
 
-手动余额在后台计算，请求读取带配置版本校验的缓存。计算失败保留旧数值及原采集时间；过期或尚未计算的数据保持未知。手动钱包支持起始余额、到期补充额度、定期补充和余额结转，优先扣减即将到期的额度。估算只扣除网关记录的供应商成本，不包含外部消费。非美元钱包需要明确的换算率。共享钱包必须显式选择，并绑定源账号身份；余额相同不会自动认定为共享。共享手动钱包合计关联账号经网关产生的消费，模型额度仍独立。替换账号凭据或 API Key 会清除旧额度配置和观测。
+手动余额在后台计算，请求读取带配置版本校验的缓存。计算失败保留旧数值及原采集时间；过期或尚未计算的数据保持未知。手动钱包支持起始余额、到期补充额度和定期补充，优先扣减即将到期的额度。日历补充不结转；旧的固定间隔配置保留结转选项。估算只扣除网关记录的供应商成本，不包含外部消费。人民币钱包复用已配置的汇率；消费后无汇率时保持未知。其他单位需要明确的换算率。共享钱包必须显式选择，并绑定源账号身份；余额相同不会自动认定为共享。共享手动钱包合计关联账号经网关产生的消费，模型额度仍独立。替换账号凭据或 API Key 会清除旧额度配置和观测。
 
 ## 历史、告警与接口
 
@@ -52,6 +70,7 @@ Codex 自动重置默认关闭。可选择周额度耗尽、卡即将到期，�
 - `GET|PUT /api/admin/provider-resources/{id}/allowance/config`：读取遮盖凭据的配置，并按版本更新。
 - `GET /api/admin/provider-resources/{id}/allowance/history` 和 `/events`：读取有界历史和操作记录。
 - `POST /api/admin/provider-resources/{id}/allowance/refresh`：显式刷新上游。
+- `POST /api/admin/provider-resources/{id}/allowance/preview` 和 `/import-magpie`：查询当前表单或填入原生配置，不保存。
 
 项目 API Key 可访问 `GET /v1/allowance?model=<alias>`，可选 `wait_seconds=0..60`。只返回获准路由的缓存可用性汇总，不返回供应商身份、钱包金额或配置。等待不会访问供应商。
 

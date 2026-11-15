@@ -15,8 +15,8 @@ import (
 	"tokenhub/backend/internal/quotasource"
 )
 
-// Only explicit quota refreshes and the background worker perform network I/O.
-// Gateway planning and the allowance read API use persisted observations.
+// Explicit refreshes, background collection and opt-in careful checks perform
+// network I/O. Ordinary planning and read APIs use persisted observations.
 func (s *Server) refreshConfiguredAllowance(ctx context.Context, resource ProviderResource, force bool) (quotasource.Result, bool, error) {
 	store, ok := s.store.(*GormStore)
 	if !ok {
@@ -26,10 +26,16 @@ func (s *Server) refreshConfiguredAllowance(ctx context.Context, resource Provid
 	if err != nil {
 		return quotasource.Result{}, true, err
 	}
-	if !cfg.Source.Enabled {
+	provider, found := s.store.GetProvider(resource.ProviderID)
+	if found {
+		cfg = automaticAllowanceConfig(cfg, resource, provider)
+	}
+	canAuto := resource.ResourceType == ProviderResourceAPIKey && found && provider.Type != ProviderMock && cfg.Source.URL == "" && cfg.Source.Preset == ""
+	if !cfg.Source.Enabled && !canAuto {
 		return quotasource.Result{}, false, nil
 	}
 	var out quotasource.Result
+	handled := false
 	err = s.store.RunClusterOperation(ctx, "provider-quota:"+resource.ID, func(ctx context.Context) error {
 		// Load destination and credentials together after waiting for the refresh
 		// lease. Account edits and collection-rule edits use the mutation lease.
@@ -52,9 +58,16 @@ func (s *Server) refreshConfiguredAllowance(ctx context.Context, resource Provid
 		if err != nil {
 			return err
 		}
+		cfg = automaticAllowanceConfig(cfg, current, provider)
 		if !cfg.Source.Enabled {
 			return nil
 		}
+		if cfg.Source.URL == "" && cfg.Source.Preset == "" && cfg.Source.NoBalanceProbe {
+			if _, known := quotasource.AutomaticSource(firstNonEmpty(current.BaseURL, provider.BaseURL), cfg.Token); !known {
+				return nil
+			}
+		}
+		handled = true
 		if !force {
 			if o, found := s.store.GetProviderResourceObservation(resource.ID); found {
 				if json.Unmarshal([]byte(o.QuotaSnapshot), &out) == nil {
@@ -78,7 +91,7 @@ func (s *Server) refreshConfiguredAllowance(ctx context.Context, resource Provid
 		}
 		return store.saveCollectedAllowance(ctx, current, cfg.Revision, out)
 	})
-	return out, true, err
+	return out, handled || err != nil, err
 }
 
 func (s *Server) fetchAllowanceBody(ctx context.Context, source quotasource.Config, token string) ([]byte, error) {

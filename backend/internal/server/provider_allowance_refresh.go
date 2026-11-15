@@ -39,10 +39,12 @@ func (s *Server) runProviderAllowanceRefresh(ctx context.Context) error {
 			if err != nil {
 				return
 			}
-			if config.Source.Enabled {
-				_, _, err = s.refreshConfiguredAllowance(ctx, resource, false)
-			} else if d, known := s.adapterRegistry.Describe(provider.Type); known && adapterSupports(d, AdapterCapabilityQuota) {
-				_, err = s.queryProviderMonitoringQuota(ctx, provider, resource)
+			var handled bool
+			_, handled, err = s.refreshConfiguredAllowance(ctx, resource, false)
+			if !handled {
+				if d, known := s.adapterRegistry.Describe(provider.Type); known && adapterSupports(d, AdapterCapabilityQuota) {
+					_, err = s.queryProviderMonitoringQuota(ctx, provider, resource)
+				}
 			}
 			if err != nil && ctx.Err() == nil {
 				log.Printf("[tokenhub] allowance refresh failed for %s: %s", resource.ID, AsHTTPError(err).Code)

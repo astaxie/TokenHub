@@ -19,6 +19,7 @@ func (s *Server) registerProviderAllowanceRoutes() {
 	s.registerMethodRoutes("/api/admin/provider-resources/{resource_id}/allowance/config", func(methods string) http.HandlerFunc { return s.adminMethodNotAllowed("provider", methods) }, methodRoute{Method: http.MethodGet, Handler: s.handleProviderAllowanceRead}, methodRoute{Method: http.MethodPut, Handler: s.handleProviderAllowanceConfigPut})
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/allowance/refresh", s.handleProviderAllowanceRefreshPost, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/allowance/preview", s.handleProviderAllowancePreviewPost, s.adminMethodNotAllowed("provider", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/allowance/import-magpie", s.handleProviderAllowanceMagpieImport, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/provider-allowances", s.handleProviderAllowancesGet, s.adminMethodNotAllowed("provider", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/provider-allowances/presets", s.handleProviderAllowancePresetsGet, s.adminMethodNotAllowed("provider", http.MethodGet))
 }
@@ -93,7 +94,7 @@ func (s *Server) handleProviderAllowancesGet(w http.ResponseWriter, r *http.Requ
 			writeError(w, r, err)
 			return
 		}
-		a, err = store.withManualAllowance(r.Context(), resource.ID, a, config.Policy.Wallet, time.Now().UTC())
+		a, err = store.withLocalAllowance(r.Context(), resource.ID, a, config.Policy, time.Now().UTC())
 		if err != nil {
 			writeError(w, r, err)
 			return

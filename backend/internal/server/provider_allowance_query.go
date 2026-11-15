@@ -9,9 +9,21 @@ import (
 )
 
 func (s *Server) queryConfiguredAllowance(ctx context.Context, cfg providerAllowanceConfig, resource ProviderResource, provider Provider, preview bool) (quotasource.Result, error) {
+	if cfg.Source.URL == "" && cfg.Source.Preset == "" {
+		return s.queryAutomaticAllowance(ctx, cfg, resource, provider, preview)
+	}
 	source, err := quotasource.Resolve(cfg.Source, firstNonEmpty(resource.BaseURL, provider.BaseURL))
 	if err != nil {
 		return quotasource.Result{}, NewHTTPError(400, "invalid_allowance_source", "Quota source configuration is invalid")
+	}
+	if source.Auth != "volcengine" && source.Auth != "tencent" && source.Auth != "alibaba" {
+		headers := make(map[string]string)
+		for _, values := range []map[string]string{provider.Headers, resource.Headers, source.Headers} {
+			for name, value := range values {
+				headers[name] = value
+			}
+		}
+		source.Headers = headers
 	}
 	store := s.store.(*GormStore)
 	key := resource.APIKey
@@ -39,6 +51,15 @@ func (s *Server) queryConfiguredAllowance(ctx context.Context, cfg providerAllow
 	if err != nil {
 		return quotasource.Result{}, err
 	}
+	if source.Auth == "tencent" && source.PlanID == "" {
+		detailCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		body = quotasource.CompleteTencentPlanList(body, func(teamID string) ([]byte, error) {
+			detail := source
+			detail.PlanID = teamID
+			return s.fetchAllowanceBody(detailCtx, detail, token)
+		})
+	}
 	if source.Preset == "mistral" {
 		who := source
 		who.URL, who.Method = "https://console.mistral.ai/api/vibe/whoami", "GET"
@@ -53,7 +74,10 @@ func (s *Server) queryConfiguredAllowance(ctx context.Context, cfg providerAllow
 		kind, _ := value.(string)
 		return quotasource.ParseMistral(body, kind, time.Now().UTC())
 	}
-	return quotasource.ParsePlan(body, source, time.Now().UTC())
+	result, err := quotasource.ParsePlan(body, source, time.Now().UTC())
+	result.QueryURL = cfg.Source.URL
+	result.QueryExpression = source.Expression
+	return result, err
 }
 
 // Preview uses the current form and saved encrypted credentials, without changing

@@ -43,7 +43,7 @@ func (s *GormStore) withWalletObservations(ctx context.Context, id string, a all
 		}
 		shared := allowance.Read([]byte(observation.QuotaSnapshot), *observation.QuotaFetchedAt)
 		if targetConfig.Policy.Wallet.Enabled {
-			shared, err = s.withManualAllowance(ctx, target.ID, shared, targetConfig.Policy.Wallet, now)
+			shared, err = s.withLocalAllowance(ctx, target.ID, shared, targetConfig.Policy, now)
 			if err != nil {
 				return a, err
 			}

@@ -110,6 +110,12 @@ func (s *GormStore) saveProviderAllowanceConfig(ctx context.Context, id string, 
 			if req.Revision != current.Revision {
 				return NewHTTPError(http.StatusConflict, "allowance_config_changed", "Allowance configuration changed; reload before saving")
 			}
+			if c := req.Policy.SpendCap; c != nil && c.Period == "total" && c.Since.IsZero() {
+				c.Since = time.Now().UTC()
+				if old := current.Policy.SpendCap; old != nil && old.Period == "total" && !old.Since.IsZero() {
+					c.Since = old.Since
+				}
+			}
 			if req.Token == "" && !req.ClearToken {
 				req.Token = current.Token
 			}

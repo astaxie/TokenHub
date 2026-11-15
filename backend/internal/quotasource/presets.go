@@ -21,6 +21,8 @@ func Presets() []Preset {
 		{"moonshot-cn", "Moonshot China", Config{URL: "https://api.moonshot.cn/v1/users/me/balance", Auth: "bearer", Expression: "¥data.available_balance"}},
 		{"moonshot", "Moonshot", Config{URL: "https://api.moonshot.ai/v1/users/me/balance", Auth: "bearer", Expression: "$data.available_balance"}},
 		{"openrouter", "OpenRouter", Config{URL: "https://openrouter.ai/api/v1/credits", Auth: "bearer", Expression: "$(data.total_credits - data.total_usage)"}},
+		{"siliconflow-cn", "SiliconFlow China", Config{URL: "https://api.siliconflow.cn/v1/user/info", Auth: "bearer", Expression: "¥data.totalBalance"}},
+		{"siliconflow", "SiliconFlow", Config{URL: "https://api.siliconflow.com/v1/user/info", Auth: "bearer", Expression: "$data.totalBalance"}},
 		{"stepfun-cn", "StepFun China", Config{URL: "https://api.stepfun.com/v1/accounts", Auth: "bearer", Expression: "¥balance"}},
 		{"stepfun", "StepFun", Config{URL: "https://api.stepfun.ai/v1/accounts", Auth: "bearer", Expression: "$balance"}},
 		{"aihubmix", "AiHubMix key", Config{URL: "https://aihubmix.com/dashboard/billing/remain", Auth: "bearer", Expression: "$total_usage"}},
