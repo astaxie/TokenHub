@@ -228,8 +228,8 @@ func TestStreamFailureReportsAttemptsWhenAllCandidatesFail(t *testing.T) {
 // burns the next account's quota for a response nobody will read.
 //
 // Asserted at the classification layer rather than by driving a real disconnect:
-// an end-to-end version deadlocks because httptest's Close waits for the upstream
-// handler, which in turn waits for a cancellation that may never reach it.
+// live-caller cancellation must remain conservative even without proof of a
+// disconnect. The synchronized handler regression covers confirmed departure.
 func TestClientCancellationIsNotRetryable(t *testing.T) {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -254,6 +254,10 @@ func TestClientCancellationIsNotRetryable(t *testing.T) {
 			}
 			if shouldFailoverRoutedError(classified, false) {
 				t.Fatal("client cancellation must never fail over to another account")
+			}
+			normalized := AsHTTPError(classifyCallerCancellation(testCase.ctx, testCase.ctx, classified))
+			if normalized.Status != 500 || normalized.Code != "internal_error" {
+				t.Fatalf("unconfirmed cancellation must remain actionable: %+v", normalized)
 			}
 		})
 	}

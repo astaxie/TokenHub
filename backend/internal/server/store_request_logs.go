@@ -52,7 +52,7 @@ func (s *GormStore) QueryRequestLogs(query RequestLogQuery) (RequestLogPage, err
 	if err := summaryQuery.Select(
 		"COUNT(*) AS all_count, " +
 			"COALESCE(SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END), 0) AS ok_count, " +
-			"COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS error_count, " +
+			"COALESCE(SUM(CASE WHEN " + operationalErrorSQL("") + " THEN 1 ELSE 0 END), 0) AS error_count, " +
 			"COALESCE(AVG(latency_ms), 0) AS average_latency",
 	).Scan(&summaryRow).Error; err != nil {
 		return RequestLogPage{}, err
@@ -158,7 +158,7 @@ func applyRequestLogStatus(db *gorm.DB, status string) *gorm.DB {
 	case "ok":
 		return db.Where("status_code < 400")
 	case "error":
-		return db.Where("status_code >= 400")
+		return db.Where(operationalErrorSQL(""))
 	default:
 		return db
 	}

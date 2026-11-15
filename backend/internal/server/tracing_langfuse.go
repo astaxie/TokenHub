@@ -132,7 +132,7 @@ func (e *otlpTraceEmitter) record(completion GatewayCallCompletion) {
 	rootAttributes := append([]attribute.KeyValue{}, shared...)
 	rootAttributes = append(rootAttributes,
 		attribute.String(attrObservationType, observationTypeSpan),
-		attribute.String(attrObservationLevel, observationLevel(completion.StatusCode)),
+		attribute.String(attrObservationLevel, observationLevel(completion.StatusCode, completion.ErrorCode)),
 		attribute.Int("http.response.status_code", completion.StatusCode),
 	)
 	rootAttributes = appendStringAttribute(rootAttributes, "error.type", completion.ErrorCode)
@@ -151,7 +151,7 @@ func (e *otlpTraceEmitter) record(completion GatewayCallCompletion) {
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(rootAttributes...),
 	)
-	if completion.StatusCode >= 400 {
+	if isOperationalError(completion.StatusCode, completion.ErrorCode) {
 		root.SetStatus(codes.Error, completion.ErrorCode)
 	}
 
@@ -189,7 +189,7 @@ func (e *otlpTraceEmitter) recordAttempt(ctx context.Context, completion Gateway
 	attributes := append([]attribute.KeyValue{}, shared...)
 	attributes = append(attributes,
 		attribute.String(attrObservationType, observationTypeGeneration),
-		attribute.String(attrObservationLevel, observationLevel(attempt.Status)),
+		attribute.String(attrObservationLevel, observationLevel(attempt.Status, attempt.ErrorCode)),
 		attribute.Int("gateway.attempt", index+1),
 		attribute.Int("http.response.status_code", attempt.Status),
 	)
@@ -221,7 +221,7 @@ func (e *otlpTraceEmitter) recordAttempt(ctx context.Context, completion Gateway
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(attributes...),
 	)
-	if attempt.Status >= 400 {
+	if isOperationalError(attempt.Status, attempt.ErrorCode) {
 		span.SetStatus(codes.Error, attempt.ErrorCode)
 	}
 	span.End(trace.WithTimestamp(endedAt))
@@ -300,8 +300,8 @@ func traceTags(completion GatewayCallCompletion) []string {
 	return tags
 }
 
-func observationLevel(statusCode int) string {
-	if statusCode >= 400 {
+func observationLevel(statusCode int, errorCode string) string {
+	if isOperationalError(statusCode, errorCode) {
 		return observationLevelError
 	}
 	return observationLevelDefault
