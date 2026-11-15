@@ -19,6 +19,17 @@ Expression: $remaining; Week: subscription.weekly_usage_usd / subscription.weekl
 
 认证可使用账号密钥、独立加密令牌或加密请求头。URL 和请求头中的 `{key}` 在运行时替换为密钥。读取接口遮盖已保存的请求头值。重命名已保存的请求头后，必须重新输入值。独立令牌留空会保留，勾选删除才会移除。请求沿用网关已有的 URL、DNS、跳转和代理限制。云签名只发送到固定控制面域名。阿里控制台令牌加密缓存二十分钟。
 
+### 从 Magpie 迁移余额配置
+
+配置页使用与 Magpie 相同的“余额查询地址”“余额字段”“账户余额”和 GET/POST 控件。“查询余额”按当前表单查询，无需先保存；结果保留币种符号、标签、百分比和缺失字段的 `—`，不会写入额度缓存、历史或权益记录。保存后再刷新，才会更新调度读取的额度。
+
+可展开“导入 Magpie 余额配置”，粘贴一个供应商的原始 JSON。`balanceURL`、`balancePath`、`balanceMethod`、`balanceToken`、`headers` 分别映射到地址、字段、方法、账户令牌和请求头。导入不会修改 API Key、路由或使用策略；未提供账户令牌时会清除目标账号原有的独立额度令牌。已遮盖的令牌对象和请求头不能导入。
+
+导入自动选择“沿用 Magpie 认证”。手动迁移时也可选择它：API Key 默认以 Bearer 发送；独立账户令牌保留原认证前缀，JWT 自动加 Bearer，其他令牌原样发送。`{key}`、`{apiKey}`、`{api_key}`、`{API_KEY}`、`{token}`、`{{key}}`、`${API_KEY}` 均指 API Key，不指账户令牌。POST 默认无请求体。
+
+已知面板地址的余额字段可留空：`/v1/usage` 使用 `$remaining`，`/api/usage/token` 使用 `$data.total_available / 500000`，`/api/user/self` 使用 `$data.quota / 500000`，`/api/v1/user/profile` 使用 `$data.balance`，`/dashboard/billing/credit_grants` 使用 `$total_available`。没有独立账户令牌和自定义 Authorization/Cookie 时，两个账户地址分别改查对应的密钥地址；保存的地址不变。密钥地址拒绝账户令牌。查询仍遵守 TokenHub 的权限、超时、响应大小和 URL 安全限制；不会自动探测未配置的地址。此入口迁移余额配置，不是 Magpie 整份配置文件导入。
+
+
 ## 使用与权益策略
 
 模型选择和账号选择分别配置。账号策略只能在当前项目和密钥获准的路由、模型及优先级内排序或停用候选。四种策略是额度智能、到期优先、最少使用、用完再换。默认保留原有顺序。

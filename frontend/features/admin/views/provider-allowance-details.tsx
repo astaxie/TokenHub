@@ -52,6 +52,14 @@ export function AllowanceWindows({ entry }: { entry: AllowanceEntry }) {
               : tx("请求仅读取缓存，后台定期刷新。")}
         </p>
       </div>
+      {entry.balance_parts?.length ? (
+        <p className="allowance-balance-result" aria-label={tx("余额查询结果")}>
+          {tx("余额")}{" "}
+          {entry.balance_parts
+            .map((part) => [part.label, part.text].filter(Boolean).join(" "))
+            .join(" · ")}
+        </p>
+      ) : null}
       <dl className="allowance-metadata">
         <div>
           <dt>{tx("最近成功采集")}</dt>

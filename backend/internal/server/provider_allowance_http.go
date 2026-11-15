@@ -18,6 +18,7 @@ func (s *Server) registerProviderAllowanceRoutes() {
 	}
 	s.registerMethodRoutes("/api/admin/provider-resources/{resource_id}/allowance/config", func(methods string) http.HandlerFunc { return s.adminMethodNotAllowed("provider", methods) }, methodRoute{Method: http.MethodGet, Handler: s.handleProviderAllowanceRead}, methodRoute{Method: http.MethodPut, Handler: s.handleProviderAllowanceConfigPut})
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/allowance/refresh", s.handleProviderAllowanceRefreshPost, s.adminMethodNotAllowed("provider", http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/provider-resources/{resource_id}/allowance/preview", s.handleProviderAllowancePreviewPost, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/provider-allowances", s.handleProviderAllowancesGet, s.adminMethodNotAllowed("provider", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/provider-allowances/presets", s.handleProviderAllowancePresetsGet, s.adminMethodNotAllowed("provider", http.MethodGet))
 }
@@ -49,15 +50,16 @@ func (s *Server) allowanceHTTPStore(w http.ResponseWriter, r *http.Request) (*Go
 }
 
 type providerAllowanceEntry struct {
-	ResourceID   string                  `json:"resource_id"`
-	ResourceName string                  `json:"resource_name"`
-	ProviderID   string                  `json:"provider_id"`
-	ProviderName string                  `json:"provider_name"`
-	ProviderType string                  `json:"provider_type"`
-	Status       allowance.Status        `json:"status"`
-	Allowance    allowance.Snapshot      `json:"allowance"`
-	Config       providerAllowanceConfig `json:"config"`
-	Estimated    bool                    `json:"estimated"`
+	ResourceID   string                    `json:"resource_id"`
+	ResourceName string                    `json:"resource_name"`
+	ProviderID   string                    `json:"provider_id"`
+	ProviderName string                    `json:"provider_name"`
+	ProviderType string                    `json:"provider_type"`
+	Status       allowance.Status          `json:"status"`
+	Allowance    allowance.Snapshot        `json:"allowance"`
+	Config       providerAllowanceConfig   `json:"config"`
+	Estimated    bool                      `json:"estimated"`
+	BalanceParts []quotasource.BalancePart `json:"balance_parts,omitempty"`
 }
 
 func (s *Server) handleProviderAllowancesGet(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +79,9 @@ func (s *Server) handleProviderAllowancesGet(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		a := allowance.Snapshot{Version: allowance.Version, Status: allowance.Unknown}
+		var collected quotasource.Result
 		if observation, found := s.store.GetProviderResourceObservation(resource.ID); found {
+			_ = json.Unmarshal([]byte(observation.QuotaSnapshot), &collected)
 			at := time.Time{}
 			if observation.QuotaFetchedAt != nil {
 				at = *observation.QuotaFetchedAt
@@ -94,7 +98,7 @@ func (s *Server) handleProviderAllowancesGet(w http.ResponseWriter, r *http.Requ
 			writeError(w, r, err)
 			return
 		}
-		rows = append(rows, providerAllowanceEntry{ResourceID: resource.ID, ResourceName: resource.Name, ProviderID: provider.ID, ProviderName: provider.Name, ProviderType: provider.Type, Allowance: a, Status: a.For("", time.Now().UTC(), accountAllowanceMaxAge).Status, Config: publicProviderAllowanceConfig(config), Estimated: config.Policy.Wallet.Enabled || a.Source == "manual"})
+		rows = append(rows, providerAllowanceEntry{ResourceID: resource.ID, ResourceName: resource.Name, ProviderID: provider.ID, ProviderName: provider.Name, ProviderType: provider.Type, Allowance: a, Status: a.For("", time.Now().UTC(), accountAllowanceMaxAge).Status, Config: publicProviderAllowanceConfig(config), Estimated: config.Policy.Wallet.Enabled || a.Source == "manual", BalanceParts: collected.Parts})
 	}
 	writeJSON(w, 200, map[string]any{"data": rows})
 }

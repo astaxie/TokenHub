@@ -49,7 +49,8 @@ type WindowRule struct {
 }
 
 func (c Config) Validate() error {
-	if c.Enabled && c.Preset == "" && (c.URL == "" || c.Expression == "" && len(c.Windows) == 0) {
+	hasDefault := c.Auth == "magpie" && DefaultBalanceExpression(c.URL) != ""
+	if c.Enabled && c.Preset == "" && (c.URL == "" || c.Expression == "" && len(c.Windows) == 0 && !hasDefault) {
 		return errors.New("custom quota collection requires an endpoint and reading rules")
 	}
 	for _, path := range []string{c.PlanPath, c.ExpiresPath} {
@@ -68,11 +69,15 @@ func (c Config) Validate() error {
 	if len(c.Windows) > 64 || len(c.Headers) > 32 || len(c.Expression) > MaxExpressionBytes {
 		return errors.New("quota configuration exceeds its size limit")
 	}
-	if c.Method != "" && c.Method != "GET" && c.Method != "POST" {
+	method := c.Method
+	if c.Auth == "magpie" {
+		method = strings.ToUpper(strings.TrimSpace(method))
+	}
+	if method != "" && method != "GET" && method != "POST" {
 		return errors.New("quota method must be GET or POST")
 	}
 	switch c.Auth {
-	case "", "provider", "bearer", "api_key", "raw", "none", "volcengine", "tencent", "alibaba":
+	case "", "provider", "bearer", "api_key", "raw", "none", "magpie", "volcengine", "tencent", "alibaba":
 	default:
 		return errors.New("unknown quota authentication mode")
 	}

@@ -89,11 +89,21 @@ export type AllowanceEntry = {
   allowance: AccountAllowance;
   config: AllowanceConfig;
   estimated: boolean;
+  balance_parts?: AllowanceQueryResult["balance_parts"];
 };
 export type AllowancePreset = {
   id: string;
   name: string;
   config: AllowanceSource;
+};
+export type AllowanceQueryResult = {
+  balance_parts?: Array<{
+    label?: string;
+    text: string;
+    percent?: number;
+    error?: string;
+  }>;
+  allowance: AccountAllowance;
 };
 export type AllowancePoint = {
   id: string;

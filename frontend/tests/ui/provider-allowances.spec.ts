@@ -12,6 +12,43 @@ async function positionSegment(target: Locator) {
 }
 
 for (const mobile of [false, true]) {
+  test(`Magpie balance migration ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    installAllowances(api);
+    let failure = false;
+    api.define("POST", "/api/admin/provider-resources/quota-account-0/allowance/preview", () => failure
+      ? { status: 502, json: { error: { message: "Synthetic balance refusal" } } }
+      : { json: { allowance: { version: 1, status: "exhausted" }, balance_parts: [{ text: "$0.00" }, { label: "周", text: "100.7%" }, { label: "月", text: "25.2%" }] } });
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "额度与权益", exact: true }).click();
+    const console = page.getByRole("region", { name: "额度与权益", exact: true });
+    await console.getByRole("button", { name: /Synthetic Fusecode/ }).click();
+    await console.getByRole("tab", { name: "采集与权益策略", exact: true }).click();
+    await console.getByText("导入 Magpie 余额配置", { exact: true }).click();
+    const expression = "$remaining; 周: subscription.weekly_usage_usd / subscription.weekly_limit_usd %; 月: subscription.monthly_usage_usd / subscription.monthly_limit_usd %";
+    await console.getByLabel("Magpie 供应商 JSON", { exact: true }).fill(JSON.stringify({ balanceURL: "https://fusecode.ai/v1/usage", balancePath: expression, balanceMethod: "POST" }));
+    await console.getByRole("button", { name: "填入余额配置", exact: true }).click();
+    await expect(console.getByRole("textbox", { name: "余额字段", exact: true })).toHaveValue(expression);
+    await expect(console.getByRole("button", { name: "POST", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await console.getByText("导入 Magpie 余额配置", { exact: true }).click();
+    await console.getByRole("button", { name: "查询余额", exact: true }).click();
+    await expect(console.getByLabel("余额查询结果", { exact: true })).toHaveText("余额 $0.00 · 周 100.7% · 月 25.2%");
+    expect(api.calls.find((call) => call.path.endsWith("/preview"))?.body).toMatchObject({ clear_token: true, source: { enabled: true, auth: "magpie", expression, method: "POST", url: "https://fusecode.ai/v1/usage", headers: {} } });
+    expect(api.calls.filter((call) => call.method === "PUT")).toHaveLength(0);
+    await positionSegment(console.getByRole("region", { name: "余额配置", exact: true }));
+    await capture(page, testInfo, console, `magpie-balance-${mobile ? "mobile" : "desktop"}`, "Magpie 余额配置与保存前查询", "viewport");
+    failure = true;
+    await console.getByRole("textbox", { name: "余额字段", exact: true }).fill("$remaining; Missing: absent");
+    await expect(console.getByLabel("余额查询结果", { exact: true })).toHaveCount(0);
+    await console.getByRole("button", { name: "查询余额", exact: true }).click();
+    await expect(console.getByRole("alert")).toHaveText("Synthetic balance refusal");
+    await expect(console.getByRole("textbox", { name: "余额字段", exact: true })).toHaveValue("$remaining; Missing: absent");
+    await positionSegment(console.getByRole("region", { name: "余额配置", exact: true }));
+    await capture(page, testInfo, console, `magpie-balance-failure-${mobile ? "mobile" : "desktop"}`, "余额查询失败保留表单", "viewport");
+  });
+}
+
+for (const mobile of [false, true]) {
   test(`provider allowances complete console ${mobile ? "mobile" : "desktop"}`, async ({
     page,
     api,
@@ -95,7 +132,7 @@ for (const mobile of [false, true]) {
       .getByRole("tab", { name: "采集与权益策略", exact: true })
       .click();
     await expect(
-      console.getByRole("textbox", { name: "余额表达式", exact: true }).first(),
+      console.getByRole("textbox", { name: "余额字段", exact: true }).first(),
     ).toHaveValue(/\$remaining/);
     await positionSegment(
       console.getByRole("combobox", { name: "额度预设", exact: true }),
@@ -109,7 +146,7 @@ for (const mobile of [false, true]) {
       "viewport",
     );
     await positionSegment(
-      console.getByRole("textbox", { name: "余额表达式", exact: true }).first(),
+      console.getByRole("textbox", { name: "余额字段", exact: true }).first(),
     );
     await capture(
       page,
@@ -256,7 +293,7 @@ test("provider allowances save conflict retains form", async ({
     .getByRole("tab", { name: "采集与权益策略", exact: true })
     .click();
   await console
-    .getByRole("textbox", { name: "余额表达式", exact: true })
+    .getByRole("textbox", { name: "余额字段", exact: true })
     .first()
     .fill("$data.balance");
   await console
@@ -266,7 +303,7 @@ test("provider allowances save conflict retains form", async ({
     "Synthetic configuration changed",
   );
   await expect(
-    console.getByRole("textbox", { name: "余额表达式", exact: true }).first(),
+    console.getByRole("textbox", { name: "余额字段", exact: true }).first(),
   ).toHaveValue("$data.balance");
   await capture(
     page,
@@ -311,7 +348,7 @@ for (const mobile of [false, true]) {
       .getByRole("textbox", { name: "套餐 TeamId", exact: true })
       .fill("synthetic-team");
     await console
-      .getByLabel("独立额度令牌", { exact: true })
+      .getByLabel("账户余额", { exact: true })
       .fill("synthetic-cloud-secret");
     const mode = mobile ? "mobile" : "desktop";
     await positionSegment(

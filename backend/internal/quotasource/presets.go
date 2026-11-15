@@ -53,6 +53,12 @@ func Presets() []Preset {
 
 // Resolve fills defaults while retaining administrator overrides and relay URLs.
 func Resolve(c Config, base string) (Config, error) {
+	if c.Auth == "magpie" {
+		c.Method = strings.ToUpper(strings.TrimSpace(c.Method))
+		if c.Expression == "" && len(c.Windows) == 0 {
+			c.Expression = DefaultBalanceExpression(c.URL)
+		}
+	}
 	if c.Preset == "" {
 		return c, c.Validate()
 	}

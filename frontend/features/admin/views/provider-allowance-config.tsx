@@ -5,6 +5,7 @@ import type {
   AllowanceConfig,
   AllowanceEntry,
   AllowancePreset,
+  AllowanceQueryResult,
 } from "../core/provider-allowance";
 import { allowanceFieldRows } from "../core/provider-allowance-rows";
 import { tx } from "../i18n/runtime";
@@ -27,9 +28,12 @@ export function ProviderAllowanceConfigForm({
   onSaved: () => Promise<void>;
   readOnly?: boolean;
 }) {
-  const [draft, setDraft] = useState<AllowanceConfig>(() =>
-    structuredClone(entry.config),
-  );
+  const [draft, setDraft] = useState<AllowanceConfig>(() => {
+    const config = structuredClone(entry.config);
+    if (!config.revision && !config.source.auth && !config.source.preset)
+      config.source.auth = "magpie";
+    return config;
+  });
   const [headers, setHeaders] = useState(() =>
     allowanceFieldRows(draft.source.headers),
   );
@@ -38,6 +42,56 @@ export function ProviderAllowanceConfigForm({
   );
   const [tab, setTab] = useState<"source" | "policy">("source");
   const [saving, setSaving] = useState(false);
+  const [querying, setQuerying] = useState(false);
+  const [queryResult, setQueryResult] = useState<AllowanceQueryResult>();
+  const [queryError, setQueryError] = useState("");
+  function changeDraft(value: AllowanceConfig) {
+    setDraft(value);
+    setQueryResult(undefined);
+    setQueryError("");
+    setSaved(false);
+  }
+  async function query() {
+    if (readOnly || querying || saving) return;
+    setQuerying(true);
+    setQueryResult(undefined);
+    setQueryError("");
+    try {
+      if (
+        headers.some(
+          (row) =>
+            row.name !== row.originalName &&
+            (row.value === "[redacted]" || !row.value.trim()),
+        )
+      )
+        throw new Error(tx("重命名已保存的请求头后，请重新输入值。"));
+      const response = await adminFetch(
+        api,
+        `/api/admin/provider-resources/${encodeURIComponent(entry.resource_id)}/allowance/preview`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...draft,
+            source: {
+              ...draft.source,
+              headers: Object.fromEntries(
+                headers.map((row) => [row.name, row.value]),
+              ),
+            },
+          }),
+        },
+      );
+      if (!response.ok)
+        throw new Error(await readAdminError(response, tx("余额查询失败")));
+      setQueryResult(await response.json());
+    } catch (cause) {
+      setQueryError(
+        cause instanceof Error ? cause.message : tx("余额查询失败"),
+      );
+    } finally {
+      setQuerying(false);
+    }
+  }
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [channels, setChannels] = useState<AdminResource[]>([]);
@@ -64,20 +118,23 @@ export function ProviderAllowanceConfigForm({
   }, [api, tab]);
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (readOnly) return;
+    if (readOnly || querying) return;
     setSaving(true);
     setError("");
     setSaved(false);
     try {
-      const capEntries = caps.map((row) =>
-        [row.name.trim().toLowerCase(), row.value] as const,
+      const capEntries = caps.map(
+        (row) => [row.name.trim().toLowerCase(), row.value] as const,
       );
       if (new Set(capEntries.map(([name]) => name)).size !== caps.length)
         throw new Error(tx("窗口名称不能重复。"));
-      if (headers.some((row) =>
-        row.name !== row.originalName &&
-        (row.value === "[redacted]" || !row.value.trim()),
-      ))
+      if (
+        headers.some(
+          (row) =>
+            row.name !== row.originalName &&
+            (row.value === "[redacted]" || !row.value.trim()),
+        )
+      )
         throw new Error(tx("重命名已保存的请求头后，请重新输入值。"));
       const response = await adminFetch(
         api,
@@ -146,15 +203,26 @@ export function ProviderAllowanceConfigForm({
           {tx("使用与权益")}
         </button>
       </div>
-      <fieldset disabled={readOnly} className="allowance-fields">
+      <fieldset
+        disabled={readOnly || querying || saving}
+        className="allowance-fields"
+      >
         {tab === "source" ? (
           <AllowanceSourceFields
             draft={draft}
             entries={entries}
             presets={presets}
-            onChange={setDraft}
+            onChange={changeDraft}
             headers={headers}
-            onHeadersChange={setHeaders}
+            onHeadersChange={(rows) => {
+              setHeaders(rows);
+              setQueryResult(undefined);
+              setQueryError("");
+            }}
+            onQuery={() => void query()}
+            querying={querying}
+            result={queryResult}
+            queryError={queryError}
           />
         ) : (
           <AllowancePolicyFields
@@ -174,7 +242,11 @@ export function ProviderAllowanceConfigForm({
       {saved ? <p role="status">{tx("额度配置已保存")}</p> : null}
       {!readOnly ? (
         <div className="allowance-save">
-          <button className="primary" type="submit" disabled={saving}>
+          <button
+            className="primary"
+            type="submit"
+            disabled={saving || querying}
+          >
             {saving ? tx("保存中…") : tx("保存额度配置")}
           </button>
           <small>

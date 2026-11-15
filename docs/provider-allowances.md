@@ -19,6 +19,17 @@ The expression reader supports labeled parts, currencies, percentages, arithmeti
 
 Use the account key, a separate encrypted quota token, or encrypted custom headers. `{key}` substitutes the runtime key in an endpoint or header. Saved header values are redacted in read APIs. Renaming a saved header requires re-entering its value; leaving the separate token blank retains it. Explicitly select its removal to delete it. Outbound requests use the gateway's existing URL, DNS, redirect and proxy guards. Cloud signing uses fixed control-plane hosts. Alibaba console tokens are encrypted and cached for twenty minutes.
 
+### Migrate Magpie balance settings
+
+The form uses Magpie's Balance URL, Balance field, Account balance and GET/POST controls. Check balance queries the current form before saving. It preserves currency symbols, labels, percentages and `—` for missing fields without writing quota caches, history or entitlement records. Save and refresh to update the readings used by routing.
+
+Expand Import Magpie balance settings and paste one provider's original JSON object. `balanceURL`, `balancePath`, `balanceMethod`, `balanceToken` and `headers` map to the URL, field, method, account token and headers. Import leaves the API key, routes and usage policies unchanged. An omitted account token clears the target account's previous separate quota token. Masked token objects and headers are rejected.
+
+Import selects Use Magpie authentication; select it for a manual migration too. API keys default to Bearer. Account tokens keep an explicit scheme, JWTs receive Bearer, and opaque tokens are sent verbatim. `{key}`, `{apiKey}`, `{api_key}`, `{API_KEY}`, `{token}`, `{{key}}` and `${API_KEY}` all name the API key, not the account token. POST has no body by default.
+
+Known panel URLs allow an empty balance field: `/v1/usage` uses `$remaining`, `/api/usage/token` uses `$data.total_available / 500000`, `/api/user/self` uses `$data.quota / 500000`, `/api/v1/user/profile` uses `$data.balance`, and `/dashboard/billing/credit_grants` uses `$total_available`. Without an account token or explicit Authorization/Cookie header, the two account URLs query their corresponding key URLs without changing the saved URL. Key URLs reject account tokens. Queries retain TokenHub authorization, timeout, response-size and URL security limits. Unconfigured URLs are not probed. This imports balance settings, not a complete Magpie configuration file.
+
+
 ## Usage and entitlement policies
 
 Model routing and account routing remain separate. Account policies only reorder or hold candidates already authorized for the current project/key, route, model and priority tier. The four strategies are quota smart, expiry first, least used and until exhausted. The default keeps the established order.

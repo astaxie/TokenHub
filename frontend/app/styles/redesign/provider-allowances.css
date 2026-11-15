@@ -485,3 +485,75 @@
 .allowance-fields:disabled {
   opacity: 0.75;
 }
+.allowance-balance {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0 24px;
+}
+.allowance-balance-row {
+  display: grid;
+  grid-template-columns: 95px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.allowance-balance-pair,
+.allowance-method {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.allowance-balance-pair input {
+  flex: 1;
+}
+.allowance-balance-pair > button,
+.allowance-method {
+  flex: none;
+}
+.allowance-method {
+  gap: 0;
+  border-radius: 7px;
+  background: var(--surface-soft);
+  padding: 3px;
+}
+.allowance-method button {
+  border: 0;
+  border-radius: 5px;
+  padding: 7px 9px;
+  background: transparent;
+  color: var(--muted);
+}
+.allowance-method button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+}
+.allowance-balance-result {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.allowance-balance small,
+.allowance-balance details {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.allowance-balance details > * + * {
+  margin-top: 10px;
+}
+.allowance-balance code {
+  display: block;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 500px) {
+  .allowance-balance-row {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+  .allowance-balance-pair {
+    flex-wrap: wrap;
+  }
+  .allowance-balance-pair input[type="url"] {
+    flex-basis: 100%;
+    order: -1;
+  }
+}

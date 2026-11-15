@@ -6,9 +6,11 @@ import type {
   AllowanceConfig,
   AllowanceEntry,
   AllowancePreset,
+  AllowanceQueryResult,
   AllowanceSource,
   AllowanceWindowRule,
 } from "../core/provider-allowance";
+import { AllowanceBalanceFields } from "./provider-allowance-balance";
 import { tx } from "../i18n/runtime";
 
 export function AllowanceSourceFields({
@@ -18,8 +20,16 @@ export function AllowanceSourceFields({
   onChange,
   headers,
   onHeadersChange,
+  onQuery,
+  querying,
+  result,
+  queryError,
 }: {
   draft: AllowanceConfig;
+  onQuery: () => void;
+  querying: boolean;
+  result?: AllowanceQueryResult;
+  queryError: string;
   headers: AllowanceFieldRow<string>[];
   onHeadersChange: (rows: AllowanceFieldRow<string>[]) => void;
   entries: AllowanceEntry[];
@@ -49,6 +59,18 @@ export function AllowanceSourceFields({
       <p className="muted">
         {tx("关闭时使用订阅适配器的额度查询。API Key 可单独配置余额接口。")}
       </p>
+      <AllowanceBalanceFields
+        draft={draft}
+        onChange={(value) => {
+          if (value.source.headers !== draft.source.headers)
+            onHeadersChange(allowanceFieldRows(value.source.headers));
+          onChange(value);
+        }}
+        onQuery={onQuery}
+        querying={querying}
+        result={result}
+        queryError={queryError}
+      />
       <div className="allowance-form-grid">
         <label>
           {tx("额度预设")}
@@ -96,31 +118,13 @@ export function AllowanceSourceFields({
             }
           />
         </label>
-        <label className="wide">
-          {tx("额度接口 URL")}
-          <input
-            type="url"
-            value={source.url ?? ""}
-            onChange={(event) => set({ url: event.target.value })}
-            placeholder="https://provider.example/v1/usage"
-          />
-        </label>
-        <label>
-          {tx("请求方法")}
-          <select
-            value={source.method || "GET"}
-            onChange={(event) => set({ method: event.target.value })}
-          >
-            <option>GET</option>
-            <option>POST</option>
-          </select>
-        </label>
         <label>
           {tx("认证方式")}
           <select
             value={source.auth || "provider"}
             onChange={(event) => set({ auth: event.target.value })}
           >
+            <option value="magpie">{tx("沿用 Magpie 认证")}</option>
             <option value="provider">{tx("使用账号密钥")}</option>
             <option value="bearer">Bearer</option>
             <option value="api_key">x-api-key</option>
@@ -159,32 +163,6 @@ export function AllowanceSourceFields({
           </>
         ) : null}
         <label className="wide">
-          {tx("独立额度令牌")}
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={draft.token ?? ""}
-            onChange={(event) =>
-              onChange({ ...draft, token: event.target.value })
-            }
-            placeholder={
-              draft.has_token ? tx("已保存，留空保留") : tx("留空使用账号密钥")
-            }
-          />
-        </label>
-        {draft.has_token ? (
-          <label className="allowance-check">
-            <input
-              type="checkbox"
-              checked={draft.clear_token ?? false}
-              onChange={(event) =>
-                onChange({ ...draft, clear_token: event.target.checked })
-              }
-            />
-            {tx("删除独立额度令牌")}
-          </label>
-        ) : null}
-        <label className="wide">
           {tx("额度请求体")}
           <textarea
             rows={2}
@@ -192,19 +170,6 @@ export function AllowanceSourceFields({
             onChange={(event) => set({ body: event.target.value })}
             placeholder="{}"
           />
-        </label>
-        <label className="wide">
-          {tx("余额表达式")}
-          <textarea
-            aria-label={tx("余额表达式")}
-            rows={3}
-            value={source.expression ?? ""}
-            onChange={(event) => set({ expression: event.target.value })}
-            placeholder="$remaining; Week: subscription.weekly_usage_usd / subscription.weekly_limit_usd %"
-          />
-          <small>
-            {tx("支持 Magpie 的字段路径、计算、筛选、聚合和多段表达式。")}
-          </small>
         </label>
         <label>
           {tx("共享余额账号")}

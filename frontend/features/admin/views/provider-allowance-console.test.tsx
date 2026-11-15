@@ -80,7 +80,7 @@ describe("Provider allowance console", () => {
     );
     const user = userEvent.setup();
     const expression = screen.getAllByRole("textbox", {
-      name: "余额表达式",
+      name: "余额字段",
     })[0];
     await user.clear(expression);
     await user.type(expression, "$data.balance");

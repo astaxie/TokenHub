@@ -68,41 +68,8 @@ func (s *Server) refreshConfiguredAllowance(ctx context.Context, resource Provid
 				}
 			}
 		}
-		source, err := quotasource.Resolve(cfg.Source, firstNonEmpty(current.BaseURL, provider.BaseURL))
-		if err != nil {
-			return NewHTTPError(400, "invalid_allowance_source", "Quota source configuration is invalid")
-		}
 		started := time.Now().UTC()
-		token := cfg.Token
-		if token == "" {
-			token = current.APIKey
-			if token == "" {
-				token = store.providerResourceCredentialsForRuntime(current).AccessToken
-			}
-		}
-		if token == "" {
-			token = provider.APIKey
-		}
-		body, err := s.fetchConfiguredAllowanceBody(ctx, source, token, resource.ID, cfg.Revision)
-		if err == nil {
-			if source.Preset == "mistral" {
-				who := source
-				who.URL = "https://console.mistral.ai/api/vibe/whoami"
-				who.Method = "GET"
-				var identity []byte
-				identity, err = s.fetchAllowanceBody(ctx, who, token)
-				if err == nil {
-					var v any
-					v, err = quotasource.ReadValue(identity, "plan_type")
-					kind, _ := v.(string)
-					if err == nil {
-						out, err = quotasource.ParseMistral(body, kind, time.Now().UTC())
-					}
-				}
-			} else {
-				out, err = quotasource.ParsePlan(body, source, time.Now().UTC())
-			}
-		}
+		out, err = s.queryConfiguredAllowance(ctx, cfg, current, provider, false)
 		if err != nil {
 			s.store.RecordProviderObservation(ProviderObservation{ProviderID: provider.ID, ResourceID: resource.ID, AdapterType: provider.Type, Source: "quota", Operation: "quota", Success: false, LatencyMS: time.Since(started).Milliseconds(), ErrorCode: "allowance_query_failed"})
 			failure := NewHTTPError(502, "allowance_query_failed", "Quota query failed; the last successful reading is retained")
