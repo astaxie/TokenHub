@@ -51,6 +51,9 @@ type Credits struct {
 }
 
 type Snapshot struct {
+	// Local retains the independent cache age and error state of locally
+	// computed limits. It is attached by readers, never persisted as vendor data.
+	Local     *Snapshot     `json:"-"`
 	Version   int           `json:"version"`
 	Plan      string        `json:"plan,omitempty"`
 	Source    string        `json:"source,omitempty"`

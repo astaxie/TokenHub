@@ -111,6 +111,8 @@ test("allowance edits preserve caps and saved header credentials through the rea
   await console
     .getByRole("button", { name: "使用与权益", exact: true })
     .click();
+  await console.getByLabel("余额与开销时区", { exact: true }).fill("America/New_York");
+  await console.getByLabel("限制此 API Key 的开销", { exact: true }).check();
   const names = console.getByLabel("窗口名称", { exact: true });
   await expect(names).toHaveCount(2);
   const weeklyIndex = (
@@ -151,6 +153,8 @@ test("allowance edits preserve caps and saved header credentials through the rea
     daily: { percent: 70 },
     monthly: { percent: 90 },
   });
+  expect(persisted.policy.wallet.timezone).toBe("America/New_York");
+  expect(persisted.policy.spend_cap.timezone).toBe("America/New_York");
   expect(persisted.source.headers).toEqual({
     "X-New": "[redacted]",
     "X-Keep": "[redacted]",

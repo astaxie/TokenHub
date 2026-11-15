@@ -18,11 +18,8 @@ func CarefulNeedsRefresh(s Snapshot, p Policy, model string, now time.Time) bool
 		if !s.WindowApplies(w, model) || w.Unknown || w.LocalLimit {
 			continue
 		}
-		c, own := p.Windows[normalizeWindowName(w.Name)]
-		if !own {
-			c = p.Cap
-		}
-		if w.Informational && !own {
+		c, applies := effectiveWindowCap(w, p)
+		if !applies {
 			continue
 		}
 		if c.Amount > 0 && w.Limit != nil && *w.Limit > 0 {

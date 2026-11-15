@@ -17,13 +17,7 @@ func (s *Server) queryConfiguredAllowance(ctx context.Context, cfg providerAllow
 		return quotasource.Result{}, NewHTTPError(400, "invalid_allowance_source", "Quota source configuration is invalid")
 	}
 	if source.Auth != "volcengine" && source.Auth != "tencent" && source.Auth != "alibaba" {
-		headers := make(map[string]string)
-		for _, values := range []map[string]string{provider.Headers, resource.Headers, source.Headers} {
-			for name, value := range values {
-				headers[name] = value
-			}
-		}
-		source.Headers = headers
+		source.Headers = mergeProviderHeaders(mergeProviderHeaders(provider.Headers, resource.Headers), source.Headers)
 	}
 	store := s.store.(*GormStore)
 	key := resource.APIKey

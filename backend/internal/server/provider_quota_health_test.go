@@ -61,6 +61,7 @@ func TestCachedAllowanceOnlyMarksWholeProviderExhaustedWhenAllAccountsAreKnown(t
 					t.Fatal(err)
 				}
 			}
+			store.RecordProviderObservation(ProviderObservation{ProviderID: p.ID, Source: "gateway_request", ErrorCode: "provider_quota_exhausted", ObservedAt: time.Now().UTC()})
 			snapshots, err := s.providerMonitoringSnapshots(t.Context())
 			if err != nil || len(snapshots) != 1 || (snapshots[0].State == "exhausted") != tc.want || !snapshots[0].Quota.Supported {
 				t.Fatalf("wrong cached quota state: %+v %v", snapshots, err)

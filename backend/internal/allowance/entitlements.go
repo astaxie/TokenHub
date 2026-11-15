@@ -155,6 +155,18 @@ type Decision struct {
 // authorize an automatic reset or be bypassed by purchased credits.
 func Evaluate(s Snapshot, p Policy, model string, now time.Time, maxAge time.Duration) Decision {
 	d := Decision{View: s.For(model, now, maxAge)}
+	local := s
+	if s.Local != nil {
+		local = *s.Local
+	}
+	if local.Version == Version && !local.FetchedAt.IsZero() && !local.FetchedAt.After(now.Add(time.Minute)) && (maxAge <= 0 || now.Sub(local.FetchedAt) <= maxAge) && local.Status != QueryError && local.ErrorCode == "" {
+		for _, w := range local.Windows {
+			if w.LocalLimit && local.WindowApplies(w, model) && windowCapReached(w, p, now) {
+				d.Held, d.Reason = true, "usage_cap"
+				return d
+			}
+		}
+	}
 	if CarefulNeedsRefresh(s, p, model, now) {
 		d.Held = true
 		d.Reason = "usage_unknown"
@@ -169,7 +181,7 @@ func Evaluate(s Snapshot, p Policy, model string, now time.Time, maxAge time.Dur
 		return d
 	}
 	for _, w := range s.Windows {
-		if s.WindowApplies(w, model) && windowCapReached(w, p, now) {
+		if !w.LocalLimit && s.WindowApplies(w, model) && windowCapReached(w, p, now) {
 			d.Held = true
 			d.Reason = "usage_cap"
 			return d

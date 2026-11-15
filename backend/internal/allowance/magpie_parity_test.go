@@ -96,3 +96,38 @@ func TestMagpieCarefulThresholds(t *testing.T) {
 		t.Fatal("100% override created a careful hold without any cap")
 	}
 }
+
+func TestCarefulRefreshUsesAccountCapWhenWindowAmountHasNoTotal(t *testing.T) {
+	now := time.Now().UTC()
+	used, amount := 66.0, 6.0
+	s := Snapshot{Version: Version, FetchedAt: now.Add(-20 * time.Second), Windows: []Window{{Name: "Week", UsedPercent: &used, Amount: &amount}}}
+	p := Policy{Cap: Cap{Percent: 70}, Windows: map[string]Cap{"week": {Amount: 10}}, CapCareful: true}
+	if !CarefulNeedsRefresh(s, p, "model", now) {
+		t.Fatal("missing total bypassed account-cap refresh threshold")
+	}
+	s.FetchedAt = now.Add(-14 * time.Second)
+	if CarefulNeedsRefresh(s, p, "model", now) {
+		t.Fatal("fallback bypassed the 15-second cache")
+	}
+}
+
+func TestLocalLimitRequiresItsOwnFreshObservation(t *testing.T) {
+	now := time.Now().UTC()
+	used := 120.0
+	for _, age := range []time.Duration{0, 11 * time.Minute, -2 * time.Minute} {
+		for _, failed := range []bool{false, true} {
+			local := Snapshot{Version: Version, FetchedAt: now.Add(-age), Windows: []Window{{LocalLimit: true, UsedPercent: &used}}}
+			if failed {
+				local.Status, local.ErrorCode = QueryError, "local_compute_failed"
+			}
+			vendor := Snapshot{Version: Version, FetchedAt: now, Local: &local}
+			if got := Evaluate(vendor, Policy{}, "model", now, 10*time.Minute).Held; got != (age == 0 && !failed) {
+				t.Fatalf("local freshness: age=%v failed=%v held=%v", age, failed, got)
+			}
+			local.Local = nil
+			if got := Evaluate(local, Policy{}, "model", now, 10*time.Minute).Held; got != (age == 0 && !failed) {
+				t.Fatalf("standalone local freshness: age=%v failed=%v held=%v", age, failed, got)
+			}
+		}
+	}
+}

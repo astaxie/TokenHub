@@ -5,6 +5,24 @@ import {
 } from "./fixtures/provider-allowances";
 
 for (const mobile of [false, true]) {
+  test(`spend cap keeps the selected wallet timezone ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    installAllowances(api);
+    await page.goto("/providers");
+    await page.getByRole("button", { name: "额度与权益", exact: true }).click();
+    const console = page.getByRole("region", { name: "额度与权益", exact: true });
+    await console.getByRole("button", { name: /Synthetic Fusecode/ }).click();
+    await console.getByRole("tab", { name: "采集与权益策略", exact: true }).click();
+    await console.getByRole("button", { name: "使用与权益", exact: true }).click();
+    await console.getByLabel("余额与开销时区", { exact: true }).fill("America/New_York");
+    await console.getByLabel("限制此 API Key 的开销", { exact: true }).check();
+    await expect(console.getByLabel("余额与开销时区", { exact: true })).toHaveValue("America/New_York");
+    await console.getByText("余额补充", { exact: true }).evaluate((element) => element.scrollIntoView({ block: "start" }));
+    await capture(page, testInfo, console, `spend-cap-timezone-${mobile ? "mobile" : "desktop"}`, "开销上限沿用所选时区", "viewport");
+    await console.getByRole("button", { name: "保存额度配置", exact: true }).click();
+    await expect.poll(() => api.calls.filter((call) => call.method === "PUT").length).toBe(1);
+    expect(api.calls.find((call) => call.method === "PUT")?.body).toMatchObject({ policy: { wallet: { timezone: "America/New_York" }, spend_cap: { timezone: "America/New_York" } } });
+  });
   test(`Magpie native quota migration ${mobile ? "mobile" : "desktop"}`, async ({
     page,
     api,

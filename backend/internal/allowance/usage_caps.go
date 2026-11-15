@@ -27,24 +27,38 @@ func windowCapReached(w Window, p Policy, now time.Time) bool {
 	if w.LocalLimit {
 		return w.UsedPercent != nil && *w.UsedPercent >= 100
 	}
-	cap, own := p.Windows[normalizeWindowName(w.Name)]
-	if !own {
-		cap = p.Cap
-	}
-	if w.Informational && !own {
+	cap, applies := effectiveWindowCap(w, p)
+	if !applies {
 		return false
 	}
 	amount := w.Amount
 	if amount == nil {
 		amount = w.Spent
 	}
-	if cap.Amount > 0 && amount != nil && (w.Limit != nil && *w.Limit > 0 || w.Spent != nil) {
+	if cap.Amount > 0 {
 		return *amount >= cap.Amount
 	}
-	if cap.Amount > 0 {
+	return cap.Percent > 0 && cap.Percent < 100 && w.UsedPercent != nil && *w.UsedPercent >= cap.Percent
+}
+
+// Amount caps without readable spending and a total use the account's percent
+// cap. Hold and careful-refresh decisions must choose the same fallback.
+func effectiveWindowCap(w Window, p Policy) (Cap, bool) {
+	cap, own := p.Windows[normalizeWindowName(w.Name)]
+	if !own {
 		cap = p.Cap
 	}
-	return cap.Percent > 0 && cap.Percent < 100 && w.UsedPercent != nil && *w.UsedPercent >= cap.Percent
+	if w.Informational && !own {
+		return Cap{}, false
+	}
+	amount := w.Amount
+	if amount == nil {
+		amount = w.Spent
+	}
+	if cap.Amount > 0 && (amount == nil || (w.Limit == nil || *w.Limit <= 0) && w.Spent == nil) {
+		cap = Cap{Percent: p.Cap.Percent}
+	}
+	return cap, true
 }
 
 // ResetHeldByCap checks all windows affected by an account reset, including

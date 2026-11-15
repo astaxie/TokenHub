@@ -178,6 +178,11 @@ func aggregateProviderMonitoringState(configuration ProviderMonitoringSignal, re
 			latest = gateway
 		}
 		if latest.State == "exhausted" {
+			if resources.Samples > 0 {
+				// An individual denial cannot prove that every active account is
+				// exhausted. The complete quota projection makes that decision.
+				return "degraded", latest.Source + ":" + firstNonEmpty(latest.ErrorCode, "quota_exhausted")
+			}
 			return "exhausted", latest.Source + ":" + firstNonEmpty(latest.ErrorCode, "quota_exhausted")
 		}
 	}

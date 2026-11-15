@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProviderAllowanceConfigForm } from "./provider-allowance-config";
@@ -53,6 +53,18 @@ async function save(state: ReturnType<typeof setup>) {
 }
 
 describe("Provider allowance form editing", () => {
+  it("uses the selected wallet timezone when enabling a spending cap", async () => {
+    const state = setup();
+    await state.user.click(screen.getByRole("button", { name: "使用与权益" }));
+    const timezone = screen.getByLabelText("余额与开销时区");
+    fireEvent.change(timezone, { target: { value: "America/New_York" } });
+    await state.user.click(screen.getByLabelText("限制此 API Key 的开销"));
+    await state.user.selectOptions(screen.getByLabelText("开销周期"), "month");
+    const payload = await save(state);
+    expect(timezone).toHaveValue("America/New_York");
+    expect(payload.policy.wallet.timezone).toBe("America/New_York");
+    expect(payload.policy.spend_cap.timezone).toBe("America/New_York");
+  });
   it.each(["monthly", "MONTHLY", " MONTHLY "])(
     "rejects duplicate normalized cap name %j without losing either row",
     async (name) => {

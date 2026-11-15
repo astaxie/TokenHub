@@ -166,11 +166,6 @@ func parseCloud(body []byte, c Config, now time.Time) (Result, error) {
 			ws = []QuotaWindow{w}
 		}
 		plan = r.Response.Name
-		if r.Response.Status != "" && !strings.EqualFold(r.Response.Status, "enable") {
-			for i := range ws {
-				ws[i].Used = 100
-			}
-		}
 	case "alibaba":
 		var node map[string]json.RawMessage
 		if json.Unmarshal(body, &node) != nil {

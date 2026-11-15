@@ -3,6 +3,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -85,5 +86,44 @@ func TestProviderAllowancePostgresMultiInstance(t *testing.T) {
 	}
 	if counter.Spent != 30 || counter.PreviousBalance != 190 {
 		t.Fatalf("duplicate, stale, or top-up readings corrupted wallet spending: %+v", counter)
+	}
+}
+
+func TestProviderLocalSpendCapPostgresMultiInstance(t *testing.T) {
+	first, second, _ := openSharedPostgresStores(t)
+	provider := first.AddProvider(Provider{ID: NewID("local-cap-pg"), Name: "Synthetic local cap", Type: ProviderMock, Status: StatusActive})
+	t.Cleanup(func() { _ = first.DeleteProvider(provider.ID) })
+	resource, err := first.AddProviderResource(ProviderResource{ID: NewID("local-cap-pg"), ProviderID: provider.ID, Name: "Synthetic account", Status: StatusActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := first.saveProviderAllowanceConfig(t.Context(), resource.ID, providerAllowanceConfig{Policy: allowance.Policy{SpendCap: &allowance.SpendCap{USD: 10, Period: "total"}, CapStop: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := first.db.Create(&UsageRecord{ID: NewID("usage"), ProviderResourceID: resource.ID, ProviderCostUSD: 12, CreatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := first.refreshManualAllowance(t.Context(), resource.ID, cfg, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, failed := range []bool{false, true} {
+		vendor := allowance.Snapshot{Version: allowance.Version, FetchedAt: now.Add(-11 * time.Minute)}
+		if failed {
+			vendor.Status, vendor.ErrorCode = allowance.QueryError, "allowance_query_failed"
+		}
+		raw, _ := json.Marshal(map[string]any{"allowance": vendor})
+		if err := first.SaveProviderResourceQuota(resource.ID, ProviderMock, string(raw), now); err != nil {
+			t.Fatal(err)
+		}
+		data, _, err := second.loadAccountRoutingData(t.Context(), []string{resource.ID}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry := data[resource.ID]
+		if d := allowance.Evaluate(entry.Allowance, entry.Policy, "model", now, accountAllowanceMaxAge); !d.Held || d.Reason != "usage_cap" {
+			t.Fatalf("shared local cap bypassed: failed=%v decision=%+v", failed, d)
+		}
 	}
 }

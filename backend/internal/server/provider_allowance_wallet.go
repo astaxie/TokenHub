@@ -64,14 +64,16 @@ func (s *GormStore) computeManualAllowance(ctx context.Context, id string, a all
 	}
 	spends := make([]allowance.Spend, 0, len(rows))
 	unknown := false
+	since := now.UTC().Truncate(24 * time.Hour)
+	spentUnknown := false
 	for _, row := range rows {
 		if rate == 0 && row.ProviderCostUSD > 0 {
-			unknown = true
+			unknown = unknown || allowance.WalletSpendAffectsBalance(w, row.CreatedAt, now)
+			spentUnknown = spentUnknown || !row.CreatedAt.Before(since)
 		}
 		spends = append(spends, allowance.Spend{At: row.CreatedAt, Amount: max(0, row.ProviderCostUSD) * rate})
 	}
 	balance := allowance.WalletBalance(w, spends, now)
-	since := now.UTC().Truncate(24 * time.Hour)
 	spent := 0.0
 	for _, record := range spends {
 		if !record.At.Before(since) {
@@ -84,7 +86,7 @@ func (s *GormStore) computeManualAllowance(ctx context.Context, id string, a all
 		a = allowance.Snapshot{Version: allowance.Version, FetchedAt: now, CheckedAt: now, Source: "manual"}
 	}
 	window := allowance.Window{Name: "Manual wallet (estimated)", Unit: w.Unit, Spent: &spent, SpentSince: &since, Unknown: unknown}
-	if unknown {
+	if unknown || spentUnknown {
 		window.Spent = nil
 	}
 	if !unknown {

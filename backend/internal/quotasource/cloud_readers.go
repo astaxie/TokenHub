@@ -166,6 +166,9 @@ func (t tencentPlan) window(now time.Time) (QuotaWindow, bool) {
 	}
 	w := QuotaWindow{Name: "Month", Span: 30 * 24 * time.Hour, Amount: used, Limit: limit, Unit: "credits",
 		Used: max(0, min(100, used/limit*100))}
+	if t.Status != "" && !strings.EqualFold(t.Status, "enable") {
+		w.Used = 100
+	}
 	if strings.EqualFold(t.ProductType, "enterprise-auto") {
 		w.Unit = "tokens"
 	}

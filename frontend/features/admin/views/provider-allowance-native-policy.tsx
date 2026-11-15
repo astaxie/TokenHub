@@ -13,7 +13,10 @@ export function AllowanceNativePolicyFields({
 }) {
   const p = draft.policy,
     w = p.wallet;
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const zone =
+    w.timezone ||
+    p.spend_cap?.timezone ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
   const set = (patch: Partial<AllowancePolicy>) =>
     onChange({ ...draft, policy: { ...p, ...patch } });
   return (

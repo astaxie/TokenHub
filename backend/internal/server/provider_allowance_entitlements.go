@@ -114,8 +114,8 @@ func (s *GormStore) recordAllowanceAlerts(ctx context.Context, resource Provider
 		if p.LowBalance != nil && w.Balance != nil {
 			conditions["allowance_low_balance"] = *w.Balance <= *p.LowBalance
 		}
-		if p.UnusedBeforeResetSeconds > 0 && w.ResetAt != nil && w.UsedPercent != nil && w.PeriodSeconds >= 7*86400 {
-			conditions["allowance_unused_before_reset"] = w.ResetAt.Sub(now) <= time.Duration(p.UnusedBeforeResetSeconds)*time.Second && *w.UsedPercent < 90
+		if p.UnusedBeforeResetSeconds > 0 && w.ResetAt != nil && w.UsedPercent != nil && w.PeriodSeconds >= 86400 {
+			conditions["allowance_unused_before_reset"] = w.ResetAt.Sub(now) <= time.Duration(p.UnusedBeforeResetSeconds)*time.Second && *w.UsedPercent < 85
 		}
 		for kind, active := range conditions {
 			err := s.recordOneAllowanceAlert(ctx, resource, p, allowanceWalletKey(w), w.Name, kind, cycle, active, now)

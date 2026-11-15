@@ -121,6 +121,7 @@ func (s *GormStore) withLocalAllowance(ctx context.Context, id string, a allowan
 			}
 		}
 	}
+	a.Local = &local
 	a.Windows = append(append([]allowance.Window(nil), a.Windows...), local.Windows...)
 	if local.Status == allowance.QueryError {
 		a.Status, a.ErrorCode = allowance.QueryError, local.ErrorCode
