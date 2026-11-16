@@ -123,6 +123,10 @@ export function providerAccountQuotaSecondaryWindow(quota?: ProviderAccountQuota
 
 export function providerAccountQuotaStatusLabel(quota?: ProviderAccountQuota) {
   if (!quota) return "不可用";
+  if (quota.allowance?.status === "query_error") return "查询失败";
+  if (quota.allowance?.status === "unknown") return "额度未知";
+  if (quota.allowance?.status === "exhausted") return "已达上限";
+  if (quota.allowance?.status === "available") return "可用";
   const explicit = quota.status_label?.trim();
   if (explicit === "Quota reported") return "已读取额度";
   if (explicit) return explicit;
@@ -133,11 +137,20 @@ export function providerAccountQuotaStatusLabel(quota?: ProviderAccountQuota) {
 
 export function providerAccountQuotaIsLimited(quota?: ProviderAccountQuota) {
   if (!quota) return false;
+  if (quota.allowance) return quota.allowance.status === "exhausted";
   return Boolean(quota.limit_reached || quota.rate_limit?.limit_reached || quota.allowed === false || quota.rate_limit?.allowed === false);
+}
+
+export function providerAccountQuotaStatusTone(quota?: ProviderAccountQuota) {
+  if (quota?.allowance?.status === "query_error") return "limited";
+  if (quota?.allowance?.status === "unknown") return "unknown";
+  return providerAccountQuotaIsLimited(quota) ? "limited" : "available";
 }
 
 export function providerAccountQuotaRemainingPercent(quota?: ProviderAccountQuota) {
   if (!quota) return undefined;
+  if (quota.allowance?.status === "query_error" || quota.allowance?.status === "unknown") return undefined;
+  if (quota.allowance?.status === "exhausted") return 0;
   if (Number.isFinite(quota.remaining_percent)) return clampQuotaPercent(quota.remaining_percent);
   if (Number.isFinite(quota.used_percent)) return clampQuotaPercent(100 - Number(quota.used_percent));
   const windows = [quota.primary_window, quota.secondary_window, quota.rate_limit?.primary_window, quota.rate_limit?.secondary_window, ...(quota.windows ?? [])];

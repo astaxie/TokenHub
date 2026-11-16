@@ -124,7 +124,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		_, _ = s.store.SetProviderHealth(providerID, probeErr == nil)
+		_, _ = s.store.SetProviderHealth(providerID, providerProbeHealthy(probeErr))
 		if probeErr != nil {
 			return nil, probeErr
 		}
@@ -146,7 +146,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 					return nil, err
 				}
 				if probeErr != nil {
-					if firstResourceErr == nil {
+					if firstResourceErr == nil || providerErrorDisposition(firstResourceErr) == ProviderErrorQuotaExhausted && providerErrorDisposition(probeErr) != ProviderErrorQuotaExhausted {
 						firstResourceErr = probeErr
 					}
 					continue
@@ -159,7 +159,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			_, _ = s.store.SetProviderHealth(providerID, false)
+			_, _ = s.store.SetProviderHealth(providerID, providerProbeHealthy(firstResourceErr))
 			return nil, firstResourceErr
 		}
 		if err := validateProviderHeaderSupportWithRegistry(s.registry, effectiveProvider.Type, effectiveProvider.Headers); err != nil {
@@ -178,7 +178,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			return nil, err
 		}
 		if probeErr != nil {
-			_, _ = s.store.SetProviderHealth(providerID, false)
+			_, _ = s.store.SetProviderHealth(providerID, providerProbeHealthy(probeErr))
 			return nil, probeErr
 		}
 		return s.store.SetProviderHealth(providerID, true)
@@ -199,7 +199,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 		if probeErr != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, AsHTTPError(probeErr).Code)
-			if firstErr == nil {
+			if firstErr == nil || providerErrorDisposition(firstErr) == ProviderErrorQuotaExhausted && providerErrorDisposition(probeErr) != ProviderErrorQuotaExhausted {
 				firstErr = probeErr
 			}
 			continue
@@ -215,6 +215,7 @@ func (s *IntegrationService) TestProvider(ctx context.Context, providerID string
 			return nil, err
 		}
 		if firstErr != nil {
+			_, _ = s.store.SetProviderHealth(providerID, providerProbeHealthy(firstErr))
 			return nil, firstErr
 		}
 		return nil, NewHTTPError(http.StatusConflict, "provider_resource_required", "Provider has no active account resource to test")
@@ -249,7 +250,9 @@ func (s *IntegrationService) finishProbe(ctx context.Context, provider Provider,
 	disposition := providerErrorDisposition(err)
 	if err == nil {
 		s.store.FinishProviderResourceAttempt(ctx, resource.ID, "", AttemptSucceeded, usage)
-	} else if disposition == ProviderErrorQuotaExhausted || disposition == ProviderErrorAuthBroken || disposition == ProviderErrorResourceBroken {
+	} else if disposition == ProviderErrorQuotaExhausted {
+		s.store.FinishProviderResourceAttempt(ctx, resource.ID, "", AttemptNeutral, usage)
+	} else if disposition == ProviderErrorAuthBroken || disposition == ProviderErrorResourceBroken {
 		s.store.FinishProviderResourceAttempt(ctx, resource.ID, "", AttemptFailed, usage)
 	}
 	if ctx != nil && ctx.Err() != nil {

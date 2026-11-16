@@ -42,7 +42,7 @@ export function ProviderManagementTable({ rows, data, config, currentUser, onAct
           const name = providerDisplayName(provider, row.resources);
           const snapshot = data.providerMonitoring.find((item) => item.provider.id === provider.id);
           const health = row.statusTone;
-          const healthLabel = { healthy: "正常", degraded: "降级", down: "故障", unknown: "待观测" }[health];
+          const healthLabel = { healthy: "正常", degraded: "降级", down: "故障", unknown: "待观测", exhausted: "额度耗尽" }[health];
           const account = accountTypes.has(provider.type) || row.resources.some((resource) => isProviderAccountResourceForData(data, resource));
           const importedCount = data.providerModels.filter((model) => model.provider_id === provider.id).length;
           const actions = (config.actions ?? []).filter((action) => action.visible?.(provider, currentUser, data) ?? true);

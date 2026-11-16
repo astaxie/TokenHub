@@ -88,7 +88,10 @@ func (s *GormStore) UpdateModelRoutePolicy(modelName string, policy ModelRoutePo
 			}
 			updated = append(updated, *route)
 		}
-		return saveSemanticRoutingPolicy(tx, modelName, policy.SemanticRouting)
+		if err := saveSemanticRoutingPolicy(tx, modelName, policy.SemanticRouting); err != nil {
+			return err
+		}
+		return saveAccountRoutingPolicy(tx, &model, policy.AccountStrategy)
 	})
 	return updated, err
 }

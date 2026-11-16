@@ -81,6 +81,24 @@ describe("Provider management view", () => {
     expect(within(row).getByText("启用", { exact: true })).toBeVisible();
   });
 
+  it.each([true, false])("shows quota exhaustion separately from a provider fault (inference observed: %s)", (observed) => {
+    setup({
+      provider, adapter: { type: provider.type, capabilities: ["chat"] },
+      route_count: 0, active_route_count: 0, resource_count: 0, active_resource_count: 0, healthy_resource_count: 0,
+      state: "exhausted" as ProviderMonitoringSnapshot["state"], status_label: "Quota Exhausted", status_detail: "active_probe:provider_payment_required",
+      configuration: { state: "healthy", source: "configuration", samples: 0 },
+      resources: { state: "unknown", source: "resources", samples: 0 },
+      active_probe: { state: observed ? "exhausted" as ProviderMonitoringSnapshot["state"] : "unknown", source: "active_probe", samples: observed ? 1 : 0, success_rate: 0, error_code: observed ? "provider_payment_required" : undefined },
+      gateway: { state: "unknown", source: "gateway_request", samples: 0 },
+      quota: { supported: false, limit_reached: false, successful_accounts: 0, failed_accounts: 0 },
+      quality_score: 0, trend: [],
+    });
+    const row = screen.getByRole("row", { name: /Example Provider/ });
+    expect(within(row).getByText("额度耗尽", { exact: true })).toBeVisible();
+    expect(within(row).queryByText("故障", { exact: true })).not.toBeInTheDocument();
+    expect(within(row).getByText("启用", { exact: true })).toBeVisible();
+  });
+
   it.each([{ ...provider, status: "disabled" }, { ...provider, healthy: false }])("keeps unobserved health neutral without a monitoring snapshot (%j)", async (configuredProvider) => {
     setup(undefined, false, configuredProvider);
     expect(within(screen.getByRole("row", { name: /Example Provider/ })).getByText("待观测", { exact: true })).toBeVisible();

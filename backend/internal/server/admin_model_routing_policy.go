@@ -27,15 +27,18 @@ func (s *Server) serveAdminModelRoutingPolicyPatch(w http.ResponseWriter, r *htt
 	}
 	for _, model := range s.store.ListModels() {
 		if model.Name == modelName {
+			accountStrategy := string(modelAccountStrategy(model))
+			policy.AccountStrategy = &accountStrategy
 			saved := modelSemanticRoutingPolicy(model)
 			policy.SemanticRouting = &saved
 			break
 		}
 	}
 	s.recordAdminAudit(r, user, "update", "model_routing_policy", modelName, "", map[string]any{
+		"account_strategy": policy.AccountStrategy,
 		"semantic_routing": policy.SemanticRouting,
 		"strategy":         policy.Strategy,
 		"routes":           routes,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"strategy": policy.Strategy, "data": routes, "semantic_routing": policy.SemanticRouting})
+	writeJSON(w, http.StatusOK, map[string]any{"strategy": policy.Strategy, "account_strategy": policy.AccountStrategy, "data": routes, "semantic_routing": policy.SemanticRouting})
 }

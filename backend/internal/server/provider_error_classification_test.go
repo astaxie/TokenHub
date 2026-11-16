@@ -109,7 +109,7 @@ func TestProviderErrorClassification(t *testing.T) {
 		{
 			name: "unpaid account blames the resource", upstreamStatus: http.StatusPaymentRequired,
 			wantStatus: http.StatusBadGateway, wantCode: "provider_payment_required",
-			wantSecondaryCalled: true, wantFailureCount: 1,
+			wantSecondaryCalled: true, wantFailureCount: 0,
 		},
 		{
 			name: "missing model tries elsewhere without blaming the resource", upstreamStatus: http.StatusNotFound,
@@ -236,7 +236,7 @@ func TestClassifyProviderStatusTable(t *testing.T) {
 		{http.StatusUnprocessableEntity, http.StatusUnprocessableEntity, ProviderErrorClient, false, AttemptNeutral},
 		{http.StatusUnauthorized, http.StatusBadGateway, ProviderErrorAuthBroken, true, AttemptFailed},
 		{http.StatusForbidden, http.StatusBadGateway, ProviderErrorAuthBroken, true, AttemptFailed},
-		{http.StatusPaymentRequired, http.StatusBadGateway, ProviderErrorQuotaExhausted, true, AttemptFailed},
+		{http.StatusPaymentRequired, http.StatusBadGateway, ProviderErrorQuotaExhausted, true, AttemptNeutral},
 		{http.StatusNotFound, http.StatusBadGateway, ProviderErrorModelUnsupported, true, AttemptNeutral},
 		{http.StatusRequestTimeout, http.StatusGatewayTimeout, ProviderErrorTransientSame, true, AttemptFailed},
 		{http.StatusTooManyRequests, http.StatusTooManyRequests, ProviderErrorTransientSame, true, AttemptFailed},

@@ -19,6 +19,7 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodGet, "/openapi.yaml", s.handleOpenAPIYAML, jsonMethodNotAllowed(http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/playground/rerank", s.handleAdminRerankTest, s.adminMethodNotAllowed("provider", http.MethodPost))
 	s.registerModelRoutes()
+	s.registerProviderAllowanceRoutes()
 	// The in-flight gauge covers exactly the endpoints that route to an upstream, so
 	// it stays comparable with requests_total. Catalog lookups and count_tokens are
 	// local and never produce a request count, and admin traffic and scrapes are not

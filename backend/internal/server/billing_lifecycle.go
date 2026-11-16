@@ -9,6 +9,9 @@ func (s *Server) StartBillingScheduler() {
 	s.reconciliation.StartScheduler(30 * time.Second)
 	s.credentialRefresh.StartScheduler(providerCredentialRefreshInterval)
 	s.payloadRetention.StartScheduler(requestPayloadRetentionInterval)
+	if s.providerAllowanceRefresh != nil {
+		s.providerAllowanceRefresh.StartScheduler(30 * time.Second)
+	}
 	if s.providerMonitoring != nil {
 		s.providerMonitoring.StartScheduler(providerMonitoringSchedulerInterval)
 	}

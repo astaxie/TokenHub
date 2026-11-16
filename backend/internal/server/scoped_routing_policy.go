@@ -44,14 +44,15 @@ type RoutingPolicyCandidateDecision struct {
 }
 
 type RoutingPolicyResolution struct {
-	EffectivePolicy *ScopedRoutingPolicy             `json:"effective_policy,omitempty"`
-	MatchReason     string                           `json:"match_reason"`
-	Candidates      []RoutingPolicyCandidateDecision `json:"candidates"`
-	SelectedRouteID string                           `json:"selected_route_id,omitempty"`
-	ErrorCode       string                           `json:"error_code,omitempty"`
-	ErrorMessage    string                           `json:"error_message,omitempty"`
-	AccessAllowed   bool                             `json:"access_allowed"`
-	AccessReasons   []string                         `json:"access_reasons,omitempty"`
+	EffectivePolicy    *ScopedRoutingPolicy             `json:"effective_policy,omitempty"`
+	MatchReason        string                           `json:"match_reason"`
+	Candidates         []RoutingPolicyCandidateDecision `json:"candidates"`
+	SelectedRouteID    string                           `json:"selected_route_id,omitempty"`
+	SelectedResourceID string                           `json:"selected_resource_id,omitempty"`
+	ErrorCode          string                           `json:"error_code,omitempty"`
+	ErrorMessage       string                           `json:"error_message,omitempty"`
+	AccessAllowed      bool                             `json:"access_allowed"`
+	AccessReasons      []string                         `json:"access_reasons,omitempty"`
 }
 
 func scopedRoutingPolicy(resource AdminResource) ScopedRoutingPolicy {

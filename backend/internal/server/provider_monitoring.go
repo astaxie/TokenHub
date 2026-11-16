@@ -172,6 +172,20 @@ func resourceMonitoringSignal(active int, healthy int) ProviderMonitoringSignal 
 }
 
 func aggregateProviderMonitoringState(configuration ProviderMonitoringSignal, resources ProviderMonitoringSignal, probe ProviderMonitoringSignal, gateway ProviderMonitoringSignal) (string, string) {
+	if configuration.State != "down" || configuration.Detail == "provider_unhealthy" {
+		latest := probe
+		if gateway.Samples > 0 && (latest.Samples == 0 || gateway.ObservedAt == nil || latest.ObservedAt == nil || !gateway.ObservedAt.Before(*latest.ObservedAt)) {
+			latest = gateway
+		}
+		if latest.State == "exhausted" {
+			if resources.Samples > 0 {
+				// An individual denial cannot prove that every active account is
+				// exhausted. The complete quota projection makes that decision.
+				return "degraded", latest.Source + ":" + firstNonEmpty(latest.ErrorCode, "quota_exhausted")
+			}
+			return "exhausted", latest.Source + ":" + firstNonEmpty(latest.ErrorCode, "quota_exhausted")
+		}
+	}
 	if configuration.State == "down" {
 		return "down", "configuration:" + configuration.Detail
 	}
@@ -207,6 +221,8 @@ func providerMonitoringStatusLabel(state string) string {
 		return "Degraded"
 	case "down":
 		return "Functional Down"
+	case "exhausted":
+		return "Quota Exhausted"
 	default:
 		return "Awaiting Test"
 	}
@@ -237,22 +253,33 @@ func startOfUTCDay(value time.Time) time.Time {
 
 func (s *Server) populateProviderQuotaSummaries(snapshots []ProviderMonitoringSnapshot, resources []ProviderResource) {
 	for providerIndex := range snapshots {
-		if !snapshots[providerIndex].Quota.Supported {
-			continue
-		}
+		native := snapshots[providerIndex].Quota.Supported
 		for _, resource := range resources {
 			if resource.ProviderID != snapshots[providerIndex].Provider.ID || resource.Status != StatusActive {
 				continue
 			}
 			account := ProviderQuotaAccountSummary{ResourceID: resource.ID, ResourceName: resource.Name}
 			if quota, ok := s.cachedProviderMonitoringQuota(resource.ID, 0); ok {
+				if projection, projected := quotaObject(quota["allowance"]); !native && (!projected || quotaInt64(projection["version"]) != 1) {
+					continue
+				}
+				if !native {
+					projectProviderMonitoringAllowance(quota, time.Now().UTC())
+				}
+				snapshots[providerIndex].Quota.Supported = true
 				account.Quota = quota
+				if projection, ok := quotaObject(quota["allowance"]); ok && projection["status"] == "query_error" {
+					account.ErrorCode = quotaString(projection["error_code"])
+					if account.ErrorCode == "" {
+						account.ErrorCode = "provider_quota_unavailable"
+					}
+				}
 			} else {
 				account.ErrorCode = "quota_not_cached"
 			}
 			summary := &snapshots[providerIndex].Quota
 			summary.Accounts = append(summary.Accounts, account)
-			if len(account.Quota) == 0 {
+			if len(account.Quota) == 0 || account.ErrorCode != "" {
 				summary.FailedAccounts++
 				continue
 			}
@@ -261,9 +288,14 @@ func (s *Server) populateProviderQuotaSummaries(snapshots []ProviderMonitoringSn
 		}
 	}
 	for index := range snapshots {
+		if !snapshots[index].Quota.Supported {
+			snapshots[index].Quota = ProviderQuotaSummary{}
+			continue
+		}
 		sort.Slice(snapshots[index].Quota.Accounts, func(i, j int) bool {
 			return snapshots[index].Quota.Accounts[i].ResourceName < snapshots[index].Quota.Accounts[j].ResourceName
 		})
+		applyProviderQuotaAvailability(&snapshots[index], time.Now().UTC())
 	}
 }
 
@@ -302,10 +334,10 @@ const providerMonitoringQuotaTTL = 60 * time.Second
 
 func (s *Server) cachedProviderMonitoringQuota(resourceID string, ttl time.Duration) (ProviderAccountQuotaSnapshot, bool) {
 	observation, ok := s.store.GetProviderResourceObservation(resourceID)
-	if !ok || observation.QuotaFetchedAt == nil || strings.TrimSpace(observation.QuotaSnapshot) == "" {
+	if !ok || strings.TrimSpace(observation.QuotaSnapshot) == "" {
 		return nil, false
 	}
-	if ttl > 0 && time.Since(observation.QuotaFetchedAt.UTC()) > ttl {
+	if ttl > 0 && (observation.QuotaFetchedAt == nil || time.Since(observation.QuotaFetchedAt.UTC()) > ttl) {
 		return nil, false
 	}
 	return providerMonitoringQuotaSnapshotFromJSON(observation.QuotaSnapshot)

@@ -9,6 +9,7 @@ import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { StatusPill } from "../shared/ui";
 
 import { readSemanticRoutingPolicy, initialJevPolicy, validJevPolicy, SemanticRoutingFields } from "./semantic-routing-policy";
+import { AccountRoutingFields, readAccountStrategy } from "./account-routing-policy";
 
 const strategyOptions: Array<{
   value: ModelRouteStrategy;
@@ -141,6 +142,8 @@ export function ModelRoutingPolicyEditor({
   const persistedStrategy = normalizeStrategy(persistedStrategies.values().next().value ?? "priority_weighted");
   const unknownStrategies = [...persistedStrategies].filter((value) => !strategyOptions.some((option) => option.value === value));
   const [strategy, setStrategy] = useState<ModelRouteStrategy>(persistedStrategy);
+  const persistedAccountStrategy = readAccountStrategy(model);
+  const [accountStrategy, setAccountStrategy] = useState(persistedAccountStrategy);
   const [strategyChosen, setStrategyChosen] = useState(false);
   const needsStrategyChoice = unknownStrategies.length > 0 && !strategyChosen;
   const savedSemantic = readSemanticRoutingPolicy(model);
@@ -155,7 +158,7 @@ export function ModelRoutingPolicyEditor({
   const selectedOption = strategyOptions.find((option) => option.value === strategy) ?? strategyOptions[0];
   const guideToggleLabel = tx(guideOpen ? "收起当前策略说明" : "查看当前策略说明");
   const mixedStrategies = persistedStrategies.size > 1;
-  const userDirty = (unknownStrategies.length > 0 && strategyChosen) || JSON.stringify(semantic) !== JSON.stringify(persistedSemantic) || strategy !== persistedStrategy || routes.some((route) => {
+  const userDirty = accountStrategy !== persistedAccountStrategy || (unknownStrategies.length > 0 && strategyChosen) || JSON.stringify(semantic) !== JSON.stringify(persistedSemantic) || strategy !== persistedStrategy || routes.some((route) => {
     const draft = drafts[route.id];
     return !draft || draft.weight !== positiveOr(route.weight, 100) || draft.quality_score !== positiveOr(route.quality_score, 50) || draft.cost_score !== positiveOr(route.cost_score, 50);
   });
@@ -174,6 +177,7 @@ export function ModelRoutingPolicyEditor({
 
   function savePolicy() {
     onSave(model, {
+      ...(accountStrategy !== persistedAccountStrategy || accountStrategy !== "default" ? { account_strategy: accountStrategy } : {}),
       semantic_routing: strategy === "jev" ? { ...semantic, mode: "enforce" } : validJevPolicy(semantic) ? { ...semantic, mode: "off" } : { mode: "off", min_confidence: 0.65 },
       strategy,
       routes: routes.map((route) => ({ route_id: route.id, ...drafts[route.id] })),
@@ -206,6 +210,7 @@ export function ModelRoutingPolicyEditor({
         </button>
       </div>
 
+      <AccountRoutingFields value={accountStrategy} onChange={setAccountStrategy} disabled={loading} />
       <div className="route-strategy-tabs" role="tablist" aria-label={tx("模型路由策略")}>
         {strategyOptions.map((option) => {
           const Icon = option.icon;
