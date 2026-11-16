@@ -56,11 +56,15 @@
         "default": true
       },
       "tool_call": true,
+      "tool_choice": true,
+      "parallel_tool_calls": true,
       "temperature": true,
       "category": "glm",
       "last_updated": "2026-10-10",
       "supported_parameters": [
-        "max_tokens"
+        "max_tokens",
+        "thinking",
+        "enable_thinking"
       ],
       "endpoints": "chat/completions",
       "reasoning_options": [
@@ -125,11 +129,15 @@
         "default": true
       },
       "tool_call": true,
+      "tool_choice": true,
+      "parallel_tool_calls": true,
       "temperature": true,
       "category": "glm",
       "last_updated": "2026-10-10",
       "supported_parameters": [
-        "max_tokens"
+        "max_tokens",
+        "thinking",
+        "enable_thinking"
       ],
       "endpoints": "chat/completions",
       "reasoning_options": [
@@ -191,11 +199,15 @@
         "default": true
       },
       "tool_call": true,
+      "tool_choice": true,
+      "parallel_tool_calls": true,
       "temperature": true,
       "category": "glm",
       "last_updated": "2026-10-10",
       "supported_parameters": [
-        "max_tokens"
+        "max_tokens",
+        "thinking",
+        "enable_thinking"
       ],
       "endpoints": "chat/completions",
       "reasoning_options": [
