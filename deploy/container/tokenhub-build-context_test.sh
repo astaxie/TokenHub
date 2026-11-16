@@ -19,4 +19,10 @@ cmp "$repository_root/data/provider-catalog.json" "$test_root/catalog/provider-c
 diff -r "$repository_root/data/builtin-plugins" "$test_root/catalog/builtin-plugins"
 test -f "$test_root/catalog/builtin-plugins/providers/openai/plugin.yaml"
 test -f "$test_root/catalog/builtin-plugins/platform/tokenhub.sim.default/plugin.yaml"
+
+# Type checking includes fixtures with imports outside frontend/, so exercise
+# the actual production builder instead of only checking catalog COPY inputs.
+docker build --file "$repository_root/backend/Dockerfile" \
+  --target frontend-builder "$repository_root"
+
 printf 'container build context tests passed\n'
