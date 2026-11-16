@@ -559,4 +559,5 @@ See [Jev semantic routing](semantic-routing.md) for rollout, request eligibility
 | `TOKENHUB_SEMANTIC_ROUTING_PROJECTS` | empty | Exact project IDs allowed to send user text, comma-separated; empty denies all. |
 | `TOKENHUB_TYPESAFE_API_KEY` | empty | Server-only TypeSafe credential. |
 | `TOKENHUB_TYPESAFE_MODEL` | `jev-1.13.0` | Concrete evaluator model version. |
+| `TOKENHUB_TYPESAFE_BASE_URL` | `https://api.typesafe.ai/v1` | Decision API root; the evaluator requests `<base>/systemone`. Point it at an internal System One compatible classifier when the deployment cannot reach public hosts. |
 | `TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS` | `1000` | Catalog lookup and evaluation timeout, 1–10000 ms. |

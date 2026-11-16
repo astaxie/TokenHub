@@ -16,6 +16,7 @@ type Config struct {
 	SemanticRoutingProjects    []string
 	TypeSafeAPIKey             string
 	TypeSafeModel              string
+	TypeSafeBaseURL            string
 	SemanticRoutingTimeoutMS   int
 	Environment                string
 	AppVersion                 string
@@ -142,6 +143,7 @@ func ConfigFromEnv() Config {
 		SemanticRoutingProjects:            getenvList("TOKENHUB_SEMANTIC_ROUTING_PROJECTS"),
 		TypeSafeAPIKey:                     getenv("TOKENHUB_TYPESAFE_API_KEY", ""),
 		TypeSafeModel:                      getenv("TOKENHUB_TYPESAFE_MODEL", "jev-1.13.0"),
+		TypeSafeBaseURL:                    getenv("TOKENHUB_TYPESAFE_BASE_URL", defaultTypeSafeBaseURL),
 		SemanticRoutingTimeoutMS:           getenvSetInt("TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS", 1000),
 		Environment:                        getenv("TOKENHUB_ENV", "dev"),
 		AppVersion:                         DefaultAppVersion,
