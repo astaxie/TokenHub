@@ -11,6 +11,8 @@ FROM ${NODE_IMAGE} AS frontend-builder
 WORKDIR /src/frontend
 COPY --from=frontend-deps /src/frontend/node_modules ./node_modules
 COPY frontend/ ./
+# The production build type-checks test fixtures that import the shared inventory.
+COPY tools/magpie-subscription-coverage.json /src/tools/magpie-subscription-coverage.json
 RUN npm run build && \
     server_path="$(find .next/standalone -type f -name server.js -exec sh -c \
       'for candidate do candidate_root=${candidate%/*}; if [ -d "$candidate_root/.next" ] && [ -f "$candidate_root/package.json" ]; then echo "$candidate"; fi; done' \
