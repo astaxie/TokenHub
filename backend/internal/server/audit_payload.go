@@ -8,20 +8,42 @@ import (
 )
 
 const (
-	auditPayloadMaxBytes   = 8 * 1024
-	auditPayloadScanBudget = 64 * 1024
-	auditPayloadMaxDepth   = 64
-	auditPayloadOmitted    = `{"omitted":"payload_exceeds_audit_limit"}`
+	defaultAuditPayloadMaxBytes   = 8 * 1024
+	defaultAuditPayloadScanBudget = 64 * 1024
+	defaultAuditPayloadScanKB     = 64
+	defaultAuditPayloadMaxKB      = 8
+	// The scan budget multiplies per-request rendering copies by concurrency,
+	// so it gets a hard ceiling even though the operator can raise it.
+	maximumAuditPayloadScanKB = 4096
+	auditPayloadMaxDepth      = 64
+	auditPayloadOmitted       = `{"omitted":"payload_exceeds_audit_limit"}`
 )
 
-func auditPayloadBody(value any) (string, bool) {
+// auditPayloadLimits bounds the work spent rendering one audit snapshot and the
+// size of the inline preview kept in request_payload_logs. Both values come
+// from TOKENHUB_AUDIT_PAYLOAD_SCAN_KB / TOKENHUB_AUDIT_PAYLOAD_MAX_KB.
+type auditPayloadLimits struct {
+	scanBytes int
+	maxBytes  int
+}
+
+func defaultAuditPayloadLimits() auditPayloadLimits {
+	return auditPayloadLimits{scanBytes: defaultAuditPayloadScanBudget, maxBytes: defaultAuditPayloadMaxBytes}
+}
+
+// renderAuditPayload produces the redacted, indented snapshot for value under
+// the given limits. Oversized inputs are still rejected before serialization,
+// but a body that only exceeds maxBytes is returned in full: the store keeps
+// large snapshots as content-addressed chunks and stores only a preview in the
+// legacy column.
+func renderAuditPayload(value any, limits auditPayloadLimits) (string, bool) {
 	if value == nil {
 		return "", false
 	}
 	// Reject large bodies before marshaling, decoding, and redacting them. A
 	// final output cap alone still creates several full copies of a multimodal
 	// request. The bounded scan also stops very wide or cyclic input graphs.
-	budget := auditPayloadScanBudget
+	budget := limits.scanBytes
 	if !auditPayloadFits(reflect.ValueOf(value), &budget, 0) {
 		return auditPayloadOmitted, true
 	}
@@ -29,7 +51,7 @@ func auditPayloadBody(value any) (string, bool) {
 	if err != nil {
 		return `{"error":"payload_not_serializable"}`, false
 	}
-	if len(raw) > auditPayloadScanBudget {
+	if len(raw) > limits.scanBytes {
 		return auditPayloadOmitted, true
 	}
 	var decoded any
@@ -39,7 +61,7 @@ func auditPayloadBody(value any) (string, bool) {
 	// RawMessage and custom marshalers can hide nested structures from the
 	// first scan. Check the normalized graph before recursive redaction and
 	// indentation, whose output otherwise grows quadratically with depth.
-	budget = auditPayloadScanBudget
+	budget = limits.scanBytes
 	if !auditPayloadFits(reflect.ValueOf(decoded), &budget, 0) {
 		return auditPayloadOmitted, true
 	}
@@ -47,15 +69,31 @@ func auditPayloadBody(value any) (string, bool) {
 	if err != nil {
 		return `{"error":"payload_not_serializable"}`, false
 	}
-	if len(raw) <= auditPayloadMaxBytes {
-		return string(raw), false
+	return string(raw), len(raw) > limits.maxBytes
+}
+
+// truncateAuditPreview caps a rendered snapshot at limits.maxBytes, preserving
+// UTF-8 boundaries. It keeps the byte budget of the inline request_body /
+// response_body columns no matter how large the configured scan budget is.
+func truncateAuditPreview(body string, limits auditPayloadLimits) string {
+	if len(body) <= limits.maxBytes {
+		return body
 	}
 	const suffix = "\n... truncated"
-	end := auditPayloadMaxBytes - len(suffix)
-	for end > 0 && !utf8.RuneStart(raw[end]) {
+	end := limits.maxBytes - len(suffix)
+	for end > 0 && !utf8.RuneStart(body[end]) {
 		end--
 	}
-	return string(raw[:end]) + suffix, true
+	return body[:end] + suffix
+}
+
+// auditPayloadBody renders with the built-in default limits and truncates to
+// the default preview cap. Gateway code uses the limits-aware variants on the
+// server instead; this entry point stays for the documented default behavior.
+func auditPayloadBody(value any) (string, bool) {
+	limits := defaultAuditPayloadLimits()
+	body, truncated := renderAuditPayload(value, limits)
+	return truncateAuditPreview(body, limits), truncated
 }
 
 // auditPayloadFits estimates input size and traversal work, not encoded JSON

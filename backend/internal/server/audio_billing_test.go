@@ -182,7 +182,7 @@ func audioTestSeconds(value float64) *float64 { return &value }
 
 type audioNoPayloadStore struct{ *GormStore }
 
-func (audioNoPayloadStore) RecordRequestPayload(string, string, bool, string, bool) {}
+func (audioNoPayloadStore) RecordRequestPayload(string, RequestPayloadRecord) {}
 
 func TestAudioDurationStatementIncludesNativeQuantityAndPrice(t *testing.T) {
 	model := Model{Modality: "audio", Metadata: map[string]string{audioSecondPriceKey: "0.02"}}

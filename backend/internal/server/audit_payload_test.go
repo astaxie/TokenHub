@@ -32,7 +32,7 @@ func TestAuditPayloadCapsEncodedBytesAndPreservesUTF8(t *testing.T) {
 		strings.Repeat("\x00", 6000),
 	} {
 		body, truncated := auditPayloadBody(map[string]any{"content": content, "password": "hidden"})
-		if !truncated || len(body) > auditPayloadMaxBytes || !utf8.ValidString(body) || !strings.HasSuffix(body, "\n... truncated") {
+		if !truncated || len(body) > defaultAuditPayloadMaxBytes || !utf8.ValidString(body) || !strings.HasSuffix(body, "\n... truncated") {
 			t.Fatalf("invalid byte-limited snapshot: bytes=%d truncated=%v valid_utf8=%v", len(body), truncated, utf8.ValidString(body))
 		}
 		if strings.Contains(body, "hidden") {
@@ -61,7 +61,7 @@ func TestAuditPayloadOmitsLargeOrComplexInputsBeforeSerialization(t *testing.T) 
 		{"large struct", struct {
 			Content string `json:"content"`
 		}{large}},
-		{"wide array", make([]any, auditPayloadScanBudget)},
+		{"wide array", make([]any, defaultAuditPayloadScanBudget)},
 		{"cycle", cycle},
 	}
 	for _, test := range tests {

@@ -121,7 +121,7 @@ func BenchmarkGatewayPayloadAuditRendering(b *testing.B) {
 			b.SetBytes(int64(size))
 			for range b.N {
 				body, truncated := auditPayloadBody(payload)
-				if body == "" || truncated != (size >= auditPayloadMaxBytes) {
+				if body == "" || truncated != (size >= defaultAuditPayloadMaxBytes) {
 					b.Fatal("unexpected rendered audit payload")
 				}
 			}
@@ -140,7 +140,7 @@ type benchmarkPayloadPersistenceStore struct {
 	Store
 }
 
-func (benchmarkPayloadPersistenceStore) RecordRequestPayload(string, string, bool, string, bool) {}
+func (benchmarkPayloadPersistenceStore) RecordRequestPayload(string, RequestPayloadRecord) {}
 
 func benchmarkDatabaseMatrix(b *testing.B, benchmark func(*testing.B, *GormStore)) {
 	b.Helper()
