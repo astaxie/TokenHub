@@ -412,7 +412,13 @@ func (e *BackfillExecutor) renewLeaseDuringBatch(batchCtx context.Context, cance
 				lost <- false
 				return
 			case <-ticker.C:
-				claimed, err := e.claimLease(context.Background(), id)
+				renewCtx, cancelRenew := context.WithTimeout(batchCtx, e.leaseTTL/3)
+				claimed, err := e.claimLease(renewCtx, id)
+				cancelRenew()
+				if batchCtx.Err() != nil {
+					lost <- false
+					return
+				}
 				if err != nil || !claimed {
 					lost <- true
 					cancelBatch()
@@ -426,4 +432,12 @@ func (e *BackfillExecutor) renewLeaseDuringBatch(batchCtx context.Context, cance
 
 func (e *BackfillExecutor) nowText() string {
 	return e.now().UTC().Format(time.RFC3339)
+}
+
+// ReleaseOnlineLeases gives another instance immediate access after a graceful
+// stop. Only leases owned by this executor are released; committed progress stays.
+func (e *BackfillExecutor) ReleaseOnlineLeases(ctx context.Context) error {
+	marks := placeholderMarks(e.dialect, 2)
+	_, err := e.db.ExecContext(ctx, "UPDATE data_backfills SET lease_owner = '', lease_expires_at = '' WHERE mode = "+marks[0]+" AND lease_owner = "+marks[1], BackfillOnline, e.owner)
+	return err
 }

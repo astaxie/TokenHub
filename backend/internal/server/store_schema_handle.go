@@ -86,7 +86,7 @@ func VerifySchemaSemantics(ctx context.Context, databaseURL string) error {
 // Startup and the maintenance CLI share this registry so existing databases
 // receive every compatible schema expansion after the adoption baseline.
 func SchemaMigrationRegistry() []dbschema.Migration {
-	return []dbschema.Migration{
+	return append(overviewProjectionMigrations(), []dbschema.Migration{
 		meteringMigration(),
 		auditCorrelationMigration(),
 		jevResponseBindingMigration(),
@@ -154,7 +154,7 @@ func SchemaMigrationRegistry() []dbschema.Migration {
 			StatementBudget:  8,
 			ChecksumOverride: "tokenhub-schema-image-job-worker-instance-v1",
 		},
-	}
+	}...)
 }
 
 func addImageJobWorkerInstance(ctx context.Context, db dbschema.MigrationExecer) error {

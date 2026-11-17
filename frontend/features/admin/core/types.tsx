@@ -20,6 +20,9 @@ export type Summary = {
   route_count?: number;
   active_route_count?: number;
   user_count?: number;
+  model_count?: number;
+  active_model_count?: number;
+  playground_model_count?: number;
 };
 
 export const DEFAULT_PROJECT_ID = "prj_default";
@@ -1419,6 +1422,8 @@ export type UserImportResult = {
 
 export type AppData = {
   summary: Summary;
+  summaryStatus?: { state: "ready" | "preparing" | "stale" | "error"; updated_at?: string; processed?: number };
+  projectQuotaEvents?: Record<string, { count: number; latest: string }>;
   projects: Project[];
   keys: APIKey[];
   providers: Provider[];

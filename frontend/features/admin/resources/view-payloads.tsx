@@ -20,12 +20,17 @@ export async function applyViewPayload(loaded: LoadedData, name: string, resp: R
   if (!resp.ok) return;
   if (name === "overview") {
     const overview = await resp.json();
-    loaded.summary = overview.summary ?? emptySummary();
+    loaded.summary = { ...emptySummary(), ...overview.summary };
+    loaded.summaryStatus = overview.summary_status ?? { state: "ready" };
     loaded.projects = overview.projects ?? [];
     loaded.providers = overview.providers ?? [];
     loaded.providerResources = overview.provider_resources ?? [];
-    loaded.models = overview.models ?? [];
+    if (overview.models) loaded.models = overview.models;
     loaded.alerts = overview.alerts ?? [];
+  } else if (name === "models") {
+    loaded.models = (await resp.json()).data ?? [];
+  } else if (name === "project-quota-events") {
+    loaded.projectQuotaEvents = (await resp.json()).data ?? {};
   } else if (name === "providers") {
     const payload = (await resp.json()) as { data: Provider[] };
     loaded.providers = payload.data ?? [];

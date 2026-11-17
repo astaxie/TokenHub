@@ -1,3 +1,5 @@
+import { useTopModelSearch } from "../resources/top-model-search";
+import { type ApiContext } from "../core/types";
 import { AlertCircle, Check, ChevronDown, ChevronRight, LogOut, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun, X } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { appRole, filterNavItemByAccess, isNavItemActive, isNavParentItem, navGroupsForUser, normalizeSearchText, readRecentViews, roleScopeDescription, standaloneViewMeta, topQuickActionsForUser, topSearchItemsForUser, topSearchResults } from "../core/navigation";
@@ -324,6 +326,7 @@ export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
       const currentSettings = data.resources.settings?.find((item) => item.id === "cfg_gateway") ?? data.resources.settings?.[0];
       return [{ label: "当前生效", value: currentSettings?.id ?? "-" }];
     }
+    case "alert-events":
     case "usage":
       return [];
     case "billing":
@@ -352,6 +355,7 @@ export function pageRecordCount(view: ViewKey, data: AppData) {
 }
 
 export function TopNav({
+  api,
   activeView,
   data,
   user,
@@ -361,6 +365,7 @@ export function TopNav({
   onSelectView,
   onThemeToggle,
 }: {
+  api?: ApiContext;
   activeView: ViewKey;
   data: AppData;
   user: AdminUser;
@@ -374,7 +379,8 @@ export function TopNav({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [recentViews, setRecentViews] = useState<ViewKey[]>(() => readRecentViews());
-  const searchItems = topSearchItemsForUser(user, data);
+  const modelSearch = useTopModelSearch(api, user, data, query);
+  const searchItems = topSearchItemsForUser(user, { ...data, models: data.models.length ? data.models : modelSearch.models });
   const normalizedQuery = normalizeSearchText(query);
   const results = topSearchResults(searchItems, appRole(user.role), normalizedQuery, recentViews);
   const showResults = open && (query.trim().length > 0 || results.length > 0);
@@ -461,7 +467,7 @@ export function TopNav({
               })
             ) : (
               <div className="top-search-empty">
-                <strong>{tx("没有找到匹配入口")}</strong>
+                <strong>{modelSearch.loading ? tx("正在搜索模型") : modelSearch.error ? tx("模型搜索失败") : tx("没有找到匹配入口")}</strong>
                 <span>{tx("请尝试搜索模型、Key、用量、日志或设置。")}</span>
               </div>
             )}

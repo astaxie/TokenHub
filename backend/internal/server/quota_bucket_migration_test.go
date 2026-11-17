@@ -3,6 +3,7 @@ package server
 import (
 	"path/filepath"
 	"testing"
+	"tokenhub/backend/internal/dbschema"
 )
 
 func TestQuotaBucketMigrationPreservesUnknownAndUserScopedHistory(t *testing.T) {
@@ -65,37 +66,36 @@ PRIMARY KEY (key_id, scope, bucket)
 func TestStoreStartupAdoptsLegacyQuotaBucketSchema(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "legacy-quota.db")
 	databaseURL := "sqlite://" + databasePath
-	store, err := NewStoreWithDialect(databaseURL, Config{})
+	_, db, err := OpenRawDatabase(databaseURL)
 	if err != nil {
-		t.Fatalf("create current store: %v", err)
-	}
-	if err := store.db.Exec("DROP TABLE quota_buckets").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := store.db.Exec(`CREATE TABLE quota_buckets (
-key_id TEXT NOT NULL,
-scope TEXT NOT NULL,
-bucket TEXT NOT NULL,
-requests INTEGER NOT NULL DEFAULT 0,
-prompt_tokens INTEGER NOT NULL DEFAULT 0,
-completion_tokens INTEGER NOT NULL DEFAULT 0,
-total_tokens INTEGER NOT NULL DEFAULT 0,
-cost_usd REAL NOT NULL DEFAULT 0,
-PRIMARY KEY (key_id, scope, bucket)
-)`).Error; err != nil {
+	statements, err := dbschema.SQLiteBaselineStatements()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.db.Exec("INSERT INTO quota_buckets (key_id, scope, bucket, total_tokens) VALUES (?, ?, ?, ?)", "key_legacy", "day", "2026-08-20", 12).Error; err != nil {
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Build a genuine pre-ledger fixture rather than deleting the ledger from
+	// the current release while leaving its already-applied expansions behind.
+	if _, err := db.Exec("DROP TABLE quota_buckets"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.db.Exec("DROP TABLE schema_migrations").Error; err != nil {
+	if _, err := db.Exec(`CREATE TABLE quota_buckets (
+        key_id TEXT NOT NULL, scope TEXT NOT NULL, bucket TEXT NOT NULL,
+        requests INTEGER NOT NULL DEFAULT 0, prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0, PRIMARY KEY (key_id, scope, bucket))`); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.db.Exec("DROP TABLE migration_attempts").Error; err != nil {
+	if _, err := db.Exec("INSERT INTO quota_buckets (key_id, scope, bucket, total_tokens) VALUES (?, ?, ?, ?)", "key_legacy", "day", "2026-08-20", 12); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Close(); err != nil {
-		t.Fatalf("close seed store: %v", err)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
 	}
 
 	upgraded, err := NewStoreWithDialect(databaseURL, Config{})

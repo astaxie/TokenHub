@@ -94,6 +94,69 @@
       "checksum": "22670204472977364b5706f2c8f252cc624ff8f49339f7dfc0be3f72be4e057f",
       "lock_timeout_seconds": 30,
       "statement_budget": 10
+    },
+    {
+      "version": 12,
+      "name": "add-overview-projection-sqlite",
+      "phase": "expand",
+      "dialect": "sqlite",
+      "checksum": "adc9563277090a2fb90f05e3d2be010beb7012298fb794f33d8713b4e9569a14",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 30
+    },
+    {
+      "version": 13,
+      "name": "add-overview-projection-postgres",
+      "phase": "expand",
+      "dialect": "postgres",
+      "checksum": "27edf0fc6c20e504e51a758baac184792182e44af5faa9f5c6ca85f4b17e338b",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 40
+    },
+    {
+      "version": 14,
+      "name": "add-idx-overview-alert-created",
+      "phase": "expand",
+      "dialect": "postgres",
+      "checksum": "c7060456ebffbdbb046b35166cb1a92b25bc399267bd2d3dfa50bf4cdab068e0",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 4
+    },
+    {
+      "version": 15,
+      "name": "add-idx-overview-alert-project",
+      "phase": "expand",
+      "dialect": "postgres",
+      "checksum": "7a97763a682390cca424449e11c586b27e9507d26ca9fb55a077b78d2d52501e",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 4
+    },
+    {
+      "version": 16,
+      "name": "add-idx-overview-usage-pending",
+      "phase": "expand",
+      "dialect": "postgres",
+      "checksum": "156cf525875f26a4ed87e2e0af1a6e46ac36121fafbd3aeacd015964b85f5159",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 4
+    },
+    {
+      "version": 17,
+      "name": "add-idx-overview-request-pending",
+      "phase": "expand",
+      "dialect": "postgres",
+      "checksum": "49967a0f67af4ed7c76726d57d93c8f1371baf3e44dd689ffa018715c5d9feef",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 4
+    },
+    {
+      "version": 18,
+      "name": "add-overview-completion-state",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "3a64fb6b7f50d05ac87ea0b9f3a812a485684c4dfde1e90fa9d08f49fd00e15d",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 1
     }
   ]
 }

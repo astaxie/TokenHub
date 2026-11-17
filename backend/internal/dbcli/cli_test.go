@@ -3,6 +3,7 @@ package dbcli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -100,7 +101,7 @@ func TestCommandsOnAdoptedDatabase(t *testing.T) {
 	}
 
 	code, output := runCLI(t, "status")
-	if code != 0 || !strings.Contains(output, "baseline recorded:   true") || !strings.Contains(output, "current version:     11") {
+	if code != 0 || !strings.Contains(output, "baseline recorded:   true") || !strings.Contains(output, fmt.Sprintf("current version:     %d", latestSQLiteMigrationVersion())) {
 		t.Fatalf("status on adopted database: code=%d output=%q", code, output)
 	}
 	code, output = runCLI(t, "verify")
@@ -187,4 +188,14 @@ func TestSQLiteContractBackupStoreDoesNotPublishHeartbeat(t *testing.T) {
 	if err := requireNoLiveInstances(context.Background(), s); err != nil {
 		t.Fatalf("maintenance backup store must not block contract: %v", err)
 	}
+}
+
+func latestSQLiteMigrationVersion() int64 {
+	var version int64 = 1
+	for _, migration := range server.SchemaMigrationRegistry() {
+		if migration.Dialect == "" || migration.Dialect == "sqlite" {
+			version = max(version, migration.Version)
+		}
+	}
+	return version
 }

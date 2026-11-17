@@ -478,6 +478,7 @@ export function quotaSummaryPart(quota: AdminResource, key: string, label: strin
 }
 
 export function projectQuotaIssue(data: AppData, project: Project) {
+  if (data.projectQuotaEvents) return data.projectQuotaEvents[project.id] ?? null;
   const quotaLogs = data.logs.filter(
     (log) => log.project_id === project.id && (log.error_code === "quota_exceeded" || log.status_code === 429),
   );

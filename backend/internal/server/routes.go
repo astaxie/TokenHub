@@ -56,6 +56,8 @@ func (s *Server) routes() {
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/auth/oauth/start", s.handleAdminOAuthStart, jsonMethodNotAllowed(http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/auth/oauth/callback", s.handleAdminOAuthCallback, jsonMethodNotAllowed(http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/auth/oauth/exchange", s.handleAdminOAuthExchange, jsonMethodNotAllowed(http.MethodPost))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/model-search", s.handleAdminModelSearch, s.adminMethodNotAllowed("model", http.MethodGet))
+	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/project-quota-events", s.handleProjectQuotaEvents, s.adminMethodNotAllowed("project", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodGet, "/api/admin/overview", s.handleAdminOverview, s.adminMethodNotAllowed("overview", http.MethodGet))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/playground/chat", s.handleAdminPlaygroundChat, s.adminMethodNotAllowed("playground", http.MethodPost))
 	s.registerSingleMethodRoute(http.MethodPost, "/api/admin/playground/chat/stream", s.handleAdminPlaygroundChatStream, s.adminMethodNotAllowed("playground", http.MethodPost))

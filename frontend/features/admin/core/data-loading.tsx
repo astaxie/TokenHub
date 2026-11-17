@@ -3,6 +3,8 @@ import { type AdminResource, type AdminUser, type AppData, type ViewKey } from "
 
 export type LoadPlan = {
   overview: boolean;
+  models: boolean;
+  projectQuotaEvents: boolean;
   providers: boolean;
   providerResources: boolean;
   providerModels: boolean;
@@ -42,6 +44,8 @@ export type LoadedData = Partial<Omit<AppData, "resources">> & {
 export function emptyLoadPlan(): LoadPlan {
   return {
     overview: false,
+    models: false,
+    projectQuotaEvents: false,
     providers: false,
     providerResources: false,
     providerModels: false,
@@ -198,6 +202,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "routing-policies");
       break;
     case "projects":
+      plan.projectQuotaEvents = true;
       plan.overview = true;
       plan.logs = true;
       plan.users = can("users") || appRole(user.role) === "team_leader";
@@ -266,7 +271,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "alert-rules");
       break;
     case "alert-events":
-      plan.alerts = true;
+      // The history view owns server-side pagination and cancellation.
       break;
     case "alert-deliveries":
       plan.alertDeliveries = true;
@@ -279,6 +284,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       break;
   }
 
+  plan.models = plan.overview && view !== "overview" && can("models");
   return plan;
 }
 
@@ -286,6 +292,8 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
   return {
     ...current,
     summary: loaded.summary ?? current.summary,
+    summaryStatus: loaded.summaryStatus ?? current.summaryStatus,
+    projectQuotaEvents: loaded.projectQuotaEvents ?? current.projectQuotaEvents,
     projects: loaded.projects ?? current.projects,
     providers: loaded.providers ?? current.providers,
     providerResources: loaded.providerResources ?? current.providerResources,

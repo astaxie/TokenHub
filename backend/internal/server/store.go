@@ -240,6 +240,12 @@ type Store interface {
 	SaveProviderResourceQuotaIfCurrent(ctx context.Context, resourceID string, adapterType string, snapshot string, fetchedAt time.Time, expected ProviderResource) error
 	GetRequestDetail(requestID string) (map[string]any, error)
 	ListAlerts() []AlertEvent
+	QueryAlertPage(context.Context, AlertPageQuery) (AlertPage, error)
+	ListRecentAlerts(context.Context) ([]AlertEvent, error)
+	QueryOverviewSummary(context.Context, UsageSummaryQuery) (UsageSummary, OverviewProgress, error)
+	QueryOverviewModelCounts(context.Context, bool) (OverviewModelCounts, error)
+	SearchAdminModels(context.Context, bool, string) ([]Model, error)
+	QueryProjectQuotaEvents(context.Context, []string, UsageSummaryScope, bool) (map[string]ProjectQuotaEvents, error)
 	GetAlert(id string) (AlertEvent, error)
 	ListAlertDeliveries() []AlertDelivery
 	RecordAlertDelivery(delivery AlertDelivery) AlertDelivery

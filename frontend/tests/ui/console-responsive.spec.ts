@@ -19,6 +19,7 @@ const route: ModelRoute = { id: "route_ui_console", model_name: publishedModel.n
 
 function installConsole(api: MockAPI, models: Model[] = [publishedModel]) {
   const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
+  api.replaceResponse("GET", "/api/admin/models", { data: models });
   api.replaceResponse("GET", "/api/admin/overview", { ...overview, models, providers: models.length ? [provider] : [] });
   api.respond("GET", "/api/admin/usage/timeseries", { data: [usage] });
   api.respond("GET", "/api/admin/plugins", { data: [] });

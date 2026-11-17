@@ -301,8 +301,15 @@ func TestUsageSummaryHandlersReportQueryFailure(t *testing.T) {
 	for _, path := range []string{"/api/admin/usage/summary", "/api/admin/overview"} {
 		t.Run(path, func(t *testing.T) {
 			response := doJSON(t, app, http.MethodGet, path, nil, "")
-			if response.Code != http.StatusInternalServerError {
-				t.Fatalf("status = %d, want 500: %s", response.Code, response.Body)
+			want := http.StatusInternalServerError
+			if path == "/api/admin/overview" {
+				want = http.StatusOK
+			}
+			if response.Code != want {
+				t.Fatalf("status = %d, want %d: %s", response.Code, want, response.Body)
+			}
+			if path == "/api/admin/overview" && !strings.Contains(response.Body, `"state":"error"`) {
+				t.Fatalf("missing independent summary error: %s", response.Body)
 			}
 		})
 	}
@@ -422,4 +429,8 @@ func usageSummaryNumber(t *testing.T, value any) float64 {
 		t.Fatalf("summary value %#v has unsupported type %T", value, value)
 		return 0
 	}
+}
+
+func (failingUsageSummaryStore) QueryOverviewSummary(context.Context, UsageSummaryQuery) (UsageSummary, OverviewProgress, error) {
+	return UsageSummary{}, OverviewProgress{}, errors.New("forced overview summary failure")
 }

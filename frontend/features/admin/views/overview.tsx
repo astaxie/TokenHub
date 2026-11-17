@@ -6,25 +6,29 @@ import { findProvider, providerResourceAuditLabel } from "../domain/entities";
 import { compactNumber, formatDashboardMoney, formatMoney, formatNumber, playgroundModels } from "../domain/formatting";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
 import { AdminUIDashboardCards } from "./admin-ui-dashboard-cards";
+import { OverviewStatus, OverviewRecentAlerts, useOverviewSummaryAvailable } from "./overview-status";
 import { hasUsage } from "./usage-billing";
 
 export function OverviewView({
   data,
   user,
   onSelectView,
+  onRefresh,
 }: {
   data: AppData;
   user: AdminUser;
   onSelectView: (view: ViewKey) => void;
+  onRefresh?: () => void;
 }) {
   const [range, setRange] = useState<OverviewRangeKey>("7d");
   const [chartMetric, setChartMetric] = useState<OverviewMetricKey>("requests");
+  const summaryAvailable = useOverviewSummaryAvailable(data.summaryStatus);
   const role = appRole(user.role);
   const apiKeyCount = data.summary.api_key_count ?? data.keys.length;
   const can = (view: ViewKey) => canAccessView(user, view);
   const activeProviders = data.providers.filter((provider) => provider.status === "active" && provider.healthy).length;
   const providerTotal = data.providers.length;
-  const series = overviewRangePoints(data, range);
+  const series = overviewRangePoints(data, range, summaryAvailable);
   const requestValues = series.map((point) => point.request_count);
   const tokenValues = series.map((point) => point.total_tokens);
   const costValues = series.map((point) => point.estimated_cost_usd);
@@ -33,23 +37,23 @@ export function OverviewView({
   const cards = [
     {
       label: "总请求",
-      value: formatNumber(data.summary.request_count),
+      value: summaryAvailable ? formatNumber(data.summary.request_count) : "—",
       icon: BarChart3,
-      delta: overviewDeltaLabel(requestValues),
+      delta: summaryAvailable ? overviewDeltaLabel(requestValues) : "",
       values: requestValues,
     },
     {
       label: "总 Token",
-      value: compactNumber(data.summary.total_tokens),
+      value: summaryAvailable ? compactNumber(data.summary.total_tokens) : "—",
       icon: Database,
-      delta: overviewDeltaLabel(tokenValues),
+      delta: summaryAvailable ? overviewDeltaLabel(tokenValues) : "",
       values: tokenValues,
     },
     {
       label: "总成本",
-      value: `$${formatMoney(data.summary.estimated_cost_usd)}`,
+      value: summaryAvailable ? `$${formatMoney(data.summary.estimated_cost_usd)}` : "—",
       icon: CircleDollarSign,
-      delta: overviewDeltaLabel(costValues),
+      delta: summaryAvailable ? overviewDeltaLabel(costValues) : "",
       values: costValues,
     },
     can("providers")
@@ -75,7 +79,8 @@ export function OverviewView({
   if (role === "user" || role === "team_leader") {
     return (
       <div className="overview-report role-usage-overview">
-        <RoleUsageMonitorDashboard data={data} user={user} onSelectView={onSelectView} />
+        <OverviewStatus data={data} onRefresh={onRefresh} />
+        {summaryAvailable ? <RoleUsageMonitorDashboard data={data} user={user} onSelectView={onSelectView} /> : null}
         <OverviewRoleWorkbench data={data} user={user} onSelectView={onSelectView} />
       </div>
     );
@@ -83,6 +88,7 @@ export function OverviewView({
 
   return (
     <div className="overview-report">
+      <OverviewStatus data={data} onRefresh={onRefresh} />
       <header className="overview-report-head">
         <div>
           <p className="eyebrow">{tx("企业级 AI 网关")}</p>
@@ -129,8 +135,8 @@ export function OverviewView({
             <div>
               <h2>{tx("成本与用量趋势")}</h2>
               <p>
-                <strong>{chartValue.value}</strong>
-                <span>{chartValue.delta}</span>
+                <strong>{series.length ? chartValue.value : "—"}</strong>
+                <span>{series.length ? chartValue.delta : ""}</span>
                 <em>· {overviewRangeLabel(range)}</em>
               </p>
             </div>
@@ -155,6 +161,7 @@ export function OverviewView({
           <OverviewTopModels rows={topModels} />
         </aside>
       </section>
+      <OverviewRecentAlerts data={data} onSelectView={onSelectView} />
     </div>
   );
 }
@@ -469,7 +476,7 @@ export function OverviewRoleWorkbench({
   const healthyProviders = activeProviders.filter((provider) => provider.healthy);
   const activeRoutes = data.summary.active_route_count || data.routes.filter((route) => route.status === "active").length;
   const apiKeys = data.summary.api_key_count || data.keys.length;
-  const callableModels = playgroundModels(data).length || data.models.filter((model) => model.status === "active").length;
+  const callableModels = data.summary.playground_model_count ?? data.summary.active_model_count ?? (playgroundModels(data).length || data.models.filter((model) => model.status === "active").length);
   const requestCount = data.summary.request_count;
   const setupScore = overviewSetupScore(role, {
     projects: projects.length,
@@ -961,8 +968,8 @@ export function OverviewTopModels({ rows }: { rows: UsageBreakdownRow[] }) {
   );
 }
 
-export function overviewRangePoints(data: AppData, range: OverviewRangeKey) {
-  const source = (data.timeseries.length ? data.timeseries : fallbackOverviewDays(data.summary))
+export function overviewRangePoints(data: AppData, range: OverviewRangeKey, allowSummaryFallback = true) {
+  const source = (data.timeseries.length ? data.timeseries : allowSummaryFallback ? fallbackOverviewDays(data.summary) : [])
     .slice()
     .sort((left, right) => left.date.localeCompare(right.date));
   if (range === "7d") return source.slice(-7);
