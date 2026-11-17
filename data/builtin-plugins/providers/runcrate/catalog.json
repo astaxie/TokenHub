@@ -1,0 +1,163 @@
+{
+  "id": "runcrate",
+  "type": "openai_compatible",
+  "api": "https://api.runcrate.ai/v1",
+  "name": "Runcrate",
+  "display_name": "Runcrate",
+  "doc": "https://runcrate.ai/docs",
+  "metadata": {
+    "upstream_source": "https://api.runcrate.ai/v1/models",
+    "catalog_reviewed_at": "2026-11-09",
+    "pricing_status": "unverified",
+    "pricing_note": "Current prices must be configured before publishing; omitted prices do not mean free inference."
+  },
+  "models": [
+    {
+      "id": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "name": "DeepSeek V4.1 Flash",
+      "attachment": true,
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 1048576
+      },
+      "display_name": "DeepSeek V4.1 Flash",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "temperature": true,
+      "top_p": true,
+      "stop": true,
+      "seed": true
+    },
+    {
+      "id": "moonshotai/Kimi-K3",
+      "name": "Kimi K3",
+      "attachment": true,
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 943718
+      },
+      "display_name": "Kimi K3",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "temperature": true,
+      "top_p": true,
+      "stop": true,
+      "seed": true
+    },
+    {
+      "id": "zai-org/GLM-5.3",
+      "name": "GLM 5.3",
+      "attachment": false,
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 1048576
+      },
+      "display_name": "GLM 5.3",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "temperature": true,
+      "top_p": true,
+      "stop": true,
+      "seed": true
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "name": "gpt-oss 120B",
+      "attachment": false,
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 131072,
+        "output": 117964
+      },
+      "display_name": "gpt-oss 120B",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "temperature": true,
+      "top_p": true,
+      "stop": true,
+      "seed": true
+    },
+    {
+      "id": "Qwen/Qwen3.8-Flash",
+      "name": "Qwen3.8 Flash",
+      "attachment": false,
+      "reasoning": {
+        "supported": true
+      },
+      "tool_call": true,
+      "structured_output": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 1000000
+      },
+      "display_name": "Qwen3.8 Flash",
+      "type": "chat",
+      "endpoints": "chat/completions",
+      "temperature": true,
+      "top_p": true,
+      "stop": true,
+      "seed": true
+    }
+  ]
+}
