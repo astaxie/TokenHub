@@ -16,6 +16,7 @@ TokenHub のドキュメントは、エンタープライズ Token Governance �
 - [サブスクリプションとアカウント Provider](subscription-providers.md)：32 件のアカウント Provider、12 件の追加 API Key プリセット、認証、実行環境、プロトコルの制限。
 - [データベース進化](database-evolution.md)：フォワードオンリーマイグレーション、採用ベースライン、メンテナンスコマンド、ロールバック互換性。
 - [PostgreSQL 設定ガイド](../postgresql-setup.md)：PostgreSQL の設定、運用、移行。
+- [管理概要とアラート履歴](development/admin-overview.md)：概要応答の上限、過去の統計投影、アラートページング、検証、更新要件。
 - [パフォーマンスベンチマーク](performance-benchmarking.md)：再現可能なゲートウェイ比較、プロセス内割り当てベンチマーク、回帰バジェット。
 
 - [TypeSafe / Jev の接続](typesafe.md)

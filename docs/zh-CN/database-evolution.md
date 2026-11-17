@@ -38,7 +38,7 @@ tokenhub db contract --backup-reference <ref> --maintenance
 - 历史上的计量迁移校验值回归可能导致启动时报 `checksum_mismatch (version 4)`。请使用包含兼容性修复的版本，依次运行 `tokenhub db prepare` 和 `tokenhub db verify` 后正常重启。修复同时识别原始 SQL 校验值和中间版本的确切值 `tokenhub-schema-metering-evidence-v2`，保留已有账本记录，审计关联字段仍由迁移 5 添加。其他校验值不匹配仍会阻止启动；请勿删除数据库或修改账本来绕过校验。`db repair` 用于修复脏迁移，不能解决这种干净账本的校验值不匹配。
 - 对没有采纳基线的数据库执行 `tokenhub db migrate` 会提示先正常启动一次服务：采纳在服务的串行结构流程中完成。
 - 被拒绝的 contract 会说明失败的前置条件；此时没有执行任何操作。
-- 回退到旧版本后，旧版本可在当前数据库上继续工作；新版本回归时重新校验 ledger 并继续演进。
+- 回退要求目标版本的运行器和声明的兼容范围均支持当前 ledger。现有 v0.11.0 运行器会拒绝新增的总览迁移；如需应用版本回退，应在部署这些迁移前安排兼容桥接版本，详见[管理总览与历史告警](development/admin-overview.md)。兼容的新版本回归时会重新校验 ledger。
 - 托管升级会先用目标 Release 自身的二进制执行 `db prepare`：在不发布服务实例心跳的情况下，运行串行且与启动一致的采纳与 expand 流程，因此受支持但尚无 ledger 的旧数据库也能在激活前完成准备；随后执行 `db verify`，对准备后的 ledger 和数据库结构做语义校验。两者都成功后才激活目标 Release。激活后的 Release 首次启动失败时，自动重新激活上一 Release 一次（仅当本次升级未执行 contract、且上一 Release 的兼容记录覆盖当前数据库状态时）；第二次失败则停止版本切换，交由人工恢复。
 - 管理界面展示只读的数据库演进区块（状态版本、就绪状态、兼容范围、回填、在线实例）；contract 与 repair 操作按设计只存在于 CLI。
 

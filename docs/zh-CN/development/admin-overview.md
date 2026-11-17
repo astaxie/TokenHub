@@ -4,7 +4,7 @@
 
 ## 历史统计
 
-全历史用量与请求总数来自 `overview_totals`。全局总计固定占两行。全历史分类统计使用同一投影中的模型、Provider 和资源账号维度，并独立于总览元数据加载。权限统计保留项目、API key 和调用归属用户的组合，同一记录命中多个 OR 权限条件时仅计算一次。按时间范围的报表继续使用现有显式日期范围和分析查询。
+`GET /api/admin/overview` 中的全历史用量与请求总数来自 `overview_totals`。全局总计固定占两行。全历史分类统计使用同一投影中的模型、Provider 和资源账号维度，并独立于总览元数据加载。权限统计保留项目、API key 和调用归属用户的组合，同一记录命中多个 OR 权限条件时仅计算一次。独立的 `GET /api/admin/usage/summary` 仍使用原有 SQL 聚合；按时间范围的报表与时间序列继续使用现有日期窗口和分析查询。
 
 SQLite 迁移 12 和 PostgreSQL 迁移 13 增加汇总表、原始记录投影标记、索引和数据库触发器。插入、相关字段更正和删除在原数据库事务内维护投影，也覆盖当前 Go 进程之外的写入。每条原始记录仅投影一次，已投影记录更正时先扣减旧贡献再增加新贡献。
 
@@ -18,13 +18,13 @@ SQLite 迁移 12 和 PostgreSQL 迁移 13 增加汇总表、原始记录投影�
 
 `GET /api/admin/alerts` 返回 `data`、`page`、`page_size` 和 `total`。默认每页 50 条，强制上限为 100 条。支持 `project_id`、`severity`、`from`、`before`。时间使用 RFC 3339，包含 `from`，排除 `before`。按创建时间和 ID 降序排列。
 
-控制台历史列表使用服务端分页，取消过期请求，分别展示筛选后的总数和当前页记录。项目配额事件次数与最近发生时间通过 `GET /api/admin/project-quota-events` 独立查询，将可见项目的全部已留存请求日志和告警组合统计。
+控制台历史列表使用服务端分页，取消过期请求，分别展示筛选后的总数和当前页记录。项目配额事件次数与最近发生时间通过 `GET /api/admin/project-quota-events` 独立查询，统计可见项目的全部已留存历史。全局运营角色获得请求日志与告警的合计；受限角色仅获得其有效权限内的请求日志统计。
 
 ## 验证
 
 后端回归覆盖响应上限、筛选、重叠权限、更正、删除、回填续跑、取消和旧缓存期限。PostgreSQL 投影测试加入 CI。`overview-bounds` 界面场景覆盖正常、准备中、失败、模型搜索和历史告警分页。
 
-可选测试 `TestOverviewRepresentativeScale` 和 `TestPostgresOverviewRepresentativeScale` 准备 300 万条用量、300 万条请求、10 万条告警和 300 个模型。回填完成后分别以冷缓存和热缓存、10 并发调用记录 p95 与每次累计分配量，要求 p95 小于 1 秒。启用 `TOKENHUB_OVERVIEW_SCALE=1`，PostgreSQL 还需 `TEST_POSTGRES_URL` 和 `integration` build tag。结果对应固定测试环境，生产峰值 RSS 和既往 OOM 的归因仍需现场证据。
+可选测试 `TestOverviewRepresentativeScale` 和 `TestPostgresOverviewRepresentativeScale` 准备 300 万条用量、300 万条请求、10 万条告警和 300 个模型。回填完成后分别以冷缓存和热缓存、10 并发调用记录 p95 与每次累计分配量，要求 p95 小于 1 秒。启用 `TOKENHUB_OVERVIEW_SCALE=1`，PostgreSQL 还需 `TEST_POSTGRES_URL` 和 `integration` build tag。用量与请求时间固定为 2026-01-01，当前近期趋势窗口为空；这些结果覆盖历史投影读取及空近期趋势查询，不代表有数据的近期流量查询或实时写入吞吐。结果对应固定测试环境，生产峰值 RSS 和既往 OOM 的归因仍需现场证据。
 
 SQLite 金额投影使用补偿求和保留低位贡献。原生数值累计出现整数范围溢出或金额精度损失风险时，统计读取退回原始 SQL 汇总，继续使用缓存和查询期限。这一异常数值路径会扫描历史，优先保证原始记录持久化和更正后的统计准确性。PostgreSQL 的汇总使用 NUMERIC。
 

@@ -4,7 +4,7 @@ The overview returns metadata counts, projects and provider configuration, and t
 
 ## Historical statistics
 
-Lifetime usage and request totals come from `overview_totals`. Global totals occupy two fixed rows. Lifetime breakdowns read the same projection, including model, provider and resource dimensions, and load independently of overview metadata. Scoped totals retain the project, API key and attributed-user tuple so overlapping OR permissions count each record once. Range-based usage reports keep their existing explicit date ranges and analytics queries.
+The lifetime usage and request totals in `GET /api/admin/overview` come from `overview_totals`. Global totals occupy two fixed rows. Lifetime breakdowns read the same projection, including model, provider and resource dimensions, and load independently of overview metadata. Scoped totals retain the project, API key and attributed-user tuple so overlapping OR permissions count each record once. The separate `GET /api/admin/usage/summary` endpoint keeps its existing SQL aggregates. Range-based usage reports and timeseries keep their existing date windows and analytics queries.
 
 Schema expansions 12 (SQLite) and 13 (PostgreSQL) add the totals, projection marker columns, indexes and database triggers. Inserts, relevant updates and deletes maintain the projection in the same database transaction, including writes made outside the current Go process. Each source row is projected once. Changes to projected rows subtract the previous contribution and add the new contribution.
 
@@ -18,13 +18,13 @@ Successful summaries are cached for 15 seconds per effective permission scope. C
 
 `GET /api/admin/alerts` returns `data`, `page`, `page_size` and `total`. The default page size is 50 and the enforced maximum is 100. It accepts `project_id`, `severity`, `from` and `before`. Times use RFC 3339. `from` is inclusive and `before` is exclusive. Ordering is descending by creation time and ID.
 
-The console history view owns server pagination and aborts obsolete reads. It displays the filtered total independently from the current page length. Project quota-event counts and latest occurrence times are queried separately through `GET /api/admin/project-quota-events`, combining full retained request-log and alert history for visible projects.
+The console history view owns server pagination and aborts obsolete reads. It displays the filtered total independently from the current page length. Project quota-event counts and latest occurrence times are queried separately through `GET /api/admin/project-quota-events`, using full retained history for visible projects. Global operators receive combined request-log and alert counts; scoped users receive request-log counts within their effective permissions.
 
 ## Verification
 
 Backend regression tests cover bounded responses, filters, overlapping scopes, corrections, deletes, resumable batches, cancellation and stale-cache limits. The PostgreSQL projection test also runs in CI. UI scenarios under `overview-bounds` cover ready, preparing and failure states, model search and paged alerts.
 
-The opt-in `TestOverviewRepresentativeScale` and `TestPostgresOverviewRepresentativeScale` prepare three million usage rows, three million request rows, 100,000 alerts and 300 models. They check cold and warm caches with 10 concurrent callers, record p95 and allocated bytes per request, and require p95 below one second after backfill. Set `TOKENHUB_OVERVIEW_SCALE=1`; the PostgreSQL test also requires `TEST_POSTGRES_URL` and the `integration` build tag. Results describe their fixed test environment. They do not establish production peak RSS or the cause of a previous OOM.
+The opt-in `TestOverviewRepresentativeScale` and `TestPostgresOverviewRepresentativeScale` prepare three million usage rows, three million request rows, 100,000 alerts and 300 models. They check cold and warm caches with 10 concurrent callers, record p95 and allocated bytes per request, and require p95 below one second after backfill. Set `TOKENHUB_OVERVIEW_SCALE=1`; the PostgreSQL test also requires `TEST_POSTGRES_URL` and the `integration` build tag. Usage and request timestamps are fixed at 2026-01-01, so the current recent-trend window is empty. These results cover historical projection reads and the empty recent-trend query, rather than populated recent traffic or live write throughput. Results describe their fixed test environment. They do not establish production peak RSS or the cause of a previous OOM.
 
 SQLite monetary projections use compensated summation to retain low-order contributions. SQLite falls back to the original SQL aggregates when integer range or monetary precision is at risk. This exceptional numeric path scans history while retaining the cache and query deadline, preserving source records and corrected totals. PostgreSQL totals use NUMERIC.
 
