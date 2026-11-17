@@ -80,6 +80,7 @@ func (s *GormStore) usageGroupQuery(ctx context.Context, scope UsageSummaryScope
 	}
 	base := s.analyticsDB.WithContext(ctx).Model(&UsageRecord{})
 	metrics := usageGroupMetrics
+	projected := false
 	if scope.CreatedAtFrom.IsZero() && scope.CreatedAtBefore.IsZero() {
 		progress, err := s.overviewProgress(ctx)
 		if err != nil {
@@ -89,7 +90,8 @@ func (s *GormStore) usageGroupQuery(ctx context.Context, scope UsageSummaryScope
 			return nil, NewHTTPError(503, "overview_preparing", "Historical statistics are preparing")
 		}
 		if !progress.useRaw || s.dbDriver != "sqlite" {
-			base = s.analyticsDB.WithContext(ctx).Table("overview_totals").Where("scope = ? AND source = ? AND usage_record_count > 0", "tuple", "usage_records")
+			projected = true
+			base = s.analyticsDB.WithContext(ctx).Table("overview_totals").Where("scope = ? AND source = ?", "tuple", "usage_records")
 			metrics = strings.ReplaceAll(usageGroupMetrics, "COUNT(*)", "SUM(usage_record_count)")
 			metrics = strings.ReplaceAll(metrics, "SUM(cost_usd)", "SUM(estimated_cost_usd + cost_compensation)")
 		}
@@ -98,7 +100,11 @@ func (s *GormStore) usageGroupQuery(ctx context.Context, scope UsageSummaryScope
 	if err != nil {
 		return nil, err
 	}
-	return query.Select(selection + ", " + metrics).Group(column), nil
+	query = query.Select(selection + ", " + metrics).Group(column)
+	if projected {
+		query = query.Having("SUM(usage_record_count) > 0")
+	}
+	return query, nil
 }
 
 func (s *GormStore) streamUsageGroupRows(ctx context.Context, query *gorm.DB, visit func(UsageGroup)) (resultErr error) {

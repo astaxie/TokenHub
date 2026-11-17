@@ -148,6 +148,12 @@ func (s *GormStore) backfillOverviewBatch(ctx context.Context, table string, lim
 				return err
 			}
 		}
+		var shard int
+		if s.dbDriver == "postgres" {
+			if err := tx.Raw("SELECT overview_transaction_shard()").Scan(&shard).Error; err != nil {
+				return err
+			}
+		}
 		var ids []string
 		pending := tx.Table(table).Select("id").Where("overview_projected = 0").Order("id").Limit(limit)
 		if s.dbDriver == "postgres" {
@@ -177,7 +183,7 @@ func (s *GormStore) backfillOverviewBatch(ctx context.Context, table string, lim
 			}
 			aggregates[i] = "COALESCE(SUM(" + expression + "), 0)"
 		}
-		columns := "scope, source, " + strings.Join(overviewDimensionColumns, ", ") + ", " + strings.Join(overviewMetricColumns, ", ")
+		columns := "scope, source, shard, " + strings.Join(overviewDimensionColumns, ", ") + ", " + strings.Join(overviewMetricColumns, ", ")
 		metrics := strings.Join(aggregates, ", ")
 		for _, scope := range []string{"global", "tuple"} {
 			dimensionValues := make([]string, len(overviewDimensionColumns))
@@ -193,8 +199,8 @@ func (s *GormStore) backfillOverviewBatch(ctx context.Context, table string, lim
 				dimensions = strings.Join(dimensionValues, ", ")
 				group = " GROUP BY " + dimensions
 			}
-			statement := fmt.Sprintf("INSERT INTO overview_totals (%s) SELECT ?, ?, %s, %s FROM %s WHERE id IN ?%s ON CONFLICT (scope, source, project_id, api_key_id, attributed_user_id, model_name, provider_id, provider_resource_id) DO UPDATE SET %s", columns, dimensions, metrics, table, group, strings.Join(updates, ", "))
-			if err := tx.Exec(statement, scope, table, ids).Error; err != nil {
+			statement := fmt.Sprintf("INSERT INTO overview_totals (%s) SELECT ?, ?, ?, %s, %s FROM %s WHERE id IN ?%s ON CONFLICT (scope, source, project_id, api_key_id, attributed_user_id, model_name, provider_id, provider_resource_id, shard) DO UPDATE SET %s", columns, dimensions, metrics, table, group, strings.Join(updates, ", "))
+			if err := tx.Exec(statement, scope, table, shard, ids).Error; err != nil {
 				return err
 			}
 		}

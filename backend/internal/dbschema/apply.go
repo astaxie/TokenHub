@@ -425,14 +425,14 @@ func (r *Runner) runOnPostgres(ctx context.Context, m Migration) (Applied, strin
 	if err := tx.Commit(); err != nil {
 		return Applied{}, "failed", err
 	}
-	budgeted := newBudgetedExecer(r.db, m)
+	budgeted := newBudgetedExecer(conn, m)
 	if err := runMigrationBody(ctx, budgeted, m); err != nil {
 		return Applied{}, "dirty", err
 	}
 	if err := m.Postcondition(ctx, budgeted); err != nil {
 		return Applied{}, "dirty", fmt.Errorf("postcondition: %w", err)
 	}
-	if err := r.clearDirty(ctx, m.Version); err != nil {
+	if err := r.clearDirtyOn(ctx, conn, m.Version); err != nil {
 		return Applied{}, "dirty", err
 	}
 	return r.appliedRecord(m), "success", nil

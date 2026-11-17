@@ -56,8 +56,8 @@ func addSQLiteProjectedAmount(tx *gorm.DB, scope string, key [6]string, amount c
 	if math.IsNaN(amount.sum) || math.IsInf(amount.sum, 0) || math.IsNaN(amount.correction) || math.IsInf(amount.correction, 0) {
 		return tx.Exec("UPDATE overview_projection_progress SET overflowed = 1 WHERE source = 'usage_records'").Error
 	}
-	columns := "scope, source, " + strings.Join(overviewDimensionColumns, ", ") + ", " + strings.Join(overviewMetricColumns, ", ")
-	args := []any{scope, "usage_records"}
+	columns := "scope, source, shard, " + strings.Join(overviewDimensionColumns, ", ") + ", " + strings.Join(overviewMetricColumns, ", ")
+	args := []any{scope, "usage_records", int64(0)}
 	for _, dimension := range key {
 		args = append(args, dimension)
 	}
@@ -72,6 +72,6 @@ func addSQLiteProjectedAmount(tx *gorm.DB, scope string, key [6]string, amount c
 		args = append(args, value)
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(args)), ", ")
-	statement := "INSERT INTO overview_totals (" + columns + ") VALUES (" + placeholders + ") ON CONFLICT (scope, source, " + strings.Join(overviewDimensionColumns, ", ") + ") DO UPDATE SET " + strings.Join(overviewMetricUpdates("sqlite"), ", ")
+	statement := "INSERT INTO overview_totals (" + columns + ") VALUES (" + placeholders + ") ON CONFLICT (scope, source, " + strings.Join(overviewDimensionColumns, ", ") + ", shard) DO UPDATE SET " + strings.Join(overviewMetricUpdates("sqlite"), ", ")
 	return tx.Exec(statement, args...).Error
 }

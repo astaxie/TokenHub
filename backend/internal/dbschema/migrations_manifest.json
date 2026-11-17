@@ -100,7 +100,7 @@
       "name": "add-overview-projection-sqlite",
       "phase": "expand",
       "dialect": "sqlite",
-      "checksum": "adc9563277090a2fb90f05e3d2be010beb7012298fb794f33d8713b4e9569a14",
+      "checksum": "0aebf95a55d37fed2418c09e993643bdf0cec4e1d785f219e6bcd186dc382d6d",
       "lock_timeout_seconds": 30,
       "statement_budget": 30
     },
@@ -109,7 +109,7 @@
       "name": "add-overview-projection-postgres",
       "phase": "expand",
       "dialect": "postgres",
-      "checksum": "27edf0fc6c20e504e51a758baac184792182e44af5faa9f5c6ca85f4b17e338b",
+      "checksum": "d0a89cfcb03821121bd3dc93ab19381ef38b9bb089ddd5551167baee292c0b47",
       "lock_timeout_seconds": 30,
       "statement_budget": 40
     },

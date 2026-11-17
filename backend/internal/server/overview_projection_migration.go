@@ -38,18 +38,33 @@ var overviewMetricColumns = []string{
 
 func overviewProjectionStatements(driver string) []string {
 	statements := []string{`CREATE TABLE overview_totals (
-        scope TEXT NOT NULL, source TEXT NOT NULL, project_id TEXT NOT NULL, api_key_id TEXT NOT NULL, attributed_user_id TEXT NOT NULL, model_name TEXT NOT NULL, provider_id TEXT NOT NULL, provider_resource_id TEXT NOT NULL,
+        scope TEXT NOT NULL, source TEXT NOT NULL, shard INTEGER NOT NULL DEFAULT 0, project_id TEXT NOT NULL, api_key_id TEXT NOT NULL, attributed_user_id TEXT NOT NULL, model_name TEXT NOT NULL, provider_id TEXT NOT NULL, provider_resource_id TEXT NOT NULL,
         record_count NUMERIC NOT NULL DEFAULT 0, request_count NUMERIC NOT NULL DEFAULT 0, usage_record_count NUMERIC NOT NULL DEFAULT 0,
         input_tokens NUMERIC NOT NULL DEFAULT 0, cached_input_tokens NUMERIC NOT NULL DEFAULT 0, cache_write_tokens NUMERIC NOT NULL DEFAULT 0,
         output_tokens NUMERIC NOT NULL DEFAULT 0, reasoning_tokens NUMERIC NOT NULL DEFAULT 0, total_tokens NUMERIC NOT NULL DEFAULT 0,
         estimated_cost_usd NUMERIC NOT NULL DEFAULT 0, cost_compensation NUMERIC NOT NULL DEFAULT 0, errors NUMERIC NOT NULL DEFAULT 0,
-        PRIMARY KEY (scope, source, project_id, api_key_id, attributed_user_id, model_name, provider_id, provider_resource_id))`,
+        PRIMARY KEY (scope, source, project_id, api_key_id, attributed_user_id, model_name, provider_id, provider_resource_id, shard))`,
 		`CREATE INDEX idx_overview_totals_user ON overview_totals (scope, source, attributed_user_id)`,
 		`CREATE INDEX idx_overview_totals_key ON overview_totals (scope, source, api_key_id)`,
 		`CREATE TABLE overview_projection_progress (source TEXT PRIMARY KEY, processed NUMERIC NOT NULL DEFAULT 0, overflowed INTEGER NOT NULL DEFAULT 0)`,
 		`INSERT INTO overview_projection_progress (source) VALUES ('usage_records'), ('request_logs')`,
 	}
 
+	if driver == "postgres" {
+		statements = append(statements, `CREATE FUNCTION overview_transaction_shard() RETURNS integer LANGUAGE plpgsql AS $$
+        DECLARE saved text; candidate integer := 0;
+        BEGIN
+            saved := NULLIF(current_setting('tokenhub.overview_shard', true), '');
+            IF saved IS NOT NULL AND pg_try_advisory_xact_lock(hashtext('tokenhub:overview-writer'), saved::integer) THEN RETURN saved::integer; END IF;
+            LOOP
+                IF pg_try_advisory_xact_lock(hashtext('tokenhub:overview-writer'), candidate) THEN
+                    PERFORM set_config('tokenhub.overview_shard', candidate::text, true);
+                    RETURN candidate;
+                END IF;
+                candidate := candidate + 1;
+            END LOOP;
+        END $$`)
+	}
 	for _, table := range []string{"usage_records", "request_logs"} {
 		statements = append(statements,
 			fmt.Sprintf("ALTER TABLE %s ADD COLUMN overview_projected INTEGER NOT NULL DEFAULT 0", table),
@@ -102,6 +117,10 @@ func overviewProjectionDelta(table, row string, sign int, driver string) string 
 		metrics[i] = fmt.Sprintf("%d * CAST((%s) AS NUMERIC)", sign, value)
 	}
 
+	shard := "0"
+	if driver == "postgres" {
+		shard = "overview_transaction_shard()"
+	}
 	predicate := row + ".overview_projected > 0"
 	statements := make([]string, 0, 2)
 	for _, scope := range []string{"global", "tuple"} {
@@ -114,7 +133,7 @@ func overviewProjectionDelta(table, row string, sign int, driver string) string 
 				dimensions[i] = "COALESCE(" + row + "." + column + ", '')"
 			}
 		}
-		statements = append(statements, fmt.Sprintf("INSERT INTO overview_totals (scope, source, project_id, api_key_id, attributed_user_id, model_name, provider_id, provider_resource_id, %s) SELECT '%s', '%s', %s, %s WHERE %s ON CONFLICT (scope, source, project_id, api_key_id, attributed_user_id, model_name, provider_id, provider_resource_id) DO UPDATE SET %s;", strings.Join(overviewMetricColumns, ", "), scope, table, strings.Join(dimensions, ", "), strings.Join(metrics, ", "), predicate, strings.Join(updates, ", ")))
+		statements = append(statements, fmt.Sprintf("INSERT INTO overview_totals (scope, source, shard, project_id, api_key_id, attributed_user_id, model_name, provider_id, provider_resource_id, %s) SELECT '%s', '%s', %s, %s, %s WHERE %s ON CONFLICT (scope, source, project_id, api_key_id, attributed_user_id, model_name, provider_id, provider_resource_id, shard) DO UPDATE SET %s;", strings.Join(overviewMetricColumns, ", "), scope, table, shard, strings.Join(dimensions, ", "), strings.Join(metrics, ", "), predicate, strings.Join(updates, ", ")))
 	}
 	return strings.Join(statements, "\n")
 }
@@ -168,7 +187,7 @@ func overviewMetricUpdates(driver string) []string {
                 ELSE (excluded.estimated_cost_usd - (overview_totals.estimated_cost_usd + excluded.estimated_cost_usd)) + overview_totals.estimated_cost_usd END`
 			expression = "COALESCE(" + expression + ", 0)"
 		}
-		if column == "estimated_cost_usd" || column == "cost_compensation" {
+		if driver == "sqlite" && (column == "estimated_cost_usd" || column == "cost_compensation") {
 			expression = "CASE WHEN overview_totals.record_count + excluded.record_count = 0 THEN 0 ELSE " + expression + " END"
 		}
 		updates[i] = column + " = " + expression
