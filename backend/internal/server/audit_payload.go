@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"time"
 	"unicode/utf8"
@@ -16,8 +17,16 @@ const (
 	// so it gets a hard ceiling even though the operator can raise it.
 	maximumAuditPayloadScanKB = 4096
 	auditPayloadMaxDepth      = 64
-	auditPayloadOmitted       = `{"omitted":"payload_exceeds_audit_limit"}`
+	auditPayloadOmittedReason = "payload_exceeds_audit_limit"
 )
+
+// auditPayloadOmitted marks the snapshot of a body that the scan budget
+// rejected. The active limit and the setting that raises it travel with the
+// marker, so an operator reading the stored snapshot sees the fix next to the
+// symptom.
+func auditPayloadOmitted(limits auditPayloadLimits) string {
+	return fmt.Sprintf(`{"omitted":%q,"scan_kb":%d,"adjust":"TOKENHUB_AUDIT_PAYLOAD_SCAN_KB"}`, auditPayloadOmittedReason, limits.scanBytes/1024)
+}
 
 // auditPayloadLimits bounds the work spent rendering one audit snapshot and the
 // size of the inline preview kept in request_payload_logs. Both values come
@@ -45,14 +54,14 @@ func renderAuditPayload(value any, limits auditPayloadLimits) (string, bool) {
 	// request. The bounded scan also stops very wide or cyclic input graphs.
 	budget := limits.scanBytes
 	if !auditPayloadFits(reflect.ValueOf(value), &budget, 0) {
-		return auditPayloadOmitted, true
+		return auditPayloadOmitted(limits), true
 	}
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return `{"error":"payload_not_serializable"}`, false
 	}
 	if len(raw) > limits.scanBytes {
-		return auditPayloadOmitted, true
+		return auditPayloadOmitted(limits), true
 	}
 	var decoded any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -63,7 +72,7 @@ func renderAuditPayload(value any, limits auditPayloadLimits) (string, bool) {
 	// indentation, whose output otherwise grows quadratically with depth.
 	budget = limits.scanBytes
 	if !auditPayloadFits(reflect.ValueOf(decoded), &budget, 0) {
-		return auditPayloadOmitted, true
+		return auditPayloadOmitted(limits), true
 	}
 	raw, err = json.MarshalIndent(redactAuditValue(decoded), "", "  ")
 	if err != nil {

@@ -134,7 +134,7 @@ func TestConfiguredAuditLimitsRenderOversizedSnapshots(t *testing.T) {
 	if record.RequestTruncated != true || !json.Valid([]byte(record.RequestBody)) {
 		t.Fatalf("100 KiB payload should render fully at a 256 KiB scan budget: truncated=%v", record.RequestTruncated)
 	}
-	if strings.Contains(record.RequestBody, auditPayloadOmitted) {
+	if strings.Contains(record.RequestBody, auditPayloadOmittedReason) {
 		t.Fatal("oversized-but-in-budget snapshot must not be omitted")
 	}
 	if len(record.RequestPreview) > 64*1024 {

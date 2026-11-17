@@ -67,8 +67,19 @@ func TestAuditPayloadOmitsLargeOrComplexInputsBeforeSerialization(t *testing.T) 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			body, truncated := auditPayloadBody(test.value)
-			if body != auditPayloadOmitted || !truncated || !json.Valid([]byte(body)) {
+			if !truncated || !json.Valid([]byte(body)) {
 				t.Fatalf("expected omission marker, got %q, truncated=%v", body, truncated)
+			}
+			var marker struct {
+				Omitted string `json:"omitted"`
+				ScanKB  int    `json:"scan_kb"`
+				Adjust  string `json:"adjust"`
+			}
+			if err := json.Unmarshal([]byte(body), &marker); err != nil {
+				t.Fatalf("omission marker is not a valid object: %q", body)
+			}
+			if marker.Omitted != auditPayloadOmittedReason || marker.ScanKB != defaultAuditPayloadScanKB || marker.Adjust != "TOKENHUB_AUDIT_PAYLOAD_SCAN_KB" {
+				t.Fatalf("omission marker lost its self-description: %q", body)
 			}
 		})
 	}
