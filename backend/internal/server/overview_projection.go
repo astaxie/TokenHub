@@ -165,11 +165,6 @@ func (s *GormStore) backfillOverviewBatch(ctx context.Context, table string, lim
 		if len(ids) == 0 {
 			return tx.Exec("UPDATE overview_projection_progress SET ready = 1 WHERE source = ?", table).Error
 		}
-		if s.dbDriver == "sqlite" && table == "usage_records" {
-			if err := markSQLiteBatchPrecisionRisk(tx, ids); err != nil {
-				return err
-			}
-		}
 		values := overviewRowMetricValues(table, table)
 		aggregates := make([]string, len(overviewMetricColumns))
 		updates := overviewMetricUpdates(s.dbDriver)
@@ -210,7 +205,7 @@ func (s *GormStore) backfillOverviewBatch(ctx context.Context, table string, lim
 			}
 		}
 		if s.dbDriver == "sqlite" {
-			if err := tx.Exec(overviewSQLiteOverflowSQL(table)).Error; err != nil {
+			if err := tx.Exec(overviewSQLiteOverflowSQL(table, "")).Error; err != nil {
 				return err
 			}
 		}
@@ -296,25 +291,6 @@ func (s *Server) runOverviewBackfill(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
-}
-
-func markSQLiteBatchPrecisionRisk(tx *gorm.DB, ids []string) error {
-	var costs struct{ Previous, Delta, MinAbs, MaxAbs float64 }
-	err := tx.Raw(`SELECT COALESCE((SELECT estimated_cost_usd FROM overview_totals WHERE scope = 'global' AND source = 'usage_records'), 0) AS previous,
-        COALESCE(SUM(cost_usd), 0) AS delta,
-        COALESCE(MIN(CASE WHEN cost_usd <> 0 THEN ABS(cost_usd) END), 0) AS min_abs,
-        COALESCE(MAX(ABS(cost_usd)), 0) AS max_abs
-        FROM usage_records WHERE id IN ?`, ids).Scan(&costs).Error
-	if err != nil {
-		return err
-	}
-	lostIncoming := costs.Delta != 0 && costs.Previous+costs.Delta == costs.Previous
-	lostPrevious := math.Abs(((costs.Previous+costs.Delta)-costs.Delta)-costs.Previous) > math.Abs(costs.Previous)*8.881784197001252e-16
-	mixedMagnitudes := costs.MinAbs > 0 && costs.MaxAbs+costs.MinAbs == costs.MaxAbs
-	if lostIncoming || lostPrevious || mixedMagnitudes || math.IsInf(costs.Delta, 0) || math.IsNaN(costs.Delta) {
-		return tx.Exec("UPDATE overview_projection_progress SET overflowed = 1 WHERE source = 'usage_records'").Error
-	}
-	return nil
 }
 
 func (s *GormStore) querySQLiteOverviewRawSummary(ctx context.Context, query UsageSummaryQuery) (UsageSummary, error) {

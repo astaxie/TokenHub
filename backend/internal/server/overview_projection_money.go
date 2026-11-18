@@ -73,5 +73,12 @@ func addSQLiteProjectedAmount(tx *gorm.DB, scope string, key [6]string, amount c
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(args)), ", ")
 	statement := "INSERT INTO overview_totals (" + columns + ") VALUES (" + placeholders + ") ON CONFLICT (scope, source, " + strings.Join(overviewDimensionColumns, ", ") + ", shard) DO UPDATE SET " + strings.Join(overviewMetricUpdates("sqlite"), ", ")
-	return tx.Exec(statement, args...).Error
+	var overflow bool
+	if err := tx.Raw(statement+" RETURNING "+overviewSQLiteAmountOverflow, args...).Scan(&overflow).Error; err != nil {
+		return err
+	}
+	if overflow {
+		return tx.Exec("UPDATE overview_projection_progress SET overflowed = 1 WHERE source = 'usage_records'").Error
+	}
+	return nil
 }

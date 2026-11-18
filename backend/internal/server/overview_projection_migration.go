@@ -72,9 +72,8 @@ func overviewProjectionStatements(driver string) []string {
 		add := overviewProjectionDelta(table, "NEW", 1, driver)
 		subtract := overviewProjectionDelta(table, "OLD", -1, driver)
 		if driver == "sqlite" {
-			overflow := overviewSQLiteOverflowSQL(table)
-			subtract = overviewSQLiteCostRiskSQL(table, "OLD", -1) + subtract + overflow
-			add = overviewSQLiteCostRiskSQL(table, "NEW", 1) + add + overflow
+			subtract += overviewSQLiteOverflowSQL(table, "OLD")
+			add += overviewSQLiteOverflowSQL(table, "NEW")
 		}
 		fields := append([]string{"overview_projected"}, overviewDimensionColumns...)
 		if table == "usage_records" {
@@ -153,28 +152,28 @@ func overviewRowMetricValues(table, row string) map[string]string {
 	return values
 }
 
-func overviewSQLiteOverflowSQL(table string) string {
-	conditions := make([]string, 0, len(overviewMetricColumns)-1)
+const overviewSQLiteAmountOverflow = "ABS(estimated_cost_usd) > 1.7976931348623157e308 OR ABS(cost_compensation) > 1.7976931348623157e308"
+
+func overviewSQLiteOverflowSQL(table, row string) string {
+	conditions := make([]string, 0, len(overviewMetricColumns))
 	for _, column := range overviewMetricColumns {
 		if column != "estimated_cost_usd" && column != "cost_compensation" {
 			conditions = append(conditions, "typeof("+column+") = 'real'")
 		}
 	}
-	return "UPDATE overview_projection_progress SET overflowed = 1 WHERE source = '" + table + "' AND overflowed = 0 AND EXISTS (SELECT 1 FROM overview_totals WHERE scope = 'global' AND source = '" + table + "' AND (" + strings.Join(conditions, " OR ") + "));"
-}
-
-func overviewSQLiteCostRiskSQL(table, row string, sign int) string {
-	if table != "usage_records" {
-		return ""
+	if table == "usage_records" {
+		conditions = append(conditions, overviewSQLiteAmountOverflow)
 	}
-	delta := fmt.Sprintf("%d * COALESCE(%s.cost_usd, 0)", sign, row)
-	// Four binary64 epsilons tolerate ordinary rounding while detecting loss
-	// of an existing small balance when a large contribution is added.
-	return fmt.Sprintf(`UPDATE overview_projection_progress SET overflowed = 1
-        WHERE source = 'usage_records' AND overflowed = 0 AND %s.overview_projected > 0
-        AND EXISTS (SELECT 1 FROM overview_totals WHERE scope = 'global' AND source = 'usage_records'
-          AND (((%s) <> 0 AND estimated_cost_usd + (%s) = estimated_cost_usd)
-            OR ABS(((estimated_cost_usd + (%s)) - (%s)) - estimated_cost_usd) > ABS(estimated_cost_usd) * 8.881784197001252e-16));`, row, delta, delta, delta, delta)
+	from := " FROM overview_totals WHERE source = '" + table + "' AND (" + strings.Join(conditions, " OR ") + ") AND "
+	affected := "SELECT 1" + from + "scope = 'global'"
+	if row != "" {
+		dimensions := make([]string, 0, len(overviewDimensionColumns))
+		for _, column := range overviewDimensionColumns {
+			dimensions = append(dimensions, column+" = COALESCE("+row+"."+column+", '')")
+		}
+		affected += " UNION ALL SELECT 1" + from + "scope = 'tuple' AND " + strings.Join(dimensions, " AND ")
+	}
+	return "UPDATE overview_projection_progress SET overflowed = 1 WHERE source = '" + table + "' AND overflowed = 0 AND EXISTS (" + affected + ");"
 }
 
 func overviewMetricUpdates(driver string) []string {

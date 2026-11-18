@@ -332,6 +332,38 @@ func TestSQLiteOverviewOverflowRemainsExactAfterDeletion(t *testing.T) {
 	}
 }
 
+func TestSQLiteOverviewOrdinaryCostsKeepProjection(t *testing.T) {
+	for _, mode := range []string{"live", "backfill"} {
+		t.Run(mode, func(t *testing.T) {
+			store := NewMemoryStore()
+			t.Cleanup(func() { _ = store.Close() })
+			if mode == "backfill" {
+				if err := store.db.Exec("DROP TRIGGER overview_usage_records_insert").Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := store.db.Exec("INSERT INTO usage_records (id, cost_usd) VALUES ('a_small', 0.01), ('b_large', 10)").Error; err != nil {
+				t.Fatal(err)
+			}
+			if mode == "backfill" {
+				for i := 0; i < 3; i++ {
+					if _, err := store.backfillOverviewBatch(t.Context(), "usage_records", 1); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if err := store.db.Exec("DELETE FROM usage_records WHERE id = 'b_large'").Error; err != nil {
+				t.Fatal(err)
+			}
+			global := UsageSummaryScope{Global: true}
+			summary, progress, err := store.QueryOverviewSummary(t.Context(), UsageSummaryQuery{UsageRecords: global, RequestLogs: global})
+			if err != nil || !progress.Ready || progress.useRaw || summary.EstimatedCostUSD != 0.01 {
+				t.Fatalf("summary=%+v progress=%+v err=%v", summary, progress, err)
+			}
+		})
+	}
+}
+
 func TestSQLiteOverviewCostCorrectionKeepsSmallBalance(t *testing.T) {
 	for _, small := range []float64{0.01, 3.01} {
 		for _, order := range []string{"large_first", "small_first"} {

@@ -3,15 +3,20 @@ import { type AppData, type ViewKey } from "../core/types";
 import { formatNumber, formatTime } from "../domain/formatting";
 import { formatTranslationTemplate, tx } from "../i18n/runtime";
 
-export function OverviewStatus({ data, onRefresh }: { data: AppData; onRefresh?: () => void }) {
+export function OverviewStatus({ data, onRefresh }: { data: AppData; onRefresh?: () => Promise<void> }) {
   const refresh = useRef(onRefresh);
   useEffect(() => { refresh.current = onRefresh; }, [onRefresh]);
   const status = data.summaryStatus;
   const available = useOverviewSummaryAvailable(status);
   useEffect(() => {
     if (status?.state !== "preparing") return;
-    const timer = setInterval(() => refresh.current?.(), 3000);
-    return () => clearInterval(timer);
+    let stopped = false;
+    let timer = setTimeout(poll, 3000);
+    async function poll() {
+      await refresh.current?.();
+      if (!stopped) timer = setTimeout(poll, 3000);
+    }
+    return () => { stopped = true; clearTimeout(timer); };
   }, [status?.state]);
   useEffect(() => {
     if (status?.state !== "stale" || !status.updated_at) return;

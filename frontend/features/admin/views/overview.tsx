@@ -18,7 +18,7 @@ export function OverviewView({
   data: AppData;
   user: AdminUser;
   onSelectView: (view: ViewKey) => void;
-  onRefresh?: () => void;
+  onRefresh?: () => Promise<void>;
 }) {
   const [range, setRange] = useState<OverviewRangeKey>("7d");
   const [chartMetric, setChartMetric] = useState<OverviewMetricKey>("requests");

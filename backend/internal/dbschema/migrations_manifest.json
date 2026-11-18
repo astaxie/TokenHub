@@ -100,7 +100,7 @@
       "name": "add-overview-projection-sqlite",
       "phase": "expand",
       "dialect": "sqlite",
-      "checksum": "0aebf95a55d37fed2418c09e993643bdf0cec4e1d785f219e6bcd186dc382d6d",
+      "checksum": "f531788619ef978f97e9f3d839bb1b46c83e4dd480804c841cb4a08d993c864b",
       "lock_timeout_seconds": 30,
       "statement_budget": 30
     },

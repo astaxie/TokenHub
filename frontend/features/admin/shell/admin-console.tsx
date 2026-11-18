@@ -6,7 +6,7 @@ import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
 import { notificationChannelDefaultType, notificationChannelTypes, type AdminResource, type AdminUser, type APIKey, type AppData, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, type Project, type Provider, type ReportExportHistoryItem, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey, viewRoutes } from "../core/types";
-import { emptyData, filterByModelCategory, filterRows } from "../domain/catalog";
+import { emptyData, emptyUsageBreakdown, filterByModelCategory, filterRows } from "../domain/catalog";
 import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
@@ -432,13 +432,21 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
         void (async () => {
           try {
             const response = await adminFetch(api, path, { signal: controller.signal });
-            if (response.status === 503 && name === "breakdown") return;
+            if (response.status === 503 && name === "breakdown") {
+              const payload = await response.clone().json().catch(() => null);
+              if (payload?.error?.code === "overview_preparing") {
+                if (!controller.signal.aborted) setData((current) => ({ ...current, breakdown: emptyUsageBreakdown() }));
+                return;
+              }
+            }
             if (!response.ok) throw new Error(await readLoadError(response, name));
             const loaded: LoadedData = {};
             await applyViewPayload(loaded, name, response);
             if (!controller.signal.aborted) setData((current) => mergeLoadedData(current, loaded));
           } catch (reason) {
-            if (!controller.signal.aborted && !isAuthExpiredError(reason)) setError(reason instanceof Error ? reason.message : tx("连接失败"));
+            if (controller.signal.aborted || isAuthExpiredError(reason)) return;
+            if (name === "breakdown") setData((current) => ({ ...current, breakdown: emptyUsageBreakdown() }));
+            setError(reason instanceof Error ? reason.message : tx("连接失败"));
           }
         })();
       }
@@ -926,7 +934,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           {apiKeyUsageID ? (
             <APIKeyUsageView api={api} data={data} user={currentUser} keyID={apiKeyUsageID} onBack={() => selectView("api-keys")} />
           ) : activeView === "overview" ? (
-            <OverviewView data={data} user={currentUser} onSelectView={selectView} onRefresh={() => void load("overview")} />
+            <OverviewView data={data} user={currentUser} onSelectView={selectView} onRefresh={() => load("overview")} />
           ) : activeView === "playground" ? (
             <PlaygroundPage api={api} data={data} canViewRoutes={canAccessView(currentUser, "routes")} />
           ) : activeView === "gateway" ? (

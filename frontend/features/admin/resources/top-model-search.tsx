@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { canAccessView } from "../core/navigation";
-import { type AdminUser, type ApiContext, type AppData, type Model } from "../core/types";
+import { type AdminUser, type ApiContext, type Model } from "../core/types";
 import { adminFetch } from "../resources/payloads";
 
-export function useTopModelSearch(api: ApiContext | undefined, user: AdminUser, data: AppData, query: string) {
+export function useTopModelSearch(api: ApiContext | undefined, user: AdminUser, query: string) {
   const [result, setResult] = useState<{ models: Model[]; loading: boolean; error: boolean }>({ models: [], loading: false, error: false });
-  const enabled = Boolean(api && canAccessView(user, "models") && data.models.length === 0 && query.trim());
+  const enabled = Boolean(api && canAccessView(user, "models") && query.trim());
   useEffect(() => {
     const controller = new AbortController();
     setResult({ models: [], loading: enabled, error: false });

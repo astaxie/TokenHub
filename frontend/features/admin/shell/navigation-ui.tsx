@@ -379,8 +379,8 @@ export function TopNav({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [recentViews, setRecentViews] = useState<ViewKey[]>(() => readRecentViews());
-  const modelSearch = useTopModelSearch(api, user, data, query);
-  const searchItems = topSearchItemsForUser(user, { ...data, models: data.models.length ? data.models : modelSearch.models });
+  const modelSearch = useTopModelSearch(api, user, query);
+  const searchItems = topSearchItemsForUser(user, { ...data, models: api && query.trim() ? modelSearch.models : data.models });
   const normalizedQuery = normalizeSearchText(query);
   const results = topSearchResults(searchItems, appRole(user.role), normalizedQuery, recentViews);
   const showResults = open && (query.trim().length > 0 || results.length > 0);

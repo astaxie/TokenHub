@@ -40,7 +40,12 @@ export function AlertEventsView({ api, data }: { api: ApiContext; data: AppData 
         if (!response.ok) throw new Error(await readAdminError(response, tx("告警加载失败")));
         return await response.json() as AlertPage;
       })
-      .then((value) => { if (!controller.signal.aborted) setResult(value); })
+      .then((value) => {
+        if (controller.signal.aborted) return;
+        const lastPage = Math.max(1, Math.ceil(value.total / value.page_size));
+        if (page > lastPage) setPage(lastPage);
+        else setResult(value);
+      })
       .catch((reason) => {
         if (controller.signal.aborted || isAuthExpiredError(reason)) return;
         setError(reason instanceof Error ? reason.message : tx("告警加载失败"));

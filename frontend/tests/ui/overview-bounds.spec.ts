@@ -50,6 +50,61 @@ test("overview-bounds reports a summary failure independently", async ({ page, a
   await expect(page.getByRole("heading", { name: "网关概览", exact: true })).toBeVisible();
 });
 
+test("overview-bounds lets an in-flight preparation refresh complete", async ({ page, api }) => {
+  const payload = installOverview(api, "preparing");
+  let reads = 0;
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  api.replaceHandler("GET", "/api/admin/overview", async () => {
+    if (++reads === 1) return { json: payload };
+    await blocked;
+    return { json: { ...payload, summary: { request_count: 123 }, summary_status: { state: "ready" } } };
+  });
+  try {
+    await page.clock.install();
+    await page.goto("/overview");
+    await expect(page.getByRole("status")).toContainText("历史统计准备中");
+    await page.clock.runFor(3000);
+    await expect.poll(() => reads).toBe(2);
+    await page.clock.runFor(3000);
+    expect(reads).toBe(2);
+    release();
+    const requests = page.locator(".overview-metric-card").filter({ has: page.getByText("总请求", { exact: true }) });
+    await expect(requests.locator(".metric-value")).toHaveText("123");
+  } finally { release(); }
+});
+
+test("overview-bounds clears classifications after a breakdown failure", async ({ page, api }) => {
+  const payload = installOverview(api);
+  let overviews = 0;
+  let breakdowns = 0;
+  api.replaceHandler("GET", "/api/admin/overview", () => ++overviews === 1
+    ? { json: { ...payload, summary_status: { state: "stale", updated_at: "2026-09-07T01:59:01Z" } } }
+    : { json: { ...payload, summary: { request_count: 123 }, summary_status: { state: "ready" } } });
+  api.replaceHandler("GET", "/api/admin/usage/breakdown", () => ++breakdowns === 1
+    ? { json: { models: [{ id: "old-model-statistics", request_count: 42 }], providers: [], provider_resources: [], projects: [], members: [], cost_centers: [] } }
+    : { status: 503, json: { error: { code: "temporarily_unavailable", message: "Breakdown failed" } } });
+  await page.goto("/overview");
+  const previous = page.getByText("old-model-statistics");
+  await expect(previous).toBeVisible();
+  await expect(page.getByText("Breakdown failed")).toBeVisible();
+  await expect(previous).toHaveCount(0);
+});
+
+test("overview-bounds searches for new models after loading the directory", async ({ page, api }) => {
+  installOverview(api);
+  api.respond("GET", "/api/admin/routing-rules", { data: [] });
+  api.respond("GET", "/api/admin/provider-catalog", { data: [] });
+  const created = { ...model, id: "mdl_remote", name: "model-created-remotely" };
+  api.replaceHandler("GET", "/api/admin/model-search", () => ({ json: { data: [created] } }), (query) => expect(query.get("q")).toBe(created.name));
+  await page.goto("/models");
+  await expect(page.getByText("可用模型", { exact: true }).locator("..").getByText("1", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "平台总览", exact: true }).click();
+  await expect(page.getByText("Synthetic recent alert")).toBeVisible();
+  await page.locator(".topbar input").fill(created.name);
+  await expect(page.getByRole("option", { name: new RegExp(created.name) })).toBeVisible();
+});
+
 test("overview-bounds pages and filters historical alerts on the server", async ({ page, api }, info) => {
   api.define("GET", "/api/admin/alerts", (request) => {
     const page = Number(request.query.get("page"));
@@ -78,6 +133,25 @@ test("overview-bounds renders metadata before a delayed breakdown completes", as
     await expect(page.getByRole("heading", { name: "网关概览", exact: true })).toBeVisible();
     await expect(page.locator(".overview-metric-card").filter({ has: page.getByText("总请求", { exact: true }) }).locator(".metric-value")).toHaveText("3");
   } finally { release(); }
+});
+
+test("overview-bounds reloads a valid alert page when retained history shrinks", async ({ page, api }) => {
+  let total = 51;
+  api.define("GET", "/api/admin/alerts", request => {
+    const cursor = Number(request.query.get("page"));
+    const data = cursor === 1 || total > 50
+      ? [{ id: String(cursor), code: `history_page_${cursor}`, severity: "warning", message: "Synthetic alert" }]
+      : [];
+    return { json: { page: cursor, page_size: 50, total, data } };
+  }, query => expect(query.get("page_size")).toBe("50"));
+  await page.goto("/alert-events");
+  await expect(page.getByText("history_page_1", { exact: true })).toBeVisible();
+  await page.getByTitle("下一页").click();
+  await expect(page.getByText("history_page_2", { exact: true })).toBeVisible();
+  total = 1;
+  await page.locator(".alert-history-filters").getByRole("button", { name: "刷新" }).click();
+  await expect(page.getByText("history_page_1", { exact: true })).toBeVisible();
+  expect(api.calls.at(-1)?.query.get("page")).toBe("1");
 });
 
 test("overview-bounds hides expired totals while the next refresh is pending", async ({ page, api }) => {

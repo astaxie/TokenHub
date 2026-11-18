@@ -21,6 +21,8 @@ function installConsole(api: MockAPI, models: Model[] = [publishedModel]) {
   const overview = shellResponses().get("GET /api/admin/overview") as Record<string, unknown>;
   api.replaceResponse("GET", "/api/admin/models", { data: models });
   api.replaceResponse("GET", "/api/admin/overview", { ...overview, models, providers: models.length ? [provider] : [] });
+  api.define("GET", "/api/admin/model-search", () => ({ json: { data: models } }),
+    query => expect(Object.fromEntries(query)).toEqual({ q: publishedModel.name }));
   api.respond("GET", "/api/admin/usage/timeseries", { data: [usage] });
   api.respond("GET", "/api/admin/plugins", { data: [] });
   api.respond("GET", "/api/admin/plugin-marketplace", { data: { available: true, plugins: [] } });
