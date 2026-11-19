@@ -9569,9 +9569,6 @@ models:
     input_modalities:
     - text
     - image
-    - video
-    - audio
-    - pdf
     output_modalities:
     - text
     capabilities:
@@ -9579,18 +9576,12 @@ models:
     - tools
     - reasoning
     - vision
-    - video_input
-    - audio_input
-    - pdf_input
     supported_parameters:
     - max_tokens
     - tools
     - reasoning
     - reasoning_effort
     - image_input
-    - video_input
-    - audio_input
-    - pdf_input
     metadata:
       upstream_source: https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
       verified_at: '2026-10-16'
@@ -9616,8 +9607,10 @@ models:
       future_pricing: '{"effective_from":"2026-12-01","input":4,"output":20,"cache_read":0.2}'
       context_note: 'Unified input and output limit: 1048576 tokens.'
       cache_note: Implicit caching only; explicit caching is unsupported.
-      output_limit_note: TokenHub synchronous adapter limit is 65536. Native long decode up to 1048576 requires background/continuation
-        handling that is not implemented.
+      output_limit_note: Single segment is limited to 32768 tokens non-streaming or 65536 streaming. Long decode requires native continuation.
+      max_output_tokens_non_streaming: '32768'
+      upstream_input_modalities: text,image,video,audio,pdf
+      input_modalities_note: The chat adapter accepts text and inline base64 images.
       adapter_verification: Synthetic native GenerateContent contract only; account entitlement and live billing remain
         unverified.
       source: tokenhub-standard-catalog
@@ -9895,3 +9888,560 @@ models:
       provider_catalog_id: openai
       provider_model_id: gpt-4.1-mini-2025-04-14
       max_output_tokens: '32768'
+  - name: gemini-4-carbon
+    title: Gemini 4 Carbon
+    category: gemini
+    family: gemini
+    modality: chat
+    context_window: 1048576
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - reasoning
+    - vision
+    supported_parameters:
+    - max_tokens
+    - tools
+    - reasoning
+    - reasoning_effort
+    - image_input
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://aistudio.google.com/docs/models/gemini-4-carbon
+      release_date: '2026-11-10'
+      max_output_tokens: '65536'
+      pricing_source: https://aistudio.google.com/docs/pricing#gemini-4-carbon
+      reference_token_prices: '{"input":2,"output":10,"cache_read":0.1}'
+      pricing_note: Standard introductory USD per million tokens through 2026-11-30. Starting 2026-12-01 the rates
+        double. No free tier.
+      pricing_effective_until: '2026-11-30'
+      future_pricing: '{"effective_from":"2026-12-01","input":4,"output":20,"cache_read":0.2}'
+      sampling_note: Upstream ignores custom temperature, top_p and top_k.
+      protocols: generateContent,interactions
+      native_endpoints: generateContent,streamGenerateContent
+      context_note: Input, thinking, tool calls and final output share 1048576 tokens.
+      output_limit_note: 'Single segment: 32768 tokens non-streaming or 65536 streaming. Long decode requires native
+        continuation.'
+      max_output_tokens_non_streaming: '32768'
+      upstream_input_modalities: text,image,video,audio,pdf
+      input_modalities_note: The chat adapter accepts text and inline base64 images.
+      output_limit_source: https://aistudio.google.com/docs/long-decode
+      cache_note: Implicit caching only.
+      reasoning_effort_options: low,medium,high
+      reasoning_effort_default: medium
+      reasoning_effort_parameter: thinking_level
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: gemini
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-4-carbon
+  - name: gemini-4-hydrogen
+    title: Gemini 4 Hydrogen
+    category: gemini
+    family: gemini
+    modality: chat
+    context_window: 1048576
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - reasoning
+    - vision
+    supported_parameters:
+    - max_tokens
+    - tools
+    - reasoning
+    - reasoning_effort
+    - image_input
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://aistudio.google.com/docs/models/gemini-4-hydrogen
+      release_date: '2026-11-12'
+      max_output_tokens: '65536'
+      pricing_source: https://aistudio.google.com/docs/pricing#gemini-4-hydrogen
+      reference_token_prices: '{"input":1.5,"output":7.5,"cache_read":0.075}'
+      pricing_note: Standard paid-tier USD per million tokens. Thinking tokens are billed as output. The free tier
+        has separate limits.
+      sampling_note: Upstream ignores custom temperature, top_p and top_k.
+      protocols: generateContent,interactions
+      native_endpoints: generateContent,streamGenerateContent
+      context_note: Input, thinking, tool calls and final output share 1048576 tokens.
+      output_limit_note: A response segment is limited to 65536 tokens. Long decode requires native continuation.
+      max_output_tokens_non_streaming: '65536'
+      upstream_input_modalities: text,image,video,audio,pdf
+      input_modalities_note: The chat adapter accepts text and inline base64 images.
+      output_limit_source: https://aistudio.google.com/docs/long-decode
+      cache_note: Implicit caching only.
+      reasoning_effort_options: low,medium,high,xhigh
+      reasoning_effort_default: high
+      reasoning_effort_parameter: thinking_level
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: gemini
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-4-hydrogen
+  - name: gemini-4-neon
+    title: Gemini 4 Neon
+    category: gemini
+    family: gemini
+    modality: chat
+    context_window: 1048576
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - reasoning
+    - vision
+    supported_parameters:
+    - max_tokens
+    - tools
+    - reasoning
+    - reasoning_effort
+    - image_input
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://aistudio.google.com/docs/models/gemini-4-neon
+      release_date: '2026-11-18'
+      max_output_tokens: '65536'
+      pricing_source: https://aistudio.google.com/docs/pricing#gemini-4-neon
+      reference_token_prices: '{"input":3,"output":15,"cache_read":0.15}'
+      pricing_note: Standard paid-tier USD per million tokens. Thinking tokens are billed as output. No free tier.
+      sampling_note: Upstream ignores custom temperature, top_p and top_k.
+      protocols: generateContent,interactions
+      native_endpoints: generateContent,streamGenerateContent
+      context_note: Input, thinking, tool calls and final output share 1048576 tokens.
+      output_limit_note: A response segment is limited to 65536 tokens. Long decode requires native continuation.
+      max_output_tokens_non_streaming: '65536'
+      upstream_input_modalities: text,image,video,audio,pdf
+      input_modalities_note: The chat adapter accepts text and inline base64 images.
+      output_limit_source: https://aistudio.google.com/docs/long-decode
+      cache_note: Implicit caching only.
+      reasoning_effort_options: low,medium,high,xhigh
+      reasoning_effort_default: high
+      reasoning_effort_parameter: thinking_level
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: gemini
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-4-neon
+  - name: gemini-decision-1
+    title: Gemini Decision 1
+    category: gemini
+    family: gemini
+    modality: decision
+    context_window: 262144
+    input_modalities:
+    - text
+    - image
+    - video
+    - audio
+    - pdf
+    output_modalities:
+    - decision
+    capabilities:
+    - decision
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://aistudio.google.com/docs/models/gemini-decision-1
+      release_date: '2026-11-11'
+      max_output_tokens: '0'
+      api_version: v1beta
+      max_questions: '1000'
+      pricing_source: https://aistudio.google.com/docs/pricing#gemini-decision
+      reference_token_prices: '{"input":0.1}'
+      pricing_note: Standard USD per million input tokens. Shared input is counted once; question input is also billable.
+        Output uses zero tokens.
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: the native decisions operation and its metering are not implemented.'
+      endpoints: decisions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-decision-1
+  - name: gemini-omni-1.2-flash
+    title: Gemini Omni 1.2 Flash
+    category: gemini
+    family: gemini
+    modality: video
+    context_window: 131072
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - video
+    - text
+    capabilities:
+    - video
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://aistudio.google.com/docs/models/gemini-omni-flash
+      release_date: '2026-11-05'
+      max_output_tokens: '65536'
+      max_input_tokens: '131072'
+      max_video_output_seconds: '15'
+      pricing_source: https://aistudio.google.com/docs/pricing#gemini-omni-1.2-flash
+      pricing_note: 'Listed standard video output price: USD 12 per million video tokens. Other modalities use their
+        corresponding rates.'
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: the native interactions operation and its metering are not implemented.'
+      endpoints: interactions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-omni-1.2-flash
+  - name: gemini-3.5-transcribe
+    title: Gemini 3.5 Transcribe
+    category: gemini
+    family: gemini
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://aistudio.google.com/docs/models/gemini-3.5-transcribe
+      release_date: '2026-08-26'
+      audio_limit_note: Up to one hour, or 30 minutes with diarization or word timestamps.
+      capability_update_date: '2026-11-17'
+      voice_editing_source: https://aistudio.google.com/docs/changelog#11-17-2026
+      pricing_source: https://aistudio.google.com/docs/pricing#gemini-3.5-transcribe
+      reference_token_prices: '{"audio_input":2,"text_output":12}'
+      pricing_note: Paid USD per million audio input and text output tokens. Per-minute figures are estimates.
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: the native transcribe operation and its metering are not implemented.'
+      endpoints: transcribe
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-3.5-transcribe
+  - name: gemini-3.5-transcribe-live
+    title: Gemini 3.5 Transcribe Live
+    category: gemini
+    family: gemini
+    modality: audio
+    context_window: 0
+    input_modalities:
+    - audio
+    output_modalities:
+    - text
+    capabilities:
+    - audio
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://aistudio.google.com/docs/models/gemini-3.5-transcribe
+      release_date: '2026-08-26'
+      audio_limit_note: Ten minutes per live session.
+      capability_update_date: '2026-11-17'
+      voice_editing_source: https://aistudio.google.com/docs/changelog#11-17-2026
+      pricing_source: https://aistudio.google.com/docs/pricing#gemini-3.5-transcribe-live
+      reference_token_prices: '{"audio_input":3.5,"text_output":21}'
+      pricing_note: Paid USD per million audio input and text output tokens. Per-minute figures are estimates.
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: the native live operation and its metering are not implemented.'
+      endpoints: live
+      source: tokenhub-standard-catalog
+      provider_catalog_id: google
+      provider_model_id: gemini-3.5-transcribe-live
+  - name: gpt-6.2-astra
+    title: GPT-6.2 Astra
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 1050000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-6.2-astra
+      release_date: '2026-11-17'
+      max_output_tokens: '128000'
+      max_input_tokens: '922000'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      reasoning_effort_options: low,medium,high,xhigh,max
+      pricing_source: https://developers.openai.com/api/docs/models/gpt-6.2-astra
+      reference_token_prices: '{"input":8,"output":40,"cache_read":0.4,"cache_write_30m":10,"cache_write_12h":20}'
+      pricing_note: Standard USD per million tokens up to 272000 input tokens. Above that threshold input and cache
+        rates double and output is multiplied by 1.5 for the full request. Other processing tiers are separate.
+      context_price_threshold_tokens: '272000'
+      migration_source: https://developers.openai.com/api/docs/guides/latest-model
+      reasoning_note: Reasoning effort none is rejected. Tool calling requires Responses.
+      chat_tools_requires_reasoning_effort: unsupported
+      sampling_note: Sampling controls are unsupported with reasoning.
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: validate GPT-6.2 Responses continuation and tool semantics before publishing the
+        model.'
+      endpoints: responses,chat/completions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-6.2-astra
+  - name: gpt-6.2-sol
+    title: GPT-6.2 Sol
+    category: openai
+    family: gpt
+    modality: chat
+    context_window: 1050000
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - vision
+    - reasoning
+    - tools
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://developers.openai.com/api/docs/models/gpt-6.2-sol
+      release_date: '2026-11-17'
+      max_output_tokens: '128000'
+      max_input_tokens: '922000'
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      reasoning_effort_options: low,medium,high,xhigh,max
+      pricing_source: https://developers.openai.com/api/docs/models/gpt-6.2-sol
+      reference_token_prices: '{"input":2,"output":10,"cache_read":0.1,"cache_write_30m":2.5,"cache_write_12h":5}'
+      pricing_note: Standard USD per million tokens up to 272000 input tokens. Above that threshold input and cache
+        rates double and output is multiplied by 1.5 for the full request. Other processing tiers are separate.
+      context_price_threshold_tokens: '272000'
+      migration_source: https://developers.openai.com/api/docs/guides/latest-model
+      reasoning_note: Reasoning effort none is rejected. Tool calling requires Responses.
+      chat_tools_requires_reasoning_effort: unsupported
+      sampling_note: Sampling controls are unsupported with reasoning.
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: validate GPT-6.2 Responses continuation and tool semantics before publishing the
+        model.'
+      endpoints: responses,chat/completions
+      source: tokenhub-standard-catalog
+      provider_catalog_id: openai
+      provider_model_id: gpt-6.2-sol
+  - name: qwen4-max
+    title: Qwen4-Max
+    category: qwen
+    family: qwen
+    modality: chat
+    context_window: 1000000
+    input_modalities:
+    - text
+    - image
+    - video
+    output_modalities:
+    - text
+    capabilities:
+    - chat
+    - tools
+    - reasoning
+    - vision
+    - video_input
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://help.aliyun.com/zh/model-studio/qwen4-max
+      release_date: '2026-11-16'
+      max_output_tokens: '131072'
+      regions: China (Beijing)
+      original_currency: CNY
+      original_unit: per_million_tokens
+      original_prices: '{"input":10,"output":30,"cache_read":0.5,"cache_write_5m":12.5,"cache_write_1h":20}'
+      pricing_source: https://help.aliyun.com/zh/model-studio/qwen4-max
+      pricing_note: On-demand standard price for the stated site and deployment region. Batch and trial terms are
+        separate.
+      max_input_tokens: '991808'
+      max_input_tokens_thinking: '983616'
+      max_output_tokens_thinking: '262144'
+      reasoning_note: Thinking and preserve_thinking default to true; aliases minimal, medium and max map to low,
+        high and xhigh.
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: validate Qwen4-Max reasoning history and mode-specific limits before enabling calls.'
+      reasoning_effort_options: low,high,xhigh
+      reasoning_effort_default: high
+      reasoning_effort_parameter: reasoning_effort
+      reasoning_supported: 'true'
+      reasoning_default: 'true'
+      endpoints: chat/completions,responses,anthropic
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: qwen4-max
+  - name: pixverse/pixverse-v6-max-t2v
+    title: PixVerse V6 Max Text to Video
+    category: custom
+    family: pixverse
+    modality: video
+    context_window: 0
+    input_modalities:
+    - text
+    output_modalities:
+    - video
+    capabilities:
+    - video
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://help.aliyun.com/zh/model-studio/newly-released-models
+      release_date: '2026-11-18'
+      regions: China (Beijing)
+      original_currency: CNY
+      billing_unit: video_second
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      pricing_note: CNY per output second by resolution and audio. Listed rates are before any limited-time discount.
+      max_video_output_seconds: '15'
+      original_prices: '{"resolutions":["360p","540p","720p","1080p"],"with_audio":[0.27,0.33,0.44,0.83],"without_audio":[0.18,0.27,0.33,0.65]}'
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: Model Studio media operation and native-unit metering have not been validated.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: pixverse/pixverse-v6-max-t2v
+  - name: pixverse/pixverse-v6-max-it2v
+    title: PixVerse V6 Max Image to Video
+    category: custom
+    family: pixverse
+    modality: video
+    context_window: 0
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - video
+    capabilities:
+    - video
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://help.aliyun.com/zh/model-studio/newly-released-models
+      release_date: '2026-11-18'
+      regions: China (Beijing)
+      original_currency: CNY
+      billing_unit: video_second
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      pricing_note: CNY per output second by resolution and audio. Listed rates are before any limited-time discount.
+      max_video_output_seconds: '15'
+      original_prices: '{"resolutions":["360p","540p","720p","1080p"],"with_audio":[0.27,0.33,0.44,0.83],"without_audio":[0.18,0.27,0.33,0.65]}'
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: Model Studio media operation and native-unit metering have not been validated.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: pixverse/pixverse-v6-max-it2v
+  - name: vidu/viduq3.1-fast_reference2image
+    title: Vidu Q3.1 Fast Reference to Image
+    category: custom
+    family: vidu
+    modality: image
+    context_window: 0
+    input_modalities:
+    - text
+    - image
+    output_modalities:
+    - image
+    capabilities:
+    - image
+    supported_parameters: []
+    metadata:
+      availability: active
+      lifecycle_status: active
+      pricing_status: unverified
+      verified_at: '2026-11-19'
+      catalog_reviewed_at: '2026-11-19'
+      upstream_source: https://help.aliyun.com/zh/model-studio/newly-released-models
+      release_date: '2026-11-18'
+      regions: China (Beijing)
+      original_currency: CNY
+      billing_unit: image
+      pricing_source: https://help.aliyun.com/zh/model-studio/model-pricing
+      pricing_note: 0.25 / 0.34375 / 0.71875 CNY per image at 1K / 2K / 4K.
+      original_prices: '{"1K":0.25,"2K":0.34375,"4K":0.71875}'
+      call_support: unsupported
+      call_support_scope: catalog-only
+      support_note: 'Catalog only: Model Studio media operation and native-unit metering have not been validated.'
+      source: tokenhub-standard-catalog
+      provider_catalog_id: alibaba-cn
+      provider_model_id: vidu/viduq3.1-fast_reference2image

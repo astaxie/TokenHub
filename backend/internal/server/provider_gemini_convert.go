@@ -12,7 +12,9 @@ import (
 // buildGeminiRequest renders an OpenAI chat request as a Gemini
 // generateContent request body.
 func buildGeminiRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
-	if err := validateGeminiCatalogContract(providerModel, req); err != nil {
+	modelID := geminiModelID(providerModel)
+	outputLimit := gemini4OutputLimit(modelID, req.Stream)
+	if err := validateGeminiCatalogContract(modelID, req, outputLimit); err != nil {
 		return nil, err
 	}
 	if req.ParallelToolCalls != nil && !*req.ParallelToolCalls {
@@ -35,7 +37,11 @@ func buildGeminiRequest(providerModel string, req ChatCompletionRequest) (map[st
 	}
 
 	generationConfig := map[string]any{}
-	if maxTokens := req.requestedMaxTokens(); maxTokens > 0 {
+	maxTokens := req.requestedMaxTokens()
+	if maxTokens == 0 {
+		maxTokens = outputLimit
+	}
+	if maxTokens > 0 {
 		generationConfig["maxOutputTokens"] = maxTokens
 	}
 	if req.Temperature != nil {

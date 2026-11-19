@@ -6,6 +6,123 @@
   "display_name": "Alibaba Token Plan (China)",
   "models": [
     {
+      "id": "qwen4.0-max-preview",
+      "name": "Qwen4-Max Preview (Token Plan)",
+      "display_name": "Qwen4-Max Preview (Token Plan)",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "release_date": "2026-11-11",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "preview",
+        "lifecycle_status": "deprecated",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+        "release_date": "2026-11-11",
+        "regions": "China (Beijing)",
+        "billing_mode": "subscription",
+        "billing_unit": "credits",
+        "pricing_source": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+        "pricing_note": "Token Plan Personal Edition Credits.",
+        "shutdown_at": "2026-11-26T00:00:00+08:00",
+        "replacement_model": "qwen4-max",
+        "lifecycle_source": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: verify Token Plan access and Qwen4-Max reasoning history before enabling calls."
+      }
+    },
+    {
+      "id": "qwen4-max-preview",
+      "name": "Qwen4-Max Preview (Token Plan)",
+      "display_name": "Qwen4-Max Preview (Token Plan)",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "release_date": "2026-11-11",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "preview",
+        "lifecycle_status": "deprecated",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+        "release_date": "2026-11-11",
+        "regions": "China (Beijing)",
+        "billing_mode": "subscription",
+        "billing_unit": "credits",
+        "pricing_source": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+        "pricing_note": "Token Plan Personal Edition Credits.",
+        "shutdown_at": "2026-11-26T00:00:00+08:00",
+        "replacement_model": "qwen4-max",
+        "lifecycle_source": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: verify Token Plan access and Qwen4-Max reasoning history before enabling calls."
+      }
+    },
+    {
+      "id": "qwen4-max",
+      "name": "Qwen4-Max (Token Plan)",
+      "display_name": "Qwen4-Max (Token Plan)",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "release_date": "2026-11-16",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+        "release_date": "2026-11-16",
+        "regions": "China (Beijing)",
+        "billing_mode": "subscription",
+        "billing_unit": "credits",
+        "pricing_source": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+        "pricing_note": "Token Plan Personal Edition Credits.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: verify Token Plan access and Qwen4-Max reasoning history before enabling calls."
+      }
+    },
+    {
       "id": "deepseek-v4-flash",
       "name": "DeepSeek V4 Flash",
       "family": "deepseek-flash",

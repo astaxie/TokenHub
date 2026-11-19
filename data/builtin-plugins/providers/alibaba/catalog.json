@@ -6,6 +6,76 @@
   "display_name": "alibaba",
   "models": [
     {
+      "id": "qwen4-max",
+      "name": "Qwen4-Max",
+      "display_name": "Qwen4-Max",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 131072
+      },
+      "release_date": "2026-11-16",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/qwen4-max",
+        "release_date": "2026-11-16",
+        "max_output_tokens": "131072",
+        "regions": "Singapore",
+        "original_currency": "USD",
+        "original_unit": "per_million_tokens",
+        "original_prices": "{\"input\":1.5,\"output\":4.5,\"cache_read\":0.075,\"cache_write_5m\":1.875,\"cache_write_1h\":3}",
+        "pricing_source": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "pricing_note": "On-demand standard price for the stated site and deployment region. Batch and trial terms are separate.",
+        "max_input_tokens": "991808",
+        "max_input_tokens_thinking": "983616",
+        "max_output_tokens_thinking": "262144",
+        "reasoning_note": "Thinking and preserve_thinking default to true; aliases minimal, medium and max map to low, high and xhigh.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate Qwen4-Max reasoning history and mode-specific limits before enabling calls.",
+        "reasoning_effort_options": "low,high,xhigh",
+        "reasoning_effort_default": "high",
+        "reasoning_effort_parameter": "reasoning_effort",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions,responses,anthropic"
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "endpoints": "chat/completions,responses,anthropic"
+    },
+    {
       "id": "qwen3.8-livetranslate-flash-realtime",
       "name": "Qwen3.8 LiveTranslate Flash Realtime",
       "display_name": "Qwen3.8 LiveTranslate Flash Realtime",

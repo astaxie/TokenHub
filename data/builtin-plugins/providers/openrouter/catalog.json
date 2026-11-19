@@ -5,6 +5,258 @@
   "updated_at": "2026-06-13T05:38:00.659Z",
   "models": [
     {
+      "id": "openai/gpt-6.2-sol",
+      "name": "GPT-6.2 Sol (OpenRouter)",
+      "display_name": "GPT-6.2 Sol (OpenRouter)",
+      "family": "gpt",
+      "category": "openai",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "release_date": "2026-11-17",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://openrouter.ai/openai/gpt-6.2-sol",
+        "release_date": "2026-11-17",
+        "max_output_tokens": "128000",
+        "pricing_source": "https://openrouter.ai/openai/gpt-6.2-sol",
+        "pricing_note": "Endpoint, input length and service tier affect rates.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate the hosted endpoint and reasoning controls before enabling calls.",
+        "endpoints": "chat/completions"
+      },
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "openai/gpt-6.2-astra",
+      "name": "GPT-6.2 Astra (OpenRouter)",
+      "display_name": "GPT-6.2 Astra (OpenRouter)",
+      "family": "gpt",
+      "category": "openai",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "release_date": "2026-11-17",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://openrouter.ai/openai/gpt-6.2-astra",
+        "release_date": "2026-11-17",
+        "max_output_tokens": "128000",
+        "pricing_source": "https://openrouter.ai/openai/gpt-6.2-astra",
+        "pricing_note": "Endpoint, input length and service tier affect rates.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate the hosted endpoint and reasoning controls before enabling calls.",
+        "endpoints": "chat/completions"
+      },
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "google/gemini-4-neon",
+      "name": "Gemini 4 Neon (OpenRouter)",
+      "display_name": "Gemini 4 Neon (OpenRouter)",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "release_date": "2026-11-18",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://openrouter.ai/google/gemini-4-neon",
+        "release_date": "2026-11-18",
+        "max_output_tokens": "65536",
+        "pricing_source": "https://openrouter.ai/google/gemini-4-neon",
+        "pricing_note": "Rates and limits depend on the selected upstream endpoint, region and processing tier.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate OpenRouter-specific reasoning controls and endpoint selection.",
+        "endpoints": "chat/completions"
+      },
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "google/gemini-4-hydrogen",
+      "name": "Gemini 4 Hydrogen (OpenRouter)",
+      "display_name": "Gemini 4 Hydrogen (OpenRouter)",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576
+      },
+      "release_date": "2026-11-12",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://openrouter.ai/google/gemini-4-hydrogen",
+        "release_date": "2026-11-12",
+        "pricing_source": "https://openrouter.ai/google/gemini-4-hydrogen",
+        "pricing_note": "Rates and limits depend on the selected upstream endpoint, region and processing tier.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate OpenRouter-specific reasoning controls and endpoint selection.",
+        "endpoints": "chat/completions"
+      },
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "google/gemini-4-carbon",
+      "name": "Gemini 4 Carbon (OpenRouter)",
+      "display_name": "Gemini 4 Carbon (OpenRouter)",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576
+      },
+      "release_date": "2026-11-10",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://openrouter.ai/google/gemini-4-carbon",
+        "release_date": "2026-11-10",
+        "pricing_source": "https://openrouter.ai/google/gemini-4-carbon",
+        "pricing_note": "Rates and limits depend on the selected upstream endpoint, region and processing tier.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate OpenRouter-specific reasoning controls and endpoint selection.",
+        "endpoints": "chat/completions"
+      },
+      "endpoints": "chat/completions"
+    },
+    {
+      "id": "google/gemini-4-argon",
+      "name": "Gemini 4 Argon (OpenRouter)",
+      "display_name": "Gemini 4 Argon (OpenRouter)",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576
+      },
+      "release_date": "2026-10-13",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://openrouter.ai/google/gemini-4-argon",
+        "release_date": "2026-10-13",
+        "pricing_source": "https://openrouter.ai/google/gemini-4-argon",
+        "pricing_note": "Rates and limits depend on the selected upstream endpoint, region and processing tier.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate OpenRouter-specific reasoning controls and endpoint selection.",
+        "endpoints": "chat/completions"
+      },
+      "endpoints": "chat/completions"
+    },
+    {
       "id": "~anthropic/claude-fable-latest",
       "name": "Anthropic: Claude Fable Latest",
       "display_name": "Anthropic: Claude Fable Latest",
