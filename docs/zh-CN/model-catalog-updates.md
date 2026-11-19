@@ -2,7 +2,13 @@
 
 Language: [English](../model-catalog-updates.md) | 简体中文 | [日本語](../ja/model-catalog-updates.md)
 
-截至 2026-10-16 的目录核查补充了上游模型，并记录访问条件、生命周期、调用兼容性和价格边界。目录收录用于发现候选模型，不代表已具备调用支持、账号已获授权、上游实时健康或生产环境已上线。
+目录核查补充了上游模型，并记录访问条件、生命周期、调用兼容性和价格边界。目录收录用于发现候选模型，不代表已具备调用支持、账号已获授权、上游实时健康或生产环境已上线。
+
+## 2026-11-19 更新
+
+目录新增 Gemini 4 Carbon、Hydrogen 和 Neon、GPT-6.2 Astra 和 Sol、Qwen4-Max，以及决策、转写、图片和视频条目。地域权限、订阅 Credits 和参考价请查对应 Provider。标记为 `call_support=unsupported` 的型号可在目录中查找，暂不能发布为启用线路。
+
+Gemini 直连聊天支持文本和内联图片。Carbon 和 Argon 的单次非流式输出上限为 32,768 tokens，流式为 65,536。Hydrogen 和 Neon 两种模式均为 65,536，并支持 `xhigh` 思考档位。四款模型均使用 1,048,576 tokens 的共享输入输出窗口。更长的输出需要上游续接流程。 [Gemini 长输出说明](https://aistudio.google.com/docs/long-decode)
 
 ## Magpie 订阅与账户预设（2026-10-24）
 
@@ -21,7 +27,7 @@ Provider 目录现有 172 个条目。根据 [Magpie 固定版本的预设清单
 - **生命周期日期**：MiniMax M2.5/M2.7 按量产品于 2026 年 10 月 19 日停止向新用户开放、11 月 18 日退役；对应订阅旧 ID 则从 10 月 19 日起重定向到 `MiniMax-M3.1-Flash-Preview`，并继续接受调用。Perplexity Agent 的停用只适用于公告中的 Agent 产品。新增 GPT-4 快照公告只适用于精确的 OpenAI 官方产品，不会使第三方部署或所有相近别名一并退役。参见 [MiniMax 公告](https://platform.minimax.io/docs/guides/models-intro)、[Perplexity 变更记录](https://docs.perplexity.ai/docs/resources/changelog)及 [OpenAI 弃用公告](https://developers.openai.com/api/docs/deprecations)。
 - **日期精度**：官方只公布日历日期时保存 `shutdown_date`，不编造 `shutdown_at` 或官方时区。后端与界面使用相同的保守边界：从该日期的 UTC 00:00 起经过 36 小时，确保所有民用时区均已过完当天。这是 TokenHub 的新线路检查和状态展示边界，不是官方精确停机时刻，也不保证此前调用可用。日期提示保持原日历日期，并注明时区未公布。未来的 `redirect_date` 展示为重定向计划，不停用该别名。
 - **地域生命周期**：Bedrock Legacy/EOL 证据以提示元数据记录受影响地域及日期，不作为基础模型、跨地域 inference profile 或原厂 API 的全局退役规则。应按 [AWS 生命周期表](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html)核实实际部署地域和账号权限。
-- **原生 Gemini 范围**：`gemini-4-argon` 使用共享的 1,048,576 Token 上下文窗口；本次支持的默认同步流程最多输出 65,536 Token，思考档位为 `low`、`medium`、`high`。接近共享 1M 窗口的输出所需的后台长解码与续接流程，本次尚未支持，不能把该宣传上限当作默认同步输出能力。参见[模型卡](https://ai.google.dev/gemini-api/docs/models/gemini-4-argon)。
+- **原生 Gemini 范围**：本次加入了 `gemini-4-argon` 的 1,048,576 tokens 共享上下文，以及 `low`、`medium`、`high` 思考档位。当前单次请求上限见上方 11 月 19 日更新。
 - **成本与套餐**：MiniMax M3 保留输入长度和 Standard/Priority 档位，中国人民币报价与全球美元报价分别保存。阿里、腾讯的 Credits/积分和个人套餐使用限制保留在对应产品上。OpenAI Ultrafast、Gemini 首发及后续价格均为条件参考，本次不安装服务层选择、促销时钟、换汇或按这些单价自动计费的逻辑。未知、零值、试用及订阅参考值均不足以证明免费。发布新线路前仍需核对实际账号成本；已配置成本和历史请求快照保留。来源包括 [MiniMax 价格](https://platform.minimax.io/docs/pricing/overview)、[阿里个人套餐](https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview)、[腾讯套餐](https://cloud.tencent.com/document/product/1823/130659)及 [Ultrafast](https://developers.openai.com/api/docs/guides/ultrafast-mode)。
 - **仅目录收录的操作**：专用 Agent/Decisions API、实时音频、OCR/Parse、Contextualized 或多模态 Embedding，以及其他标为 `call_support=unsupported` 的条目仍是可发现的候选，不能发布新的启用线路。通用 Chat 或文本 Embedding 支持不足以证明这些请求契约和原生计价单位已受支持。中国 MiniMax 预览型号在现有端点兼容性未核实时也保持仅目录收录。本次不代表真实账号授权、真实上游推理成功、实际账单核实或生产就绪。
 

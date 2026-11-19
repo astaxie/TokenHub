@@ -2,7 +2,13 @@
 
 Language: [English](../model-catalog-updates.md) | [简体中文](../zh-CN/model-catalog-updates.md) | 日本語
 
-2026-10-16 までのカタログ確認では、上流モデルと、アクセス条件、提供終了、呼び出し互換性、料金の適用範囲を記録しました。カタログへの掲載は候補の発見を支援するものであり、呼び出し対応、アカウント権限、稼働状況、本番デプロイを保証しません。
+カタログ確認では、上流モデルと、アクセス条件、提供終了、呼び出し互換性、料金の適用範囲を記録しました。カタログへの掲載は候補の発見を支援するものであり、呼び出し対応、アカウント権限、稼働状況、本番デプロイを保証しません。
+
+## 2026-11-19 の更新
+
+Gemini 4 Carbon、Hydrogen、Neon、GPT-6.2 Astra と Sol、Qwen4-Max、および判定、文字起こし、画像、動画の項目を追加しました。地域ごとのアクセス条件、サブスクリプションの Credits、参考料金は各 Provider の項目でご確認ください。`call_support=unsupported` のモデルはカタログで確認でき、有効なルートとしては公開できません。
+
+Gemini の直接接続では、チャットにテキストとインライン画像を使用できます。Carbon と Argon の 1 リクエストあたりの出力上限は非ストリーミングで 32,768 トークン、ストリーミングで 65,536 トークンです。Hydrogen と Neon はどちらのモードでも 65,536 トークンまでで、思考レベル `xhigh` をサポートします。4 モデルとも入力と出力で 1,048,576 トークンのウィンドウを共有します。より長い出力には上流 API の継続処理が必要です。[Gemini の長文出力](https://aistudio.google.com/docs/long-decode)
 
 ## Magpie のサブスクリプション・アカウントプリセット（2026-10-24）
 
@@ -21,7 +27,7 @@ Provider カタログは 172 エントリーになりました。[固定版 Magp
 - **ライフサイクルの日付**：MiniMax M2.5/M2.7 の従量 API は 2026 年 10 月 19 日に新規ユーザーへの提供を停止し、11 月 18 日に提供を終了します。同じ旧 ID のサブスクリプションは、10 月 19 日から `MiniMax-M3.1-Flash-Preview` にリダイレクトされ、引き続き受け付けられます。Perplexity Agent の終了は、告知で指定された Agent サービスだけに適用します。新しい GPT-4 スナップショットの告知も、正確な OpenAI 公式サービスだけが対象で、第三者のデプロイや似た名前の全エイリアスを終了扱いにしません。[MiniMax 告知](https://platform.minimax.io/docs/guides/models-intro)、[Perplexity 変更履歴](https://docs.perplexity.ai/docs/resources/changelog)、[OpenAI 非推奨情報](https://developers.openai.com/api/docs/deprecations)を参照してください。
 - **日付の精度**：公式情報が日付のみの場合は `shutdown_date` を保存し、`shutdown_at` や公式タイムゾーンを補いません。バックエンドと UI は、指定日の UTC 00:00 から 36 時間後という同じ保守的な境界を使います。その時点で、すべての民用タイムゾーンで当日が終了しています。これは新規ルートの確認と状態表示に用いる TokenHub の境界であり、公式の停止時刻でも、それまでの利用を保証する期限でもありません。日付の通知は公表された暦日を維持し、タイムゾーン未公表と表示します。将来の `redirect_date` は予定として表示し、エイリアスを無効化しません。
 - **地域別ライフサイクル**：Bedrock の Legacy/EOL は、対象地域と日付を通知用 metadata に記録します。基礎モデル、クロスリージョン inference profile、元の提供元の API に対する一律の提供終了規則ではありません。[AWS ライフサイクル表](https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle-legacy.html)で実際のデプロイ地域とアカウント権限を確認してください。
-- **Gemini ネイティブ対応の範囲**：`gemini-4-argon` は共有の 1,048,576 Token コンテキストを使います。今回対応する既定の同期フローの最大出力は 65,536 Token で、思考強度は `low`、`medium`、`high` です。共有 1M ウィンドウに近い出力に必要なバックグラウンド長文デコードと継続フローは、今回未対応です。公表された上限を既定の同期出力能力として扱わないでください。[モデルカード](https://ai.google.dev/gemini-api/docs/models/gemini-4-argon)を参照してください。
+- **Gemini ネイティブ対応の範囲**：`gemini-4-argon` の共有コンテキストは 1,048,576 トークンで、思考レベル `low`、`medium`、`high` を追加しました。現在のリクエストごとの上限は、上の 11 月 19 日の更新を参照してください。
 - **コストとプラン**：MiniMax M3 は入力長と Standard/Priority の料金段階を保持し、中国の CNY とグローバルの USD 見積を分けます。Alibaba/Tencent の Credits・ポイントと個人プランの利用制限も、該当サービスに保持します。OpenAI Ultrafast と Gemini の初期・将来価格は条件付き参考値です。今回、料金段階の自動選択、キャンペーン時計、通貨換算、これらの参考単価による自動計量は追加しません。不明、ゼロ、試用、サブスクリプションの参考値は無料の根拠になりません。新規ルートの公開前に実際のアカウントコストを確認してください。設定済みコストと過去のリクエストスナップショットは保持します。[MiniMax 料金](https://platform.minimax.io/docs/pricing/overview)、[Alibaba 個人プラン](https://www.alibabacloud.com/help/en/model-studio/token-plan-personal-overview)、[Tencent プラン](https://cloud.tencent.com/document/product/1823/130659)、[Ultrafast](https://developers.openai.com/api/docs/guides/ultrafast-mode)が出典です。
 - **カタログ掲載のみの操作**：専用 Agent/Decisions API、リアルタイム音声、OCR/Parse、Contextualized・マルチモーダル埋め込みなど、`call_support=unsupported` の項目は発見可能な候補ですが、新しい有効ルートとして公開できません。通常の Chat やテキスト埋め込みへの対応は、これらの要求契約や固有の課金単位への対応を証明しません。中国 MiniMax のプレビューモデルも、設定済みエンドポイントとの互換性が未確認のため掲載のみです。実アカウントの権限、実際の上流推論の成功、請求内容、本番利用の準備完了を確認したものではありません。
 
