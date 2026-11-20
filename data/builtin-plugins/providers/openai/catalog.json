@@ -5,6 +5,144 @@
   "display_name": "OpenAI",
   "models": [
     {
+      "id": "gpt-6.2-sol",
+      "name": "GPT-6.2 Sol",
+      "display_name": "GPT-6.2 Sol",
+      "family": "gpt",
+      "category": "openai",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "release_date": "2026-11-17",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6.2-sol",
+        "release_date": "2026-11-17",
+        "max_output_tokens": "128000",
+        "max_input_tokens": "922000",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "pricing_source": "https://developers.openai.com/api/docs/models/gpt-6.2-sol",
+        "reference_token_prices": "{\"input\":2,\"output\":10,\"cache_read\":0.1,\"cache_write_30m\":2.5,\"cache_write_12h\":5}",
+        "pricing_note": "Standard USD per million tokens up to 272000 input tokens. Above that threshold input and cache rates double and output is multiplied by 1.5 for the full request. Other processing tiers are separate.",
+        "context_price_threshold_tokens": "272000",
+        "migration_source": "https://developers.openai.com/api/docs/guides/latest-model",
+        "reasoning_note": "Reasoning effort none is rejected. Tool calling requires Responses.",
+        "chat_tools_requires_reasoning_effort": "unsupported",
+        "sampling_note": "Sampling controls are unsupported with reasoning.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate GPT-6.2 Responses continuation and tool semantics before publishing the model.",
+        "endpoints": "responses,chat/completions"
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "temperature": false,
+      "endpoints": "responses,chat/completions"
+    },
+    {
+      "id": "gpt-6.2-astra",
+      "name": "GPT-6.2 Astra",
+      "display_name": "GPT-6.2 Astra",
+      "family": "gpt",
+      "category": "openai",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1050000,
+        "output": 128000
+      },
+      "release_date": "2026-11-17",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://developers.openai.com/api/docs/models/gpt-6.2-astra",
+        "release_date": "2026-11-17",
+        "max_output_tokens": "128000",
+        "max_input_tokens": "922000",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "reasoning_effort_options": "low,medium,high,xhigh,max",
+        "pricing_source": "https://developers.openai.com/api/docs/models/gpt-6.2-astra",
+        "reference_token_prices": "{\"input\":8,\"output\":40,\"cache_read\":0.4,\"cache_write_30m\":10,\"cache_write_12h\":20}",
+        "pricing_note": "Standard USD per million tokens up to 272000 input tokens. Above that threshold input and cache rates double and output is multiplied by 1.5 for the full request. Other processing tiers are separate.",
+        "context_price_threshold_tokens": "272000",
+        "migration_source": "https://developers.openai.com/api/docs/guides/latest-model",
+        "reasoning_note": "Reasoning effort none is rejected. Tool calling requires Responses.",
+        "chat_tools_requires_reasoning_effort": "unsupported",
+        "sampling_note": "Sampling controls are unsupported with reasoning.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate GPT-6.2 Responses continuation and tool semantics before publishing the model.",
+        "endpoints": "responses,chat/completions"
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "temperature": false,
+      "endpoints": "responses,chat/completions"
+    },
+    {
       "id": "gpt-live-transcribe",
       "name": "gpt-live-transcribe",
       "display_name": "gpt-live-transcribe",
