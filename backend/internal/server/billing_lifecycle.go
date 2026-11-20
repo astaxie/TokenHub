@@ -5,6 +5,9 @@ import "time"
 const pluginBackgroundJobSchedulerInterval = time.Minute
 
 func (s *Server) StartBillingScheduler() {
+	s.overviewBackfillStart.Do(func() {
+		go func() { defer close(s.overviewBackfillDone); s.runOverviewBackfill(s.overviewBackfillContext) }()
+	})
 	s.billing.StartScheduler(30 * time.Second)
 	s.reconciliation.StartScheduler(30 * time.Second)
 	s.credentialRefresh.StartScheduler(providerCredentialRefreshInterval)

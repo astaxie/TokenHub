@@ -24,7 +24,7 @@ export function emptyData(): AppData {
     approvals: [],
     sqliteBackups: [],
     users: [],
-    breakdown: { projects: [], models: [], members: [], providers: [], provider_resources: [], cost_centers: [] },
+    breakdown: emptyUsageBreakdown(),
     dailyUsage: emptyDailyUsage(),
     timeseries: [],
     resources: {},
@@ -60,6 +60,10 @@ export function emptySummary(): Summary {
     active_route_count: 0,
     user_count: 0,
   };
+}
+
+export function emptyUsageBreakdown(): AppData["breakdown"] {
+  return { projects: [], models: [], members: [], providers: [], provider_resources: [], cost_centers: [] };
 }
 
 export function emptyDailyUsage() {

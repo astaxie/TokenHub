@@ -3,6 +3,7 @@ package dbschema
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"time"
@@ -275,6 +276,11 @@ func newBudgetedExecer(db Execer, m Migration) *budgetedExecer {
 }
 
 func runMigrationBody(ctx context.Context, db MigrationExecer, m Migration) error {
+	if m.Precondition != nil {
+		if err := m.Precondition(ctx, db); err != nil {
+			return fmt.Errorf("precondition: %w", err)
+		}
+	}
 	if m.Go == nil && int64(len(m.Statements)) > m.StatementBudget {
 		return fmt.Errorf("statement budget exceeded: %d statements, budget %d", len(m.Statements), m.StatementBudget)
 	}
@@ -414,6 +420,13 @@ func (r *Runner) runOnPostgres(ctx context.Context, m Migration) (Applied, strin
 		}
 		return r.appliedRecord(m), "success", nil
 	}
+	// Unqualified concurrent DDL must never fall through to another
+	// deployment on search_path. Keep this setting on the held connection.
+	restorePath, err := pinPostgresMigrationSchema(ctx, conn)
+	if err != nil {
+		return Applied{}, "failed", err
+	}
+	defer restorePath()
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return Applied{}, "failed", err
@@ -425,17 +438,36 @@ func (r *Runner) runOnPostgres(ctx context.Context, m Migration) (Applied, strin
 	if err := tx.Commit(); err != nil {
 		return Applied{}, "failed", err
 	}
-	budgeted := newBudgetedExecer(r.db, m)
+	budgeted := newBudgetedExecer(conn, m)
 	if err := runMigrationBody(ctx, budgeted, m); err != nil {
 		return Applied{}, "dirty", err
 	}
 	if err := m.Postcondition(ctx, budgeted); err != nil {
 		return Applied{}, "dirty", fmt.Errorf("postcondition: %w", err)
 	}
-	if err := r.clearDirty(ctx, m.Version); err != nil {
+	if err := r.clearDirtyOn(ctx, conn, m.Version); err != nil {
 		return Applied{}, "dirty", err
 	}
 	return r.appliedRecord(m), "success", nil
+}
+
+func pinPostgresMigrationSchema(ctx context.Context, conn *sql.Conn) (func(), error) {
+	var previous, schema string
+	if err := conn.QueryRowContext(ctx, "SELECT pg_catalog.current_setting('search_path'), pg_catalog.quote_ident(pg_catalog.current_schema())").Scan(&previous, &schema); err != nil {
+		return nil, err
+	}
+	const setPath = "SELECT pg_catalog.set_config('search_path', $1, false)"
+	if _, err := conn.ExecContext(ctx, setPath, schema+", pg_temp"); err != nil {
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		return nil, err
+	}
+	return func() {
+		restoreCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if _, err := conn.ExecContext(restoreCtx, setPath, previous); err != nil {
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+	}, nil
 }
 
 func (r *Runner) appliedRecord(m Migration) Applied {

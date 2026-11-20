@@ -573,11 +573,30 @@ func (s *Server) enqueueImageJob(work imageJobWork) error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	// The instance heartbeat stays published until every database worker has
-	// stopped: contract preflight must keep seeing this instance through the
-	// drain, on every exit path.
+	overviewDone := s.overviewBackfillDone
+	if s.overviewBackfillCancel != nil {
+		s.overviewBackfillCancel()
+		// Closing an unstarted lifecycle is immediate and also prevents a
+		// scheduler start racing with shutdown from launching new work.
+		s.overviewBackfillStart.Do(func() {
+			if overviewDone != nil {
+				close(overviewDone)
+			}
+		})
+	}
+	// Keep the heartbeat while an interrupted projection still drains. Native
+	// credential persistence retains its existing unconditional cleanup below.
 	if s.stopHeartbeat != nil {
-		defer s.stopHeartbeat()
+		defer func() {
+			if overviewDone != nil {
+				select {
+				case <-overviewDone:
+				default:
+					return
+				}
+			}
+			s.stopHeartbeat()
+		}()
 	}
 	// Traces are flushed last, once every producer of completions has stopped.
 	// Deferring it also makes the flush survive the early returns below: failing to
@@ -585,6 +604,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// every buffered trace is worse.
 	defer s.shutdownTracing()
 	defer s.shutdownProviderRuntimes()
+	if overviewDone != nil {
+		select {
+		case <-overviewDone:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	s.responseWorkerStop.Do(func() {
 		s.responseCancel()
 	})
