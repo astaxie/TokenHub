@@ -179,7 +179,7 @@ type Store interface {
 	RecordPlaygroundRequest(call CallContext, route RouteSelection, statusCode int, errorCode string, clientIP string, userAgent string)
 	RecordRouteAttempts(requestID string, attempts []RouteAttempt)
 	RecordRejectedRequest(project Project, key APIKey, modelName string, stream bool, statusCode int, errorCode string, clientIP string, userAgent string) string
-	RecordRequestPayload(requestID string, requestBody string, requestTruncated bool, responseBody string, responseTruncated bool)
+	RecordRequestPayload(requestID string, record RequestPayloadRecord)
 	CreateImageJob(job ImageJob, prompt string) (ImageJob, error)
 	UpdateImageJobRequest(job ImageJob, prompt string) error
 	ClaimImageJob(id string) (ImageJob, bool, error)

@@ -20,14 +20,14 @@ type CompatibilityManifest struct {
 
 // CurrentCompatibilityManifest is this release's declaration. This release
 // requires all registered expansions, including version 10's persistent OAuth
-// tables and version 11's Responses image continuations. Startup applies these
-// additive tables before admitting requests; historical releases keep their
-// existing compatibility declarations.
+// tables, version 11's Responses image continuations, and version 12's audit
+// payload chunk store. Startup applies these additive tables before admitting
+// requests; historical releases keep their existing compatibility declarations.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: 11,
-		MinCompatible: 11,
-		MaxCompatible: 11,
+		TargetVersion: 12,
+		MinCompatible: 12,
+		MaxCompatible: 12,
 	}
 }
 

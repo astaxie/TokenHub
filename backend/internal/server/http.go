@@ -53,6 +53,7 @@ type Server struct {
 	mux                              *http.ServeMux
 	publicGatewayOperations          map[gatewayOperation]bool
 	config                           Config
+	auditLimits                      auditPayloadLimits
 	metrics                          *GatewayMetrics
 	traceEmitter                     TraceEmitter
 	imageStorageDir                  string
@@ -165,6 +166,20 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 	if config.MaxMultimodalRequestBytes <= 0 {
 		config.MaxMultimodalRequestBytes = defaultMaxMultimodalRequestBytes
 	}
+	if config.AuditPayloadScanKB <= 0 {
+		config.AuditPayloadScanKB = defaultAuditPayloadScanKB
+	}
+	if config.AuditPayloadScanKB > maximumAuditPayloadScanKB {
+		config.AuditPayloadScanKB = maximumAuditPayloadScanKB
+	}
+	if config.AuditPayloadMaxKB <= 0 {
+		config.AuditPayloadMaxKB = defaultAuditPayloadMaxKB
+	}
+	if config.AuditPayloadMaxKB > config.AuditPayloadScanKB {
+		// A preview larger than the scan budget would cap nothing; fold it back
+		// so the inline column always stays within the rendered snapshot size.
+		config.AuditPayloadMaxKB = config.AuditPayloadScanKB
+	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
 	responseContext, responseCancel := context.WithCancel(context.Background())
 	syntheticDNSPolicy := newProviderSyntheticDNSPolicy(store)
@@ -217,6 +232,7 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		mux:                              http.NewServeMux(),
 		publicGatewayOperations:          make(map[gatewayOperation]bool),
 		config:                           config,
+		auditLimits:                      auditPayloadLimits{scanBytes: config.AuditPayloadScanKB * 1024, maxBytes: config.AuditPayloadMaxKB * 1024},
 		imageStorageDir:                  config.ImageStorageDir,
 		imageContext:                     imageContext,
 		imageCancel:                      imageCancel,
