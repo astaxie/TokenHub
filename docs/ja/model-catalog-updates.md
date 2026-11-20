@@ -10,6 +10,8 @@ Gemini 4 Carbon、Hydrogen、Neon、GPT-6.2 Astra と Sol、Qwen4-Max、およ�
 
 Gemini の直接接続では、チャットにテキストとインライン画像を使用できます。Carbon と Argon の 1 リクエストあたりの出力上限は非ストリーミングで 32,768 トークン、ストリーミングで 65,536 トークンです。Hydrogen と Neon はどちらのモードでも 65,536 トークンまでで、思考レベル `xhigh` をサポートします。4 モデルとも入力と出力で 1,048,576 トークンのウィンドウを共有します。より長い出力には上流 API の継続処理が必要です。[Gemini の長文出力](https://aistudio.google.com/docs/long-decode)
 
+Gemini で複数ターンのチャットを行う場合、次のリクエストにアシスタントのメッセージと `reasoning_signature` をそのまま含めてください。ストリーミングでは、署名の差分を受け取ってからメッセージ全体を送信してください。[Google の思考署名](https://aistudio.google.com/docs/thought-signatures?generate-content=true)
+
 ## Magpie のサブスクリプション・アカウントプリセット（2026-10-24）
 
 Provider カタログは 172 エントリーになりました。[固定版 Magpie のプリセット一覧](https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go) から 12 個の API キープリセットを追加しました。Qianfan 個人・企業 Token Plan、Huawei Cloud MaaS Token Plan、Volcengine Coding・Agent Plan、Qwen AI Token Plan、Kimi Code Global、Tencent 企業 Token Plan Global、ClinePass、Ollama Cloud アカウントモデル、Command Code API、Nous Portal API です。既存の StepFun Global Step Plan と他の地域プランは維持します。

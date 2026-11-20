@@ -197,7 +197,9 @@
       "release_date": "2026-11-18",
       "last_updated": "2026-11-19",
       "supported_parameters": [
-        "max_tokens"
+        "max_tokens",
+        "max_completion_tokens",
+        "tool_choice"
       ],
       "metadata": {
         "availability": "active",
@@ -270,7 +272,9 @@
       "release_date": "2026-11-12",
       "last_updated": "2026-11-19",
       "supported_parameters": [
-        "max_tokens"
+        "max_tokens",
+        "max_completion_tokens",
+        "tool_choice"
       ],
       "metadata": {
         "availability": "active",
@@ -343,7 +347,9 @@
       "release_date": "2026-11-10",
       "last_updated": "2026-11-19",
       "supported_parameters": [
-        "max_tokens"
+        "max_tokens",
+        "max_completion_tokens",
+        "tool_choice"
       ],
       "metadata": {
         "availability": "active",
@@ -2402,7 +2408,9 @@
       "category": "gemini",
       "last_updated": "2026-10-16",
       "supported_parameters": [
-        "max_tokens"
+        "max_tokens",
+        "max_completion_tokens",
+        "tool_choice"
       ],
       "endpoints": "gemini",
       "reasoning_options": [

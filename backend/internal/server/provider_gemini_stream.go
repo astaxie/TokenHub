@@ -15,11 +15,12 @@ type geminiStreamDecoder struct {
 	encoder  *openAIChatStreamEncoder
 	provider Provider
 
-	usage        map[string]any
-	finishReason string
-	sawCandidate bool
-	hasToolCalls bool
-	toolIndex    int
+	usage          map[string]any
+	finishReason   string
+	sawCandidate   bool
+	hasToolCalls   bool
+	toolIndex      int
+	textSignatures geminiTextSignatures
 }
 
 func newGeminiStreamDecoder(encoder *openAIChatStreamEncoder) *geminiStreamDecoder {
@@ -65,6 +66,11 @@ func streamGeminiChatForProvider(body io.Reader, encoder *openAIChatStreamEncode
 	if err != nil {
 		encoder.Abort()
 		return usage, err
+	}
+	if !decoder.hasToolCalls {
+		if err := encoder.EmitReasoningSignature(geminiTextSignatureProvider, decoder.textSignatures.encode()); err != nil {
+			return usage, err
+		}
 	}
 	if err := encoder.Finalize(finishReason, usage); err != nil {
 		return usage, err
@@ -152,13 +158,15 @@ func (d *geminiStreamDecoder) consumePart(part map[string]any) error {
 		return nil
 	}
 
-	text, _ := part["text"].(string)
-	if text == "" {
+	text, isText := part["text"].(string)
+	if !isText {
 		return nil
 	}
 	if thought, _ := part["thought"].(bool); thought {
 		return d.encoder.EmitReasoning(text)
 	}
+	signature, _ := part["thoughtSignature"].(string)
+	d.textSignatures.record(text, signature)
 	return d.encoder.EmitText(text)
 }
 

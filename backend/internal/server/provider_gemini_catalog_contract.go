@@ -25,7 +25,7 @@ func validateGeminiCatalogContract(modelID string, req ChatCompletionRequest, ou
 		return nil
 	}
 	if req.requestedMaxTokens() > outputLimit {
-		return NewHTTPError(http.StatusBadRequest, "model_output_limit_exceeded",
+		return geminiRouteIncompatible("model_output_limit_exceeded",
 			fmt.Sprintf("%s supports at most %d output tokens per request through this adapter", modelID, outputLimit))
 	}
 	if effort := normalizedReasoningEffort(req.ReasoningEffort); effort != nil {
@@ -41,7 +41,7 @@ func validateGeminiCatalogContract(modelID string, req ChatCompletionRequest, ou
 		if geminiSupportsExtraHighThinking(modelID) {
 			levels = "low, medium, high, or xhigh"
 		}
-		return NewHTTPError(http.StatusBadRequest, "unsupported_reasoning_effort",
+		return geminiRouteIncompatible("unsupported_reasoning_effort",
 			fmt.Sprintf("%s supports %s thinking levels", modelID, levels))
 	}
 	return nil
@@ -49,4 +49,40 @@ func validateGeminiCatalogContract(modelID string, req ChatCompletionRequest, ou
 
 func geminiSupportsExtraHighThinking(modelID string) bool {
 	return modelID == "gemini-4-hydrogen" || modelID == "gemini-4-neon"
+}
+
+// Rejections from local model checks do not indicate an upstream failure.
+func geminiRouteIncompatible(code, message string) error {
+	return &ProviderInvocationError{
+		Err:         NewHTTPError(http.StatusBadRequest, code, message),
+		Disposition: ProviderErrorRouteSkipped,
+	}
+}
+
+// Fast admission avoids acquiring provider capacity for a request the native
+// adapter will reject. A matching plugin can change or handle that request.
+func (s *Server) geminiChatRouteCompatibility(call CallContext, route RouteSelection, req ChatCompletionRequest) error {
+	modelID := geminiModelID(route.ProviderModel)
+	if gemini4OutputLimit(modelID, true) == 0 {
+		return nil
+	}
+	adapter, err := s.adapterForRoute(route)
+	if err != nil {
+		return nil
+	}
+	stream := req.Stream
+	switch adapter.(type) {
+	case GeminiAdapter, *GeminiAdapter:
+	case *GoogleSubscriptionAdapter:
+		// The subscription transport always uses streamGenerateContent.
+		stream = true
+	default:
+		return nil
+	}
+	const protocol = providerRouteProtocolChatCompletions
+	if len(s.gatewayRequestTransformHooksForRoute(route, protocol)) > 0 ||
+		len(s.gatewayProviderCallHooksForRoute(call, route, protocol, req.Stream)) > 0 {
+		return nil
+	}
+	return validateGeminiCatalogContract(modelID, req, gemini4OutputLimit(modelID, stream))
 }

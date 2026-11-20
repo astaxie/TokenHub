@@ -10,6 +10,8 @@ Language: [English](../model-catalog-updates.md) | 简体中文 | [日本語](..
 
 Gemini 直连聊天支持文本和内联图片。Carbon 和 Argon 的单次非流式输出上限为 32,768 tokens，流式为 65,536。Hydrogen 和 Neon 两种模式均为 65,536，并支持 `xhigh` 思考档位。四款模型均使用 1,048,576 tokens 的共享输入输出窗口。更长的输出需要上游续接流程。 [Gemini 长输出说明](https://aistudio.google.com/docs/long-decode)
 
+调用 Gemini 进行多轮对话时，请在下一次请求中原样回传助手消息及其 `reasoning_signature`。流式调用请先收齐签名增量，再回传完整助手消息。 [Google 思考签名说明](https://aistudio.google.com/docs/thought-signatures?generate-content=true)
+
 ## Magpie 订阅与账户预设（2026-10-24）
 
 Provider 目录现有 172 个条目。根据 [Magpie 固定版本的预设清单](https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go) 新增 12 个 API Key 入口：千帆个人与企业 Token Plan、华为云 MaaS Token Plan、火山方舟 Coding 与 Agent Plan、Qwen AI Token Plan、Kimi Code 国际版、腾讯企业 Token Plan 国际版、ClinePass、Ollama Cloud 账户模型、Command Code API 和 Nous Portal API。已有 StepFun 国际版 Step Plan 及其他区域套餐继续保留。

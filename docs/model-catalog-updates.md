@@ -10,6 +10,8 @@ The catalog adds Gemini 4 Carbon, Hydrogen, and Neon, GPT-6.2 Astra and Sol, Qwe
 
 The direct Gemini chat adapter accepts text and inline images. Carbon and Argon allow up to 32,768 tokens per non-streaming request and 65,536 when streaming. Hydrogen and Neon allow up to 65,536 in either mode and support the `xhigh` thinking level. All four share a 1,048,576-token input and output window. Longer generations require the upstream continuation workflow. [Gemini long decode](https://aistudio.google.com/docs/long-decode)
 
+For multi-turn Gemini chat, keep the assistant message and its opaque `reasoning_signature` when sending the next request. For streaming, collect the signature delta before replaying the complete message. [Google thought signatures](https://aistudio.google.com/docs/thought-signatures?generate-content=true)
+
 ## Magpie subscription and account presets (2026-10-24)
 
 The Provider catalog now has 172 entries. Twelve API-key presets were added from [Magpie's pinned preset inventory](https://github.com/yetone/magpie/blob/d7ad3f2a3eea4fadc6f7131bf8b0957024892ba1/internal/provider/presets.go): Qianfan personal and enterprise Token Plans, Huawei Cloud MaaS Token Plan, Volcengine Coding and Agent Plans, Qwen AI Token Plan, Kimi Code Global, Tencent enterprise Token Plan Global, ClinePass, Ollama Cloud account models, Command Code API, and Nous Portal API. Existing StepFun Global Step Plan and other regional plans remain available.

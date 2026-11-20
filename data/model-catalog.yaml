@@ -9578,6 +9578,8 @@ models:
     - vision
     supported_parameters:
     - max_tokens
+    - max_completion_tokens
+    - tool_choice
     - tools
     - reasoning
     - reasoning_effort
@@ -9906,6 +9908,8 @@ models:
     - vision
     supported_parameters:
     - max_tokens
+    - max_completion_tokens
+    - tool_choice
     - tools
     - reasoning
     - reasoning_effort
@@ -9963,6 +9967,8 @@ models:
     - vision
     supported_parameters:
     - max_tokens
+    - max_completion_tokens
+    - tool_choice
     - tools
     - reasoning
     - reasoning_effort
@@ -10017,6 +10023,8 @@ models:
     - vision
     supported_parameters:
     - max_tokens
+    - max_completion_tokens
+    - tool_choice
     - tools
     - reasoning
     - reasoning_effort

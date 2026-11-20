@@ -301,7 +301,10 @@ func geminiAssistantParts(message ChatMessage, toolNames map[string]string) ([]m
 	if err != nil {
 		return nil, err
 	}
-	if text := contentPartsText(contentParts); text != "" {
+	text := contentPartsText(contentParts)
+	if signed, ok := replayGeminiTextParts(text, message.ReasoningSignature); ok {
+		parts = append(parts, signed...)
+	} else if text != "" {
 		parts = append(parts, map[string]any{"text": text})
 	}
 
@@ -375,9 +378,10 @@ func geminiChatResponse(body map[string]any, model string, usage Usage) (map[str
 	parts, _ := content["parts"].([]any)
 
 	var (
-		textParts []string
-		reasoning []string
-		toolCalls []any
+		textParts      []string
+		reasoning      []string
+		toolCalls      []any
+		textSignatures geminiTextSignatures
 	)
 	for index, item := range parts {
 		part, ok := item.(map[string]any)
@@ -406,15 +410,21 @@ func geminiChatResponse(body map[string]any, model string, usage Usage) (map[str
 			toolCalls = append(toolCalls, entry)
 			continue
 		}
-		text, _ := part["text"].(string)
-		if text == "" {
+		text, isText := part["text"].(string)
+		if !isText {
 			continue
 		}
 		if thought, _ := part["thought"].(bool); thought {
-			reasoning = append(reasoning, text)
+			if text != "" {
+				reasoning = append(reasoning, text)
+			}
 			continue
 		}
-		textParts = append(textParts, text)
+		signature, _ := part["thoughtSignature"].(string)
+		textSignatures.record(text, signature)
+		if text != "" {
+			textParts = append(textParts, text)
+		}
 	}
 
 	message := map[string]any{"role": "assistant"}
@@ -428,6 +438,8 @@ func geminiChatResponse(body map[string]any, model string, usage Usage) (map[str
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
+	} else if signature := textSignatures.encode(); signature != "" {
+		message["reasoning_signature"] = encodeProviderSignature(geminiTextSignatureProvider, signature)
 	}
 
 	finishReason, _ := candidate["finishReason"].(string)
