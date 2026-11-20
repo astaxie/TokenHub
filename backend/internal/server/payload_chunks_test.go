@@ -67,7 +67,7 @@ func TestRequestPayloadChunkRoundTrip(t *testing.T) {
 
 func TestRequestPayloadChunkDeduplicatesSharedContent(t *testing.T) {
 	store := newPayloadChunkTestStore(t)
-	shared := strings.Repeat("y", auditPayloadChunkSize*2)
+	shared := strings.Repeat("y", auditPayloadChunkSize*5)
 	for index, requestID := range []string{"req_dedup_a", "req_dedup_b"} {
 		body := fmt.Sprintf(`{"session":%d,"shared":"%s"}`, index, shared[:len(shared)-20])
 		store.RecordRequestPayload(requestID, RequestPayloadRecord{
@@ -78,16 +78,20 @@ func TestRequestPayloadChunkDeduplicatesSharedContent(t *testing.T) {
 	}
 	var chunkCount int64
 	store.db.Model(&PayloadChunk{}).Count(&chunkCount)
-	// The shared middle chunk is stored once; only the small distinct head and
-	// tail chunks differ between the two requests.
-	if chunkCount > 6 {
-		t.Fatalf("shared content was re-stored: %d chunks for two sessions", chunkCount)
+	// The shared middle chunks are stored once; only the distinct head and
+	// tail chunks differ between the two requests, so the total stays below
+	// what storing both bodies separately would need.
+	if chunkCount == 0 {
+		t.Fatal("expected chunked storage for an oversized snapshot")
+	}
+	if chunkCount >= 10 {
+		t.Fatalf("shared content was re-stored: %d chunks for two sessions with 5 shared chunks each", chunkCount)
 	}
 }
 
 func TestRequestPayloadGCRemovesOnlyOrphanedChunks(t *testing.T) {
 	store := newPayloadChunkTestStore(t)
-	shared := strings.Repeat("z", auditPayloadChunkSize*2)
+	shared := strings.Repeat("z", auditPayloadChunkSize*5)
 	expired := "req_gc_expired"
 	current := "req_gc_current"
 	for index, requestID := range []string{expired, current} {
@@ -179,5 +183,37 @@ func TestRequestPayloadChunkInsertionIsIdempotentForRepeatedContent(t *testing.T
 	stored := detail["payload"].(RequestPayloadLog)
 	if stored.RequestBody != body {
 		t.Fatalf("reassembled body diverges: got %d bytes, want %d", len(stored.RequestBody), len(body))
+	}
+}
+
+func TestConfigAuditPayloadDefaults(t *testing.T) {
+	t.Setenv("TOKENHUB_AUDIT_PAYLOAD_SCAN_KB", "")
+	t.Setenv("TOKENHUB_AUDIT_PAYLOAD_MAX_KB", "")
+	config := ConfigFromEnv()
+	if config.AuditPayloadScanKB != defaultAuditPayloadScanKB {
+		t.Fatalf("default scan KB = %d, want %d", config.AuditPayloadScanKB, defaultAuditPayloadScanKB)
+	}
+	if config.AuditPayloadMaxKB != defaultAuditPayloadMaxKB {
+		t.Fatalf("default max KB = %d, want %d", config.AuditPayloadMaxKB, defaultAuditPayloadMaxKB)
+	}
+
+	t.Setenv("TOKENHUB_AUDIT_PAYLOAD_SCAN_KB", "not-a-number")
+	t.Setenv("TOKENHUB_AUDIT_PAYLOAD_MAX_KB", "-3")
+	config = ConfigFromEnv()
+	// Invalid raw values surface as the -1 sentinel from the env parser and
+	// are folded back to the defaults when the server normalizes the config.
+	if config.AuditPayloadScanKB != -1 || config.AuditPayloadMaxKB != -1 {
+		t.Fatalf("invalid values should surface as the -1 sentinel, got %d/%d", config.AuditPayloadScanKB, config.AuditPayloadMaxKB)
+	}
+	server := NewWithConfig(NewMemoryStore(), config)
+	if server.auditLimits.scanBytes != defaultAuditPayloadScanBudget || server.auditLimits.maxBytes != defaultAuditPayloadMaxBytes {
+		t.Fatalf("invalid values should normalize to defaults, got %d/%d bytes", server.auditLimits.scanBytes, server.auditLimits.maxBytes)
+	}
+
+	t.Setenv("TOKENHUB_AUDIT_PAYLOAD_SCAN_KB", "512")
+	t.Setenv("TOKENHUB_AUDIT_PAYLOAD_MAX_KB", "128")
+	config = ConfigFromEnv()
+	if config.AuditPayloadScanKB != 512 || config.AuditPayloadMaxKB != 128 {
+		t.Fatalf("explicit values should be honored, got %d/%d", config.AuditPayloadScanKB, config.AuditPayloadMaxKB)
 	}
 }

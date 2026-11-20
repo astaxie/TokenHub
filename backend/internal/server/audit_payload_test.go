@@ -27,9 +27,9 @@ func TestAuditPayloadPreservesSmallRedactedJSON(t *testing.T) {
 
 func TestAuditPayloadCapsEncodedBytesAndPreservesUTF8(t *testing.T) {
 	for _, content := range []string{
-		strings.Repeat("x", 32*1024),
-		strings.Repeat("界", 6000),
-		strings.Repeat("\x00", 6000),
+		strings.Repeat("x", 96*1024),
+		strings.Repeat("界", 30000),
+		strings.Repeat("\x00", 30000),
 	} {
 		body, truncated := auditPayloadBody(map[string]any{"content": content, "password": "hidden"})
 		if !truncated || len(body) > defaultAuditPayloadMaxBytes || !utf8.ValidString(body) || !strings.HasSuffix(body, "\n... truncated") {

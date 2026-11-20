@@ -114,7 +114,7 @@ func BenchmarkPlanRouteOrderRendezvous(b *testing.B) {
 }
 
 func BenchmarkGatewayPayloadAuditRendering(b *testing.B) {
-	for _, size := range []int{256, 32 * 1024, 8 * 1024 * 1024} {
+	for _, size := range []int{256, 32 * 1024, 192 * 1024, 8 * 1024 * 1024} {
 		b.Run(fmt.Sprintf("Bytes%d", size), func(b *testing.B) {
 			payload := map[string]any{"prompt": strings.Repeat("x", size), "metadata": map[string]any{"source": "benchmark"}}
 			b.ReportAllocs()

@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	defaultAuditPayloadMaxBytes   = 8 * 1024
-	defaultAuditPayloadScanBudget = 64 * 1024
-	defaultAuditPayloadScanKB     = 64
-	defaultAuditPayloadMaxKB      = 8
+	defaultAuditPayloadMaxBytes   = 64 * 1024
+	defaultAuditPayloadScanBudget = 256 * 1024
+	defaultAuditPayloadScanKB     = 256
+	defaultAuditPayloadMaxKB      = 64
 	// The scan budget multiplies per-request rendering copies by concurrency,
 	// so it gets a hard ceiling even though the operator can raise it.
 	maximumAuditPayloadScanKB = 4096
