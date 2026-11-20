@@ -155,6 +155,96 @@ func TestModelSearchPreservesCapabilitiesAndModality(t *testing.T) {
 
 }
 
+func TestOverviewModelConsumersPreserveRoleVisibility(t *testing.T) {
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.db.Create(&[]Model{
+		{ID: "routed", Name: "test-routed", Status: StatusActive},
+		{ID: "hidden", Name: "test-unrouted", Status: StatusActive},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Create(&ModelRoute{ID: "test-route", ModelName: "test-routed", Status: StatusActive}).Error; err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	for _, role := range []string{"team_leader", "security_admin", "user"} {
+		t.Run(role, func(t *testing.T) {
+			token := createAdminOperationMethodRoutingSession(t, store, role+"-model-reader", role)
+			for _, path := range []string{"/api/admin/models", "/api/admin/model-search?q=test-"} {
+				resp := methodRoutingJSONRequest(t, app, http.MethodGet, path, nil, token)
+				var result struct{ Data []Model }
+				if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &result) != nil {
+					t.Fatalf("%s: %d %s", path, resp.Code, resp.Body)
+				}
+				names := map[string]bool{}
+				for _, item := range result.Data {
+					names[item.Name] = true
+				}
+				if !names["test-routed"] || names["test-unrouted"] != (role == "security_admin") {
+					t.Fatalf("%s: models=%v", path, names)
+				}
+			}
+			resp := methodRoutingJSONRequest(t, app, http.MethodPost, "/api/admin/models", nil, token)
+			if resp.Code != http.StatusForbidden {
+				t.Fatalf("model writes: status=%d", resp.Code)
+			}
+		})
+	}
+}
+
+func TestAlertHistoryFindsProjectQuotaEventsAndSearchesRetainedRows(t *testing.T) {
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	assertAlertHistoryProjectFilters(t, store)
+}
+
+func assertAlertHistoryProjectFilters(t *testing.T, store *GormStore) {
+	t.Helper()
+	project := "history-project"
+	counter := &QuotaCounter{TotalTokens: 20}
+	if err := raiseQuotaAlerts(store.db, APIKey{ID: "history-key", ProjectID: project, Limits: QuotaLimits{DailyTokens: 10}}, counter, counter); err != nil {
+		t.Fatal(err)
+	}
+	if err := raiseUserQuotaAlerts(store.db, project, counter, counter, QuotaLimits{DailyTokens: 10}); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"team", "project"} {
+		budget := AdminResource{ID: "budget-" + scope, Kind: "budgets", Fields: map[string]any{"scope": scope, "scope_id": project}}
+		if err := store.db.Create(&budget).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	alerts := []AlertEvent{
+		{ID: "literal", ScopeType: "project", ScopeID: project, Code: "cost_80%", Message: "historical warning", CreatedAt: time.Unix(1, 0).UTC()},
+		{ID: "collision", ScopeType: "provider", ScopeID: project, ResourceID: project, Code: "costA80X"},
+		{ID: "another-project", ScopeType: "api_key", ScopeID: "other-key", ResourceID: "other-project", Code: "costA80X"},
+		{ID: "team-cost", ScopeType: "budget", ScopeID: "budget-team", ResourceID: project, Code: "budget_warn_threshold"},
+		{ID: "project-cost", ScopeType: "budget", ScopeID: "budget-project", ResourceID: project, Code: "budget_warn_threshold"},
+	}
+	if err := store.db.Create(&alerts).Error; err != nil {
+		t.Fatal(err)
+	}
+	app := New(store).Handler()
+	for _, test := range []struct {
+		query string
+		total int64
+	}{
+		{"project_id=history-project", 4},
+		{"project_id=history-project&q=budget_warn", 1},
+		{"project_id=history-project&q=DAILY_TOKENS", 2},
+		{"q=cost_80%25", 1},
+		{"q=HISTORICAL+WARNING", 1},
+		{"q=another-project", 1},
+	} {
+		resp := doJSON(t, app, http.MethodGet, "/api/admin/alerts?page_size=1&"+test.query, nil, "")
+		var page AlertPage
+		if err := json.Unmarshal([]byte(resp.Body), &page); err != nil || resp.Code != 200 || page.Total != test.total || len(page.Data) != 1 {
+			t.Errorf("%s: want total %d, got %s", test.query, test.total, resp.Body)
+		}
+	}
+}
+
 func TestOverviewDoesNotCountAlertHistory(t *testing.T) {
 	store := NewMemoryStore()
 	t.Cleanup(func() { _ = store.Close() })

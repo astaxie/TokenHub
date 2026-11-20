@@ -157,6 +157,24 @@
       "checksum": "3a64fb6b7f50d05ac87ea0b9f3a812a485684c4dfde1e90fa9d08f49fd00e15d",
       "lock_timeout_seconds": 30,
       "statement_budget": 1
+    },
+    {
+      "version": 19,
+      "name": "account-for-sqlite-overview-replacements",
+      "phase": "expand",
+      "dialect": "sqlite",
+      "checksum": "18c1710158fe7aad9ae4af76210ec31256f6076d0d86b98042aa030560a7dbaa",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 14
+    },
+    {
+      "version": 20,
+      "name": "register-overview-online-backfills",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "cd4ea9ff1b1d801e10c98752fc137218b5d6e3a3c8f0d3d989323c54efb0100b",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 4
     }
   ]
 }

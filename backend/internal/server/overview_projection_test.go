@@ -107,20 +107,12 @@ func TestOverviewProjectionMatchesLegacyScopes(t *testing.T) {
 func TestOverviewBackfillResumesWithoutDoubleCounting(t *testing.T) {
 	store := NewMemoryStore()
 	t.Cleanup(func() { _ = store.Close() })
-	if err := store.db.Exec("DROP TRIGGER overview_usage_records_insert").Error; err != nil {
-		t.Fatal(err)
-	}
+	restore := suspendOverviewInserts(t, store, "usage_records")
 	records := []UsageRecord{{ID: "old_a", InputTokens: 5}, {ID: "old_b", InputTokens: 7}, {ID: "old_c", InputTokens: 11}}
 	if err := store.db.Create(&records).Error; err != nil {
 		t.Fatal(err)
 	}
-	for _, statement := range overviewProjectionStatements("sqlite") {
-		if strings.HasPrefix(statement, "CREATE TRIGGER overview_usage_records_insert ") {
-			if err := store.db.Exec(statement).Error; err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
+	restore()
 	progress, err := store.overviewProgress(context.Background())
 	if err != nil || progress.Ready {
 		t.Fatalf("progress=%+v err=%v", progress, err)
@@ -223,15 +215,7 @@ func TestOverviewBackfillCoordinatesInstancesAndWriters(t *testing.T) {
 
 func assertOverviewBackfillCoordinatesInstances(t *testing.T, first, second *GormStore) {
 	t.Helper()
-	if first.dbDriver == "sqlite" {
-		if err := first.db.Exec("DROP TRIGGER overview_usage_records_insert").Error; err != nil {
-			t.Fatal(err)
-		}
-	} else {
-		if err := first.db.Exec("ALTER TABLE usage_records DISABLE TRIGGER overview_usage_records_insert").Error; err != nil {
-			t.Fatal(err)
-		}
-	}
+	restore := suspendOverviewInserts(t, first, "usage_records")
 	records := make([]UsageRecord, 3000)
 	for i := range records {
 		records[i] = UsageRecord{ID: fmt.Sprintf("old_%04d", i), ProjectID: "p", APIKeyID: "k", AttributedUserID: "u", InputTokens: 1}
@@ -239,19 +223,7 @@ func assertOverviewBackfillCoordinatesInstances(t *testing.T, first, second *Gor
 	if err := first.db.CreateInBatches(records, 100).Error; err != nil {
 		t.Fatal(err)
 	}
-	if first.dbDriver == "sqlite" {
-		for _, statement := range overviewProjectionStatements("sqlite") {
-			if strings.HasPrefix(statement, "CREATE TRIGGER overview_usage_records_insert ") {
-				if err := first.db.Exec(statement).Error; err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
-	} else {
-		if err := first.db.Exec("ALTER TABLE usage_records ENABLE TRIGGER overview_usage_records_insert").Error; err != nil {
-			t.Fatal(err)
-		}
-	}
+	restore()
 
 	one, err := first.overviewBackfillExecutor(dbschema.WithBackfillOwner("one"))
 	if err != nil {
@@ -337,15 +309,15 @@ func TestSQLiteOverviewOrdinaryCostsKeepProjection(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			store := NewMemoryStore()
 			t.Cleanup(func() { _ = store.Close() })
+			var restore func()
 			if mode == "backfill" {
-				if err := store.db.Exec("DROP TRIGGER overview_usage_records_insert").Error; err != nil {
-					t.Fatal(err)
-				}
+				restore = suspendOverviewInserts(t, store, "usage_records")
 			}
 			if err := store.db.Exec("INSERT INTO usage_records (id, cost_usd) VALUES ('a_small', 0.01), ('b_large', 10)").Error; err != nil {
 				t.Fatal(err)
 			}
 			if mode == "backfill" {
+				restore()
 				for i := 0; i < 3; i++ {
 					if _, err := store.backfillOverviewBatch(t.Context(), "usage_records", 1); err != nil {
 						t.Fatal(err)
@@ -371,10 +343,9 @@ func TestSQLiteOverviewCostCorrectionKeepsSmallBalance(t *testing.T) {
 				t.Run(fmt.Sprintf("%s/small_%g/batch_%d", order, small, batchSize), func(t *testing.T) {
 					store := NewMemoryStore()
 					t.Cleanup(func() { _ = store.Close() })
+					var restore func()
 					if batchSize > 0 {
-						if err := store.db.Exec("DROP TRIGGER overview_usage_records_insert").Error; err != nil {
-							t.Fatal(err)
-						}
+						restore = suspendOverviewInserts(t, store, "usage_records")
 					}
 					values := fmt.Sprintf("('large', 10000000000000000), ('small', %.17g)", small)
 					if order == "small_first" {
@@ -384,13 +355,7 @@ func TestSQLiteOverviewCostCorrectionKeepsSmallBalance(t *testing.T) {
 						t.Fatal(err)
 					}
 					if batchSize > 0 {
-						for _, statement := range overviewProjectionStatements("sqlite") {
-							if strings.HasPrefix(statement, "CREATE TRIGGER overview_usage_records_insert ") {
-								if err := store.db.Exec(statement).Error; err != nil {
-									t.Fatal(err)
-								}
-							}
-						}
+						restore()
 						for {
 							remaining, err := store.backfillOverviewBatch(t.Context(), "usage_records", batchSize)
 							if err != nil {
@@ -420,22 +385,15 @@ func TestSQLiteOverviewAmountOverflowKeepsSourceRows(t *testing.T) {
 		t.Run(fmt.Sprintf("batch_%d", batchSize), func(t *testing.T) {
 			store := NewMemoryStore()
 			t.Cleanup(func() { _ = store.Close() })
+			var restore func()
 			if batchSize > 0 {
-				if err := store.db.Exec("DROP TRIGGER overview_usage_records_insert").Error; err != nil {
-					t.Fatal(err)
-				}
+				restore = suspendOverviewInserts(t, store, "usage_records")
 			}
 			if err := store.db.Exec("INSERT INTO usage_records (id,cost_usd) VALUES ('huge_a', 1e308), ('huge_b', 1e308), ('huge_c', 1e308)").Error; err != nil {
 				t.Fatalf("derived amount rejected source: %v", err)
 			}
 			if batchSize > 0 {
-				for _, statement := range overviewProjectionStatements("sqlite") {
-					if strings.HasPrefix(statement, "CREATE TRIGGER overview_usage_records_insert ") {
-						if err := store.db.Exec(statement).Error; err != nil {
-							t.Fatal(err)
-						}
-					}
-				}
+				restore()
 				for {
 					remaining, err := store.backfillOverviewBatch(t.Context(), "usage_records", batchSize)
 					if err != nil {
@@ -459,5 +417,36 @@ func TestSQLiteOverviewAmountOverflowKeepsSourceRows(t *testing.T) {
 				t.Fatalf("summary=%+v err=%v", summary, err)
 			}
 		})
+	}
+}
+
+// suspendOverviewInserts creates the same backlog and ledger state as an
+// upgrade from a release without projection triggers.
+func suspendOverviewInserts(t *testing.T, store *GormStore, source string) func() {
+	t.Helper()
+	for _, query := range []string{
+		"UPDATE overview_projection_progress SET ready = 0 WHERE source = ?",
+		"UPDATE data_backfills SET state = 'pending', remaining = -1 WHERE id = 'overview-v1-' || ?",
+	} {
+		if err := store.db.Exec(query, source).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	name := "overview_" + source + "_insert"
+	disable, enable := "ALTER TABLE "+source+" DISABLE TRIGGER "+name, "ALTER TABLE "+source+" ENABLE TRIGGER "+name
+	if store.dbDriver == "sqlite" {
+		disable = "DROP TRIGGER " + name
+		if err := store.db.Raw("SELECT sql FROM sqlite_master WHERE type='trigger' AND name = ?", name).Scan(&enable).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.db.Exec(disable).Error; err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		t.Helper()
+		if err := store.db.Exec(enable).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 }

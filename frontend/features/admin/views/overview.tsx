@@ -1,7 +1,7 @@
 import { Activity, BarChart3, Boxes, Check, CircleDollarSign, Code2, Database, FileText, Gauge, KeyRound, LayoutDashboard, Server, ShieldCheck, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { appRole, canAccessView } from "../core/navigation";
-import { type AdminUser, type AppData, type AppRole, type RequestLog, type Summary, type UsageBreakdownRow, type UsagePoint, type ViewKey } from "../core/types";
+import { type AdminUser, type AppData, type AppRole, type RequestLog, type UsageBreakdownRow, type UsagePoint, type ViewKey } from "../core/types";
 import { findProvider, providerResourceAuditLabel } from "../domain/entities";
 import { compactNumber, formatDashboardMoney, formatMoney, formatNumber, playgroundModels } from "../domain/formatting";
 import { countWithUnit, languageLocale, tx } from "../i18n/runtime";
@@ -28,32 +28,35 @@ export function OverviewView({
   const can = (view: ViewKey) => canAccessView(user, view);
   const activeProviders = data.providers.filter((provider) => provider.status === "active" && provider.healthy).length;
   const providerTotal = data.providers.length;
-  const series = overviewRangePoints(data, range, summaryAvailable);
+  const series = overviewRangePoints(data, range);
   const requestValues = series.map((point) => point.request_count);
   const tokenValues = series.map((point) => point.total_tokens);
   const costValues = series.map((point) => point.estimated_cost_usd);
-  const providerRows = overviewProviderShareRows(data);
+  const providerShare = overviewProviderShare(data);
   const topModels = overviewTopModelRows(data);
+  const breakdownMessage = {
+    ready: "", preparing: tx("历史统计准备中"), error: tx("统计暂时不可用，请稍后刷新"), loading: tx("加载中"),
+  }[data.breakdownStatus ?? "loading"];
   const cards = [
     {
       label: "总请求",
       value: summaryAvailable ? formatNumber(data.summary.request_count) : "—",
       icon: BarChart3,
-      delta: summaryAvailable ? overviewDeltaLabel(requestValues) : "",
+      delta: summaryAvailable && series.length > 1 ? overviewDeltaLabel(requestValues) : "",
       values: requestValues,
     },
     {
       label: "总 Token",
       value: summaryAvailable ? compactNumber(data.summary.total_tokens) : "—",
       icon: Database,
-      delta: summaryAvailable ? overviewDeltaLabel(tokenValues) : "",
+      delta: summaryAvailable && series.length > 1 ? overviewDeltaLabel(tokenValues) : "",
       values: tokenValues,
     },
     {
       label: "总成本",
       value: summaryAvailable ? `$${formatMoney(data.summary.estimated_cost_usd)}` : "—",
       icon: CircleDollarSign,
-      delta: summaryAvailable ? overviewDeltaLabel(costValues) : "",
+      delta: summaryAvailable && series.length > 1 ? overviewDeltaLabel(costValues) : "",
       values: costValues,
     },
     can("providers")
@@ -157,8 +160,8 @@ export function OverviewView({
         </article>
 
         <aside className="overview-side-stack">
-          <OverviewProviderShare rows={providerRows} />
-          <OverviewTopModels rows={topModels} />
+          <OverviewProviderShare {...providerShare} statusMessage={breakdownMessage} />
+          <OverviewTopModels rows={topModels} statusMessage={breakdownMessage} />
         </aside>
       </section>
       <OverviewRecentAlerts data={data} onSelectView={onSelectView} />
@@ -916,15 +919,14 @@ export function OverviewTrendChart({ metric, points }: { metric: OverviewMetricK
   );
 }
 
-export function OverviewProviderShare({ rows }: { rows: Array<{ id: string; label: string; percent: number; value: number; cost: number }> }) {
-  const totalCost = rows.reduce((sum, row) => sum + row.cost, 0);
+export function OverviewProviderShare({ rows, totalCost, statusMessage }: ReturnType<typeof overviewProviderShare> & { statusMessage: string }) {
   return (
     <article className="overview-panel overview-share-panel">
       <h2>{tx("Provider 成本占比")}</h2>
       <div className="overview-share-content">
         <div className="overview-donut" style={{ background: overviewDonutGradient(rows) }}>
           <div>
-            <strong>{totalCost > 0 ? `$${compactNumber(totalCost)}` : "$0"}</strong>
+            <strong>{statusMessage ? "—" : `$${compactNumber(totalCost)}`}</strong>
             <span>{tx("总成本")}</span>
           </div>
         </div>
@@ -936,7 +938,7 @@ export function OverviewProviderShare({ rows }: { rows: Array<{ id: string; labe
               <strong>{row.percent}%</strong>
             </div>
           )) : (
-            <div className="compact-empty">{tx("暂无 Provider 成本数据")}</div>
+            <div className="compact-empty">{statusMessage || tx("暂无 Provider 成本数据")}</div>
           )}
         </div>
       </div>
@@ -944,7 +946,7 @@ export function OverviewProviderShare({ rows }: { rows: Array<{ id: string; labe
   );
 }
 
-export function OverviewTopModels({ rows }: { rows: UsageBreakdownRow[] }) {
+export function OverviewTopModels({ rows, statusMessage }: { rows: UsageBreakdownRow[]; statusMessage: string }) {
   const max = Math.max(...rows.map((row) => row.request_count), 1);
   return (
     <article className="overview-panel overview-top-panel">
@@ -961,15 +963,15 @@ export function OverviewTopModels({ rows }: { rows: UsageBreakdownRow[] }) {
             </span>
           </div>
         )) : (
-          <div className="compact-empty">{tx("暂无模型调用数据")}</div>
+          <div className="compact-empty">{statusMessage || tx("暂无模型调用数据")}</div>
         )}
       </div>
     </article>
   );
 }
 
-export function overviewRangePoints(data: AppData, range: OverviewRangeKey, allowSummaryFallback = true) {
-  const source = (data.timeseries.length ? data.timeseries : allowSummaryFallback ? fallbackOverviewDays(data.summary) : [])
+export function overviewRangePoints(data: AppData, range: OverviewRangeKey) {
+  const source = data.timeseries
     .slice()
     .sort((left, right) => left.date.localeCompare(right.date));
   if (range === "7d") return source.slice(-7);
@@ -977,25 +979,6 @@ export function overviewRangePoints(data: AppData, range: OverviewRangeKey, allo
   const latestMonth = source.at(-1)?.date.slice(0, 7);
   const monthPoints = latestMonth ? source.filter((point) => point.date.startsWith(latestMonth)) : source;
   return monthPoints.length ? monthPoints : source.slice(-30);
-}
-
-export function fallbackOverviewDays(summary: Summary): UsagePoint[] {
-  const weights = [0.56, 0.48, 0.79, 0.68, 0.96, 0.86, 1.08, 0.99, 1.17, 1.25];
-  const totalWeight = weights.reduce((sum, item) => sum + item, 0);
-  return weights.map((weight, index) => {
-    const ratio = weight / totalWeight;
-    const totalTokens = Math.round((summary.total_tokens || 0) * ratio);
-    const inputTokens = Math.round((summary.input_tokens || totalTokens * 0.58) * ratio);
-    const outputTokens = Math.max(0, totalTokens - inputTokens);
-    return {
-      date: `2026-06-${String(index + 9).padStart(2, "0")}`,
-      request_count: Math.round((summary.request_count || 0) * ratio),
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      total_tokens: totalTokens,
-      estimated_cost_usd: Number(((summary.estimated_cost_usd || 0) * ratio).toFixed(6)),
-    };
-  });
 }
 
 export function usagePointMetric(point: UsagePoint, metric: OverviewMetricKey) {
@@ -1071,31 +1054,19 @@ export function overviewDateLabel(date: string) {
   return month && day ? `${month}/${day}` : date;
 }
 
-export function overviewProviderShareRows(data: AppData) {
-  const source = (data.breakdown.providers ?? [])
+export function overviewProviderShare(data: AppData) {
+  const providers = data.breakdown.providers ?? [];
+  const totalCost = providers.reduce((sum, row) => sum + row.estimated_cost_usd, 0);
+  const rows = providers
     .filter((row) => row.estimated_cost_usd > 0 || row.request_count > 0)
-    .sort((left, right) => right.estimated_cost_usd - left.estimated_cost_usd || right.request_count - left.request_count);
-  const rows = source.length ? source.slice(0, 3) : data.providers.slice(0, 3).map((provider) => ({
-    id: provider.id,
-    request_count: 0,
-    input_tokens: 0,
-    output_tokens: 0,
-    total_tokens: 0,
-    estimated_cost_usd: 0,
-  }));
-  const total = rows.reduce((sum, row) => sum + row.estimated_cost_usd, 0);
-  const fallbackTotal = rows.reduce((sum, row) => sum + row.request_count, 0);
-  return rows.map((row) => {
-    const value = total > 0 ? row.estimated_cost_usd : row.request_count;
-    const denominator = total > 0 ? total : fallbackTotal;
-    return {
+    .sort((left, right) => right.estimated_cost_usd - left.estimated_cost_usd || right.request_count - left.request_count)
+    .slice(0, 3)
+    .map((row) => ({
       id: row.id,
       label: findProvider(data, row.id)?.name || row.id || "其他",
-      cost: row.estimated_cost_usd,
-      value,
-      percent: denominator > 0 ? Math.round((value / denominator) * 100) : 0,
-    };
-  });
+      percent: totalCost > 0 ? Math.round((row.estimated_cost_usd / totalCost) * 100) : 0,
+    }));
+  return { rows, totalCost };
 }
 
 export function overviewDonutGradient(rows: Array<{ percent: number }>) {
@@ -1113,37 +1084,10 @@ export function overviewDonutGradient(rows: Array<{ percent: number }>) {
 }
 
 export function overviewTopModelRows(data: AppData) {
-  const breakdownRows = (data.breakdown.models ?? [])
+  return (data.breakdown.models ?? [])
     .filter((row) => row.request_count > 0 || row.total_tokens > 0)
     .sort((left, right) => right.request_count - left.request_count || right.total_tokens - left.total_tokens)
     .slice(0, 4);
-  if (breakdownRows.length) return breakdownRows;
-
-  const logs = new Map<string, UsageBreakdownRow>();
-  for (const log of data.logs) {
-    const id = log.model || "-";
-    const current = logs.get(id) ?? {
-      id,
-      request_count: 0,
-      input_tokens: 0,
-      output_tokens: 0,
-      total_tokens: 0,
-      estimated_cost_usd: 0,
-    };
-    current.request_count += 1;
-    logs.set(id, current);
-  }
-  const logRows = Array.from(logs.values()).sort((left, right) => right.request_count - left.request_count).slice(0, 4);
-  if (logRows.length) return logRows;
-
-  return data.models.slice(0, 4).map((model) => ({
-    id: model.name,
-    request_count: 0,
-    input_tokens: 0,
-    output_tokens: 0,
-    total_tokens: 0,
-    estimated_cost_usd: 0,
-  }));
 }
 
 export type UsageDashboardRankRow = UsageBreakdownRow & {

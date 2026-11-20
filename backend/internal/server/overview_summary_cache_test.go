@@ -92,6 +92,47 @@ func TestOverviewCacheCancelsLastWaiter(t *testing.T) {
 	}
 }
 
+func TestOverviewCacheRefreshTimeoutUsesOnlyRecentSameScopeData(t *testing.T) {
+	now := time.Now()
+	cached := overviewSummaryEntry{
+		summary: UsageSummary{RequestCount: 42},
+		status:  OverviewSummaryStatus{State: "ready", UpdatedAt: now.Add(-30 * time.Second)},
+		expires: now.Add(-15 * time.Second),
+	}
+	old := cached
+	old.status.UpdatedAt = now.Add(-61 * time.Second)
+	cache := overviewSummaryCache{entries: map[string]overviewSummaryEntry{"mine": cached, "expired": old}}
+	early, stop := context.WithDeadline(t.Context(), now.Add(-time.Second))
+	defer stop()
+	neverLoad := func(context.Context) (overviewSummaryEntry, error) {
+		t.Fatal("expired request started work")
+		return overviewSummaryEntry{}, nil
+	}
+	if hit, err := cache.get(early, "mine", neverLoad); err != nil || hit.status.State != "stale" {
+		t.Fatalf("already expired page: %+v, %v", hit, err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := cache.get(canceled, "mine", neverLoad); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled page: %v", err)
+	}
+	for _, scope := range []string{"mine", "expired", "different"} {
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+		entry, err := cache.get(ctx, scope, func(query context.Context) (overviewSummaryEntry, error) {
+			<-query.Done()
+			return overviewSummaryEntry{}, query.Err()
+		})
+		cancel()
+		if scope == "mine" {
+			if err != nil || entry.status.State != "stale" || entry.summary.RequestCount != 42 || entry.status.UpdatedAt != cached.status.UpdatedAt {
+				t.Fatalf("timed-out refresh: %+v, %v", entry, err)
+			}
+		} else if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("%s received stale data: %+v, %v", scope, entry, err)
+		}
+	}
+}
+
 func TestOverviewScopedProgressHidesGlobalCounts(t *testing.T) {
 	store := NewMemoryStore()
 	t.Cleanup(func() { _ = store.Close() })

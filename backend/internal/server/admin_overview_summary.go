@@ -75,11 +75,12 @@ func (s *Server) overviewSummaryForUser(ctx context.Context, user AdminUser) (ma
 }
 
 func (c *overviewSummaryCache) get(ctx context.Context, key string, load func(context.Context) (overviewSummaryEntry, error)) (overviewSummaryEntry, error) {
-	if err := ctx.Err(); err != nil {
-		return overviewSummaryEntry{}, err
-	}
 	c.mu.Lock()
 	cached, found := c.entries[key]
+	if err := ctx.Err(); err != nil {
+		c.mu.Unlock()
+		return cached.onRefreshFailure(err)
+	}
 	if found && time.Now().Before(cached.expires) {
 		c.mu.Unlock()
 		return cached, nil
@@ -113,11 +114,6 @@ func (c *overviewSummaryCache) get(ctx context.Context, key string, load func(co
 					c.entries[key] = entry
 				}
 			}
-			if err != nil && found && cached.status.State == "ready" && time.Since(cached.status.UpdatedAt) <= time.Minute {
-				entry = cached
-				entry.status.State = "stale"
-				err = nil
-			}
 			flight.entry, flight.err = entry, err
 			close(flight.done)
 		}()
@@ -135,8 +131,24 @@ func (c *overviewSummaryCache) get(ctx context.Context, key string, load func(co
 	}()
 	select {
 	case <-ctx.Done():
-		return overviewSummaryEntry{}, ctx.Err()
+		return cached.onRefreshFailure(ctx.Err())
 	case <-flight.done:
-		return flight.entry, flight.err
+		if ctx.Err() == context.Canceled {
+			return overviewSummaryEntry{}, ctx.Err()
+		}
+		if flight.err != nil {
+			return cached.onRefreshFailure(flight.err)
+		}
+		return flight.entry, nil
 	}
+}
+
+func (cached overviewSummaryEntry) onRefreshFailure(err error) (overviewSummaryEntry, error) {
+	// The page deadline can expire before the shared refresh's own timeout.
+	// Each waiter applies the same freshness rule when it stops waiting.
+	if err != context.Canceled && cached.status.State == "ready" && time.Since(cached.status.UpdatedAt) <= time.Minute {
+		cached.status.State = "stale"
+		return cached, nil
+	}
+	return overviewSummaryEntry{}, err
 }

@@ -24,9 +24,9 @@ type CompatibilityManifest struct {
 // admitting requests. Its historical projection is an online backfill.
 func CurrentCompatibilityManifest() CompatibilityManifest {
 	return CompatibilityManifest{
-		TargetVersion: 18,
-		MinCompatible: 18,
-		MaxCompatible: 18,
+		TargetVersion: 20,
+		MinCompatible: 20,
+		MaxCompatible: 20,
 	}
 }
 

@@ -24,10 +24,11 @@ func buildOverviewProjectionMigrations() []dbschema.Migration {
 		{Version: 13, Name: "add-overview-projection-postgres", Dialect: dbschema.DialectPostgres, Statements: overviewProjectionStatements("postgres"), StatementBudget: 40},
 	}
 	migrations = append(migrations, overviewProjectionIndexMigrations()...)
-	return append(migrations, dbschema.Migration{
+	migrations = append(migrations, dbschema.Migration{
 		Version: 18, Name: "add-overview-completion-state", StatementBudget: 1,
 		Statements: []string{"ALTER TABLE overview_projection_progress ADD COLUMN ready INTEGER NOT NULL DEFAULT 0"},
 	})
+	return append(migrations, overviewReplacementMigration(), overviewBackfillRegistrationMigration())
 }
 
 var overviewDimensionColumns = []string{"project_id", "api_key_id", "attributed_user_id", "model_name", "provider_id", "provider_resource_id"}

@@ -14,11 +14,17 @@ During backfill the overview remains usable and `summary_status.state` is `prepa
 
 Successful summaries are cached for 15 seconds per effective permission scope. Concurrent refreshes share a query. Cancellation detaches an individual waiter and the last waiter cancels the shared work. Distinct cached scopes are capped at 128. Queries have a 10-second deadline. On refresh failure a successful result up to 60 seconds old may be returned as `stale`, with its computation time. Older results are replaced by an independent summary error state. Other page data remains usable. A failed breakdown clears previous classifications and reports the error. The preparing response clears previous classifications and uses the overview preparation status.
 
+SQLite migration 19 subtracts the previous contribution on replacement inserts, including external writers using the default recursive-trigger setting. An upgrade from an earlier overview build checks existing global projection counts once. A mismatch selects the permission-scoped raw-aggregation fallback. Migration 20 registers both online jobs before `db prepare` or `db migrate` returns. Empty sources start complete. PostgreSQL concurrent index builds stay in the current schema and reject names already used for a different definition.
+
+Summary timeouts use the same 60-second stale-data limit. Trend and ranking panels display their own query results and clear them on failure. Provider percentages use the cost across all providers. Team leaders retain read access to routed active models. Security administrators can load model choices on audit and gateway pages.
+
 ## Alert history
 
 `GET /api/admin/alerts` returns `data`, `page`, `page_size` and `total`. The default page size is 50 and the enforced maximum is 100. It accepts `project_id`, `severity`, `from` and `before`. Times use RFC 3339. `from` is inclusive and `before` is exclusive. Ordering is descending by creation time and ID.
 
 The console history view owns server pagination and aborts obsolete reads. It displays the filtered total independently from the current page length. If retention removes the current page, the view reloads the last valid page. Project quota-event counts and latest occurrence times are queried separately through `GET /api/admin/project-quota-events`, using full retained history for visible projects. Global operators receive combined request-log and alert counts. Scoped users receive request-log counts within their effective permissions.
+
+The optional `q` filter searches literal text in alert IDs, event codes, messages, scopes, severities, resources and timestamps before counting and pagination. Project filters include direct project alerts, API key and user quota alerts attributed to the project, and project budget alerts identifiable through retained budget settings.
 
 ## Verification
 
@@ -28,4 +34,4 @@ The opt-in `TestOverviewRepresentativeScale` and `TestPostgresOverviewRepresenta
 
 SQLite monetary projections use compensated summation to retain low-order contributions. SQLite falls back to the original SQL aggregates when a stored integer total exceeds SQLite’s integer range or monetary accumulation becomes non-finite. This exceptional numeric path scans history while retaining the cache and query deadline, preserving source records and corrected totals. PostgreSQL totals use NUMERIC.
 
-The shipped v0.11.0 runner rejects newer migration ledger entries. Coordinate a compatible bridge release before relying on application rollback after deployment. Update the admin frontend together with this backend.
+The shipped v0.11.0 runner rejects newer migration ledger entries. Deploy a bridge release that recognizes migrations through version 20 before relying on application rollback. Update the admin frontend together with this backend.

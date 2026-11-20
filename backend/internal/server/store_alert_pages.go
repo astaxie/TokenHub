@@ -5,6 +5,7 @@ import (
 	"gorm.io/gorm"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type AlertPageQuery struct {
 	PageSize  int
 	ProjectID string
 	Severity  string
+	Keyword   string
 	From      time.Time
 	Before    time.Time
 }
@@ -25,7 +27,8 @@ type AlertPage struct {
 }
 
 func alertPageQuery(r *http.Request) (AlertPageQuery, error) {
-	query := AlertPageQuery{Page: 1, PageSize: 50, ProjectID: r.URL.Query().Get("project_id"), Severity: r.URL.Query().Get("severity")}
+	params := r.URL.Query()
+	query := AlertPageQuery{Page: 1, PageSize: 50, ProjectID: params.Get("project_id"), Severity: params.Get("severity"), Keyword: strings.TrimSpace(params.Get("q"))}
 	for _, field := range []struct {
 		name   string
 		target *int
@@ -83,7 +86,26 @@ func (s *GormStore) queryAlertPageSnapshot(ctx context.Context, query AlertPageQ
 	page := AlertPage{Data: []AlertEvent{}, Page: query.Page, PageSize: query.PageSize}
 	db := s.analyticsDB.WithContext(ctx).Model(&AlertEvent{})
 	if query.ProjectID != "" {
-		db = db.Where("scope_id = ?", query.ProjectID)
+		budgetScope := "json_extract(b.fields, '$.scope')"
+		if s.dbDriver == "postgres" {
+			budgetScope = "(CAST(b.fields AS jsonb) ->> 'scope')"
+		}
+		db = db.Where(`(scope_id = ? AND COALESCE(scope_type, '') IN ('', 'project'))
+			OR (resource_id = ? AND (scope_type IN ('api_key', 'user')
+			OR (scope_type = 'budget' AND EXISTS (SELECT 1 FROM admin_resources b
+				WHERE b.id = alert_events.scope_id AND b.kind = 'budgets' AND LOWER(TRIM(`+budgetScope+`)) = 'project'))))`,
+			query.ProjectID, query.ProjectID)
+	}
+	if query.Keyword != "" {
+		pattern := "%" + escapeLikePattern(strings.ToLower(query.Keyword)) + "%"
+		columns := []string{"id", "code", "message", "scope_id", "scope_type", "resource_id", "severity", "CAST(created_at AS TEXT)"}
+		conditions := make([]string, 0, len(columns))
+		args := make([]any, 0, len(columns))
+		for _, column := range columns {
+			conditions = append(conditions, "LOWER("+column+") LIKE ? ESCAPE '!'")
+			args = append(args, pattern)
+		}
+		db = db.Where(strings.Join(conditions, " OR "), args...)
 	}
 	if query.Severity != "" {
 		db = db.Where("severity = ?", query.Severity)

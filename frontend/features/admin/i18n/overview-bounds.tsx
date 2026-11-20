@@ -1,5 +1,7 @@
 export const overviewBoundsTranslations = {
   en: {
+    "搜索告警": "Search alerts",
+    "已发送告警 {code}": "Alert {code} sent",
     "历史统计准备中": "Preparing historical statistics",
     "正在搜索模型": "Searching models",
     "模型搜索失败": "Model search failed",
@@ -16,6 +18,8 @@ export const overviewBoundsTranslations = {
     "暂无告警": "No alerts",
   },
   ja: {
+    "搜索告警": "アラートを検索",
+    "已发送告警 {code}": "アラート {code} を送信しました",
     "历史统计准备中": "過去の統計を準備中",
     "正在搜索模型": "モデルを検索中",
     "模型搜索失败": "モデルの検索に失敗しました",

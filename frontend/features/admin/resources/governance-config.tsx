@@ -3,9 +3,9 @@ import { type AdminResource, type AdminUser, type AlertDelivery, type AlertEvent
 import { roleDisplayLabel, roleSelectOptions, stringifyValue, teamSelectOptions, userTeamIDs, userTeamLabels } from "../domain/entities";
 import { formatMoney, formatTime } from "../domain/formatting";
 import { alertMetricLabel, approvalPayloadSummary, approvalStatusLabel, approvalTriggerLabel, compactList, numberFromUnknown, reportDatasetLabel, reportScheduleLabel, resourceTypeLabel, roleLabel } from "../domain/labels";
-import { tx } from "../i18n/runtime";
+import { formatTranslationTemplate, tx } from "../i18n/runtime";
 import { genericResourceConfig, runApprovalAction } from "./generic-config";
-import { adminDelete, adminFetch, adminMutate, userPayload } from "./payloads";
+import { adminDelete, adminFetch, adminMutate, readAdminError, userPayload } from "./payloads";
 import { StatusPill } from "../shared/ui";
 
 export function adminUserConfig(): ResourceConfig<AdminUser> {
@@ -129,9 +129,11 @@ export function alertEventConfig(): ResourceConfig<AlertEvent> {
             method: "POST",
             body: JSON.stringify({}),
           });
-          if (!resp.ok) throw new Error(`deliver alert ${resp.status}`);
+          if (!resp.ok) throw new Error(await readAdminError(resp, tx("告警发送失败")));
+          const delivery = await resp.json() as AlertDelivery;
+          if (delivery.status !== "success") throw new Error(delivery.error || tx("告警发送失败"));
         },
-        doneMessage: (item) => `${item.code} 已发送`,
+        doneMessage: (item) => formatTranslationTemplate(tx("已发送告警 {code}"), { code: item.code }),
       },
     ],
   };

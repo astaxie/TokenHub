@@ -33,6 +33,7 @@ func (r *Runner) ensureLedger(ctx context.Context) error {
 			error_code TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS migration_attempts_version_idx ON migration_attempts (version)`,
+		backfillLedgerDDL(r.dialect),
 	}
 	for _, statement := range statements {
 		if _, err := r.db.ExecContext(ctx, statement); err != nil {

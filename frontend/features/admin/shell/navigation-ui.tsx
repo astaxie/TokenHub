@@ -282,6 +282,7 @@ export function pageHeaderFallbackGroup(view: ViewKey, user: AdminUser) {
 
 export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
   const role = appRole(user.role);
+  const totalsReady = data.summaryStatus?.state === "ready";
   switch (view) {
     case "providers":
       return [
@@ -331,13 +332,13 @@ export function pageHeaderChips(view: ViewKey, data: AppData, user: AdminUser) {
       return [];
     case "billing":
       return [
-        { label: "请求", value: formatNumber(data.summary.request_count) },
-        { label: "成本", value: `$${formatMoney(data.summary.estimated_cost_usd)}` },
+        { label: "请求", value: totalsReady ? formatNumber(data.summary.request_count) : "—" },
+        { label: "成本", value: totalsReady ? `$${formatMoney(data.summary.estimated_cost_usd)}` : "—" },
       ];
     case "audit":
       return [
-        { label: "请求日志", value: formatNumber(data.summary.request_count) },
-        { label: "错误请求", value: formatNumber(data.summary.errors) },
+        { label: "请求日志", value: totalsReady ? formatNumber(data.summary.request_count) : "—" },
+        { label: "错误请求", value: totalsReady ? formatNumber(data.summary.errors) : "—" },
       ];
     default:
       return [{ label: "记录", value: formatNumber(pageRecordCount(view, data)) }];

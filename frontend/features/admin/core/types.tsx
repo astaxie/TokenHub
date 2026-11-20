@@ -1423,6 +1423,7 @@ export type UserImportResult = {
 export type AppData = {
   summary: Summary;
   summaryStatus?: { state: "ready" | "preparing" | "stale" | "error"; updated_at?: string; processed?: number };
+  breakdownStatus?: "ready" | "preparing" | "error";
   projectQuotaEvents?: Record<string, { count: number; latest: string }>;
   projects: Project[];
   keys: APIKey[];

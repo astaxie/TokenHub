@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -45,6 +47,9 @@ func overviewProjectionIndexMigrations() []dbschema.Migration {
 			Version: int64(14 + i), Name: "add-" + strings.ReplaceAll(index.name, "_", "-"), Dialect: dbschema.DialectPostgres,
 			Statements:       []string{"DROP INDEX CONCURRENTLY IF EXISTS " + index.name, creates[i]},
 			NonTransactional: true, SafeRetry: true, StatementBudget: 4,
+			Precondition: func(ctx context.Context, db dbschema.MigrationExecer) error {
+				return checkOverviewSourceIndex(ctx, db, index, true)
+			},
 			Postcondition: func(ctx context.Context, db dbschema.MigrationExecer) error {
 				return verifyOverviewSourceIndex(ctx, db, index)
 			},
@@ -54,16 +59,26 @@ func overviewProjectionIndexMigrations() []dbschema.Migration {
 }
 
 func verifyOverviewSourceIndex(ctx context.Context, db dbschema.MigrationExecer, index overviewSourceIndex) error {
+	return checkOverviewSourceIndex(ctx, db, index, false)
+}
+
+// Before a retry an index may be missing or incomplete. A name already used
+// for another table or definition must be left in place.
+func checkOverviewSourceIndex(ctx context.Context, db dbschema.MigrationExecer, index overviewSourceIndex, beforeBuild bool) error {
 	var valid, ready, unique bool
+	var ownSchema bool
 	var table, method, definition, predicate string
 	var keys, attributes int
 	err := db.QueryRowContext(ctx, `SELECT i.indisvalid, i.indisready, i.indisunique,
-        t.relname, a.amname, i.indnkeyatts, i.indnatts, pg_get_indexdef(c.oid), COALESCE(pg_get_expr(i.indpred, i.indrelid), '')
+		t.relname, a.amname, i.indnkeyatts, i.indnatts, pg_get_indexdef(c.oid), COALESCE(pg_get_expr(i.indpred, i.indrelid), ''), n.nspname = current_schema()
         FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
         JOIN pg_class t ON t.oid = i.indrelid JOIN pg_am a ON a.oid = c.relam
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = current_schema() AND c.relname = $1`, index.name).
-		Scan(&valid, &ready, &unique, &table, &method, &keys, &attributes, &definition, &predicate)
+		WHERE c.oid = to_regclass($1)`, index.name).
+		Scan(&valid, &ready, &unique, &table, &method, &keys, &attributes, &definition, &predicate, &ownSchema)
+	if beforeBuild && errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -76,7 +91,7 @@ func verifyOverviewSourceIndex(ctx context.Context, db dbschema.MigrationExecer,
 	if index.predicate != "" {
 		expectedSuffix += "where" + normalize(index.predicate)
 	}
-	metadataMatches := valid && ready && !unique && table == index.table && method == "btree" && keys == index.columns && attributes == index.columns
+	metadataMatches := ownSchema && (beforeBuild || (valid && ready)) && !unique && table == index.table && method == "btree" && keys == index.columns && attributes == index.columns
 	definitionMatches := strings.HasSuffix(normalize(definition), expectedSuffix) && normalize(predicate) == normalize(index.predicate)
 	if !metadataMatches || !definitionMatches {
 		return fmt.Errorf("overview index %s does not match its required definition", index.name)

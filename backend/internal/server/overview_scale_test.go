@@ -33,15 +33,7 @@ func runOverviewScale(t *testing.T, store *GormStore) {
 	const count = 3000000
 	started := time.Now()
 	for _, table := range []string{"usage_records", "request_logs"} {
-		if store.dbDriver == "sqlite" {
-			if err := store.db.Exec("DROP TRIGGER overview_" + table + "_insert").Error; err != nil {
-				t.Fatal(err)
-			}
-		} else {
-			if err := store.db.Exec("ALTER TABLE " + table + " DISABLE TRIGGER overview_" + table + "_insert").Error; err != nil {
-				t.Fatal(err)
-			}
-		}
+		restore := suspendOverviewInserts(t, store, table)
 		for offset := 0; offset < count; offset += 10000 {
 			numbers := "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x < 10000) "
 			id := "'scale_' || CAST(? + x AS TEXT)"
@@ -55,19 +47,7 @@ func runOverviewScale(t *testing.T, store *GormStore) {
 				t.Fatal(err)
 			}
 		}
-		if store.dbDriver == "sqlite" {
-			for _, statement := range overviewProjectionStatements("sqlite") {
-				if strings.HasPrefix(statement, "CREATE TRIGGER overview_"+table+"_insert ") {
-					if err := store.db.Exec(statement).Error; err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
-		} else {
-			if err := store.db.Exec("ALTER TABLE " + table + " ENABLE TRIGGER overview_" + table + "_insert").Error; err != nil {
-				t.Fatal(err)
-			}
-		}
+		restore()
 	}
 	alerts := make([]AlertEvent, 100000)
 	for i := range alerts {

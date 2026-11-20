@@ -127,6 +127,9 @@ type Migration struct {
 	// Statements are executed verbatim in order.
 	Statements []string
 	Go         GoMigration
+	// Precondition checks the objects a migration may modify before its
+	// frozen body runs, sharing the body's statement budget.
+	Precondition GoMigration
 	// NonTransactional opts out of per-migration transaction atomicity. A
 	// non-transactional migration must declare Postcondition; while it runs the
 	// ledger holds a dirty marker that refuses startup until the migration is

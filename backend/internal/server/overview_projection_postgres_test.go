@@ -24,6 +24,7 @@ func TestPostgresOverviewProjection(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	assertOverviewProjectionParity(t, store)
+	t.Run("alert history project filters", func(t *testing.T) { assertAlertHistoryProjectFilters(t, store) })
 }
 
 func TestPostgresOverviewRepresentativeScale(t *testing.T) {
@@ -115,6 +116,7 @@ func TestPostgresOverviewBackfillConcurrency(t *testing.T) {
 }
 
 func TestPostgresOverviewIndexPostconditions(t *testing.T) {
+	t.Run("deployment search path", testOverviewIndexSearchPath)
 	admin, pgURL := openPostgresAdmin(t)
 	schema := createPostgresSchema(t, admin, "tokenhub_pg_overview_indexes_")
 	dsn, err := withSearchPath(pgURL, schema)
@@ -151,6 +153,62 @@ func TestPostgresOverviewIndexPostconditions(t *testing.T) {
 	}
 	if err := verifyOverviewSourceIndex(t.Context(), probe, index); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func testOverviewIndexSearchPath(t *testing.T) {
+	admin, pgURL := openPostgresAdmin(t)
+	neighbor := createPostgresSchema(t, admin, "neighbor_")
+	if _, err := admin.Exec("CREATE TABLE " + neighbor + ".other (id text)"); err != nil {
+		t.Fatal(err)
+	}
+	index := overviewSourceIndexes[0]
+	if _, err := admin.Exec("CREATE INDEX " + index.name + " ON " + neighbor + ".other(id)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, localConflict := range []bool{false, true} {
+		schema := createPostgresSchema(t, admin, "tenant_")
+		path := schema + "," + neighbor
+		dsn, err := withSearchPath(pgURL, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db, err := sql.Open("pgx", dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		db.SetMaxOpenConns(1)
+		if _, err := db.Exec("CREATE TABLE alert_events (id text, created_at timestamptz)"); err != nil {
+			t.Fatal(err)
+		}
+		if localConflict {
+			if _, err := db.Exec("CREATE TABLE other(id text)"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec("CREATE INDEX " + index.name + " ON other(id)"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		runner, err := dbschema.NewRunner(db, dbschema.DialectPostgres, overviewProjectionIndexMigrations()[:1], dbschema.WithExternalCoordination())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = runner.Adopt(t.Context(), nil)
+		if (err != nil) != localConflict {
+			t.Fatalf("local conflict=%t: %v", localConflict, err)
+		}
+		var restored string
+		var intact bool
+		if err := db.QueryRow("SELECT current_setting('search_path'), to_regclass($1) IS NOT NULL", neighbor+"."+index.name).Scan(&restored, &intact); err != nil || restored != path || !intact {
+			t.Fatalf("path=%q neighbor index intact=%t err=%v", restored, intact, err)
+		}
+		if localConflict {
+			var table string
+			if err := db.QueryRow("SELECT indrelid::regclass::text FROM pg_index WHERE indexrelid=to_regclass($1)", schema+"."+index.name).Scan(&table); err != nil || table != "other" {
+				t.Fatalf("local index table=%s err=%v", table, err)
+			}
+		}
 	}
 }
 

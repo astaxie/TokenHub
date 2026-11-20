@@ -33,13 +33,20 @@ test("overview-bounds loads bounded data and searches models on demand", async (
 
 test("overview-bounds keeps the page usable while preparing historical statistics", async ({ page, api }, info) => {
   const payload = installOverview(api, "preparing");
+  api.replaceHandler("GET", "/api/admin/usage/breakdown", () => ({
+    status: 503, json: { error: { code: "overview_preparing", message: "Historical statistics are preparing" } },
+  }));
   await page.goto("/overview");
   await expect(page.getByRole("status")).toContainText("历史统计准备中");
   const requests = page.locator(".overview-metric-card").filter({ has: page.getByText("总请求", { exact: true }) });
   await expect(requests.locator(".metric-value")).toHaveText("—");
+  await expect(page.locator(".overview-share-panel .compact-empty")).toHaveText("历史统计准备中");
+  await expect(page.locator(".overview-donut strong")).toHaveText("—");
   await capture(page, info, page.locator(".app-shell"), "overview-preparing", "总览：历史统计准备进度", "viewport");
   api.replaceResponse("GET", "/api/admin/overview", { ...payload, summary: { request_count: 123, total_tokens: 45, estimated_cost_usd: 1 }, summary_status: { state: "ready" } });
+  api.replaceResponse("GET", "/api/admin/usage/breakdown", { models: [], providers: [], members: [], projects: [], cost_centers: [] });
   await expect(requests.locator(".metric-value")).toHaveText("123", { timeout: 10000 });
+  await expect(page.locator(".overview-donut strong")).toHaveText("$0");
 });
 
 test("overview-bounds reports a summary failure independently", async ({ page, api }) => {
@@ -48,6 +55,15 @@ test("overview-bounds reports a summary failure independently", async ({ page, a
   await expect(page.getByRole("status")).toContainText("统计暂时不可用");
   await expect(page.getByText("Synthetic recent alert")).toBeVisible();
   await expect(page.getByRole("heading", { name: "网关概览", exact: true })).toBeVisible();
+});
+
+test("overview-bounds calculates provider shares against all providers", async ({ page, api }) => {
+  installOverview(api);
+  const providers = [40, 30, 20, 10].map(cost => ({ id: `provider-${cost}`, estimated_cost_usd: cost, request_count: 1 }));
+  api.replaceResponse("GET", "/api/admin/usage/breakdown", { models: [], providers, projects: [], members: [], cost_centers: [] });
+  await page.goto("/overview");
+  await expect(page.locator(".overview-donut strong")).toHaveText("$100");
+  await expect(page.locator(".overview-share-row strong")).toHaveText(["40%", "30%", "20%"]);
 });
 
 test("overview-bounds lets an in-flight preparation refresh complete", async ({ page, api }) => {
@@ -84,11 +100,34 @@ test("overview-bounds clears classifications after a breakdown failure", async (
   api.replaceHandler("GET", "/api/admin/usage/breakdown", () => ++breakdowns === 1
     ? { json: { models: [{ id: "old-model-statistics", request_count: 42 }], providers: [], provider_resources: [], projects: [], members: [], cost_centers: [] } }
     : { status: 503, json: { error: { code: "temporarily_unavailable", message: "Breakdown failed" } } });
+  api.replaceHandler("GET", "/api/admin/audit/requests", () => ({
+    json: { data: [{ id: "recent", model: "only-in-recent-logs", status_code: 200 }], pagination: { page: 1, total: 1 } },
+  }), () => undefined);
   await page.goto("/overview");
   const previous = page.getByText("old-model-statistics");
   await expect(previous).toBeVisible();
   await expect(page.getByText("Breakdown failed")).toBeVisible();
   await expect(previous).toHaveCount(0);
+  await expect(page.locator(".overview-top-list")).not.toContainText("only-in-recent-logs");
+  await expect(page.locator(".overview-donut strong")).toHaveText("—");
+});
+
+test("overview-bounds hides failed trend data while keeping a refreshed lifetime count", async ({ page, api }) => {
+  const payload = installOverview(api);
+  let overviews = 0;
+  let reads = 0;
+  api.replaceHandler("GET", "/api/admin/overview", () => ++overviews === 1
+    ? { json: { ...payload, summary_status: { state: "stale", updated_at: "2026-09-07T01:59:02Z" } } }
+    : { json: { ...payload, summary: { request_count: 1000 }, summary_status: { state: "ready" } } });
+  api.replaceHandler("GET", "/api/admin/usage/timeseries", () => ++reads === 1
+    ? { json: { data: [{ date: "2026-09-07", request_count: 123, total_tokens: 4, estimated_cost_usd: 1 }] } }
+    : { status: 503, json: { error: { message: "Trend unavailable" } } });
+  await page.goto("/overview");
+  const trend = page.locator(".overview-trend-panel .overview-panel-head strong");
+  await expect(trend).toHaveText("123");
+  await expect(page.getByText("Trend unavailable")).toBeVisible();
+  await expect(trend).toHaveText("—");
+  await expect(page.locator(".overview-metric-card").filter({ has: page.getByText("总请求", { exact: true }) }).locator(".metric-value")).toHaveText("1,000");
 });
 
 test("overview-bounds searches for new models after loading the directory", async ({ page, api }) => {
@@ -117,7 +156,36 @@ test("overview-bounds pages and filters historical alerts on the server", async 
   await page.getByLabel("项目 ID").fill("project_test");
   await expect(page.getByText("history_page_1", { exact: true })).toBeVisible();
   expect(api.calls.at(-1)?.query.get("project_id")).toBe("project_test");
+  await page.getByLabel("搜索告警").fill("quota_80%");
+  await expect.poll(() => api.calls.at(-1)?.query.get("q")).toBe("quota_80%");
   await capture(page, info, page.locator(".app-shell"), "alerts-paged", "告警：服务端分页与项目筛选", "viewport");
+});
+
+test("overview-bounds prevents repeat alert delivery while the first send is pending", async ({ page, api }) => {
+  api.define("GET", "/api/admin/alerts", () => ({ json: { total: 1, page: 1, page_size: 50,
+    data: [{ id: "send-once", code: "quota_event", message: "Synthetic alert", severity: "warning" }] } }), () => undefined);
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let sends = 0;
+  api.define("POST", "/api/admin/alerts/send-once/deliver", async () => {
+    sends++;
+    await held;
+    return { json: sends === 1 ? { status: "success" } : { status: "failed", error: "Synthetic channel failure" } };
+  });
+  try {
+    await page.goto("/alert-events");
+    const send = page.getByRole("button", { name: "发送", exact: true });
+    await send.click();
+    await expect(send).toBeDisabled();
+    await send.evaluate(button => (button as HTMLButtonElement).click());
+    release();
+    await expect(page.getByText("已发送告警 quota_event")).toBeVisible();
+    await expect(send).toBeEnabled();
+    expect(sends).toBe(1);
+    await send.click();
+    await expect(page.getByText("Synthetic channel failure")).toBeVisible();
+    await expect(page.getByText("已发送告警 quota_event")).toHaveCount(0);
+  } finally { release(); }
 });
 
 test("overview-bounds renders metadata before a delayed breakdown completes", async ({ page, api }) => {

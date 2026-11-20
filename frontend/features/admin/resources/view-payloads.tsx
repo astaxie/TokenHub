@@ -68,6 +68,7 @@ export async function applyViewPayload(loaded: LoadedData, name: string, resp: R
     loaded.dailyUsage = (await resp.json()) as UsageDaily;
   } else if (name === "breakdown") {
     loaded.breakdown = (await resp.json()) as UsageBreakdown;
+    loaded.breakdownStatus = "ready";
   } else if (name === "timeseries") {
     const payload = (await resp.json()) as { data: UsagePoint[] };
     loaded.timeseries = payload.data ?? [];

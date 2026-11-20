@@ -14,7 +14,7 @@ describe("AlertEventsView", () => {
       return new Response(JSON.stringify({ data: [{ id: "alert_"+query.get("page"), code: "quota_exceeded", message: "Synthetic event", severity: "warning", created_at: "2026-01-01T00:00:00Z" }], total: 120, page: Number(query.get("page")), page_size: Number(query.get("page_size")) }));
     });
     vi.stubGlobal("fetch", fetch);
-    render(<AlertEventsView api={api} data={emptyData()} />);
+    render(<AlertEventsView api={api} data={emptyData()} actionPending={false} onAction={vi.fn()} />);
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(new URL(fetch.mock.calls[0][0]).searchParams.get("page_size")).toBe("50");
     await screen.findByText("Synthetic event");
@@ -32,7 +32,7 @@ describe("AlertEventsView", () => {
       options.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
     }));
     vi.stubGlobal("fetch", fetch);
-    const view = render(<AlertEventsView api={api} data={emptyData()} />);
+    const view = render(<AlertEventsView api={api} data={emptyData()} actionPending={false} onAction={vi.fn()} />);
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     const signal = fetch.mock.calls[0][1].signal;
     view.unmount();

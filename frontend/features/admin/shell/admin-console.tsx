@@ -435,7 +435,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             if (response.status === 503 && name === "breakdown") {
               const payload = await response.clone().json().catch(() => null);
               if (payload?.error?.code === "overview_preparing") {
-                if (!controller.signal.aborted) setData((current) => ({ ...current, breakdown: emptyUsageBreakdown() }));
+                if (!controller.signal.aborted) setData((current) => ({ ...current, breakdown: emptyUsageBreakdown(), breakdownStatus: "preparing" }));
                 return;
               }
             }
@@ -445,7 +445,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             if (!controller.signal.aborted) setData((current) => mergeLoadedData(current, loaded));
           } catch (reason) {
             if (controller.signal.aborted || isAuthExpiredError(reason)) return;
-            if (name === "breakdown") setData((current) => ({ ...current, breakdown: emptyUsageBreakdown() }));
+            if (name === "breakdown") setData((current) => ({ ...current, breakdown: emptyUsageBreakdown(), breakdownStatus: "error" }));
+            if (name === "timeseries") setData((current) => ({ ...current, timeseries: [] }));
             setError(reason instanceof Error ? reason.message : tx("连接失败"));
           }
         })();
@@ -953,7 +954,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           ) : activeView === "billing" ? (
             <BillingView api={api} data={data} user={currentUser} loading={loading} onReload={() => load("billing")} />
           ) : activeView === "alert-events" ? (
-            <AlertEventsView api={api} data={data} />
+            <AlertEventsView api={api} data={data} actionPending={loading} onAction={(action, item) => void runResourceAction(action, item, data)} />
           ) : activeView === "audit" ? (
             <AuditView api={api} data={data} user={currentUser} />
           ) : activeView === "database-status" ? (

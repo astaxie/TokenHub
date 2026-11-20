@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type AlertEvent, type ApiContext, type AppData } from "../core/types";
+import { type AlertEvent, type ApiContext, type AppData, type ResourceAction } from "../core/types";
 import { enumValueLabel } from "../domain/labels";
 import { formatNumber } from "../domain/formatting";
 import { tx } from "../i18n/runtime";
@@ -12,11 +12,17 @@ import { EntityTable } from "./settings-table";
 type AlertPage = { data: AlertEvent[]; page: number; page_size: number; total: number };
 const emptyPage: AlertPage = { data: [], page: 1, page_size: 50, total: 0 };
 
-export function AlertEventsView({ api, data }: { api: ApiContext; data: AppData }) {
+export function AlertEventsView({ api, data, actionPending, onAction }: {
+  api: ApiContext;
+  data: AppData;
+  actionPending: boolean;
+  onAction: (action: ResourceAction<AlertEvent>, item: AlertEvent) => void;
+}) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [severity, setSeverity] = useState("");
   const [project, setProject] = useState("");
+  const [keyword, setKeyword] = useState("");
   const [from, setFrom] = useState("");
   const [before, setBefore] = useState("");
   const [result, setResult] = useState<AlertPage>(emptyPage);
@@ -31,11 +37,12 @@ export function AlertEventsView({ api, data }: { api: ApiContext; data: AppData 
     setError("");
     setResult(emptyPage);
     const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+    if (keyword.trim()) query.set("q", keyword.trim());
     if (severity) query.set("severity", severity);
     if (project) query.set("project_id", project);
     if (from) query.set("from", new Date(`${from}T00:00:00Z`).toISOString());
     if (before) query.set("before", new Date(`${before}T00:00:00Z`).toISOString());
-    void adminFetch(api, `/api/admin/alerts?${query}`, { signal: controller.signal })
+    const loadPage = () => adminFetch(api, `/api/admin/alerts?${query}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(await readAdminError(response, tx("告警加载失败")));
         return await response.json() as AlertPage;
@@ -51,8 +58,9 @@ export function AlertEventsView({ api, data }: { api: ApiContext; data: AppData 
         setError(reason instanceof Error ? reason.message : tx("告警加载失败"));
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [api, page, pageSize, severity, project, from, before, revision]);
+    const timer = window.setTimeout(loadPage, keyword.trim() || project.trim() ? 250 : 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [api, page, pageSize, severity, project, keyword, from, before, revision]);
 
   function filter(set: (value: string) => void, value: string) { set(value); setPage(1); }
   const pagination: PaginationState = {
@@ -63,6 +71,7 @@ export function AlertEventsView({ api, data }: { api: ApiContext; data: AppData 
   return (
     <DataSection title="告警事件">
       <div className="table-toolbar alert-history-filters">
+        <label>{tx("搜索告警")}<input type="search" value={keyword} onChange={(event) => filter(setKeyword, event.target.value)} /></label>
         <label>{tx("级别")}<select value={severity} onChange={(event) => filter(setSeverity, event.target.value)} aria-label={tx("级别")}>
           <option value="">{tx("全部")}</option>
           {["info", "warning", "critical", "error"].map((value) => <option key={value} value={value}>{enumValueLabel(value)}</option>)}
@@ -74,10 +83,7 @@ export function AlertEventsView({ api, data }: { api: ApiContext; data: AppData 
         <button type="button" className="secondary-button" onClick={() => setRevision((value) => value + 1)}>{tx("刷新")}</button>
       </div>
       {error ? <div role="alert" className="inline-notice error">{error}</div> : null}
-      <EntityTable config={config} data={data} items={result.data} loading={loading} query="" onEdit={() => undefined} onDelete={() => undefined} onAction={(action, item) => {
-        if (!action.run) return;
-        void action.run(api, item, data).then(() => setRevision((value) => value + 1)).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : tx("告警发送失败")));
-      }} />
+      <EntityTable config={config} data={data} items={result.data} loading={loading || actionPending} query={keyword} onEdit={() => undefined} onDelete={() => undefined} onAction={onAction} />
       <PaginationControls pagination={pagination} totalItems={result.total} />
     </DataSection>
   );
