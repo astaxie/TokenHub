@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Audit snapshots for agent-sized requests easily reach hundreds of KiB while
@@ -97,9 +98,13 @@ func storePayloadChunkRefs(tx *gorm.DB, requestID string, kind string, body stri
 		if _, ok := knownSet[chunk.hash]; ok {
 			continue
 		}
-		if err := tx.Create(&PayloadChunk{Hash: chunk.hash, Body: chunk.body, CreatedAt: now}).Error; err != nil {
+		// OnConflict DoNothing keeps the insert idempotent when the same chunk
+		// recurs later in this snapshot or when a concurrent writer stored it
+		// after the lookup above; the references below still record every use.
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&PayloadChunk{Hash: chunk.hash, Body: chunk.body, CreatedAt: now}).Error; err != nil {
 			return err
 		}
+		knownSet[chunk.hash] = struct{}{}
 	}
 	refs := make([]PayloadChunkRef, 0, len(chunks))
 	for _, chunk := range chunks {

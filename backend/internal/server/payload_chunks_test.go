@@ -151,3 +151,33 @@ func TestAuditPreviewCapClampsToScanBudget(t *testing.T) {
 		t.Fatalf("preview cap should fold back to the scan budget, got %d", server.auditLimits.maxBytes)
 	}
 }
+
+func TestRequestPayloadChunkInsertionIsIdempotentForRepeatedContent(t *testing.T) {
+	store := newPayloadChunkTestStore(t)
+	store.db.Create(&RequestLog{ID: NewID("req"), RequestID: "req_repeated", ModelName: "smart-router", StatusCode: 200, CreatedAt: time.Now().UTC()})
+	// A uniform body makes every 16 KiB chunk identical, so the second
+	// insertion hits the same primary key unless insertion is idempotent.
+	body := strings.Repeat("abcdefgh", auditPayloadChunkSize)
+	store.RecordRequestPayload("req_repeated", RequestPayloadRecord{
+		RequestBody:      body,
+		RequestPreview:   truncateAuditPreview(body, defaultAuditPayloadLimits()),
+		RequestTruncated: true,
+	})
+	var chunkCount, refCount int64
+	store.db.Model(&PayloadChunk{}).Count(&chunkCount)
+	store.db.Model(&PayloadChunkRef{}).Where("request_id = ?", "req_repeated").Count(&refCount)
+	if chunkCount != 1 {
+		t.Fatalf("uniform content should store exactly one chunk, got %d", chunkCount)
+	}
+	if refCount == 0 {
+		t.Fatal("references were not recorded")
+	}
+	detail, err := store.GetRequestDetail("req_repeated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := detail["payload"].(RequestPayloadLog)
+	if stored.RequestBody != body {
+		t.Fatalf("reassembled body diverges: got %d bytes, want %d", len(stored.RequestBody), len(body))
+	}
+}
