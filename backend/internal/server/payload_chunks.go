@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -57,10 +58,17 @@ func splitAuditPayloadChunks(body string) []auditPayloadChunk {
 		return nil
 	}
 	var chunks []auditPayloadChunk
-	for offset, position := 0, 0; offset < len(body); offset, position = offset+auditPayloadChunkSize, position+1 {
-		end := offset + auditPayloadChunkSize
+	end := 0
+	for offset, position := 0, 0; offset < len(body); offset, position = end, position+1 {
+		end = offset + auditPayloadChunkSize
 		if end > len(body) {
 			end = len(body)
+		}
+		// Stay on UTF-8 rune boundaries: chunk bodies are stored in text
+		// columns, and a byte slice cut through a multibyte character is not
+		// valid UTF-8 for PostgreSQL. The final chunk ends on the string end.
+		for end < len(body) && end > offset && !utf8.RuneStart(body[end]) {
+			end--
 		}
 		part := body[offset:end]
 		digest := sha256.Sum256([]byte(part))
