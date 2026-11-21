@@ -19,6 +19,19 @@ func (s *Server) executeRoutedResponsesContext(ctx context.Context, incoming htt
 		if omitReasoningEffort {
 			upstreamReq = withoutResponsesReasoningEffort(upstreamReq)
 		}
+		// Stateless upstreams keep no conversation of their own, so a
+		// previous_response_id reference expands into the stored turn here. Jev
+		// continuations and state-holding passthrough providers rely on the
+		// field passing through untouched.
+		// A failed lookup keeps the field untouched and lets the provider-call
+		// hooks (plugin-only providers) take the request as usual.
+		if adapter, adapterErr := s.responsesAdapterForRoute(route); adapterErr == nil {
+			if stateless, ok := adapter.(ResponsesStatelessAdapter); ok && stateless.StatelessResponsesTurns() {
+				if err := s.expandResponsesPreviousTurn(ctx, &upstreamReq); err != nil {
+					return nil, Usage{}, err
+				}
+			}
+		}
 		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, route, &upstreamReq); transformErr != nil {
 			return nil, Usage{}, transformErr
 		}

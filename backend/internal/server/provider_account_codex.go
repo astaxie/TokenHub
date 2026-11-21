@@ -456,6 +456,16 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 		if omitReasoningEffort {
 			upstreamRequest = withoutResponsesReasoningEffort(upstreamRequest)
 		}
+		// See executeRoutedResponsesContext: the expansion is scoped to
+		// stateless adapters so Jev continuations and state-holding
+		// passthrough providers keep the field untouched.
+		if closureAdapter, closureAdapterErr := s.responsesAdapterForRoute(prepared); closureAdapterErr == nil {
+			if stateless, ok := closureAdapter.(ResponsesStatelessAdapter); ok && stateless.StatelessResponsesTurns() {
+				if err := s.expandResponsesPreviousTurn(ctx, &upstreamRequest); err != nil {
+					return nil, Usage{}, err
+				}
+			}
+		}
 		if transformErr := s.runGatewayResponsesRequestTransformHooks(ctx, routed.Call, prepared, &upstreamRequest); transformErr != nil {
 			return nil, Usage{}, transformErr
 		}
@@ -532,6 +542,9 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 				Err:         streamErr,
 				Disposition: ProviderErrorStreamCommitted,
 			}
+		}
+		if response != nil {
+			s.recordResponsesTurn(ctx, routed.Call, &upstreamRequest, response)
 		}
 		return response, usage, nil
 	})

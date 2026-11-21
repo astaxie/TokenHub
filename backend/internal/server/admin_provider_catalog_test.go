@@ -104,8 +104,10 @@ func TestAdminRouteAcceptsChatModelOnNativeAnthropicProvider(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := store.AddProvider(Provider{ID: "prv_native_anthropic", Name: "Native Anthropic", Type: ProviderAnthropic, Status: StatusActive, Healthy: true})
+	// The Anthropic adapter now declares chat/completions and responses; the
+	// guard still rejects protocols it genuinely does not expose.
 	store.AddProviderModel(ProviderModel{ProviderID: provider.ID, UpstreamModel: "gpt-5.6-luna", Status: StatusActive})
-	store.AddModel(Model{Name: "gpt-5.6-luna", Modality: "chat", Status: StatusActive, Metadata: map[string]string{"endpoints": "responses,chat/completions"}})
+	store.AddModel(Model{Name: "gpt-5.6-luna", Modality: "chat", Status: StatusActive, Metadata: map[string]string{"endpoints": "embeddings,rerank"}})
 
 	response := doJSON(t, New(store).Handler(), http.MethodPost, "/api/admin/routing-rules", map[string]any{
 		"model_name": "gpt-5.6-luna", "provider_id": provider.ID, "provider_model": "gpt-5.6-luna", "status": StatusActive,

@@ -254,6 +254,8 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
+			AdapterCapabilityResponses,
+			AdapterCapabilityResponseStream,
 			AdapterCapabilityProbe,
 		},
 	}); err != nil {

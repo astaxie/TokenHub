@@ -74,7 +74,7 @@ func TestBackgroundResponsesProviderCallOnlyRoute(t *testing.T) {
 			}
 			result := waitForResponseJobStatus(t, server.Handler(), secret, id, "completed")
 			if calls.Load() != 1 || !strings.Contains(mustJSON(result), "plugin-result") {
-				t.Fatalf("plugin result lost: calls=%d result=%+v", calls.Load(), result)
+				t.Fatalf("plugin result lost: protocol=%s calls=%d result=%+v", protocol, calls.Load(), result)
 			}
 			records := store.ListUsageRecords()
 			if len(records) != 1 || records[0].TotalTokens != 5 {
