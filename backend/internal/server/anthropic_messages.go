@@ -913,6 +913,9 @@ func (s *Server) executeNativeAnthropicMessages(
 	if err := decoder.Decode(&body); err != nil {
 		return nil, Usage{}, NewHTTPError(http.StatusBadGateway, "provider_invalid_response", "Anthropic provider returned invalid JSON")
 	}
+	if err := checkProviderResult(body, "content", route.Provider, resp.StatusCode); err != nil {
+		return nil, Usage{}, err
+	}
 	body["model"] = req.Model
 	return body, anthropicUsage(body), nil
 }
@@ -1011,10 +1014,10 @@ func (s *Server) handleAnthropicMessagesStream(
 				s.writeRouteHeaders(w, routed.Call, prepared, attempt)
 			}
 
-			streamWriter := io.Writer(tracker)
+			streamWriter := redactStreamOutput(tracker, prepared.Provider)
 			var transformer *gatewayStreamTransformWriter
 			if s.hasGatewayStreamTransformHooksForRoute(prepared, protocol) {
-				transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, protocol, tracker)
+				transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, protocol, streamWriter)
 				streamWriter = transformer
 			}
 			_, streamUsage, handled, streamErr := s.runGatewayProviderCallHooksOutput(ctx, routed.Call, prepared, attemptReq, protocol, streamWriter)

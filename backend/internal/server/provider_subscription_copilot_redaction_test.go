@@ -62,7 +62,7 @@ func TestCopilotSubscriptionStreamPreservesFramesAndBoundsFailures(t *testing.T)
 	const normal = ": keepalive\r\ndata: {\"choices\":[{\"delta\":{\"content\":\"session-secret\"}}]}\r\n\r\ndata: [DONE]\r\n\r\n"
 	reader := newCopilotSubscriptionStream(io.NopCloser(strings.NewReader(normal)), Provider{}, "github-secret", "session-secret", 0)
 	data, err := io.ReadAll(reader)
-	if err != nil || string(data) != normal {
+	if err != nil || string(data) != strings.ReplaceAll(normal, "session-secret", providerHeaderMask) {
 		t.Fatalf("ordinary stream framing was altered: %v", err)
 	}
 	for _, malformed := range []bool{false, true} {

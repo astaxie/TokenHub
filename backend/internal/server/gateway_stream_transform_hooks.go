@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	pluginmeta "tokenhub/backend/internal/plugin"
 )
@@ -53,10 +54,10 @@ func (s *Server) newGatewayStreamTransformWriter(ctx context.Context, call CallC
 
 func (s *Server) streamChatRouteWithGatewayTransforms(ctx context.Context, call CallContext, route RouteSelection, req ChatCompletionRequest, headers http.Header, writer io.Writer) (Usage, error) {
 	ctx = withMediaChatStreamLimit(ctx, call.Model)
-	streamWriter := writer
+	streamWriter := redactStreamOutput(writer, route.Provider)
 	var transformer *gatewayStreamTransformWriter
 	if s.hasGatewayStreamTransformHooksForRoute(route, providerRouteProtocolChatCompletions) {
-		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, providerRouteProtocolChatCompletions, writer)
+		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, providerRouteProtocolChatCompletions, streamWriter)
 		streamWriter = transformer
 	}
 	_, usage, handled, err := s.runGatewayProviderCallHooksOutput(ctx, call, route, req, providerRouteProtocolChatCompletions, streamWriter)
@@ -252,6 +253,7 @@ func stringsSplitSSEData(data string) []string {
 	if data == "" {
 		return []string{""}
 	}
+	data = strings.ReplaceAll(strings.ReplaceAll(data, "\r\n", "\n"), "\r", "\n")
 	segments := bytes.Split([]byte(data), []byte("\n"))
 	lines := make([]string, 0, len(segments))
 	for _, segment := range segments {

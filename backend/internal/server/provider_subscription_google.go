@@ -295,6 +295,7 @@ func (a *GoogleSubscriptionAdapter) request(ctx context.Context, base, method st
 	}
 	if stream {
 		response.Body = &subscriptionStreamReadCloser{ReadCloser: response.Body}
+		guardProviderSSE(response, Provider{APIKey: creds.AccessToken}, 0)
 	}
 	return response, nil
 }

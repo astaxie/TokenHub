@@ -250,7 +250,7 @@ func (c openAICompatibleCore) chatStream(ctx context.Context, provider Provider,
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsageWithLimit(w, resp.Body, provider, mediaChatStreamLimit(ctx))
+	return copyOpenAIStreamAndUsageWithLimit(w, resp.Body, provider, mediaChatStreamLimit(ctx), resp.StatusCode)
 }
 
 func (c openAICompatibleCore) embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {
@@ -264,7 +264,13 @@ func (c openAICompatibleCore) doJSON(ctx context.Context, provider Provider, met
 		return err
 	}
 	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
+	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+		return err
+	}
+	if body, ok := target.(*map[string]any); ok && endpoint == "/chat/completions" {
+		return checkProviderResult(*body, "choices", provider, resp.StatusCode)
+	}
+	return nil
 }
 
 func (c openAICompatibleCore) doRaw(ctx context.Context, provider Provider, method string, model string, endpoint string, payload any, stream bool) (*http.Response, error) {
@@ -285,6 +291,9 @@ func (c openAICompatibleCore) doRaw(ctx context.Context, provider Provider, meth
 	}
 	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
+	}
+	if stream && endpoint == "/responses" {
+		guardProviderSSE(resp, provider, maxMediaResponseBytes)
 	}
 	return resp, nil
 }
@@ -344,6 +353,9 @@ func (a OpenAICompatibleAdapter) Responses(ctx context.Context, provider Provide
 	decoder := json.NewDecoder(response.Body)
 	decoder.UseNumber()
 	if err := decoder.Decode(&body); err != nil {
+		return nil, Usage{}, err
+	}
+	if err := checkProviderResult(body, "output", provider, response.StatusCode); err != nil {
 		return nil, Usage{}, err
 	}
 	return body, usageFromMap(body), nil
@@ -612,7 +624,13 @@ func (a AnthropicAdapter) doJSON(ctx context.Context, provider Provider, endpoin
 		return err
 	}
 	defer resp.Body.Close()
-	return json.NewDecoder(resp.Body).Decode(target)
+	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+		return err
+	}
+	if body, ok := target.(*map[string]any); ok && endpoint == "/v1/messages" {
+		return checkProviderResult(*body, "content", provider, resp.StatusCode)
+	}
+	return nil
 }
 
 func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint string, payload any, stream bool) (*http.Response, error) {
@@ -641,6 +659,9 @@ func (a AnthropicAdapter) doRaw(ctx context.Context, provider Provider, endpoint
 	}
 	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
+	}
+	if stream {
+		guardProviderSSE(resp, provider, mediaChatStreamLimit(ctx))
 	}
 	return resp, nil
 }
@@ -750,6 +771,9 @@ func (a GeminiAdapter) doRaw(ctx context.Context, provider Provider, model strin
 	}
 	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
+	}
+	if stream {
+		guardProviderSSE(resp, provider, mediaChatStreamLimit(ctx))
 	}
 	return resp, nil
 }
@@ -1050,12 +1074,11 @@ func copyOpenAIStreamAndUsage(w io.Writer, body io.Reader) (Usage, error) {
 }
 
 func copyOpenAIStreamAndUsageForProvider(w io.Writer, body io.Reader, provider Provider) (Usage, error) {
-	return copyOpenAIStreamAndUsageWithLimit(w, body, provider, 0)
+	return copyOpenAIStreamAndUsageWithLimit(w, body, provider, 0, http.StatusOK)
 }
 
-func copyOpenAIStreamAndUsageWithLimit(w io.Writer, body io.Reader, provider Provider, eventLimit int) (Usage, error) {
-	events := newSSEDecoder(body)
-	events.assembler.limit = eventLimit
+func copyOpenAIStreamAndUsageWithLimit(w io.Writer, body io.Reader, provider Provider, eventLimit, status int) (Usage, error) {
+	events := passthroughSSEDecoder(body, provider, eventLimit, status)
 	var usage Usage
 	for {
 		event, err := events.Next()

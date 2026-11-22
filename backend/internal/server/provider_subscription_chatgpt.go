@@ -105,7 +105,12 @@ func (a *ChatGPTSubscriptionAdapter) request(ctx context.Context, provider Provi
 			}
 			redactionProvider.Headers["TokenHub-Subscription-Access"] = credentials.AccessToken
 			redactionProvider.SensitiveHeaders = append(append([]string{}, provider.SensitiveHeaders...), "TokenHub-Subscription-Access")
-			if subscriptionJSONContentType(resp.Header) {
+			isJSON, err := subscriptionBodyStartsJSON(resp)
+			if err != nil {
+				_ = resp.Body.Close()
+				return nil, err
+			}
+			if isJSON {
 				return nil, rejectChatGPTSubscriptionJSON(ctx, resp, redactionProvider)
 			}
 			resp.Body = newSubscriptionErrorStream(&subscriptionStreamReadCloser{ReadCloser: resp.Body}, func() Provider { return redactionProvider }, 0)

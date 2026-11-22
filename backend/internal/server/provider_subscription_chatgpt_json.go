@@ -23,5 +23,5 @@ func rejectChatGPTSubscriptionJSON(ctx context.Context, response *http.Response,
 	if _, err := subscriptionJSONError(data, provider); err != nil {
 		return err
 	}
-	return NewHTTPError(http.StatusBadGateway, "subscription_invalid_response", "ChatGPT API did not return a Responses stream")
+	return unexpectedProviderResponse(provider, data, ProviderErrorTransientSame, response.StatusCode)
 }

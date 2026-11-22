@@ -268,22 +268,7 @@ func redactProviderErrorSecrets(data []byte, provider Provider) []byte {
 		}
 		return []byte(providerHeaderMask)
 	}
-	message := string(data)
-	representations := make(map[string]bool, len(values)*3)
-	for _, value := range values {
-		for _, representation := range providerSecretRepresentations(value) {
-			representations[representation] = true
-		}
-	}
-	patterns := make([]string, 0, len(representations))
-	for representation := range representations {
-		patterns = append(patterns, representation)
-	}
-	sort.Slice(patterns, func(i, j int) bool { return len(patterns[i]) > len(patterns[j]) })
-	for _, pattern := range patterns {
-		message = strings.ReplaceAll(message, pattern, providerHeaderMask)
-	}
-	return []byte(message)
+	return newStreamSecretPatterns(provider).redact(data)
 }
 
 func providerErrorBodyLooksLikeJSON(data []byte) bool {

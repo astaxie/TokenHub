@@ -134,7 +134,7 @@ func (a *CopilotSubscriptionAdapter) exchangeSession(ctx context.Context, creds 
 	if err != nil {
 		return copilotSubscriptionSession{}, err
 	}
-	if err := checkCopilotSubscriptionJSON(ctx, resp, Provider{}, creds.AccessToken, ""); err != nil {
+	if err := checkCopilotSubscriptionJSON(ctx, resp, Provider{}, creds.AccessToken, "", ""); err != nil {
 		return copilotSubscriptionSession{}, err
 	}
 	var session copilotSubscriptionSession
@@ -252,11 +252,18 @@ func (a *CopilotSubscriptionAdapter) request(ctx context.Context, provider Provi
 			}
 			return nil, err
 		}
+		isJSON := !stream
 		if stream {
 			resp.Body = newIdleTimeoutReadCloser(resp.Body, subscriptionIdleTimeout(a.StreamIdleTimeout), NewHTTPError(504, "subscription_stream_idle", "Subscription stream was idle for too long"))
+			isJSON, err = subscriptionBodyStartsJSON(resp)
+			if err != nil {
+				_ = resp.Body.Close()
+				return nil, err
+			}
 		}
-		if !stream || subscriptionJSONContentType(resp.Header) {
-			if err := checkCopilotSubscriptionJSON(ctx, resp, provider, creds.AccessToken, session.Token); err != nil {
+		if isJSON {
+			field := map[string]string{"/responses": "output", "/v1/messages": "content", "/chat/completions": "choices"}[path]
+			if err := checkCopilotSubscriptionJSON(ctx, resp, provider, creds.AccessToken, session.Token, field); err != nil {
 				return nil, err
 			}
 		}
@@ -355,7 +362,7 @@ func (a *CopilotSubscriptionAdapter) chatStreamOnce(ctx context.Context, provide
 		return subscriptionJSONFailureUsage(err), err
 	}
 	defer resp.Body.Close()
-	return copyOpenAIStreamAndUsageWithLimit(w, resp.Body, provider, mediaChatStreamLimit(ctx))
+	return copyOpenAIStreamAndUsageWithLimit(w, resp.Body, provider, mediaChatStreamLimit(ctx), resp.StatusCode)
 }
 
 func (a *CopilotSubscriptionAdapter) responsesOnce(ctx context.Context, provider Provider, model string, request ResponsesRequest) (any, Usage, error) {

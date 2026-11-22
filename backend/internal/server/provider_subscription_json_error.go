@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
+	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -31,16 +33,58 @@ func subscriptionJSONContentType(headers http.Header) bool {
 	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
 }
 
+// Preserve the first content byte for the selected decoder. Leading stream
+// separators have no payload and may be discarded without buffering them.
+func subscriptionBodyStartsJSON(response *http.Response) (bool, error) {
+	if !subscriptionJSONContentType(response.Header) {
+		return false, nil
+	}
+	return peekSubscriptionJSON(response)
+}
+
+func peekSubscriptionJSON(response *http.Response) (bool, error) {
+	reader := bufio.NewReader(response.Body)
+	response.Body = struct {
+		io.Reader
+		io.Closer
+	}{reader, response.Body}
+	for {
+		b, err := reader.Peek(1)
+		if err == io.EOF {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		switch b[0] {
+		case ' ', '\t', '\r', '\n':
+			_, _ = reader.Discard(1)
+		default:
+			return b[0] == '{' || b[0] == '[', nil
+		}
+	}
+}
+
 // A successful HTTP status does not make an error envelope a completion.
 // Recognize only protocol error fields; ordinary model output is unchanged.
 func subscriptionJSONError(data []byte, provider Provider) (Usage, error) {
+	return subscriptionResultError(data, provider, "")
+}
+
+func subscriptionResultError(data []byte, provider Provider, field string) (Usage, error) {
 	probe := probeProviderStreamEvent(string(data))
 	var body map[string]any
 	if json.Unmarshal(data, &body) != nil || body == nil {
 		return Usage{}, nil
 	}
+	if _, exists := body[field]; field != "" && exists {
+		return Usage{}, nil
+	}
 	response, _ := body["response"].(map[string]any)
 	if !probe.isError() && body["status"] != "failed" && response["status"] != "failed" {
+		if field != "" {
+			return Usage{}, checkProviderResult(body, field, provider, http.StatusOK)
+		}
 		return Usage{}, nil
 	}
 	envelope := body
@@ -70,7 +114,10 @@ func subscriptionJSONError(data []byte, provider Provider) (Usage, error) {
 	err := newProviderHTTPError(status, nil, diagnostic)
 	// The payload's inferred status determines disposition; the transport did
 	// return 200, which must remain visible in attempt diagnostics.
-	AsHTTPError(err).UpstreamStatus = http.StatusOK
+	failure := AsHTTPError(err)
+	failure.UpstreamStatus = http.StatusOK
+	failure.diagnostic = string(diagnostic)
+	failure.Message = unexpectedProviderMessage
 	return usage, &subscriptionJSONFailure{err: err, usage: usage}
 }
 

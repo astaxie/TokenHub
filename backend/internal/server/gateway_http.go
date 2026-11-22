@@ -810,6 +810,7 @@ func executeRoutedWithStore[T any](
 				ErrorCode:      code,
 				Error:          errorMessage(err),
 				Invoked:        true,
+				diagnostic:     attemptDiagnostic(err),
 				LatencyMS:      latencyMS,
 				// Priced per attempt so a failover reports what each candidate cost
 				// rather than attributing the whole request to the winner. Tokens

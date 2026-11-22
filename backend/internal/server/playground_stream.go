@@ -74,8 +74,9 @@ type playgroundStreamResult struct {
 }
 
 type playgroundEventStream struct {
-	writer  http.ResponseWriter
-	flusher http.Flusher
+	pendingStart map[string]any
+	writer       http.ResponseWriter
+	flusher      http.Flusher
 }
 
 func newPlaygroundEventStream(writer http.ResponseWriter, requestID string) *playgroundEventStream {
@@ -90,6 +91,17 @@ func newPlaygroundEventStream(writer http.ResponseWriter, requestID string) *pla
 }
 
 func (s *playgroundEventStream) emit(event string, payload any) error {
+	if s.pendingStart != nil {
+		start := s.pendingStart
+		s.pendingStart = nil
+		if err := s.writeEvent("playground.started", start); err != nil {
+			return err
+		}
+	}
+	return s.writeEvent(event, payload)
+}
+
+func (s *playgroundEventStream) writeEvent(event string, payload any) error {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -395,14 +407,11 @@ func (s *Server) handleAdminPlaygroundChatStream(w http.ResponseWriter, r *http.
 		return
 	}
 	events := newPlaygroundEventStream(w, routed.Call.RequestID)
-	if err := events.emit("playground.started", map[string]any{
+	events.pendingStart = map[string]any{
 		"type":       "started",
 		"request_id": routed.Call.RequestID,
 		"model":      req.Model,
 		"started_at": routed.Call.StartedAt,
-	}); err != nil {
-		s.finishPlaygroundClientCancellation(r, routed, requestAuditPayload, nil)
-		return
 	}
 
 	result, route, usage, attempts, streamErr := s.executeRoutedPlaygroundStream(r, routed, req, events)
@@ -635,10 +644,10 @@ func (s *Server) streamPlaygroundResponses(
 	}
 	defer opened.Body.Close()
 	sink := newPlaygroundDeltaSink(events, requestID)
-	streamWriter := io.Writer(sink)
+	streamWriter := redactStreamOutput(sink, route.Provider)
 	var transformer *gatewayStreamTransformWriter
 	if s.hasGatewayStreamTransformHooksForRoute(route, providerRouteProtocolResponses) {
-		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, providerRouteProtocolResponses, sink)
+		transformer = s.newGatewayStreamTransformWriter(ctx, call, route, providerRouteProtocolResponses, streamWriter)
 		streamWriter = transformer
 	}
 	response, outputText, usage, streamErr := consumeRoutedResponsesStream(call, route.Provider, opened.Body, streamWriter)
@@ -692,6 +701,10 @@ func (s *Server) finishFailedPlaygroundStream(
 	s.recordAdminAudit(r, user, "chat_"+state, "playground", req.Model, "", map[string]any{
 		"model": req.Model, "attempts": playgroundRouteAttempts(attempts), "error": code,
 	})
+	if events.pendingStart != nil && attemptDiagnostic(err) != "" {
+		writeError(events.writer, r, err)
+		return
+	}
 	payload := playgroundStreamPayload{
 		Type: state, Status: state, Response: result.Response,
 		Route: playgroundRouteForUser(user, route, usage), Usage: playgroundUsageForUser(user, usage),
@@ -701,13 +714,6 @@ func (s *Server) finishFailedPlaygroundStream(
 		ErrorDetails: providerBlockedAddressDetails(err),
 	}
 	_ = events.emit("playground."+state, payload)
-}
-
-func (s *Server) finishPlaygroundClientCancellation(r *http.Request, routed RoutedCall, requestAuditPayload any, attempts []RouteAttempt) {
-	s.finishRoutedCall(r, GatewayCallCompletion{
-		Kind: CompletionKindPlayground, Call: routed.Call, Attempts: attempts,
-		StatusCode: playgroundClientClosedStatus, ErrorCode: "client_cancelled", RequestPayload: requestAuditPayload,
-	})
 }
 
 func newPlaygroundTiming(startedAt time.Time, result playgroundStreamResult, completedAt time.Time, usage Usage) playgroundTiming {

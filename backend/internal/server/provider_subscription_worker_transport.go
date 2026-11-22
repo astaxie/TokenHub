@@ -124,7 +124,7 @@ func (t *subscriptionWorkerTransport) RoundTrip(req *http.Request) (*http.Respon
 				if t.stream && !subscriptionJSONContentType(responseHeaders) {
 					body = newSubscriptionErrorStream(body, secrets.provider, 0)
 				} else {
-					body = &subscriptionWorkerJSONBody{body: body, secrets: secrets}
+					body = &subscriptionWorkerJSONBody{body: body, secrets: secrets, stream: t.stream, field: map[string]string{"chat": "choices", "responses": "output", "anthropic": "content"}[t.model.Protocol]}
 				}
 				ready <- responseResult{response: &http.Response{StatusCode: event.Status, Status: strconv.Itoa(event.Status) + " " + http.StatusText(event.Status), Header: responseHeaders, Body: body, Request: req}}
 			case "chunk":

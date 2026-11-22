@@ -78,7 +78,7 @@ func (s *subscriptionWorkerSecrets) addHeaders(headers http.Header) {
 	}
 	for name, values := range headers {
 		switch strings.ToLower(name) {
-		case "accept", "accept-encoding", "accept-language", "cache-control", "content-length", "content-type", "pragma", "user-agent", "host", "connection", "anthropic-version", "anthropic-beta", "connect-protocol-version":
+		case "accept", "accept-encoding", "accept-language", "cache-control", "content-length", "content-type", "pragma", "user-agent", "host", "connection", "anthropic-version", "anthropic-beta", "connect-protocol-version", "x-amzn-codewhisperer-optout":
 			continue
 		}
 		// Proprietary credentials include ptKey and X-Authorization. Treat
@@ -125,7 +125,9 @@ func subscriptionWorkerSecretsFromContext(ctx context.Context) *subscriptionWork
 type subscriptionWorkerJSONBody struct {
 	body    io.ReadCloser
 	secrets *subscriptionWorkerSecrets
-	reader  *bytes.Reader
+	reader  io.Reader
+	stream  bool
+	field   string
 }
 
 func (r *subscriptionWorkerJSONBody) Read(p []byte) (int, error) {
@@ -133,16 +135,32 @@ func (r *subscriptionWorkerJSONBody) Read(p []byte) (int, error) {
 		return 0, nil
 	}
 	if r.reader == nil {
+		body := r.body
+		if r.stream {
+			response := &http.Response{Body: r.body}
+			isJSON, err := peekSubscriptionJSON(response)
+			if err != nil {
+				return 0, err
+			}
+			body = response.Body
+			if !isJSON {
+				r.reader = newSubscriptionErrorStream(body, r.secrets.provider, 0)
+				return r.reader.Read(p)
+			}
+		}
 		const limit = 64 << 20
-		data, err := io.ReadAll(io.LimitReader(r.body, limit+1))
+		data, err := io.ReadAll(io.LimitReader(body, limit+1))
 		if err != nil {
 			return 0, err
 		}
 		if len(data) > limit || len(bytes.TrimSpace(data)) > 0 && !json.Valid(data) {
 			return 0, invalidProviderResponseError("Subscription returned an invalid JSON response")
 		}
-		if _, err := subscriptionJSONError(data, r.secrets.provider()); err != nil {
+		if _, err := subscriptionResultError(data, r.secrets.provider(), r.field); err != nil {
 			return 0, err
+		}
+		if r.stream {
+			return 0, unexpectedProviderResponse(r.secrets.provider(), data, ProviderErrorTransientSame, http.StatusOK)
 		}
 		r.reader = bytes.NewReader(data)
 	}

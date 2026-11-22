@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -264,6 +265,7 @@ func (a CodexSubscriptionAdapter) openResponsesWithCredentials(ctx context.Conte
 		}
 		if resp.StatusCode < http.StatusBadRequest {
 			resp.Body = newIdleTimeoutReadCloser(resp.Body, a.streamIdleTimeout(), errCodexStreamIdle)
+			guardProviderSSE(resp, Provider{APIKey: accessToken}, 0)
 			return resp, nil
 		}
 		// One uncompressed retry when the backend refuses zstd. HTTP 415 is that
@@ -437,6 +439,10 @@ func consumeCodexResponsesStream(body io.Reader, destination io.Writer) (map[str
 			if err == io.EOF {
 				return response, textBuilder.String(), usage, NewHTTPError(http.StatusBadGateway, "codex_stream_incomplete", "Codex stream ended before response.completed")
 			}
+			var providerErr *ProviderInvocationError
+			if errors.As(err, &providerErr) {
+				return response, textBuilder.String(), usage, err
+			}
 			return response, textBuilder.String(), usage, NewHTTPError(http.StatusBadGateway, "codex_stream_failed", err.Error())
 		}
 	}
@@ -465,7 +471,8 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 			w.Header().Set("x-request-id", routed.Call.RequestID)
 			s.writeRouteHeaders(w, routed.Call, prepared, attemptNumber)
 		}
-		hookWriter := s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, tracker)
+		sink := redactStreamOutput(tracker, prepared.Provider)
+		hookWriter := s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, sink)
 		if response, usage, handled, hookErr := s.runGatewayProviderCallHooksOutput(ctx, routed.Call, prepared, upstreamRequest, providerRouteProtocolResponses, hookWriter); hookErr != nil || handled {
 			if closeErr := hookWriter.Close(); hookErr == nil {
 				hookErr = closeErr
@@ -506,18 +513,16 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 			}
 		}
 		defer opened.Body.Close()
-		w.Header().Set("content-type", "text/event-stream")
-		w.Header().Set("cache-control", "no-cache")
-		w.Header().Set("connection", "keep-alive")
-		w.Header().Set("x-accel-buffering", "no")
-		w.Header().Set("x-request-id", routed.Call.RequestID)
-		writeCodexResponseHeaders(w.Header(), opened.Header)
-		s.writeRouteHeaders(w, routed.Call, prepared, attemptNumber)
-		tracker.ensureStarted()
-		streamWriter := io.Writer(tracker)
+		onFirstWrite := tracker.onFirstWrite
+		tracker.onFirstWrite = func() {
+			onFirstWrite()
+			w.Header().Set("x-accel-buffering", "no")
+			writeCodexResponseHeaders(w.Header(), opened.Header)
+		}
+		streamWriter := sink
 		var transformer *gatewayStreamTransformWriter
 		if routed.Call.JevResponseBound || routeStrategy(prepared.Route) == RouteStrategyJev || s.hasGatewayStreamTransformHooksForRoute(prepared, providerRouteProtocolResponses) {
-			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, tracker)
+			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolResponses, sink)
 			streamWriter = transformer
 		}
 		response, _, usage, streamErr := consumeRoutedResponsesStream(routed.Call, prepared.Provider, opened.Body, streamWriter)
@@ -535,6 +540,9 @@ func (s *Server) handleStreamingResponses(w http.ResponseWriter, r *http.Request
 		}
 		return response, usage, nil
 	})
+	if err == nil {
+		tracker.ensureStarted()
+	}
 	streamStarted := tracker.Wrote()
 	routed.Call.StreamOutputCommitted = tracker.WroteData()
 	routed.Call.FirstByteAt = tracker.firstByteTime(err == nil)

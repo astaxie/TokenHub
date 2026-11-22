@@ -812,10 +812,9 @@ func TestMetricsCodexEmptyBodyFailureIsNotAnInterruption(t *testing.T) {
 		"input":  "hi",
 		"stream": true,
 	}, secret)
-	// ensureStarted committed the 200 before the body was read, so the client
-	// sees the committed response even though the gateway recorded a 502.
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected the committed 200, got %d: %s", resp.Code, resp.Body)
+	// No event reached the client before the incomplete stream failed.
+	if resp.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", resp.Code, resp.Body)
 	}
 
 	body := scrapeMetrics(t, server.Handler())
