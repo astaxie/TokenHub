@@ -1,6 +1,9 @@
 package server
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 type adminResourceCollectionHandler func(http.ResponseWriter, *http.Request, AdminUser, string)
 type adminResourceItemHandler func(http.ResponseWriter, *http.Request, AdminUser, string, string)
@@ -53,7 +56,7 @@ func (s *Server) handleAdminResources(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) serveAdminResourceCollectionGet(w http.ResponseWriter, _ *http.Request, user AdminUser, kind string) {
+func (s *Server) serveAdminResourceCollectionGet(w http.ResponseWriter, r *http.Request, user AdminUser, kind string) {
 	if kind == "monitors" {
 		s.ensureDefaultMonitors()
 	}
@@ -62,19 +65,44 @@ func (s *Server) serveAdminResourceCollectionGet(w http.ResponseWriter, _ *http.
 	}
 	items := s.filterResourcesForUser(user, kind, s.store.ListResources(kind))
 	if kind == "quota-policies" {
-		items = s.attachQuotaPolicyUsage(items)
+		items = s.attachQuotaPolicyUsage(r.Context(), items)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": redactAdminResourcesForResponse(kind, items)})
 }
 
-func (s *Server) attachQuotaPolicyUsage(items []AdminResource) []AdminResource {
+func (s *Server) attachQuotaPolicyUsage(ctx context.Context, items []AdminResource) []AdminResource {
+	if len(items) == 0 {
+		return items
+	}
+	targets := make([]quotaUsageTarget, len(items))
 	for index := range items {
-		scope := firstStringField(items[index].Fields, "scope", "scope_type")
-		scopeID := firstStringField(items[index].Fields, "scope_id")
-		usage, supported, err := s.store.GetQuotaPolicyUsage(scope, scopeID)
-		if err != nil || !supported {
+		targets[index] = quotaUsageTarget{
+			Scope:   firstStringField(items[index].Fields, "scope", "scope_type"),
+			ScopeID: firstStringField(items[index].Fields, "scope_id"),
+		}
+	}
+	results, err := readQuotaPolicyUsages(ctx, s.store, targets)
+	if err != nil {
+		// Fall back to per-row lookups so one bad row cannot hide usage for
+		// the rows that read successfully. Skip the retry when the client is
+		// already gone; the single-row lookup cannot observe cancellation.
+		if ctx.Err() != nil {
+			return items
+		}
+		for index := range items {
+			usage, supported, lookupErr := s.store.GetQuotaPolicyUsage(targets[index].Scope, targets[index].ScopeID)
+			if lookupErr != nil || !supported {
+				continue
+			}
+			items[index].CurrentUsage = &usage
+		}
+		return items
+	}
+	for index, result := range results {
+		if !result.Supported {
 			continue
 		}
+		usage := result.Usage
 		items[index].CurrentUsage = &usage
 	}
 	return items
