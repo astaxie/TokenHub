@@ -20,6 +20,7 @@
 @import "./styles/legacy/provider-subscriptions.css";
 @import "./styles/legacy/provider-quick-connect.css";
 @import "./styles/legacy/provider-model-inventory.css";
+@import "./styles/legacy/provider-manual-models.css";
 @import "./styles/legacy/provider-image-capability.css";
 @import "./styles/legacy/database-status.css";
 @import "./styles/legacy/security-policies.css";
