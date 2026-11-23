@@ -937,6 +937,9 @@ func providerModelsUpstreamError(status int) *HTTPError {
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return NewHTTPError(statusForProvider(status), "provider_models_authentication_failed", "Upstream rejected the Provider credentials")
+	case http.StatusNotFound, http.StatusMethodNotAllowed:
+		return NewHTTPError(statusForProvider(status), "provider_models_not_offered",
+			"This provider does not offer a model catalog endpoint; save the Provider and add models manually")
 	case http.StatusTooManyRequests:
 		return NewHTTPError(statusForProvider(status), "provider_models_rate_limited", "Upstream model catalog request was rate limited")
 	default:

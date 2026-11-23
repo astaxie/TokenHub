@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -469,3 +471,58 @@ func anthropicResponseToResponsesObject(model string, body map[string]any, usage
 func contentBlockTextOf(text string) string { return text }
 
 func timeNowUnix() int64 { return time.Now().Unix() }
+
+// requestStatus performs an authenticated request and reports only the HTTP
+// status, for capability probes that do not need a body.
+func (a AnthropicAdapter) requestStatus(ctx context.Context, provider Provider, method, endpoint string) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, method, anthropicEndpointURL(provider.BaseURL, endpoint), nil)
+	if err != nil {
+		return 0, err
+	}
+	applyAnthropicProviderAuth(req, provider)
+	version := provider.Options["anthropic_version"]
+	if version == "" {
+		version = "2023-06-01"
+	}
+	req.Header.Set("anthropic-version", version)
+	applyProviderHeaders(req.Header, provider.Headers)
+	resp, err := sendUpstream(a.Client, a.StreamClient, a.StreamIdleTimeout, req, false)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode, nil
+}
+
+// ProbeProvider answers the console connection test and the health monitor.
+// Anthropic itself offers GET /v1/models; Anthropic-compatible gateways such
+// as DeepSeek do not, so a 404/405 there falls back to a minimal Messages
+// exchange before declaring the provider healthy.
+func (a AnthropicAdapter) ProbeProvider(ctx context.Context, provider Provider) (any, error) {
+	status, err := a.requestStatus(ctx, provider, http.MethodGet, "/v1/models")
+	if err != nil {
+		return nil, providerCatalogConnectionError(err)
+	}
+	if status < http.StatusBadRequest {
+		return map[string]any{"healthy": true, "models_catalog": true}, nil
+	}
+	if status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
+		return nil, providerModelsUpstreamError(status)
+	}
+	probeModel := strings.TrimSpace(provider.Options["probe_model"])
+	if probeModel == "" {
+		return nil, NewHTTPError(http.StatusServiceUnavailable, "anthropic_probe_model_required",
+			"This upstream has no model catalog endpoint; set the probe_model provider option so health checks can verify it")
+	}
+	payload := map[string]any{
+		"model":      probeModel,
+		"max_tokens": 1,
+		"messages":   []map[string]any{{"role": "user", "content": "ping"}},
+	}
+	var body map[string]any
+	if err := a.doJSON(ctx, provider, "/v1/messages", payload, &body); err != nil {
+		return nil, err
+	}
+	return map[string]any{"healthy": true, "models_catalog": false}, nil
+}
