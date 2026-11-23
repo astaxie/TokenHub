@@ -7,6 +7,7 @@ import { roleLabel, userInitial } from "../domain/labels";
 import { LanguageSelect } from "../i18n/language-switcher";
 import { type AppLanguage, displayText, tx } from "../i18n/runtime";
 import { resourceConfigFor } from "../resources/settings-config";
+import { withBasePath } from "@/lib/base-path";
 
 export function Sidebar({
   activeView,
@@ -38,7 +39,7 @@ export function Sidebar({
   return (
     <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
       <div className="brand">
-        <img src="/brand/tokenhub-logo.png" alt="TokenHub" className="brand-logo" />
+        <img src={withBasePath("/brand/tokenhub-logo.png")} alt="TokenHub" className="brand-logo" />
         <span className="brand-name">TokenHub</span>
         <div className="sidebar-version-status" id="sidebar-version-status" />
         <button

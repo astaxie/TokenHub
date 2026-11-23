@@ -7,6 +7,7 @@ import { identityProviderIconLabel } from "../domain/labels";
 import { buildOAuthLoginStartURL, createOAuthLoginPKCE } from "../domain/oauth-login";
 import { LanguageSelect } from "../i18n/language-switcher";
 import { type AppLanguage, formatTranslationTemplate, tx } from "../i18n/runtime";
+import { withBasePath } from "@/lib/base-path";
 
 export const identityProviderIconOptions = [
   "auto",
@@ -378,7 +379,7 @@ export function identityProviderLoginURL(baseURL: string, provider: LoginIdentit
 
 export function currentOAuthReturnURL() {
   if (typeof window === "undefined") return viewRoutes.overview;
-  return `${window.location.origin}${viewRoutes.overview}`;
+  return `${window.location.origin}${withBasePath(viewRoutes.overview)}`;
 }
 
 export function loginIdentityProviderDisplayName(provider: LoginIdentityProvider) {
@@ -669,7 +670,7 @@ function LoginUtilityActions({
       {showBrand ? (
         <div className="login-brand-lockup">
           <span className="login-brand-mark" aria-hidden="true">
-            <img src="/brand/tokenhub-logo.png" alt="" />
+            <img src={withBasePath("/brand/tokenhub-logo.png")} alt="" />
           </span>
           <span className="login-brand-copy">
             <strong>Token<span>Hub</span></strong>
@@ -728,12 +729,13 @@ export function LoginView({
     identityProviders.length > 1 ? `count-${Math.min(identityProviders.length, 3)}` : "",
   ].filter(Boolean).join(" ");
   const headlineParts = tx("统一管理企业 {ai} Token").split("{ai}");
-  const dashboardPreviewSrc =
+  const dashboardPreviewSrc = withBasePath(
     theme === "dark"
       ? "/brand/login-dashboard-dark.png"
       : language === "zh-CN"
         ? "/brand/login-dashboard-zh.png"
-        : "/brand/login-dashboard-en.png";
+        : "/brand/login-dashboard-en.png",
+  );
   const featureCards = [
     { title: tx("智能路由"), detail: tx("选对模型，效果更优"), className: "route", icon: <Route size={31} strokeWidth={2.25} /> },
     { title: tx("权限管控"), detail: tx("精细分配，安全可控"), className: "shield", icon: <ShieldCheck size={32} strokeWidth={2.15} /> },

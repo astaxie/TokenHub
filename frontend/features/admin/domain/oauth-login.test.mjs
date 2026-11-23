@@ -99,6 +99,13 @@ test("creates an S256 PKCE pair and OAuth start URL", async () => {
   assert.equal(startURL.searchParams.get("code_challenge_method"), "S256");
 });
 
+test("builds a relative OAuth start URL for a relative API base", () => {
+  assert.equal(
+    buildOAuthLoginStartURL("/gateway/tokenhub-api", "idp-example", "https://console.example.test/overview"),
+    "/gateway/tokenhub-api/api/admin/auth/oauth/start?id=idp-example&return_url=https%3A%2F%2Fconsole.example.test%2Foverview",
+  );
+});
+
 test("stores only a valid PKCE-bound pending login", () => {
   const storageKey = "tokenhub.admin.oauth.base_url";
   const storage = memoryStorage({ [storageKey]: "https://legacy.example.test" });

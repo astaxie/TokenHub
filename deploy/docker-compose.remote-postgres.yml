@@ -89,6 +89,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        TOKENHUB_FRONTEND_BASE_PATH: ${TOKENHUB_FRONTEND_BASE_PATH:-}
     restart: unless-stopped
     environment:
       TOKENHUB_INSTALL_ROOT: /opt/tokenhub
