@@ -17,6 +17,10 @@ import (
 // "success" hides data loss from the caller.
 
 const (
+	// anthropicResponsesDefaultProbeModel is only used when no probe model is
+	// configured: the probe then downgrades to a reachability check, because a
+	// model name this upstream does not know would fail for the wrong reason.
+	anthropicResponsesDefaultProbeModel = "claude-haiku-4-5"
 	// anthropicResponsesDefaultMaxTokens covers the Messages API requirement
 	// that max_tokens is always present. The Responses surface treats it as
 	// optional, so a documented default fills the gap when the caller omits it.
@@ -510,19 +514,107 @@ func (a AnthropicAdapter) ProbeProvider(ctx context.Context, provider Provider) 
 	if status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
 		return nil, providerModelsUpstreamError(status)
 	}
-	probeModel := strings.TrimSpace(provider.Options["probe_model"])
-	if probeModel == "" {
-		return nil, NewHTTPError(http.StatusServiceUnavailable, "anthropic_probe_model_required",
-			"This upstream has no model catalog endpoint; set the probe_model provider option so health checks can verify it")
-	}
+	// No catalog endpoint: send a deliberately minimal Messages exchange. The
+	// upstream validates authentication before the required model field, so a
+	// 400 "model required" response still proves the gateway is reachable and
+	// the credentials are accepted — without spending a real generation or
+	// requiring any provider configuration.
 	payload := map[string]any{
-		"model":      probeModel,
 		"max_tokens": 1,
 		"messages":   []map[string]any{{"role": "user", "content": "ping"}},
 	}
 	var body map[string]any
-	if err := a.doJSON(ctx, provider, "/v1/messages", payload, &body); err != nil {
-		return nil, err
+	probeErr := a.doJSON(ctx, provider, "/v1/messages", payload, &body)
+	if probeErr == nil {
+		return map[string]any{"healthy": true, "models_catalog": false}, nil
 	}
-	return map[string]any{"healthy": true, "models_catalog": false}, nil
+	httpErr := AsHTTPError(probeErr)
+	switch {
+	case httpErr.Status == http.StatusUnauthorized || httpErr.Status == http.StatusForbidden:
+		return nil, NewHTTPError(httpErr.Status, "provider_models_authentication_failed",
+			"Upstream rejected the Provider credentials")
+	case httpErr.Status >= http.StatusBadRequest && httpErr.Status < http.StatusInternalServerError:
+		// The upstream parsed the probe and answered with a client-error status
+		// (typically 400 model-required). Authentication already passed and the
+		// gateway is reachable, which is all this probe asserts.
+		return map[string]any{"healthy": true, "models_catalog": false}, nil
+	default:
+		return nil, probeErr
+	}
+}
+
+// DefaultProbeRequest uses a tiny prompt: the probe verifies that the upstream
+// actually generates text, not merely that the port answers.
+func (a AnthropicAdapter) DefaultProbeRequest() ProviderProbeRequest {
+	return ProviderProbeRequest{Prompt: "Reply with OK."}
+}
+
+// Probe runs one real generation against the resource so health reflects the
+// full chain — reachability, credentials, model availability and inference —
+// instead of port liveness. The model name comes from the probe request or the
+// probe_model option; without either, the probe degrades to a reachability
+// check and says so in its result.
+func (a AnthropicAdapter) Probe(ctx context.Context, provider Provider, resource ProviderResource, request ProviderProbeRequest) (ProviderProbeResult, error) {
+	startedAt := time.Now()
+	model := firstNonEmpty(strings.TrimSpace(request.Model),
+		strings.TrimSpace(resource.Options["probe_model"]),
+		strings.TrimSpace(provider.Options["probe_model"]))
+	reachableOnly := model == ""
+	if reachableOnly {
+		model = anthropicResponsesDefaultProbeModel
+	}
+	payload := map[string]any{
+		"model":      model,
+		"max_tokens": 16,
+		"messages":   []map[string]any{{"role": "user", "content": firstNonEmpty(strings.TrimSpace(request.Prompt), "Reply with OK.")}},
+	}
+	var body map[string]any
+	probeErr := a.doJSON(ctx, provider, "/v1/messages", payload, &body)
+	if probeErr != nil {
+		httpErr := AsHTTPError(probeErr)
+		switch {
+		case httpErr.Status == http.StatusUnauthorized || httpErr.Status == http.StatusForbidden:
+			return ProviderProbeResult{}, NewHTTPError(httpErr.Status, "provider_models_authentication_failed",
+				"Upstream rejected the Provider credentials")
+		case reachableOnly:
+			// Any HTTP response in this mode proves reachability and accepted
+			// credentials; the model outcome is expected to be uncertain when no
+			// probe model is configured.
+			return ProviderProbeResult{
+				ResourceID: resource.ID, Model: model,
+				OutputText: "Reachability verified (no probe_model configured; generation not exercised).",
+				LatencyMS:  time.Since(startedAt).Milliseconds(),
+				Response:   map[string]any{"mode": "reachability"},
+			}, nil
+		default:
+			return ProviderProbeResult{}, probeErr
+		}
+	}
+	text := anthropicProbeOutputText(body)
+	if strings.TrimSpace(text) == "" {
+		return ProviderProbeResult{}, NewHTTPError(http.StatusBadGateway, "anthropic_probe_empty_output",
+			"Upstream accepted the probe prompt but returned no text")
+	}
+	return ProviderProbeResult{
+		ResourceID: resource.ID,
+		Model:      model,
+		OutputText: text,
+		Usage:      anthropicUsage(body),
+		LatencyMS:  time.Since(startedAt).Milliseconds(),
+		Response:   body,
+	}, nil
+}
+
+// anthropicProbeOutputText joins the text blocks of a Messages response.
+func anthropicProbeOutputText(body map[string]any) string {
+	blocks, _ := body["content"].([]any)
+	var builder strings.Builder
+	for _, rawBlock := range blocks {
+		if block, ok := rawBlock.(map[string]any); ok {
+			if text, ok := block["text"].(string); ok {
+				builder.WriteString(text)
+			}
+		}
+	}
+	return builder.String()
 }
