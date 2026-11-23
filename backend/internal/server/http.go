@@ -24,6 +24,7 @@ import (
 
 type Server struct {
 	monitoringObservations           monitoringObservationCache
+	adminLoginLimits                 adminLoginLimiter
 	semanticRouter                   semanticEvaluator
 	pluginRuntimeMu                  sync.RWMutex
 	pluginLifecycleMu                sync.Mutex
