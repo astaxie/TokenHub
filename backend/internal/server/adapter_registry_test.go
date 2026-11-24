@@ -79,6 +79,7 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	},
 	ProviderAnthropic: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe,
+		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
 	},
 	ProviderGemini: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
