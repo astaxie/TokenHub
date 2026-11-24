@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -1024,3 +1025,80 @@ func (p *providerCatalogConcurrentInitializeProbe) maxConcurrentLocalSnapshotWri
 	defer p.mu.Unlock()
 	return p.maxLocalSnapshotWrites
 }
+
+// The DeepSeek scenario: an Anthropic-compatible base URL whose own path has
+// no catalog endpoint, while the same host serves one on the OpenAI side.
+func TestProviderCatalogDiscoveryFallsBackToSameOriginOpenAIPath(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("authorization"), "Bearer ds-secret") {
+			t.Errorf("fallback request must present the API key as Bearer: %v", r.Header)
+		}
+		switch {
+		case r.URL.Path == "/anthropic/v1/models":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"Not Found"}}`))
+		case r.URL.Path == "/v1/models":
+			w.Header().Set("content-type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"deepseek-flash"},{"id":"deepseek-v4-pro"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	req := ProviderCreateRequest{
+		Name:    "DeepSeek Anthropic",
+		Type:    ProviderAnthropic,
+		BaseURL: upstream.URL + "/anthropic",
+		APIKey:  "ds-secret",
+	}
+	entry, err := CustomProviderCatalogFromUpstream(context.Background(), nil, req)
+	if err != nil {
+		t.Fatalf("fallback discovery failed: %v", err)
+	}
+	if entry.ModelsCount != 2 {
+		t.Fatalf("models count = %d, want 2: %+v", entry.ModelsCount, entry.Models)
+	}
+	ids := []string{}
+	for _, model := range entry.Models {
+		ids = append(ids, model.ID)
+	}
+	if !slices.Contains(ids, "deepseek-flash") || !slices.Contains(ids, "deepseek-v4-pro") {
+		t.Fatalf("discovered models = %v", ids)
+	}
+}
+
+// A base URL without a path suffix has no same-origin siblings: the failure
+// stays the primary not-offered mapping instead of retrying identical URLs.
+func TestProviderCatalogDiscoveryWithoutPathSuffixTriesDistinctEndpoints(t *testing.T) {
+	seen := map[string]int{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen[r.URL.Path]++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer upstream.Close()
+
+	req := ProviderCreateRequest{
+		Name:    "Plain Anthropic",
+		Type:    ProviderAnthropic,
+		BaseURL: upstream.URL,
+		APIKey:  "key",
+	}
+	_, err := CustomProviderCatalogFromUpstream(context.Background(), nil, req)
+	if err == nil {
+		t.Fatal("expected the not-offered error after all candidates fail")
+	}
+	// A pathless base URL yields two distinct same-origin candidates (/models
+	// as the descriptor default and /v1/models); each may be asked once.
+	for path, count := range seen {
+		if count != 1 {
+			t.Fatalf("path %s requested %d times, want at most 1", path, count)
+		}
+	}
+	if len(seen) == 0 {
+		t.Fatal("no candidates were tried")
+	}
+}
+
+// The DeepSeek scenario: an Anthropic-compatible base URL whose own path has
+// no catalog endpoint, while the same host serves one on the OpenAI side.
