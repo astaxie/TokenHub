@@ -1088,6 +1088,38 @@ func TestProviderCatalogDiscoveryWithoutPathSuffixTriesDistinctEndpoints(t *test
 	if err == nil {
 		t.Fatal("expected the not-offered error after all candidates fail")
 	}
+	// An authentication failure on the primary endpoint must surface
+	// immediately without probing same-origin fallbacks.
+	t.Run("auth failure surfaces without fallback", func(t *testing.T) {
+		var fallbackRequests int
+		fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fallbackRequests++
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer fallback.Close()
+
+		unauthorized := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"message":"invalid key"}}`))
+		}))
+		defer unauthorized.Close()
+
+		// The base URL carries a path suffix, so the same-origin candidates
+		// would land on the unauthorized upstream if the gateway ever probed
+		// them; it must report authentication failure instead.
+		resp := doJSON(t, New(NewMemoryStore()).Handler(), http.MethodPost, "/api/admin/provider-catalog/custom", map[string]any{
+			"name": "Probe Auth", "type": ProviderAnthropic,
+			"base_url": unauthorized.URL + "/anthropic", "api_key": "key",
+		}, "")
+		// statusForProvider maps the upstream 401 to a gateway 502.
+		if resp.Code != http.StatusBadGateway || !strings.Contains(resp.Body, "provider_models_authentication_failed") {
+			t.Fatalf("expected 502 auth failure, got %d: %s", resp.Code, resp.Body)
+		}
+		if fallbackRequests != 0 {
+			t.Fatalf("fallback was probed %d times, want 0", fallbackRequests)
+		}
+	})
+
 	// A pathless base URL yields two distinct same-origin candidates (/models
 	// as the descriptor default and /v1/models); each may be asked once.
 	for path, count := range seen {

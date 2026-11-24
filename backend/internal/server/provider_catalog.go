@@ -785,17 +785,20 @@ func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client
 		if httpErr == nil {
 			return entry, nil
 		}
-		if index > 0 && (httpErr.Status == http.StatusUnauthorized || httpErr.Status == http.StatusForbidden) {
-			// A fallback candidate's authentication failure is actionable —
-			// surface it instead of trying remaining candidates.
+		// Authentication and other non-catalog failures surface immediately:
+		// retrying a different auth style cannot fix them, and the extra
+		// request would confuse upstreams that count attempts (Gemini's
+		// query_param keys, for example).
+		if httpErr.Code != "provider_models_not_offered" {
 			return ProviderCatalogEntry{}, httpErr
 		}
-		if index == 0 {
-			primaryFailure = httpErr
+		if index == len(fallbackURLs) {
+			// All candidates, including the fallbacks, answered not-found: the
+			// provider genuinely has no model catalog endpoint.
+			return ProviderCatalogEntry{}, httpErr
 		}
+		primaryFailure = httpErr
 	}
-	// Every candidate answered 404/405: the provider genuinely has no model
-	// catalog endpoint on either protocol.
 	return ProviderCatalogEntry{}, primaryFailure
 }
 
