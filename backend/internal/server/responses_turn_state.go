@@ -20,9 +20,6 @@ import (
 const (
 	// responsesTurnStateTTL matches the upstream Responses retention window.
 	responsesTurnStateTTL = 30 * 24 * time.Hour
-	// responsesTurnStateMaxBytes bounds one stored turn; larger conversations
-	// must resend their own context.
-	responsesTurnStateMaxBytes = 4 << 20
 )
 
 type responsesTurnState struct {
