@@ -198,7 +198,7 @@ cp deploy/.env.example deploy/.env
 - フロントエンド実行時の `TOKENHUB_API_BASE_URL=/gateway/tokenhub-api` を設定します。相対値にすると、ブラウザーのリクエストは現在のオリジンに留まります。
 - バックエンドの `TOKENHUB_PUBLIC_BASE_URL=https://console.example.com/gateway/tokenhub-api` と `TOKENHUB_CORS_ALLOWED_ORIGINS=https://console.example.com` を設定します。CORS はパスを含まないオリジンと照合します。
 - ID プロバイダーに `https://console.example.com/gateway/tokenhub-api/api/admin/auth/oauth/callback` を登録します。
-- 両方のプレフィックスをそれぞれのサービスへルーティングし、一致したプレフィックスだけを取り除きます。OAuth コールバックの cookie パスは書き換えないでください。バックエンドが設定されたリダイレクト URI から導出します。
+- 両方のプレフィックスをそれぞれのサービスへルーティングしますが、2 つのルールは扱いが異なります。バックエンドへ転送する前に `/gateway/tokenhub-api` を取り除きます。Next.js へ転送するときは `/gateway/tokenhub` を残してください。バンドルはこのプレフィックスでビルドされているため、取り除くとコンソールのルートが `/` になり、そのプレフィックスへ戻すリダイレクトがループします。プレフィックス付きのアセットも一致しなくなります。たとえば末尾にスラッシュを付けない `proxy_pass http://frontend:3000;` なら、上流 URI は `/gateway/tokenhub/` のままです。OAuth コールバックの cookie パスは書き換えないでください。バックエンドが設定されたリダイレクト URI から導出します。
 
 この構成では、同じオリジン上の他のアプリケーションがブラウザーのセキュリティ境界を共有します。同じタブ内の同オリジンのスクリプトは同一オリジンのストレージを読み取れます。この信頼が許容できない場合は、別のホスト名で分離してください。Compose のビルド引数はローカルビルドにのみ影響するため、実行時に変数を変えてもビルド済みイメージは変わりません。`./start.sh` を使う場合は、Next.js の起動前に変数をエクスポートするか、フロントエンドの環境ファイルへ記述してください。
 

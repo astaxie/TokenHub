@@ -198,7 +198,7 @@ cp deploy/.env.example deploy/.env
 - 为前端运行时设置 `TOKENHUB_API_BASE_URL=/gateway/tokenhub-api`。使用相对值可让浏览器请求留在当前源。
 - 为后端设置 `TOKENHUB_PUBLIC_BASE_URL=https://console.example.com/gateway/tokenhub-api`，并设置 `TOKENHUB_CORS_ALLOWED_ORIGINS=https://console.example.com`。CORS 匹配的是不含路径的源。
 - 在身份提供商中注册 `https://console.example.com/gateway/tokenhub-api/api/admin/auth/oauth/callback`。
-- 将两个前缀分别路由到对应服务，只剥离匹配到的前缀。不要重写 OAuth 回调的 cookie 路径，后端会根据配置的回调地址推导该路径。
+- 将两个前缀分别路由到对应服务，但两条规则的处理方式不同。转发到后端前要剥离 `/gateway/tokenhub-api`。转发到 Next.js 时必须保留 `/gateway/tokenhub` 前缀，因为前端包是按该前缀构建的：剥离后控制台根路径会变成 `/`，它重定向回该前缀，形成循环；带前缀的静态资源也会对不上。例如使用 `proxy_pass http://frontend:3000;`（末尾不加斜杠）可让上游 URI 保留 `/gateway/tokenhub/`。不要重写 OAuth 回调的 cookie 路径，后端会根据配置的回调地址推导该路径。
 
 此布局意味着同一源上的其他应用共享浏览器安全边界：同一标签页中的同源应用脚本可以读取同源存储。如无法接受该信任关系，请使用独立主机名隔离。Compose 构建参数仅对本地构建生效，运行时的变量修改不会影响预构建镜像。使用 `./start.sh` 时，请在 Next.js 启动前导出该变量，或写入前端环境文件。
 
