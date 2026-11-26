@@ -48,6 +48,25 @@ test("merging keeps discovered models and lets a manual entry override a duplica
   assert.deepEqual(stale.map((model) => model.id), ["manual-model", "private-model"]);
 });
 
+test("merging a duplicate keeps discovered metadata and only overrides the names", () => {
+  const embedding = {
+    id: "text-embedding-3-small",
+    name: "text-embedding-3-small",
+    display_name: "Text Embedding 3 Small",
+    type: "embedding",
+    capabilities: ["embedding"],
+    context_window: 8191,
+    input_price_usd_per_1m: 0.02,
+    supported_parameters: ["dimensions"],
+  };
+  const merged = mergedProviderCatalogModels(
+    [embedding],
+    [{ id: "text-embedding-3-small", name: "Renamed embedding", display_name: "Renamed embedding" }],
+    true,
+  );
+  assert.deepEqual(merged, [{ ...embedding, name: "Renamed embedding", display_name: "Renamed embedding" }]);
+});
+
 test("manual fields are omitted without manual models and emitted otherwise", () => {
   assert.deepEqual(manualProviderModelsFields({ mode: "create", manual: [], discoveryCurrent: true }), {});
   assert.deepEqual(

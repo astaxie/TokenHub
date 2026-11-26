@@ -15,8 +15,19 @@ export function selectedProviderModelIDs(selected: Record<string, boolean>, manu
 export function mergedProviderCatalogModels(discovered: ProviderCatalogModel[], manual: ProviderCatalogModel[], includeDiscovered: boolean) {
   const merged = new Map<string, ProviderCatalogModel>();
   for (const model of includeDiscovered ? discovered : []) merged.set(model.id, model);
-  // Manual entries win: an operator who typed a display name expects it to persist.
-  for (const model of manual) merged.set(model.id, model);
+  // Manual entries carry only the identity and display-name fields. Merging them
+  // onto a discovered record keeps its type, capabilities, pricing, limits, and
+  // supported parameters while the operator's names still win.
+  for (const model of manual) {
+    const existing = merged.get(model.id);
+    if (!existing) {
+      merged.set(model.id, model);
+      continue;
+    }
+    const mergedModel = { ...existing, name: model.name };
+    if (model.display_name !== undefined) mergedModel.display_name = model.display_name;
+    merged.set(model.id, mergedModel);
+  }
   return Array.from(merged.values());
 }
 
