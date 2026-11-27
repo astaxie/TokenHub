@@ -1,0 +1,29 @@
+.account-routing-policy {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-routing-policy label {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.account-routing-policy select {
+  width: 100%;
+  min-height: 36px;
+}
+
+.account-routing-policy p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.account-routing-policy small {
+  color: var(--muted);
+  font-size: 11px;
+}

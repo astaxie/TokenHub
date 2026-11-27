@@ -12,11 +12,13 @@ import { enumValueLabel, providerTypeLabelFromData, reportDatasetLabel, roleLabe
 import { countWithLabel, countWithUnit, languageLocale, tx } from "../i18n/runtime";
 import { reportExportDefinitions } from "../resources/governance-config";
 import { providerPluginActionForResourceCapability, runProviderResourcePluginAction } from "../resources/provider-model-config";
+import { adminFetch, readAdminError } from "../resources/payloads";
 import { DataSection, SimpleTable, StatusPill } from "../shared/ui";
 import { APIKeyEmptyState } from "./api-key-empty-state";
 import { ModelCategoryTabs, NotificationChannelTabs } from "./model-catalog";
 import { ModelGovernanceEmptyState } from "./model-governance-empty-state";
 import { providerAccountQuotaIsLimited, providerAccountQuotaPrimaryWindow, providerAccountQuotaRemainingPercent } from "./provider-account-ui";
+import { ProviderAllowanceConsole } from "./provider-allowance-console";
 import { ProviderManagementTable } from "./provider-management-table";
 import { latencyDisplay, requestLogFailed } from "./overview";
 import { PaginationControls, type PaginationState } from "../shared/pagination";
@@ -218,7 +220,7 @@ export function ProjectTeamFlowHint() {
   );
 }
 
-export type ProviderMonitorTone = "healthy" | "degraded" | "down" | "unknown";
+export type ProviderMonitorTone = "healthy" | "degraded" | "down" | "unknown" | "exhausted";
 
 export type ProviderProbeTone = "ok" | "warn" | "down" | "na";
 
@@ -283,7 +285,7 @@ export function ProviderChannelTable({
   onDelete: (provider: Provider) => void;
   onEdit: (provider: Provider) => void;
 }) {
-  const [view, setView] = useState<"manage" | "monitoring">("manage");
+  const [view, setView] = useState<"manage" | "monitoring" | "allowances">("manage");
   const [quotaOverrides, setQuotaOverrides] = useState<Record<string, ProviderQuotaSummary>>({});
   const [quotaRefreshing, setQuotaRefreshing] = useState<Record<string, boolean>>({});
 
@@ -292,8 +294,16 @@ export function ProviderChannelTable({
     setQuotaRefreshing((current) => ({ ...current, [resource.id]: true }));
     try {
       const action = providerQuotaReadAction(data, resource);
-      if (!action) throw new Error(tx("该插件动作尚未注册。"));
-      const quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: true }, tx("查询账号配额"));
+      let quota: ProviderAccountQuota;
+      if (action) {
+        quota = await runProviderResourcePluginAction<ProviderAccountQuota>(api, resource, action, { refresh: true }, tx("查询账号配额"));
+      } else if (resource.resource_type === "api_key") {
+        const response = await adminFetch(api, `/api/admin/provider-resources/${encodeURIComponent(resource.id)}/quota?refresh=true`);
+        if (!response.ok) throw new Error(await readAdminError(response, tx("套餐查询失败")));
+        quota = await response.json();
+      } else {
+        throw new Error(tx("该插件动作尚未注册。"));
+      }
       const snapshot = data.providerMonitoring.find((item) => item.provider.id === resource.provider_id);
       if (snapshot) {
         setQuotaOverrides((current) => ({
@@ -333,9 +343,10 @@ export function ProviderChannelTable({
     <section className={`provider-channel-list${view === "manage" ? " provider-channel-list-manage" : ""}`} aria-label={tx("供应商管理")}>
       <div className="provider-management-tabs" role="group" aria-label={tx("供应商管理")}>
         <button className={view === "manage" ? "active" : ""} aria-pressed={view === "manage"} onClick={() => setView("manage")} type="button">{tx("供应商列表")}</button>
+        <button className={view === "allowances" ? "active" : ""} aria-pressed={view === "allowances"} onClick={() => setView("allowances")} type="button">{tx("额度与权益")}</button>
         <button className={view === "monitoring" ? "active" : ""} aria-pressed={view === "monitoring"} onClick={() => setView("monitoring")} type="button">{tx("可用性监控")}</button>
       </div>
-      {view === "manage" ? <ProviderManagementTable rows={rows} data={data} config={config} currentUser={currentUser} onAction={onAction} onEdit={onEdit} onDelete={onDelete} /> : <>
+      {view === "allowances" && api ? <ProviderAllowanceConsole api={api} providers={providers} canWrite={providerID => { const provider = providers.find(item => item.id === providerID); return Boolean(provider && config.update && (config.canUpdate?.(provider,currentUser,data) ?? true)); }} /> : view === "manage" ? <ProviderManagementTable rows={rows} data={data} config={config} currentUser={currentUser} onAction={onAction} onEdit={onEdit} onDelete={onDelete} /> : <>
       <div className="provider-monitor-head">
         <div>
           <p className="eyebrow">{tx("上游可用性")}</p>
@@ -345,6 +356,7 @@ export function ProviderChannelTable({
           <span><strong>{summary.healthy}</strong>{tx("正常")}</span>
           <span><strong>{summary.degraded}</strong>{tx("降级")}</span>
           <span><strong>{summary.down}</strong>{tx("故障")}</span>
+          <span><strong>{summary.exhausted}</strong>{tx("额度耗尽")}</span>
           <span><strong>{summary.unknown}</strong>{tx("待观测")}</span>
         </div>
       </div>
@@ -673,14 +685,14 @@ function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitor
   const resources = data.providerResources.filter((resource) => resource.provider_id === snapshot.provider.id);
   const observedSignal = snapshot.gateway.samples > 0 ? snapshot.gateway : snapshot.active_probe;
   const observed = observedSignal.samples > 0;
-  const statusTone = observed ? snapshot.state : "unknown";
+  const statusTone = observed || snapshot.state === "exhausted" ? snapshot.state : "unknown";
   return {
     provider: snapshot.provider,
     resources,
     routeCount: snapshot.route_count,
     activeRouteCount: snapshot.active_route_count,
     statusTone,
-    statusLabel: observed ? snapshot.status_label : providerStatusLabel(statusTone),
+    statusLabel: observed && statusTone !== "exhausted" ? snapshot.status_label : providerStatusLabel(statusTone),
     statusDetail: monitoringDetail(snapshot.status_detail),
     basicPrimaryTone: monitoringProbeTone(snapshot.configuration.state),
     basicPrimaryDetail: monitoringDetail(snapshot.configuration.detail),
@@ -702,7 +714,7 @@ function providerMonitorRowFromSnapshot(data: AppData, snapshot: ProviderMonitor
 
 function monitoringProbeTone(state: ProviderMonitoringSnapshot["configuration"]["state"]): ProviderProbeTone {
   if (state === "healthy") return "ok";
-  if (state === "degraded") return "warn";
+  if (state === "degraded" || state === "exhausted") return "warn";
   if (state === "down") return "down";
   return "na";
 }
@@ -714,12 +726,18 @@ function monitoringDetail(value?: string) {
     configuration: tx("配置"),
     active_probe: tx("主动测试"),
     gateway_request: tx("真实请求"),
+    quota: tx("额度"),
     provider_online: tx("Provider 在线"),
     resources_healthy: tx("资源健康"),
     no_active_resources: tx("未配置账号资源"),
     no_healthy_resources: tx("无健康资源"),
     some_resources_unhealthy: tx("部分资源异常"),
     awaiting_observation: tx("等待测试或真实请求"),
+    provider_payment_required: tx("额度耗尽"),
+    provider_quota_exhausted: tx("额度耗尽"),
+    provider_usage_cap_reached: tx("额度耗尽"),
+    codex_quota_exhausted: tx("额度耗尽"),
+    subscription_standard_quota_exhausted: tx("额度耗尽"),
     ok: "ok",
   };
   if (detail) return `${labels[source] ?? source} · ${labels[detail] ?? detail}`;
@@ -857,7 +875,7 @@ export function providerMonitorSummary(rows: ProviderMonitorRow[]) {
       summary[row.statusTone] += 1;
       return summary;
     },
-    { healthy: 0, degraded: 0, down: 0, unknown: 0 } as Record<ProviderMonitorTone, number>,
+    { healthy: 0, degraded: 0, down: 0, unknown: 0, exhausted: 0 } as Record<ProviderMonitorTone, number>,
   );
 }
 
@@ -877,6 +895,7 @@ export function providerMonitorTone(provider: Provider, observed: boolean, avail
 }
 
 export function providerStatusLabel(tone: ProviderMonitorTone) {
+  if (tone === "exhausted") return "额度耗尽";
   if (tone === "healthy") return "Healthy";
   if (tone === "degraded") return "Degraded";
   if (tone === "unknown") return "待观测";

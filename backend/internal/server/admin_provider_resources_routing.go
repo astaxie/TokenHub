@@ -318,6 +318,9 @@ func (s *Server) executeProviderResourceQuotaAction(ctx context.Context, user Ad
 	if !ok {
 		return pluginmeta.ActionResult{}, NewHTTPError(http.StatusNotFound, "provider_not_found", "Provider not found")
 	}
+	if quota, handled, err := s.refreshConfiguredAllowance(ctx, resource, refresh); handled {
+		return pluginmeta.ActionResult{Data: quota}, err
+	}
 	result, handled, err := s.executeProviderPanelAction(ctx, user, provider.Type, "quota", AdapterCapabilityQuota, map[string]any{
 		"resource_id": resourceID,
 		"refresh":     refresh,

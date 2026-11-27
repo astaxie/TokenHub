@@ -128,17 +128,20 @@ func saveSemanticRoutingPolicy(tx *gorm.DB, modelName string, policy *SemanticRo
 // Only the routing policy endpoint may replace this managed field on an existing
 // model. Ordinary edits and catalog imports can carry stale or absent metadata.
 func preserveSemanticRoutingMetadata(current, incoming map[string]string) map[string]string {
-	if incoming == nil && current[semanticRoutingMetadataKey] == "" {
+	if incoming == nil && current[semanticRoutingMetadataKey] == "" && current[accountRoutingMetadataKey] == "" {
 		return nil
 	}
 	metadata := make(map[string]string, len(incoming)+1)
 	for key, value := range incoming {
-		if key != semanticRoutingMetadataKey {
+		if key != semanticRoutingMetadataKey && key != accountRoutingMetadataKey {
 			metadata[key] = value
 		}
 	}
 	if value, ok := current[semanticRoutingMetadataKey]; ok {
 		metadata[semanticRoutingMetadataKey] = value
+	}
+	if value, ok := current[accountRoutingMetadataKey]; ok {
+		metadata[accountRoutingMetadataKey] = value
 	}
 	return metadata
 }

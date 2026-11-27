@@ -44,6 +44,46 @@ tags:
   - name: Gemini Native
     description: Native Gemini v1beta model, generation, streaming, and token-counting routes.
 paths:
+  /v1/allowance:
+    get:
+      tags: [Models]
+      operationId: getModelAllowance
+      x-tokenhub-public-gateway: true
+      x-tokenhub-interactive: false
+      summary: Read cached availability for authorized model routes
+      description: Returns aggregate availability only. It does not reveal supplier identities, balances, or configuration, and never queries an upstream provider. Optional waiting observes background cache updates.
+      parameters:
+        - in: query
+          name: model
+          required: true
+          schema: { type: string }
+        - in: query
+          name: wait_seconds
+          schema: { type: integer, minimum: 0, maximum: 60, default: 0 }
+      responses:
+        '200':
+          description: Current cached availability, including a timed-out wait
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [model, status, available, unknown, exhausted, held, checked_at]
+                properties:
+                  model: { type: string }
+                  status: { type: string, enum: [unknown, available, exhausted, query_error] }
+                  available: { type: integer, minimum: 0 }
+                  unknown: { type: integer, minimum: 0 }
+                  query_error: { type: integer, minimum: 0 }
+                  exhausted: { type: integer, minimum: 0 }
+                  held: { type: integer, minimum: 0 }
+                  next_reset_at: { type: string, format: date-time }
+                  checked_at: { type: string, format: date-time }
+        '400': { description: Invalid model or wait interval }
+        '401': { description: Missing or invalid project API key }
+        '403': { description: Model is outside this credential's scope }
+        '429': { description: Too many concurrent quota waits }
+        '503': { description: No authorized route or quota cache is available }
+
   /v1/models:
     get:
       operationId: listOpenAIModels

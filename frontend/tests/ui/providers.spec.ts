@@ -1,9 +1,9 @@
-import type { Provider, ProviderMonitoringSnapshot } from "../../features/admin/core/types";
+import type { Provider, ProviderMonitoringSnapshot, ProviderResource } from "../../features/admin/core/types";
 import type { Locator } from "@playwright/test";
 import { test, expect, capture } from "./harness";
 import type { MockAPI, MockResponse } from "./network";
 
-function installProviders(api: MockAPI, monitoring?: () => Promise<MockResponse>) {
+function installProviders(api: MockAPI, monitoring?: () => Promise<MockResponse>, resources: ProviderResource[] = []) {
   const providers: Provider[] = [
     { id: "prv_ui_local", name: "UI Local Cluster", type: "mock", base_url: "", priority: 1, status: "active", healthy: true },
     { id: "prv_ui_internal", name: "UI Internal Cluster", type: "mock", base_url: "http://inference.example.test/v1", priority: 2, status: "active", healthy: true },
@@ -15,7 +15,8 @@ function installProviders(api: MockAPI, monitoring?: () => Promise<MockResponse>
   api.respond("GET", "/api/admin/plugins", { data: [{ id: "tokenhub.provider.mock", name: "Mock Plugin", version: "1.0.0", source: "local_file", kinds: ["provider"], placements: ["gateway_chain"], capabilities: [{ kind: "provider_type", name: "mock" }] }] });
   api.respond("GET", "/api/admin/plugin-marketplace", { data: { available: true, plugins: [] } });
   api.respond("GET", "/api/admin/plugin-background-jobs", { data: [], runs: [] });
-  for (const path of ["provider-resources", "routing-rules", "audit/events", "plugin-ui-manifest", "plugin-actions"]) {
+  api.respond("GET", "/api/admin/provider-resources", { data: resources });
+  for (const path of ["routing-rules", "audit/events", "plugin-ui-manifest", "plugin-actions"]) {
     api.respond("GET", `/api/admin/${path}`, { data: [] });
   }
   api.define("GET", "/api/admin/providers/monitoring", monitoring ?? (() => ({ json: { data: [] } })));
@@ -220,6 +221,48 @@ function monitoringSnapshot(provider: Provider): ProviderMonitoringSnapshot {
     quota: { supported: false, limit_reached: false, successful_accounts: 0, failed_accounts: 0 },
     quality_score: 0, trend: Array.from({ length: 30 }, () => "failure"),
   };
+}
+
+for (const mobile of [false, true]) {
+  test(`providers quota-exhausted-status ${mobile ? "mobile" : "desktop"}`, async ({ page, api }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const snapshots: ProviderMonitoringSnapshot[] = [];
+    const resources: ProviderResource[] = [];
+    const providers = installProviders(api, async () => ({ json: { data: snapshots } }), resources);
+    const exhausted = monitoringSnapshot(providers[0]);
+    exhausted.state = "exhausted";
+    exhausted.status_label = "Quota Exhausted";
+    exhausted.status_detail = "quota:provider_quota_exhausted";
+    exhausted.gateway = { state: "exhausted", source: "gateway_request", samples: 1, success_rate: 0, error_code: "provider_quota_exhausted" };
+    const resource: ProviderResource = { id: "ui-exhausted-key", provider_id: providers[0].id, name: "Synthetic exhausted key", resource_type: "api_key", status: "active", healthy: true, priority: 1, weight: 100 };
+    resources.push(resource);
+    exhausted.resource_count = exhausted.active_resource_count = exhausted.healthy_resource_count = 1;
+    exhausted.quota = { supported: true, limit_reached: true, remaining_percent: 0, successful_accounts: 1, failed_accounts: 0, accounts: [{ resource_id: resource.id, resource_name: resource.name, quota: { limit_reached: true, remaining_percent: 0 } }] };
+    api.define("GET", `/api/admin/provider-resources/${resource.id}/quota`, () => ({ json: { remaining_percent: 75, limit_reached: false } }), query => {
+      expect(Object.fromEntries(query)).toEqual({ refresh: "true" });
+    });
+    snapshots.push(exhausted, monitoringSnapshot(providers[1]));
+    await page.goto("/providers");
+    const row = page.getByRole("row").filter({ hasText: "UI Local Cluster" });
+    await expect(row.locator(".provider-monitor-status.exhausted")).toHaveText("额度耗尽");
+    await expect(row.getByText("故障", { exact: true })).toHaveCount(0);
+    const fault = page.getByRole("row").filter({ hasText: "UI Internal Cluster" });
+    await expect(fault.locator(".provider-monitor-status.down")).toHaveText("故障");
+    await row.scrollIntoViewIfNeeded();
+    await row.evaluate(element => { for (let parent = element.parentElement; parent; parent = parent.parentElement) parent.scrollLeft = 0; });
+    await capture(page, testInfo, page.locator(".provider-channel-list"), `provider-quota-status-${mobile ? "mobile" : "desktop"}`, "额度耗尽与服务故障分别显示", "viewport");
+    await page.getByRole("button", { name: "可用性监控", exact: true }).click();
+    await expect(page.locator(".provider-monitor-summary")).toContainText("额度耗尽");
+    await expect(row.locator(".provider-monitor-status.exhausted")).toHaveText("额度耗尽");
+    await expect(row.locator(".provider-probe-line.down")).toHaveCount(0);
+    await row.scrollIntoViewIfNeeded();
+    await row.evaluate(element => { for (let parent = element.parentElement; parent; parent = parent.parentElement) parent.scrollLeft = 0; });
+    await capture(page, testInfo, page.locator(".provider-channel-list"), `provider-quota-monitoring-${mobile ? "mobile" : "desktop"}`, "可用性监控保留额度耗尽原因", "viewport");
+    await row.locator(".provider-account-quota-wrap > button").click();
+    await page.getByRole("button", { name: `刷新额度 ${resource.name}`, exact: true }).click();
+    await expect.poll(() => api.calls.filter(call => call.path.endsWith(`/${resource.id}/quota`)).length).toBe(1);
+    await expect(row.locator(".provider-account-quota strong")).toHaveText("75%");
+  });
 }
 
 for (const outcome of ["success", "failure"] as const) {

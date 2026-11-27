@@ -34,7 +34,7 @@ import { ProviderPluginPanels, providerQuotaPanelDescription, providerQuotaPanel
 import { ProviderPluginFormSections } from "./provider-plugin-form-sections";
 import { providerHeaderFormError, providerHeadersFormValue, providerHeadersPayload } from "../domain/provider-headers";
 import { isProviderAccountResourceForData, isProviderAccountResourceTypeForData } from "../domain/provider-resource-types";
-import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderQuotaWindowDetails, providerAccountQuotaIsLimited, providerAccountQuotaMetrics, providerAccountQuotaPrimaryWindow, providerAccountQuotaSecondaryWindow, providerAccountQuotaStatusLabel, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaWindowResetLabel } from "./provider-account-ui";
+import { formatImageGenerationCapability, formatImageGenerationCapabilityTag, formatQuotaPercent, launchProviderAccountAuthorization, type ProviderAccountOAuthAction, ProviderAccountDetails, ProviderQuotaWindowDetails, providerAccountQuotaMetrics, providerAccountQuotaPrimaryWindow, providerAccountQuotaSecondaryWindow, providerAccountQuotaStatusLabel, providerAccountQuotaStatusTone, ProviderAccountTokenRenewal, ProviderOAuthCallbackModal, ProviderOAuthNoticeModal, providerResourceAccountLabel, QuotaMetric, quotaWindowResetLabel } from "./provider-account-ui";
 type ProviderEditTab = "connect" | "models" | "advanced";
 type ProviderAccountConfirmation = { action: "enable" | "disable" | "delete"; resource: ProviderResource };
 const deleteAccountConfirmationPhrase = "DELETE THIS ACCOUNT";
@@ -1383,7 +1383,6 @@ export function ProviderUpsertModal({
                     const secondary = providerAccountQuotaSecondaryWindow(quota);
                     const accountEmail = providerResourceAccountLabel(resource);
                     const quotaStatus = providerAccountQuotaStatusLabel(quota);
-                    const quotaLimited = providerAccountQuotaIsLimited(quota);
                     const imageCapability = imageCapabilityProfile ? resource.options?.[imageCapabilityProfile.capabilityOption] : undefined;
                     const metrics = providerAccountQuotaMetrics(quota);
                     return (
@@ -1394,7 +1393,7 @@ export function ProviderUpsertModal({
                             <strong>{accountEmail}</strong>
                           </div>
                           <div className="provider-quota-card-actions">
-                            {quota ? <span className={`provider-quota-status ${quotaLimited ? "limited" : "available"}`}>{tx(quotaStatus)}</span> : null}
+                            {quota ? <span className={`provider-quota-status ${providerAccountQuotaStatusTone(quota)}`}>{tx(quotaStatus)}</span> : null}
                             {imageCapabilityProfile ? <span className={`provider-image-capability ${imageCapability || "unknown"}`}>
                               {tx(formatImageGenerationCapabilityTag(imageCapability, imageCapabilityProfile?.capabilitySupportedValue, imageCapabilityProfile?.capabilityUnsupportedValue))}
                             </span> : null}

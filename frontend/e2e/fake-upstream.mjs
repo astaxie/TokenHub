@@ -14,6 +14,17 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "GET" && request.url === "/quota/header-rename") {
+    const valid = request.headers["x-new"] === "synthetic-replacement"
+      && request.headers["x-keep"] === "synthetic-retained"
+      && request.headers["x-quota-token"] === undefined;
+    response.writeHead(valid ? 200 : 401, { "content-type": "application/json" });
+    response.end(JSON.stringify(valid
+      ? { remaining: 12.5 }
+      : { error: { message: "invalid quota test headers" } }));
+    return;
+  }
+
   if (request.method === "GET" && ["/v1/models", "/open/v1/models"].includes(request.url)) {
     const expectedAuthorization = request.url === "/open/v1/models" ? undefined : `Bearer ${expectedKey}`;
     if (request.headers.authorization !== expectedAuthorization) {

@@ -618,6 +618,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			return err
 		}
 	}
+	if s.providerAllowanceRefresh != nil {
+		if err := s.providerAllowanceRefresh.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
 	if s.providerMonitoring != nil {
 		if err := s.providerMonitoring.Shutdown(ctx); err != nil {
 			return err
