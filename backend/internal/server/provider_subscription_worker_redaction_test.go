@@ -110,8 +110,8 @@ func TestSubscriptionWorkerStreamTracksRotationsAndRequestHeaders(t *testing.T) 
 			t.Fatal(err)
 		}
 		parts := strings.Split(string(body), "event: error")
-		if len(parts) != 2 || !strings.Contains(parts[0], "saved-secret rotated-secret signed-secret-1 vendor-secret cookie-secret") {
-			t.Fatal("Normal model content was changed")
+		if len(parts) != 2 || strings.Contains(parts[0], "vendor-secret") || !strings.Contains(parts[0], providerHeaderMask) {
+			t.Fatal("Stream content exposed a current credential")
 		}
 		for _, secret := range []string{"rotated-secret", "signed-secret-" + strconv.Itoa(attempt), "vendor-secret", "cookie-secret"} {
 			if strings.Contains(parts[1], secret) {

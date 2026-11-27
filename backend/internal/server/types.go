@@ -62,6 +62,7 @@ var (
 )
 
 type HTTPError struct {
+	diagnostic     string
 	Status         int
 	Code           string
 	Message        string
@@ -1269,7 +1270,8 @@ type RouteExplainStep struct {
 }
 
 type RouteAttempt struct {
-	Selection RouteSelection `json:"selection"`
+	diagnostic string
+	Selection  RouteSelection `json:"selection"`
 	// Status is what the caller was told. UpstreamStatus is what the provider
 	// actually answered, which the mapping to Status deliberately does not
 	// preserve — an upstream 401 is reported as 502 so a caller does not read it

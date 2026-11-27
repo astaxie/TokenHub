@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -391,10 +390,10 @@ func (s *Server) handleStreamingGemini(w http.ResponseWriter, r *http.Request, r
 			w.Header().Set("x-request-id", routed.Call.RequestID)
 			s.writeRouteHeaders(w, routed.Call, prepared, attempt)
 		}
-		streamWriter := io.Writer(tracker)
+		streamWriter := redactStreamOutput(tracker, prepared.Provider)
 		var transformer *gatewayStreamTransformWriter
 		if s.hasGatewayStreamTransformHooksForRoute(prepared, providerRouteProtocolGemini) {
-			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolGemini, tracker)
+			transformer = s.newGatewayStreamTransformWriter(ctx, routed.Call, prepared, providerRouteProtocolGemini, streamWriter)
 			streamWriter = transformer
 		}
 		headers := r.Header

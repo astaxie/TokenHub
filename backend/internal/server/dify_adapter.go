@@ -188,6 +188,9 @@ func (a DifyAdapter) do(ctx context.Context, provider Provider, req ChatCompleti
 	if err := checkProviderResponseForProvider(resp, provider); err != nil {
 		return nil, err
 	}
+	if stream {
+		guardProviderSSE(resp, provider, mediaChatStreamLimit(ctx))
+	}
 	return resp, nil
 }
 

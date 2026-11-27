@@ -1347,6 +1347,10 @@ func (s *GormStore) GetImageAsset(id string) (ImageAsset, bool) {
 // RouteAttempt type rather than to the store, and keeping it here means adding a
 // field to an attempt touches one function instead of the store's largest file.
 func newRouteAttemptLog(requestID string, index int, attempt RouteAttempt, now time.Time) RouteAttemptLog {
+	message := attempt.Error
+	if attempt.diagnostic != "" {
+		message = attempt.diagnostic
+	}
 	return RouteAttemptLog{
 		ID:                       NewID("rat"),
 		RequestID:                requestID,
@@ -1358,7 +1362,7 @@ func newRouteAttemptLog(requestID string, index int, attempt RouteAttempt, now t
 		StatusCode:               attempt.Status,
 		UpstreamStatus:           attempt.UpstreamStatus,
 		ErrorCode:                attempt.ErrorCode,
-		ErrorMessage:             attempt.Error,
+		ErrorMessage:             message,
 		Invoked:                  attempt.Invoked,
 		LatencyMS:                attempt.LatencyMS,
 		ServedModel:              attempt.Usage.ServedModel,

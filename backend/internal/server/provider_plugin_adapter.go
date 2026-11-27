@@ -121,6 +121,11 @@ func (a providerPluginAdapter) Chat(ctx context.Context, provider Provider, prov
 	}, &result); err != nil {
 		return nil, Usage{}, err
 	}
+	if body, ok := result.Response.(map[string]any); ok {
+		if err := checkProviderResult(body, "choices", provider, 0); err != nil {
+			return nil, result.Usage, err
+		}
+	}
 	return result.Response, result.Usage, nil
 }
 
@@ -139,12 +144,13 @@ func (a providerPluginAdapter) ChatStream(ctx context.Context, provider Provider
 	}, &result); err != nil {
 		return Usage{}, err
 	}
+	patterns := newStreamSecretPatterns(provider)
 	for _, event := range result.Events {
 		rendered, err := renderProviderPluginStreamEvent(event)
 		if err != nil {
 			return Usage{}, err
 		}
-		if _, err := writer.Write(rendered); err != nil {
+		if _, err := writer.Write(patterns.redact(rendered)); err != nil {
 			return Usage{}, err
 		}
 		if flusher, ok := writer.(streamFlusher); ok {
@@ -166,6 +172,11 @@ func (a providerPluginAdapter) Responses(ctx context.Context, provider Provider,
 	}, &result); err != nil {
 		return nil, Usage{}, err
 	}
+	if body, ok := result.Response.(map[string]any); ok {
+		if err := checkProviderResult(body, "output", provider, 0); err != nil {
+			return nil, result.Usage, err
+		}
+	}
 	return result.Response, result.Usage, nil
 }
 
@@ -185,12 +196,13 @@ func (a providerPluginAdapter) OpenResponses(ctx context.Context, provider Provi
 		return nil, err
 	}
 	var body bytes.Buffer
+	patterns := newStreamSecretPatterns(provider)
 	for _, event := range result.Events {
 		rendered, err := renderProviderPluginStreamEvent(event)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := body.Write(rendered); err != nil {
+		if _, err := body.Write(patterns.redact(rendered)); err != nil {
 			return nil, err
 		}
 	}

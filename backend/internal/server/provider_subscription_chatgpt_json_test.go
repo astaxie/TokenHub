@@ -120,11 +120,12 @@ func TestChatGPTSubscriptionSuccessfulStreamRemainsIncremental(t *testing.T) {
 	}
 	defer opened.Body.Close()
 	result := make(chan error, 1)
-	data := make([]byte, len(first))
+	expected := strings.ReplaceAll(first, "direct-token", providerHeaderMask)
+	data := make([]byte, len(expected))
 	go func() { _, err := io.ReadFull(opened.Body, data); result <- err }()
 	select {
 	case err := <-result:
-		if err != nil || string(data) != first {
+		if err != nil || string(data) != expected {
 			t.Fatalf("normal output changed: %q, %v", data, err)
 		}
 	case <-time.After(time.Second):

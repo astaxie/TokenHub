@@ -679,7 +679,7 @@ func TestStreamingProviderErrorsRedactEffectiveSensitiveHeaderValues(t *testing.
 	}
 
 	var nativeOutput bytes.Buffer
-	if _, err := copyNativeAnthropicStreamForProvider(&nativeOutput, strings.NewReader(anthropicStream), "model", provider); err == nil {
+	if _, err := copyNativeAnthropicStreamForProvider(&nativeOutput, strings.NewReader(anthropicStream), "model", provider, http.StatusOK); err == nil {
 		t.Fatalf("in-band Anthropic error must fail the stream: %s", nativeOutput.String())
 	}
 	if output := nativeOutput.String(); strings.Contains(output, "tenant-secret") {
@@ -687,33 +687,33 @@ func TestStreamingProviderErrorsRedactEffectiveSensitiveHeaderValues(t *testing.
 	}
 }
 
-func TestStreamingProviderRedactionPreservesSuccessfulContent(t *testing.T) {
+func TestStreamingProviderRedactsCredentialsInSuccessfulContent(t *testing.T) {
 	provider := Provider{Headers: map[string]string{"X-Tenant": "tenant-secret"}, SensitiveHeaders: []string{"X-Tenant"}}
 	openAIStream := "data: {\"choices\":[{\"delta\":{\"content\":\"tenant-secret\"}}]}\n\n"
 	var openAIOutput bytes.Buffer
 	if _, err := copyOpenAIStreamAndUsageForProvider(&openAIOutput, strings.NewReader(openAIStream), provider); err != nil {
 		t.Fatal(err)
 	}
-	if output := openAIOutput.String(); !strings.Contains(output, "tenant-secret") {
-		t.Fatalf("OpenAI success content was modified: %s", output)
+	if output := openAIOutput.String(); strings.Contains(output, "tenant-secret") || !strings.Contains(output, providerHeaderMask) {
+		t.Fatalf("OpenAI success content was not redacted: %s", output)
 	}
 	responsesStream := "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"error\":null,\"output_text\":\"tenant-secret\"}}\n\n"
 	var responsesOutput bytes.Buffer
 	if _, err := copyOpenAIStreamAndUsageForProvider(&responsesOutput, strings.NewReader(responsesStream), provider); err != nil {
 		t.Fatal(err)
 	}
-	if output := responsesOutput.String(); !strings.Contains(output, "tenant-secret") {
-		t.Fatalf("OpenAI Responses success content was modified: %s", output)
+	if output := responsesOutput.String(); strings.Contains(output, "tenant-secret") || !strings.Contains(output, providerHeaderMask) {
+		t.Fatalf("OpenAI Responses success content was not redacted: %s", output)
 	}
 
 	nativeStream := "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"tenant-secret\"}}\n\n" +
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 	var nativeOutput bytes.Buffer
-	if _, err := copyNativeAnthropicStreamForProvider(&nativeOutput, strings.NewReader(nativeStream), "model", provider); err != nil {
+	if _, err := copyNativeAnthropicStreamForProvider(&nativeOutput, strings.NewReader(nativeStream), "model", provider, http.StatusOK); err != nil {
 		t.Fatal(err)
 	}
-	if output := nativeOutput.String(); !strings.Contains(output, "tenant-secret") {
-		t.Fatalf("native Anthropic success content was modified: %s", output)
+	if output := nativeOutput.String(); strings.Contains(output, "tenant-secret") || !strings.Contains(output, providerHeaderMask) {
+		t.Fatalf("native Anthropic success content was not redacted: %s", output)
 	}
 }
 

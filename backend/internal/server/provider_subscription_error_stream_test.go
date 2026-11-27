@@ -18,7 +18,7 @@ func TestSubscriptionErrorStreamPreservesValidPendingOutput(t *testing.T) {
 			reader = newCopilotSubscriptionStream(body, Provider{}, "account-secret", "session-secret", 0)
 		}
 		data, err := io.ReadAll(reader)
-		if !errors.Is(err, failure) || string(data) != frame {
+		if !errors.Is(err, failure) || string(data) != strings.ReplaceAll(frame, "session-secret", providerHeaderMask) {
 			t.Fatalf("ordinary pending output changed (copilot=%t): %q, %v", copilot, data, err)
 		}
 	}
@@ -30,8 +30,9 @@ func TestSubscriptionErrorStreamUsesCurrentRequestSecretsAndClosesBody(t *testin
 	secret := "original-secret"
 	body := &subscriptionTrackedReadCloser{Reader: strings.NewReader(ordinary + failure)}
 	reader := newSubscriptionErrorStream(body, func() Provider { return Provider{APIKey: secret} }, 0)
-	first := make([]byte, len(ordinary))
-	if _, err := io.ReadFull(reader, first); err != nil || string(first) != ordinary {
+	expected := strings.ReplaceAll(ordinary, secret, providerHeaderMask)
+	first := make([]byte, len(expected))
+	if _, err := io.ReadFull(reader, first); err != nil || string(first) != expected {
 		t.Fatalf("ordinary model output changed: %q, %v", first, err)
 	}
 	secret = "rotated-secret"

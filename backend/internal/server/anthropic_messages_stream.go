@@ -25,18 +25,19 @@ func (s *Server) streamNativeAnthropicMessages(
 		return Usage{}, err
 	}
 	defer resp.Body.Close()
-	return copyNativeAnthropicStreamForProvider(writer, resp.Body, req.Model, route.Provider)
+	return copyNativeAnthropicStreamForProvider(writer, resp.Body, req.Model, route.Provider, resp.StatusCode)
 }
 
 // copyNativeAnthropicStream forwards an upstream Anthropic event stream to the
 // client, rewriting only the model name each data frame reports and collecting
 // usage on the way past.
 func copyNativeAnthropicStream(writer io.Writer, body io.Reader, model string) (Usage, error) {
-	return copyNativeAnthropicStreamForProvider(writer, body, model, Provider{})
+	return copyNativeAnthropicStreamForProvider(writer, body, model, Provider{}, http.StatusOK)
 }
 
-func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, model string, provider Provider) (Usage, error) {
-	events := newSSEDecoder(body)
+func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, model string, provider Provider, status int) (Usage, error) {
+	events := passthroughSSEDecoder(body, provider, 0, status)
+	patterns := newStreamSecretPatterns(provider)
 	var usage Usage
 	sawEvent := false
 	sawMessageStop := false
@@ -108,7 +109,7 @@ func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, mode
 			// client must see it — then the stream is reported failed. The marker
 			// tells the handler the terminal event already reached the client, so it
 			// must not append a second one.
-			if _, err := writer.Write(output); err != nil {
+			if _, err := writer.Write(patterns.redact(output)); err != nil {
 				return usage, err
 			}
 			if flusher, ok := writer.(http.Flusher); ok {
@@ -134,7 +135,7 @@ func copyNativeAnthropicStreamForProvider(writer io.Writer, body io.Reader, mode
 		if event.Event == "message_stop" || (ok && payload["type"] == "message_stop") {
 			sawMessageStop = true
 		}
-		if _, err := writer.Write(output); err != nil {
+		if _, err := writer.Write(patterns.redact(output)); err != nil {
 			return usage, err
 		}
 		if flusher, ok := writer.(http.Flusher); ok {

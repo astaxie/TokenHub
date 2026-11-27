@@ -220,7 +220,7 @@ func TestCopyNativeAnthropicStreamErrorFrameRedactsClassification(t *testing.T) 
 	provider := Provider{APIKey: "provider-api-secret"}
 	stream := "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"provider-api-secret failed\"}}\n\n"
 	var output bytes.Buffer
-	_, err := copyNativeAnthropicStreamForProvider(&output, strings.NewReader(stream), "model", provider)
+	_, err := copyNativeAnthropicStreamForProvider(&output, strings.NewReader(stream), "model", provider, http.StatusOK)
 	if err == nil {
 		t.Fatal("an in-band error frame must fail the stream")
 	}
@@ -583,7 +583,7 @@ func TestCopyOpenAIStreamWithholdsBytesOfAnOversizedEvent(t *testing.T) {
 func TestSSEDecoderDoesNotAccumulateBlankLineHeartbeats(t *testing.T) {
 	// A stream of bare separators carries no fields. Holding them back would
 	// charge them all against one event budget and eventually fail the stream.
-	stream := strings.Repeat("\n", 4*(maxSSEEventBytes/3))
+	stream := ": heartbeat\n" + strings.Repeat("\n", 4*(maxSSEEventBytes/3))
 	var output strings.Builder
 
 	if _, err := copyOpenAIStreamAndUsage(&output, strings.NewReader(stream)); err != nil {

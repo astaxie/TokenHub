@@ -28,6 +28,9 @@ type streamWriteTracker struct {
 }
 
 func (w *streamWriteTracker) Write(data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
 	attemptedAt := time.Now()
 	if !w.wrote {
 		if w.onFirstWrite != nil {
@@ -97,7 +100,7 @@ func (w *streamWriteTracker) firstByteTime(success bool) time.Time {
 }
 
 func (w *streamWriteTracker) Flush() {
-	if w == nil {
+	if w == nil || !w.wrote {
 		return
 	}
 	if flusher, ok := w.writer.(http.Flusher); ok {

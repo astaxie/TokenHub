@@ -778,7 +778,7 @@ func TestAPIKeyTPMReturnsCodexReservationWhenStreamHasNoBody(t *testing.T) {
 	response := doJSON(t, server.Handler(), http.MethodPost, "/v1/responses", map[string]any{
 		"model": "gpt-codex-empty", "input": "a", "stream": true, "max_output_tokens": 2,
 	}, secret)
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusBadGateway {
 		t.Fatalf("empty Codex stream returned %d: %s", response.Code, response.Body)
 	}
 	var bucket QuotaBucket
