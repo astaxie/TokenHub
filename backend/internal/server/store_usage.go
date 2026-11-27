@@ -287,6 +287,16 @@ func (s *GormStore) GetRequestDetail(requestID string) (map[string]any, error) {
 	var payload RequestPayloadLog
 	var payloadValue any
 	if err := s.db.First(&payload, "request_id = ?", requestID).Error; err == nil {
+		if payload.RequestChunked {
+			if full := reassemblePayloadChunks(s.db, requestID, "request"); full != "" {
+				payload.RequestBody = full
+			}
+		}
+		if payload.ResponseChunked {
+			if full := reassemblePayloadChunks(s.db, requestID, "response"); full != "" {
+				payload.ResponseBody = full
+			}
+		}
 		payloadValue = payload
 	}
 	return map[string]any{

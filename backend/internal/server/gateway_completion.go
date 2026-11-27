@@ -126,13 +126,12 @@ func (s *Server) finishCall(completion GatewayCallCompletion) {
 	// re-marshal the whole body on its own; tracing doing the same again would double
 	// that cost and, worse, keep the raw graph alive for as long as an export queue
 	// held the completion.
-	requestBody, requestTruncated := auditPayloadBody(completion.RequestPayload)
-	responseBody, responseTruncated := auditPayloadBody(completion.ResponsePayload)
-	s.store.RecordRequestPayload(completion.Call.RequestID, requestBody, requestTruncated, responseBody, responseTruncated)
+	record, requestPreview, responsePreview := s.auditPayloadRecord(completion.RequestPayload, completion.ResponsePayload)
+	s.store.RecordRequestPayload(completion.Call.RequestID, record)
 	completion.RequestPayload, completion.ResponsePayload = nil, nil
 	if s.config.TracingCapturePayloads {
-		completion.RequestBody = requestBody
-		completion.ResponseBody = responseBody
+		completion.RequestBody = requestPreview
+		completion.ResponseBody = responsePreview
 	} else {
 		// Cleared rather than filtered later: content that must not leave the process
 		// should not sit in an export queue in the first place. Upstream error text is

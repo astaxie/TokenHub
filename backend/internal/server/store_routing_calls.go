@@ -996,19 +996,38 @@ func (s *GormStore) loadModelNames() ([]string, error) {
 	return names, nil
 }
 
-func (s *GormStore) RecordRequestPayload(requestID string, requestBody string, requestTruncated bool, responseBody string, responseTruncated bool) {
+func (s *GormStore) RecordRequestPayload(requestID string, record RequestPayloadRecord) {
 	if requestID == "" {
 		return
 	}
-	_ = s.db.Create(&RequestPayloadLog{
-		ID:                NewID("pay"),
-		RequestID:         requestID,
-		RequestBody:       requestBody,
-		ResponseBody:      responseBody,
-		RequestTruncated:  requestTruncated,
-		ResponseTruncated: responseTruncated,
-		CreatedAt:         time.Now().UTC(),
-	}).Error
+	requestBody := record.RequestPreview
+	responseBody := record.ResponsePreview
+	requestChunked := record.RequestTruncated && len(record.RequestBody) > len(requestBody)
+	responseChunked := record.ResponseTruncated && len(record.ResponseBody) > len(responseBody)
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if requestChunked {
+			if err := storePayloadChunkRefs(tx, requestID, "request", record.RequestBody); err != nil {
+				return err
+			}
+		}
+		if responseChunked {
+			if err := storePayloadChunkRefs(tx, requestID, "response", record.ResponseBody); err != nil {
+				return err
+			}
+		}
+		return tx.Create(&RequestPayloadLog{
+			ID:                NewID("pay"),
+			RequestID:         requestID,
+			RequestBody:       requestBody,
+			ResponseBody:      responseBody,
+			RequestTruncated:  record.RequestTruncated,
+			ResponseTruncated: record.ResponseTruncated,
+			RequestChunked:    requestChunked,
+			ResponseChunked:   responseChunked,
+			CreatedAt:         time.Now().UTC(),
+		}).Error
+	})
+	_ = err
 }
 
 func (s *GormStore) rollbackImageJobAdmission(tx *gorm.DB, job ImageJob) error {

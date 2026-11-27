@@ -225,9 +225,26 @@ func errorResponseHeaders(w http.ResponseWriter, err error) string {
 }
 
 func (s *Server) recordRequestPayload(requestID string, requestPayload any, responsePayload any) {
-	requestBody, requestTruncated := auditPayloadBody(requestPayload)
-	responseBody, responseTruncated := auditPayloadBody(responsePayload)
-	s.store.RecordRequestPayload(requestID, requestBody, requestTruncated, responseBody, responseTruncated)
+	record, _, _ := s.auditPayloadRecord(requestPayload, responsePayload)
+	s.store.RecordRequestPayload(requestID, record)
+}
+
+// auditPayloadRecord renders both snapshot directions once under the
+// configured audit limits. The full bodies go to chunk storage; the previews
+// bound the legacy inline columns and trace exports.
+func (s *Server) auditPayloadRecord(requestPayload any, responsePayload any) (RequestPayloadRecord, string, string) {
+	requestBody, requestTruncated := renderAuditPayload(requestPayload, s.auditLimits)
+	responseBody, responseTruncated := renderAuditPayload(responsePayload, s.auditLimits)
+	requestPreview := truncateAuditPreview(requestBody, s.auditLimits)
+	responsePreview := truncateAuditPreview(responseBody, s.auditLimits)
+	return RequestPayloadRecord{
+		RequestBody:       requestBody,
+		RequestPreview:    requestPreview,
+		RequestTruncated:  requestTruncated,
+		ResponseBody:      responseBody,
+		ResponsePreview:   responsePreview,
+		ResponseTruncated: responseTruncated,
+	}, requestPreview, responsePreview
 }
 
 func redactAuditPayload(value any) any {

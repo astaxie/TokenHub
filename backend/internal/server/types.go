@@ -559,13 +559,18 @@ type RequestLog struct {
 }
 
 type RequestPayloadLog struct {
-	ID                string    `json:"id" gorm:"primaryKey"`
-	RequestID         string    `json:"request_id" gorm:"uniqueIndex"`
-	RequestBody       string    `json:"request_body,omitempty"`
-	ResponseBody      string    `json:"response_body,omitempty"`
-	RequestTruncated  bool      `json:"request_truncated"`
-	ResponseTruncated bool      `json:"response_truncated"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID                string `json:"id" gorm:"primaryKey"`
+	RequestID         string `json:"request_id" gorm:"uniqueIndex"`
+	RequestBody       string `json:"request_body,omitempty"`
+	ResponseBody      string `json:"response_body,omitempty"`
+	RequestTruncated  bool   `json:"request_truncated"`
+	ResponseTruncated bool   `json:"response_truncated"`
+	// Chunked marks snapshots stored in payload_chunks. When set, the inline
+	// body columns hold only a preview; GetRequestDetail reassembles the full
+	// text from the chunk references.
+	RequestChunked  bool      `json:"request_chunked"`
+	ResponseChunked bool      `json:"response_chunked"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type ImageJob struct {

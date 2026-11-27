@@ -114,14 +114,14 @@ func BenchmarkPlanRouteOrderRendezvous(b *testing.B) {
 }
 
 func BenchmarkGatewayPayloadAuditRendering(b *testing.B) {
-	for _, size := range []int{256, 32 * 1024, 8 * 1024 * 1024} {
+	for _, size := range []int{256, 32 * 1024, 192 * 1024, 8 * 1024 * 1024} {
 		b.Run(fmt.Sprintf("Bytes%d", size), func(b *testing.B) {
 			payload := map[string]any{"prompt": strings.Repeat("x", size), "metadata": map[string]any{"source": "benchmark"}}
 			b.ReportAllocs()
 			b.SetBytes(int64(size))
 			for range b.N {
 				body, truncated := auditPayloadBody(payload)
-				if body == "" || truncated != (size >= auditPayloadMaxBytes) {
+				if body == "" || truncated != (size >= defaultAuditPayloadMaxBytes) {
 					b.Fatal("unexpected rendered audit payload")
 				}
 			}
@@ -140,7 +140,7 @@ type benchmarkPayloadPersistenceStore struct {
 	Store
 }
 
-func (benchmarkPayloadPersistenceStore) RecordRequestPayload(string, string, bool, string, bool) {}
+func (benchmarkPayloadPersistenceStore) RecordRequestPayload(string, RequestPayloadRecord) {}
 
 func benchmarkDatabaseMatrix(b *testing.B, benchmark func(*testing.B, *GormStore)) {
 	b.Helper()

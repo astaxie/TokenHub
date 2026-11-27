@@ -134,6 +134,13 @@ type Config struct {
 	ResponseMaxQueuedJobs        int
 	MaxJSONRequestBytes          int64
 	MaxMultimodalRequestBytes    int64
+	// AuditPayloadScanKB and AuditPayloadMaxKB bound audit snapshot rendering
+	// and the inline preview size. Defaults keep the historical 64 KiB scan
+	// budget and 8 KiB preview; raising them trades storage for the ability to
+	// replay agent-sized requests. Large snapshots are stored as deduplicated
+	// chunks, so the preview column stays bounded either way.
+	AuditPayloadScanKB int
+	AuditPayloadMaxKB  int
 }
 
 func ConfigFromEnv() Config {
@@ -209,6 +216,8 @@ func ConfigFromEnv() Config {
 		ResponseMaxQueuedJobs:        getenvInt("TOKENHUB_RESPONSE_MAX_QUEUED_JOBS", 1000),
 		MaxJSONRequestBytes:          getenvBytes("TOKENHUB_MAX_JSON_REQUEST_BYTES", defaultMaxJSONRequestBytes),
 		MaxMultimodalRequestBytes:    getenvBytes("TOKENHUB_MAX_MULTIMODAL_REQUEST_BYTES", defaultMaxMultimodalRequestBytes),
+		AuditPayloadScanKB:           getenvSetInt("TOKENHUB_AUDIT_PAYLOAD_SCAN_KB", defaultAuditPayloadScanKB),
+		AuditPayloadMaxKB:            getenvSetInt("TOKENHUB_AUDIT_PAYLOAD_MAX_KB", defaultAuditPayloadMaxKB),
 	}
 }
 

@@ -179,7 +179,38 @@ WHERE id IN (
 		}
 		total += result.RowsAffected
 		if result.RowsAffected < int64(batchSize) {
-			return total, nil
+			break
+		}
+	}
+	if err := s.gcOrphanedPayloadChunks(ctx, cutoff.UTC(), batchSize); err != nil {
+		return total, err
+	}
+	return total, nil
+}
+
+// gcOrphanedPayloadChunks drops chunk references whose payload row is gone and
+// then the unreferenced chunks older than the cutoff. Both steps run in
+// indexed batches; the NOT EXISTS guard keeps chunks that newer requests still
+// reference even though the chunks themselves predate the cutoff.
+func (s *GormStore) gcOrphanedPayloadChunks(ctx context.Context, cutoff time.Time, batchSize int) error {
+	if err := s.db.WithContext(ctx).Exec(`DELETE FROM payload_chunk_refs
+WHERE request_id NOT IN (SELECT request_id FROM request_payload_logs)`).Error; err != nil {
+		return fmt.Errorf("delete orphaned request payload chunk references: %w", err)
+	}
+	for {
+		result := s.db.WithContext(ctx).Exec(`DELETE FROM payload_chunks
+WHERE hash IN (
+    SELECT hash FROM payload_chunks
+    WHERE created_at < ? AND NOT EXISTS (
+        SELECT 1 FROM payload_chunk_refs WHERE chunk_hash = payload_chunks.hash
+    )
+    LIMIT ?
+)`, cutoff, batchSize)
+		if result.Error != nil {
+			return fmt.Errorf("delete orphaned request payload chunks: %w", result.Error)
+		}
+		if result.RowsAffected < int64(batchSize) {
+			return nil
 		}
 	}
 }
