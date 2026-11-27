@@ -140,3 +140,43 @@ func TestCatalogBudgetDeclarationsKeepWireNames(t *testing.T) {
 		})
 	}
 }
+
+func TestJevImportedGemini4SupportsToolChoiceAndCompletionBudget(t *testing.T) {
+	entries, err := loadLocalProviderCatalog("../../../data/provider-catalog.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req ChatCompletionRequest
+	if err := json.Unmarshal([]byte(`{"model":"auto-chat","messages":[{"role":"user","content":"test"}],"max_completion_tokens":512,"tools":[{"type":"function","function":{"name":"lookup"}}],"tool_choice":"required"}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"gemini-4-argon": true, "gemini-4-carbon": true, "gemini-4-hydrogen": true, "gemini-4-neon": true}
+	for _, entry := range entries {
+		if entry.ID != "google" {
+			continue
+		}
+		for _, catalogModel := range entry.Models {
+			if !want[catalogModel.ID] {
+				continue
+			}
+			delete(want, catalogModel.ID)
+			model := providerModelFromCatalog("gemini-fixture", catalogModel)
+			if admission := jevChatAdmission(model, req, false); admission.rejected() {
+				t.Fatalf("%s rejected supported request: %+v", catalogModel.ID, admission)
+			}
+			payload, err := buildGeminiRequest(catalogModel.ID, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := payload["generationConfig"].(map[string]any)["maxOutputTokens"]; got != int64(512) {
+				t.Errorf("%s mapped max_completion_tokens to %v", catalogModel.ID, got)
+			}
+			if got := payload["toolConfig"].(map[string]any)["functionCallingConfig"].(map[string]any)["mode"]; got != "ANY" {
+				t.Errorf("%s mapped tool_choice to %v", catalogModel.ID, got)
+			}
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("Gemini 4 catalog entries missing: %v", want)
+	}
+}

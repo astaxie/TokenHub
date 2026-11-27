@@ -245,8 +245,8 @@ func TestUserCanReadRoutedAdminModels(t *testing.T) {
 		t.Fatalf("expected only active routed models: %s", models.Body)
 	}
 	overview := doJSON(t, app, http.MethodGet, "/api/admin/overview", nil, payload.Token)
-	if overview.Code != http.StatusOK || !strings.Contains(overview.Body, `"name":"gpt-4.1-mini"`) {
-		t.Fatalf("expected overview to include accessible models, got %d: %s", overview.Code, overview.Body)
+	if overview.Code != http.StatusOK || !strings.Contains(overview.Body, `"active_model_count":1`) || strings.Contains(overview.Body, `"models":`) {
+		t.Fatalf("expected overview to count accessible models without details, got %d: %s", overview.Code, overview.Body)
 	}
 	create := doJSON(t, app, http.MethodPost, "/api/admin/models", map[string]any{
 		"name":   "viewer-created-model",

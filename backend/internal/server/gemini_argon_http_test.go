@@ -12,10 +12,25 @@ import (
 	"testing"
 )
 
-func TestGeminiArgonHTTPChatAndStreamContract(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		for _, effort := range []string{"low", "medium", "high"} {
-			t.Run(fmt.Sprintf("stream_%t_%s", stream, effort), func(t *testing.T) {
+func TestGemini4HTTPChatAndStreamContract(t *testing.T) {
+	for _, tc := range []struct{ model, effort string }{
+		{"gemini-4-argon", "low"},
+		{"gemini-4-argon", "medium"},
+		{"gemini-4-argon", "high"},
+		{"gemini-4-carbon", "medium"},
+		{"gemini-4-hydrogen", "xhigh"},
+		{"gemini-4-neon", "xhigh"},
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream_%t_%s", tc.model, stream, tc.effort), func(t *testing.T) {
+				wantLimit := 65536
+				if !stream && (tc.model == "gemini-4-argon" || tc.model == "gemini-4-carbon") {
+					wantLimit = 32768
+				}
+				wantLevel := tc.effort
+				if wantLevel == "xhigh" {
+					wantLevel = "XHIGH"
+				}
 				var calls atomic.Int32
 				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					calls.Add(1)
@@ -23,7 +38,7 @@ func TestGeminiArgonHTTPChatAndStreamContract(t *testing.T) {
 					if stream {
 						action = ":streamGenerateContent"
 					}
-					if r.Method != http.MethodPost || r.URL.Path != "/v1beta/models/gemini-4-argon"+action {
+					if r.Method != http.MethodPost || r.URL.Path != "/v1beta/models/"+tc.model+action {
 						t.Errorf("unexpected native request: %s %s", r.Method, r.URL.Path)
 					}
 					if (r.URL.Query().Get("alt") == "sse") != stream {
@@ -51,7 +66,7 @@ func TestGeminiArgonHTTPChatAndStreamContract(t *testing.T) {
 					if len(body.Contents) != 1 || body.Contents[0].Role != "user" || len(body.Contents[0].Parts) != 1 || body.Contents[0].Parts[0].Text != "synthetic task" {
 						t.Errorf("lost prompt: %+v", body.Contents)
 					}
-					if body.GenerationConfig.MaxOutputTokens != 65536 || body.GenerationConfig.ThinkingConfig.ThinkingLevel != effort {
+					if body.GenerationConfig.MaxOutputTokens != wantLimit || body.GenerationConfig.ThinkingConfig.ThinkingLevel != wantLevel {
 						t.Errorf("lost budget or effort: %+v", body.GenerationConfig)
 					}
 					reply := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Synthetic answer"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":20,"cachedContentTokenCount":7,"candidatesTokenCount":5,"thoughtsTokenCount":3,"totalTokenCount":28}}`
@@ -66,20 +81,20 @@ func TestGeminiArgonHTTPChatAndStreamContract(t *testing.T) {
 				defer upstream.Close()
 				adapter := GeminiAdapter{Client: upstream.Client()}
 				provider := Provider{BaseURL: upstream.URL + "/v1beta"}
-				req := ChatCompletionRequest{Model: "public-argon", Messages: []ChatMessage{{Role: "user", Content: "synthetic task"}}, MaxTokens: 65536, ReasoningEffort: &effort}
+				req := ChatCompletionRequest{Model: "public-gemini", Messages: []ChatMessage{{Role: "user", Content: "synthetic task"}}, Stream: !stream, ReasoningEffort: &tc.effort}
 				var usage Usage
 				var err error
 				if stream {
 					var out bytes.Buffer
-					usage, err = adapter.ChatStream(context.Background(), provider, "gemini-4-argon", req, &out)
-					if !strings.Contains(out.String(), "Synthetic answer") || !strings.Contains(out.String(), "[DONE]") || !strings.Contains(out.String(), "public-argon") {
+					usage, err = adapter.ChatStream(context.Background(), provider, tc.model, req, &out)
+					if !strings.Contains(out.String(), "Synthetic answer") || !strings.Contains(out.String(), "[DONE]") || !strings.Contains(out.String(), "public-gemini") {
 						t.Errorf("invalid OpenAI stream: %s", out.String())
 					}
 				} else {
 					var result any
-					result, usage, err = adapter.Chat(context.Background(), provider, "gemini-4-argon", req)
+					result, usage, err = adapter.Chat(context.Background(), provider, tc.model, req)
 					body, ok := result.(map[string]any)
-					if !ok || choiceText(body) != "Synthetic answer" || body["model"] != "public-argon" {
+					if !ok || choiceText(body) != "Synthetic answer" || body["model"] != "public-gemini" {
 						t.Errorf("invalid OpenAI response: %#v", result)
 					}
 				}
@@ -105,7 +120,7 @@ func TestGeminiArgonRejectsInvalidContractBeforeHTTP(t *testing.T) {
 	provider := Provider{BaseURL: upstream.URL}
 	for _, stream := range []bool{false, true} {
 		for _, effort := range []string{"none", "minimal", "xhigh", "max", ""} {
-			req := ChatCompletionRequest{Model: "public-argon", Messages: []ChatMessage{{Role: "user", Content: "hello"}}}
+			req := ChatCompletionRequest{Model: "public-gemini", Messages: []ChatMessage{{Role: "user", Content: "hello"}}}
 			want := "unsupported_reasoning_effort"
 			if effort == "" {
 				req.MaxTokens = 65537

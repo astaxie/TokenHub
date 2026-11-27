@@ -3,6 +3,8 @@ import { type AdminResource, type AdminUser, type AppData, type ViewKey } from "
 
 export type LoadPlan = {
   overview: boolean;
+  models: boolean;
+  projectQuotaEvents: boolean;
   providers: boolean;
   providerResources: boolean;
   providerModels: boolean;
@@ -42,6 +44,8 @@ export type LoadedData = Partial<Omit<AppData, "resources">> & {
 export function emptyLoadPlan(): LoadPlan {
   return {
     overview: false,
+    models: false,
+    projectQuotaEvents: false,
     providers: false,
     providerResources: false,
     providerModels: false,
@@ -104,10 +108,12 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "announcements");
       break;
     case "playground":
+      plan.models = true;
       plan.overview = true;
       plan.routes = can("routes");
       break;
     case "gateway":
+      plan.models = true;
       plan.overview = true;
       plan.keys = can("api-keys");
       plan.routes = can("routes");
@@ -117,6 +123,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       }
       break;
     case "usage":
+      plan.models = can("models");
       plan.overview = true;
       plan.keys = can("api-keys");
       // The usage view loads one range-scoped report for all displayed metrics.
@@ -130,10 +137,11 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       }
       break;
     case "billing":
+      plan.overview = true;
       plan.breakdown = true;
       plan.users = appRole(user.role) === "team_leader";
 		if (appRole(user.role) === "admin") {
-			plan.overview = true;
+			plan.models = true;
 			plan.providerModels = true;
 			plan.billingConnectors = true;
 			plan.billingRecords = true;
@@ -143,11 +151,13 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
 		}
       break;
     case "audit":
+      plan.models = true;
       plan.overview = true;
       plan.keys = can("api-keys");
       plan.auditEvents = canViewAdminAudit(user);
       break;
     case "providers":
+      plan.models = true;
       plan.providers = true;
       plan.plugins = true;
       plan.pluginUI = true;
@@ -174,15 +184,18 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.pluginActions = true;
       plan.pluginBackgroundJobs = true;
       plan.overview = view === "plugin-pages";
+      plan.models = plan.overview && can("models");
       addResourceDependency(plan, "settings");
       break;
     case "models":
+      plan.models = true;
       plan.overview = true;
       plan.routes = can("routes");
       plan.providerModels = can("routes");
       plan.providerCatalog = can("routes");
       break;
     case "routes":
+      plan.models = true;
       plan.overview = true;
       plan.routes = true;
       plan.providerModels = true;
@@ -191,6 +204,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       plan.pluginBackgroundJobs = true;
       break;
     case "routing-policies":
+      plan.models = true;
       plan.overview = true;
       plan.keys = true;
       plan.routes = true;
@@ -198,6 +212,8 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "routing-policies");
       break;
     case "projects":
+      plan.models = true;
+      plan.projectQuotaEvents = true;
       plan.overview = true;
       plan.logs = true;
       plan.users = can("users") || appRole(user.role) === "team_leader";
@@ -208,12 +224,14 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "project-members");
       break;
     case "project-members":
+      plan.models = can("models");
       plan.overview = true;
       plan.users = true;
       addResourceDependency(plan, "teams");
       addResourceDependency(plan, "project-members");
       break;
     case "api-keys":
+      plan.models = true;
       plan.overview = true;
       plan.keys = true;
       plan.users = can("users") || appRole(user.role) === "team_leader";
@@ -243,10 +261,12 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "identity-providers");
       break;
     case "security-policies":
+      plan.models = can("models");
       plan.overview = true;
       addResourceDependency(plan, "security-policies");
       break;
     case "quota-policies":
+      plan.models = can("models");
       plan.overview = true;
       plan.keys = true;
       plan.users = true;
@@ -266,7 +286,7 @@ export function loadPlanForView(user: AdminUser, view: ViewKey): LoadPlan {
       addResourceDependency(plan, "alert-rules");
       break;
     case "alert-events":
-      plan.alerts = true;
+      // The history view owns server-side pagination and cancellation.
       break;
     case "alert-deliveries":
       plan.alertDeliveries = true;
@@ -286,6 +306,8 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
   return {
     ...current,
     summary: loaded.summary ?? current.summary,
+    summaryStatus: loaded.summaryStatus ?? current.summaryStatus,
+    projectQuotaEvents: loaded.projectQuotaEvents ?? current.projectQuotaEvents,
     projects: loaded.projects ?? current.projects,
     providers: loaded.providers ?? current.providers,
     providerResources: loaded.providerResources ?? current.providerResources,
@@ -300,6 +322,7 @@ export function mergeLoadedData(current: AppData, loaded: LoadedData): AppData {
     sqliteBackups: loaded.sqliteBackups ?? current.sqliteBackups,
     users: loaded.users ?? current.users,
     breakdown: loaded.breakdown ?? current.breakdown,
+    breakdownStatus: loaded.breakdownStatus ?? current.breakdownStatus,
     dailyUsage: loaded.dailyUsage ?? current.dailyUsage,
     timeseries: loaded.timeseries ?? current.timeseries,
     keys: loaded.keys ?? current.keys,

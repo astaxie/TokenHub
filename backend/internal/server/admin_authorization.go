@@ -56,7 +56,7 @@ func canAdmin(role string, resource string, method string) bool {
 		if write {
 			return resource == "alert" || resource == "security" || resource == "audit" || resource == "admin_audit" || resource == "approval"
 		}
-		return resource == "overview" || resource == "usage" || resource == "audit" || resource == "admin_audit" || resource == "alert" || resource == "security" || resource == "identity_provider" || resource == "approval"
+		return resource == "overview" || resource == "model" || resource == "usage" || resource == "audit" || resource == "admin_audit" || resource == "alert" || resource == "security" || resource == "identity_provider" || resource == "approval"
 	case "team_leader":
 		if resource == "backup" {
 			return false
@@ -64,7 +64,7 @@ func canAdmin(role string, resource string, method string) bool {
 		if write {
 			return resource == "identity" || resource == "project" || resource == "api_key" || resource == "approval" || resource == "playground" || resource == "quota"
 		}
-		return resource == "overview" || resource == "project" || resource == "api_key" || resource == "usage" || resource == "audit" || resource == "identity" || resource == "approval" || resource == "quota"
+		return resource == "overview" || resource == "model" || resource == "project" || resource == "api_key" || resource == "usage" || resource == "audit" || resource == "identity" || resource == "approval" || resource == "quota"
 	case "user":
 		if write {
 			return resource == "api_key" || resource == "playground"

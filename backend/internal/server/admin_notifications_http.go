@@ -23,7 +23,19 @@ func (s *Server) handleAdminAlerts(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r, "alert", r.Method); !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.store.ListAlerts()})
+	query, err := alertPageQuery(r)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), maximumUsageQueryDuration)
+	defer cancel()
+	page, err := s.store.QueryAlertPage(ctx, query)
+	if err != nil {
+		writeError(w, r, NewHTTPError(503, "alerts_unavailable", "Alerts are temporarily unavailable"))
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
 }
 
 func (s *Server) handleAdminAlertItem(w http.ResponseWriter, r *http.Request) {

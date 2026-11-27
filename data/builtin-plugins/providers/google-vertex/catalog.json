@@ -5,6 +5,194 @@
   "display_name": "Vertex",
   "models": [
     {
+      "id": "gemini-4-neon",
+      "name": "Gemini 4 Neon (Vertex AI)",
+      "display_name": "Gemini 4 Neon (Vertex AI)",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "release_date": "2026-11-18",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "restricted",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-neon",
+        "release_date": "2026-11-18",
+        "max_output_tokens": "65536",
+        "access_requirement": "Verified enterprise customers in select regions.",
+        "regions": "global,us,eu",
+        "protocols": "generateContent,interactions,chat/completions",
+        "pricing_source": "https://cloud.google.com/model-garden/pricing?hl=en_GB",
+        "regional_reference_prices": "{\"global\":{\"input\":3,\"output\":15,\"cache_read\":0.15},\"non_global\":{\"input\":3.3,\"output\":16.5,\"cache_read\":0.165}}",
+        "future_cache_write_pricing": "{\"effective_from\":\"2027-01-12\",\"global\":3.75,\"non_global\":4.125}",
+        "pricing_note": "Standard PayGo USD per million tokens. Thinking tokens are billed as output. Tier availability varies by region.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: verify the Vertex endpoint, regional entitlement, and model request contract before enabling calls."
+      }
+    },
+    {
+      "id": "gemini-4-hydrogen",
+      "name": "Gemini 4 Hydrogen (Vertex AI)",
+      "display_name": "Gemini 4 Hydrogen (Vertex AI)",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "release_date": "2026-11-12",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-hydrogen",
+        "release_date": "2026-11-12",
+        "max_output_tokens": "65536",
+        "regions": "global,us,eu",
+        "protocols": "generateContent,interactions,chat/completions",
+        "pricing_source": "https://cloud.google.com/model-garden/pricing?hl=en_GB",
+        "regional_reference_prices": "{\"global\":{\"input\":1.5,\"output\":7.5,\"cache_read\":0.075},\"non_global\":{\"input\":1.65,\"output\":8.25,\"cache_read\":0.0825}}",
+        "future_cache_write_pricing": "{\"effective_from\":\"2027-01-12\",\"global\":1.875,\"non_global\":2.0625}",
+        "pricing_note": "Standard PayGo USD per million tokens. Thinking tokens are billed as output. Tier availability varies by region.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: verify the Vertex endpoint, regional entitlement, and model request contract before enabling calls."
+      }
+    },
+    {
+      "id": "gemini-4-carbon",
+      "name": "Gemini 4 Carbon (Vertex AI)",
+      "display_name": "Gemini 4 Carbon (Vertex AI)",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "release_date": "2026-11-10",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "restricted",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-carbon",
+        "release_date": "2026-11-10",
+        "max_output_tokens": "65536",
+        "access_requirement": "Verified enterprise customers in select regions.",
+        "regions": "global,us,eu",
+        "protocols": "generateContent,interactions,chat/completions",
+        "pricing_source": "https://cloud.google.com/model-garden/pricing?hl=en_GB",
+        "regional_reference_prices": "{\"global\":{\"input\":2,\"output\":10,\"cache_read\":0.1},\"non_global\":{\"input\":2.2,\"output\":11,\"cache_read\":0.11}}",
+        "pricing_note": "Standard PayGo USD per million tokens. Introductory rates reflect 50% credits on eligible net spend through 2026-11-30. Tier availability varies by region.",
+        "pricing_effective_until": "2026-11-30",
+        "future_pricing": "{\"effective_from\":\"2026-12-01\",\"global\":{\"input\":4,\"output\":20,\"cache_read\":0.2},\"non_global\":{\"input\":4.4,\"output\":22,\"cache_read\":0.22}}",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: verify the Vertex endpoint, regional entitlement, and model request contract before enabling calls."
+      }
+    },
+    {
+      "id": "gemini-4-argon",
+      "name": "Gemini 4 Argon (Vertex AI)",
+      "display_name": "Gemini 4 Argon (Vertex AI)",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "release_date": "2026-10-13",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-argon",
+        "release_date": "2026-10-13",
+        "max_output_tokens": "65536",
+        "regions": "global,us,eu,europe-west2,asia-southeast1",
+        "protocols": "generateContent,interactions,chat/completions",
+        "pricing_source": "https://cloud.google.com/model-garden/pricing?hl=en_GB",
+        "regional_reference_prices": "{\"global\":{\"input\":2,\"output\":10,\"cache_read\":0.1},\"non_global\":{\"input\":2.2,\"output\":11,\"cache_read\":0.11}}",
+        "pricing_note": "Standard PayGo USD per million tokens. Introductory rates reflect 50% credits on eligible net spend through 2026-11-30. Tier availability varies by region.",
+        "pricing_effective_until": "2026-11-30",
+        "future_pricing": "{\"effective_from\":\"2026-12-01\",\"global\":{\"input\":4,\"output\":20,\"cache_read\":0.2},\"non_global\":{\"input\":4.4,\"output\":22,\"cache_read\":0.22}}",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: verify the Vertex endpoint, regional entitlement, and model request contract before enabling calls."
+      }
+    },
+    {
       "id": "gemini-2.5-pro-tts",
       "name": "Gemini 2.5 Pro TTS",
       "family": "gemini-pro",

@@ -24,6 +24,11 @@ import (
 
 type Server struct {
 	monitoringObservations           monitoringObservationCache
+	overviewBackfillContext          context.Context
+	overviewBackfillCancel           context.CancelFunc
+	overviewSummaries                overviewSummaryCache
+	overviewBackfillStart            sync.Once
+	overviewBackfillDone             chan struct{}
 	semanticRouter                   semanticEvaluator
 	pluginRuntimeMu                  sync.RWMutex
 	pluginLifecycleMu                sync.Mutex
@@ -166,6 +171,7 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		config.MaxMultimodalRequestBytes = defaultMaxMultimodalRequestBytes
 	}
 	imageContext, imageCancel := context.WithCancel(context.Background())
+	overviewContext, overviewCancel := context.WithCancel(context.Background())
 	responseContext, responseCancel := context.WithCancel(context.Background())
 	syntheticDNSPolicy := newProviderSyntheticDNSPolicy(store)
 	providerProxyPolicy := newProviderProxyPolicy(store)
@@ -218,6 +224,9 @@ func newWithConfig(store Store, config Config, dependencies ApplicationDependenc
 		publicGatewayOperations:          make(map[gatewayOperation]bool),
 		config:                           config,
 		imageStorageDir:                  config.ImageStorageDir,
+		overviewBackfillContext:          overviewContext,
+		overviewBackfillCancel:           overviewCancel,
+		overviewBackfillDone:             make(chan struct{}),
 		imageContext:                     imageContext,
 		imageCancel:                      imageCancel,
 		imageQueue:                       make(chan imageJobWork, config.ImageQueueCapacity),
