@@ -1,11 +1,12 @@
 import { ProviderSubscriptionAuth, subscriptionCredentialIdentity, subscriptionCredentialValues, supportsSubscriptionAuthorization, supportsSubscriptionReauthorization } from "./provider-subscription-auth";
 import { ProviderSubscriptionReauthorization } from "./provider-subscription-reauthorization";
+import { ProviderManualModels } from "./provider-manual-models";
 import { ModelCatalogNotices } from "./model-catalog-notices";
 import { preserveRetrievalCatalog } from "../domain/retrieval-settings";
 import { AlertCircle, Ban, Check, Copy, Send, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingProviderAccountOAuthSession, consumePendingProviderAccountOAuthResult, hasPendingProviderAccountOAuthResult, parseProviderAccountOAuthResult, providerAccountOAuthCallbackURL, type ProviderAccountOAuthResult, readPendingProviderAccountOAuthSession, savePendingProviderAccountOAuthSession } from "../core/session";
-import { type AdapterDescriptor, type AdminUIContribution, type ApiContext, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderAccountQuota, type ProviderCatalogEntry, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
+import { type AdapterDescriptor, type AdminUIContribution, type ApiContext, type ModelRoute, type PluginActionDescriptor, type PluginDescriptor, type Provider, type ProviderAccountQuota, type ProviderCatalogEntry, type ProviderCatalogModel, type ProviderCredentialMode, type ProviderModel, type ProviderResource } from "../core/types";
 import { buildCustomProviderCatalogEntry, canonicalModelNameForUI, catalogModelCategoryOptions, modelCategoryForCatalog, modelCategoryLabel, providerEntrySupportsCategory } from "../domain/catalog";
 import { providerImageCapabilityProfile } from "../domain/provider-image-capability";
 import { copyText } from "../domain/clipboard";
@@ -14,6 +15,7 @@ import { accountProviderCatalogCategory, accountProviderCatalogEntryFromProvider
 import { defaultProviderSystemPromptTransformPolicy, providerSystemPromptTransformPolicy } from "../domain/provider-attribution";
 import { customUpstreamConnectionKey, customUpstreamDiscoveryPayload, customUpstreamModelsAreCurrent, customUpstreamModelsVisible, defaultProviderTypeValue, providerAuthMode, providerAuthModeField, providerCatalogAPIKeyRequired, providerCatalogDiscoveryRouteID, providerCatalogSupportsModelPreview, providerCatalogUsesDiscoveryPreview, providerResourceBaseURLForProviderUpdate, providerTypeValue } from "../domain/provider-custom-upstream";
 import { providerCatalogModelIsSelectable } from "../domain/provider-model-selection";
+import { manualProviderModelsFields, selectedProviderModelIDs } from "../domain/provider-manual-models";
 import { clearCustomValidity, countRatioWithUnit, countWithLabel, formatTranslationTemplate, handleRequiredFieldInvalid, languageLocale, providerImportHintText, providerSaveMessage, tx } from "../i18n/runtime";
 import { adminFetch, isAuthExpiredError, providerPayload, providerResourcePayload, providerUpdatePayload, readAdminError } from "../resources/payloads";
 import { assertProviderAccountResourceReady, defaultProviderResourceName, exchangeProviderAccountOAuthCode, generateProviderAccountOAuthURL, providerAccountTokenSummary, providerCreateAccountManualTokenFields, providerCreateAccountRuntimeFields, providerPluginActionForCapability, providerResourceActionSelection, providerResourceDraftDefaults, providerResourceSelectionSupportsAction, runProviderResourcePluginAction } from "../resources/provider-model-config";
@@ -121,6 +123,7 @@ export function ProviderUpsertModal({
   const [modelError, setModelError] = useState("");
   const [catalogReloadKey, setCatalogReloadKey] = useState(0);
   const [selectedModels, setSelectedModels] = useState<Record<string, boolean>>({});
+  const [manualModels, setManualModels] = useState<ProviderCatalogModel[]>([]);
   const catalogRefreshRequested = useRef(false);
   const [values, setValues] = useState<Record<string, string>>(() => ({
     id: mode === "edit" ? provider?.id ?? "" : "",
@@ -504,9 +507,9 @@ export function ProviderUpsertModal({
     [imageCapabilityProfile, provider, providerModels],
   );
   const importedModelIDs = useMemo(() => new Set(importedModels.map((model) => model.upstream_model)), [importedModels]);
-  const selectedModelIDs = Object.entries(selectedModels)
-    .filter(([id, selected]) => selected && !importedModelIDs.has(id))
-    .map(([id]) => id);
+  const discoveryCurrent = !selectedCatalogUsesDiscoveryPreview || customUpstreamModelsAreCurrent(models.length, loadedCustomConnection.current, customConnectionKey);
+  const selectedModelIDs = selectedProviderModelIDs(selectedModels, manualModels, importedModelIDs, discoveryCurrent);
+  const hasSelectedModels = manualModels.length > 0 || Object.values(selectedModels).some(Boolean);
   const selectedModelCount = selectedModelIDs.length;
   const selectableFilteredModelIDs = filteredModels.filter((model) => !importedModelIDs.has(model.id)).map((model) => model.id);
   const allFilteredModelsSelected = selectableFilteredModelIDs.length > 0 && selectableFilteredModelIDs.every((id) => selectedModels[id] === true);
@@ -921,6 +924,7 @@ export function ProviderUpsertModal({
     setCatalogReloadKey((current) => current + 1);
     setDetail(null);
     setSelectedModels({});
+    setManualModels([]);
     setModelQuery("");
     setModelError("");
     setValues((current) => ({
@@ -946,6 +950,7 @@ export function ProviderUpsertModal({
     setCatalogReloadKey((current) => current + 1);
     setDetail(customCatalogEntry);
     setSelectedModels({});
+    setManualModels([]);
     setModelQuery("");
     setModelError("");
     setValues((current) => ({
@@ -1000,7 +1005,7 @@ export function ProviderUpsertModal({
       setError(tx("请填写 API Key。"));
       return false;
     }
-    if (targetStep === lastCreateStep && models.length > 0 && selectedModelIDs.length === 0) {
+    if (targetStep === lastCreateStep && models.length > 0 && !hasSelectedModels) {
       if (quickAPIFlow) setQuickAPITab("models");
       setError(tx("请至少选择一个要引入 Provider 的上游模型。"));
       return false;
@@ -1035,13 +1040,13 @@ export function ProviderUpsertModal({
       return;
     }
     if (quickAPIConnect && !validateCreateStep(createStep)) return;
-    if (mode === "create" && selectedCatalogUsesDiscoveryPreview
+    if (mode === "create" && selectedCatalogUsesDiscoveryPreview && manualModels.length === 0
       && !customUpstreamModelsAreCurrent(models.length, loadedCustomConnection.current, customConnectionKey)) {
       if (quickAPIFlow) setQuickAPITab("models");
       setError(tx("请先加载自定义渠道的上游模型，再选择要引入的模型。"));
       return;
     }
-    if (mode === "create" && models.length > 0 && selectedModelIDs.length === 0) {
+    if (mode === "create" && models.length > 0 && !hasSelectedModels) {
       setError(tx("请至少选择一个要引入 Provider 的上游模型。"));
       return;
     }
@@ -1054,14 +1059,17 @@ export function ProviderUpsertModal({
         assertProviderAccountResourceReady(accountValues);
       }
       const targetProviderID = mode === "edit" ? provider?.id : pendingAccountProviderID;
-      const payload = (targetProviderID ? providerUpdatePayload : providerPayload)({
-        ...values,
-        api_key: mode === "create" && credentialMode !== "provider_api_key" ? "" : values.api_key,
-        catalog_id: catalogID,
-        model_category: quickAPIFlow || (mode === "edit" && !providerModelCategory) ? "" : modelCategory,
-        selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
-        custom_models: (selectedCatalogUsesDiscoveryPreview || usesAccountCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
-      });
+      const payload: Record<string, unknown> = {
+        ...(targetProviderID ? providerUpdatePayload : providerPayload)({
+          ...values,
+          api_key: mode === "create" && credentialMode !== "provider_api_key" ? "" : values.api_key,
+          catalog_id: catalogID,
+          model_category: quickAPIFlow || (mode === "edit" && !providerModelCategory) ? "" : modelCategory,
+          selected_models: selectedModelIDs.length > 0 ? selectedModelIDs.join(",") : "",
+          custom_models: (selectedCatalogUsesDiscoveryPreview || usesAccountCatalog) && effectiveDetail?.models ? JSON.stringify(effectiveDetail.models) : "",
+        }),
+        ...manualProviderModelsFields({ mode, manual: manualModels, discovered: effectiveDetail?.models, discoveryCurrent }),
+      };
       const resp = await adminFetch(api, targetProviderID ? `/api/admin/providers/${encodeURIComponent(targetProviderID)}` : "/api/admin/providers", {
         method: targetProviderID ? "PATCH" : "POST",
         body: JSON.stringify(mode === "edit" && provider ? preserveRetrievalCatalog(payload, provider) : payload),
@@ -1193,6 +1201,7 @@ export function ProviderUpsertModal({
                   entry={selectedEntry}
                   modelCount={models.length}
                   models={filteredModels}
+                  manualImport={{ models: manualModels, onChange: setManualModels }}
                   modelsLoading={effectiveCatalogLoading}
                   modelsError={effectiveCatalogError}
                   modelQuery={modelQuery}
@@ -1483,6 +1492,7 @@ export function ProviderUpsertModal({
             {(mode === "edit" && editTab === "models") || (mode === "create" && createStep === 3) ? (
               <>
             {mode === "edit" ? <ProviderModelInventory api={api} models={importedModels} onSaved={onAccountsChanged} /> : null}
+            {mode === "edit" && !editingAccountProvider ? <ProviderManualModels models={manualModels} onChange={setManualModels} importedIDs={importedModelIDs} /> : null}
             {mode === "edit" && imageCapabilityProfile && provider ? <div className="provider-model-list provider-image-capability-list"><ProviderImageCapability api={api} pluginActions={pluginActions} provider={provider} routes={routes} resources={resources} selectedAccountID={selectedAccountID} onChanged={onAccountsChanged ?? onSaved} setNotice={setNotice} /></div> : null}
             {mode === "edit" && editingAccountProvider && selectedAccountID === "all" ? (
               <p className="provider-account-intersection-note">

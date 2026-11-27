@@ -12,6 +12,8 @@ function ProviderHarness({
   initialSelectedModels = {},
   models = [],
   onReloadModels = vi.fn(),
+  initialTab = "connect",
+  withManualImport = false,
 }: {
   apiKeyRequired?: boolean;
   accountProviderTypes?: string[];
@@ -19,9 +21,12 @@ function ProviderHarness({
   initialSelectedModels?: Record<string, boolean>;
   models?: ProviderCatalogModel[];
   onReloadModels?: () => void;
+  initialTab?: "connect" | "models" | "advanced";
+  withManualImport?: boolean;
 }) {
   const [selectedModels, setSelectedModels] = useState(initialSelectedModels);
-  const [activeTab, setActiveTab] = useState<"connect" | "models" | "advanced">("connect");
+  const [manualModels, setManualModels] = useState<ProviderCatalogModel[]>([]);
+  const [activeTab, setActiveTab] = useState<"connect" | "models" | "advanced">(initialTab);
   const [values, setValues] = useState<Record<string, string>>({
     name: "Local Test Provider",
     type: "openai_compatible",
@@ -38,6 +43,7 @@ function ProviderHarness({
       accountProviderTypes={accountProviderTypes}
       modelCount={models.length}
       models={models}
+      manualImport={withManualImport ? { models: manualModels, onChange: setManualModels } : undefined}
       modelsLoading={false}
       modelsError=""
       modelQuery=""
@@ -153,6 +159,16 @@ describe("ProviderAPIQuickConnect", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("API Key 配置有效"));
     expect(onReloadModels).not.toHaveBeenCalled();
     expect(screen.getByRole("switch", { name: "移除 GPT Draft" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("offers manual model entry only for custom upstreams", () => {
+    const custom = render(<ProviderHarness initialTab="models" withManualImport />);
+    expect(screen.getByRole("region", { name: "手动添加模型" })).toBeInTheDocument();
+    expect(screen.getByLabelText("上游模型 ID")).toBeInTheDocument();
+    custom.unmount();
+
+    render(<ProviderHarness catalogID="openai" initialTab="models" withManualImport />);
+    expect(screen.queryByLabelText("上游模型 ID")).not.toBeInTheDocument();
   });
 
   it("renders provider catalog cards contributed by matching plugins", async () => {

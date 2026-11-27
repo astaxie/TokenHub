@@ -1,4 +1,5 @@
 import { ModelCatalogNotices } from "./model-catalog-notices";
+import { ProviderManualModels } from "./provider-manual-models";
 import { Check, CircleAlert, CircleCheck, Eye, EyeOff, KeyRound, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type AdminUIContribution, type ApiContext, type PluginActionDescriptor, type ProviderCatalogEntry, type ProviderCatalogModel } from "../core/types";
@@ -105,6 +106,7 @@ export function ProviderAPIQuickConnect({
   entry,
   modelCount,
   models,
+  manualImport,
   modelsLoading,
   modelsError,
   modelQuery,
@@ -129,6 +131,7 @@ export function ProviderAPIQuickConnect({
   entry?: ProviderCatalogEntry;
   modelCount: number;
   models: ProviderCatalogModel[];
+  manualImport?: { models: ProviderCatalogModel[]; onChange: (models: ProviderCatalogModel[]) => void };
   modelsLoading: boolean;
   modelsError: string;
   modelQuery: string;
@@ -299,6 +302,7 @@ export function ProviderAPIQuickConnect({
 
         <div className="provider-quick-tab-panel provider-onboarding-models">
           <p className="provider-onboarding-model-hint">{tx("勾选模型后保存到供应商；发布给客户端请继续前往模型目录。")}</p>
+          {custom && manualImport ? <ProviderManualModels models={manualImport.models} onChange={manualImport.onChange} /> : null}
           {custom && !values.base_url?.trim() ? (
             <p className="provider-quick-custom-note">{tx("填写上方连接信息后加载模型，勾选要引入的模型。")}</p>
           ) : (

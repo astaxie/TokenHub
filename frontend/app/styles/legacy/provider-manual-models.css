@@ -1,0 +1,82 @@
+.provider-manual-models {
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  background: var(--surface-soft);
+}
+
+.provider-manual-models > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.provider-manual-models strong {
+  font-size: 12px;
+  font-weight: 730;
+}
+
+.provider-manual-models p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.provider-manual-models-add {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.provider-manual-models-error {
+  color: var(--danger, #b42318);
+}
+
+.provider-manual-models-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+
+.provider-manual-models-list li {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface);
+}
+
+.provider-manual-models-list li > span {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  overflow-wrap: anywhere;
+}
+
+.provider-manual-models-list li strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.provider-manual-models-list li small {
+  color: var(--muted-strong);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.provider-manual-models-list .text-button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
