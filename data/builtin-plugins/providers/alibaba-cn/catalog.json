@@ -6,6 +6,191 @@
   "display_name": "alibaba-cn",
   "models": [
     {
+      "id": "vidu/viduq3.1-fast_reference2image",
+      "name": "Vidu Q3.1 Fast Reference to Image",
+      "display_name": "Vidu Q3.1 Fast Reference to Image",
+      "family": "vidu",
+      "category": "custom",
+      "type": "image",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "release_date": "2026-11-18",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/newly-released-models",
+        "release_date": "2026-11-18",
+        "regions": "China (Beijing)",
+        "original_currency": "CNY",
+        "billing_unit": "image",
+        "pricing_source": "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "pricing_note": "0.25 / 0.34375 / 0.71875 CNY per image at 1K / 2K / 4K.",
+        "original_prices": "{\"1K\":0.25,\"2K\":0.34375,\"4K\":0.71875}",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: Model Studio media operation and native-unit metering have not been validated."
+      }
+    },
+    {
+      "id": "pixverse/pixverse-v6-max-it2v",
+      "name": "PixVerse V6 Max Image to Video",
+      "display_name": "PixVerse V6 Max Image to Video",
+      "family": "pixverse",
+      "category": "custom",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "release_date": "2026-11-18",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/newly-released-models",
+        "release_date": "2026-11-18",
+        "regions": "China (Beijing)",
+        "original_currency": "CNY",
+        "billing_unit": "video_second",
+        "pricing_source": "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "pricing_note": "CNY per output second by resolution and audio. Listed rates are before any limited-time discount.",
+        "max_video_output_seconds": "15",
+        "original_prices": "{\"resolutions\":[\"360p\",\"540p\",\"720p\",\"1080p\"],\"with_audio\":[0.27,0.33,0.44,0.83],\"without_audio\":[0.18,0.27,0.33,0.65]}",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: Model Studio media operation and native-unit metering have not been validated."
+      }
+    },
+    {
+      "id": "pixverse/pixverse-v6-max-t2v",
+      "name": "PixVerse V6 Max Text to Video",
+      "display_name": "PixVerse V6 Max Text to Video",
+      "family": "pixverse",
+      "category": "custom",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "video"
+        ]
+      },
+      "release_date": "2026-11-18",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/newly-released-models",
+        "release_date": "2026-11-18",
+        "regions": "China (Beijing)",
+        "original_currency": "CNY",
+        "billing_unit": "video_second",
+        "pricing_source": "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "pricing_note": "CNY per output second by resolution and audio. Listed rates are before any limited-time discount.",
+        "max_video_output_seconds": "15",
+        "original_prices": "{\"resolutions\":[\"360p\",\"540p\",\"720p\",\"1080p\"],\"with_audio\":[0.27,0.33,0.44,0.83],\"without_audio\":[0.18,0.27,0.33,0.65]}",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: Model Studio media operation and native-unit metering have not been validated."
+      }
+    },
+    {
+      "id": "qwen4-max",
+      "name": "Qwen4-Max",
+      "display_name": "Qwen4-Max",
+      "family": "qwen",
+      "category": "qwen",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1000000,
+        "output": 131072
+      },
+      "release_date": "2026-11-16",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://help.aliyun.com/zh/model-studio/qwen4-max",
+        "release_date": "2026-11-16",
+        "max_output_tokens": "131072",
+        "regions": "China (Beijing)",
+        "original_currency": "CNY",
+        "original_unit": "per_million_tokens",
+        "original_prices": "{\"input\":10,\"output\":30,\"cache_read\":0.5,\"cache_write_5m\":12.5,\"cache_write_1h\":20}",
+        "pricing_source": "https://help.aliyun.com/zh/model-studio/qwen4-max",
+        "pricing_note": "On-demand standard price for the stated site and deployment region. Batch and trial terms are separate.",
+        "max_input_tokens": "991808",
+        "max_input_tokens_thinking": "983616",
+        "max_output_tokens_thinking": "262144",
+        "reasoning_note": "Thinking and preserve_thinking default to true; aliases minimal, medium and max map to low, high and xhigh.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: validate Qwen4-Max reasoning history and mode-specific limits before enabling calls.",
+        "reasoning_effort_options": "low,high,xhigh",
+        "reasoning_effort_default": "high",
+        "reasoning_effort_parameter": "reasoning_effort",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "chat/completions,responses,anthropic"
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "tool_call": true,
+      "endpoints": "chat/completions,responses,anthropic"
+    },
+    {
       "id": "qwen3.8-livetranslate-flash-realtime",
       "name": "Qwen3.8 LiveTranslate Flash Realtime",
       "display_name": "Qwen3.8 LiveTranslate Flash Realtime",

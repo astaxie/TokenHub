@@ -654,6 +654,7 @@ type GeminiAdapter struct {
 }
 
 func (a GeminiAdapter) Chat(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest) (any, Usage, error) {
+	req.Stream = false
 	payload, err := buildGeminiRequest(providerModel, req)
 	if err != nil {
 		return nil, Usage{}, err
@@ -671,6 +672,7 @@ func (a GeminiAdapter) Chat(ctx context.Context, provider Provider, providerMode
 }
 
 func (a GeminiAdapter) ChatStream(ctx context.Context, provider Provider, providerModel string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
+	req.Stream = true
 	payload, err := buildGeminiRequest(providerModel, req)
 	if err != nil {
 		return Usage{}, err
@@ -890,6 +892,9 @@ func anthropicModelBoundary(model string, index int) bool {
 
 func geminiThinkingConfig(model string, effort string) (map[string]any, bool) {
 	effort = strings.TrimSpace(effort)
+	if effort == "xhigh" && geminiSupportsExtraHighThinking(geminiModelID(model)) {
+		return map[string]any{"thinkingLevel": "XHIGH"}, true
+	}
 	modelVersion := geminiModelVersion(model)
 	modelVariant := geminiModelVariant(model)
 	if strings.HasPrefix(modelVersion, "2.5") {

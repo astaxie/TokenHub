@@ -162,6 +162,7 @@ func (a *GoogleSubscriptionAdapter) credentials(ctx context.Context, p Provider,
 
 func (a *GoogleSubscriptionAdapter) Chat(ctx context.Context, p Provider, model string, req ChatCompletionRequest) (any, Usage, error) {
 	ctx = context.WithValue(ctx, googleSubscriptionModelKey{}, model)
+	req.Stream = true // The subscription API uses streamGenerateContent for both callers.
 	payload, err := buildGeminiRequest(model, req)
 	if err != nil {
 		return nil, Usage{}, err
@@ -186,6 +187,7 @@ func (a *GoogleSubscriptionAdapter) Chat(ctx context.Context, p Provider, model 
 
 func (a *GoogleSubscriptionAdapter) ChatStream(ctx context.Context, p Provider, model string, req ChatCompletionRequest, w io.Writer) (Usage, error) {
 	ctx = context.WithValue(ctx, googleSubscriptionModelKey{}, model)
+	req.Stream = true // The subscription API uses streamGenerateContent for both callers.
 	payload, err := buildGeminiRequest(model, req)
 	if err != nil {
 		return Usage{}, err

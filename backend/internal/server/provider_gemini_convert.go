@@ -12,7 +12,9 @@ import (
 // buildGeminiRequest renders an OpenAI chat request as a Gemini
 // generateContent request body.
 func buildGeminiRequest(providerModel string, req ChatCompletionRequest) (map[string]any, error) {
-	if err := validateGeminiCatalogContract(providerModel, req); err != nil {
+	modelID := geminiModelID(providerModel)
+	outputLimit := gemini4OutputLimit(modelID, req.Stream)
+	if err := validateGeminiCatalogContract(modelID, req, outputLimit); err != nil {
 		return nil, err
 	}
 	if req.ParallelToolCalls != nil && !*req.ParallelToolCalls {
@@ -35,7 +37,11 @@ func buildGeminiRequest(providerModel string, req ChatCompletionRequest) (map[st
 	}
 
 	generationConfig := map[string]any{}
-	if maxTokens := req.requestedMaxTokens(); maxTokens > 0 {
+	maxTokens := req.requestedMaxTokens()
+	if maxTokens == 0 {
+		maxTokens = outputLimit
+	}
+	if maxTokens > 0 {
 		generationConfig["maxOutputTokens"] = maxTokens
 	}
 	if req.Temperature != nil {
@@ -295,7 +301,10 @@ func geminiAssistantParts(message ChatMessage, toolNames map[string]string) ([]m
 	if err != nil {
 		return nil, err
 	}
-	if text := contentPartsText(contentParts); text != "" {
+	text := contentPartsText(contentParts)
+	if signed, ok := replayGeminiTextParts(text, message.ReasoningSignature); ok {
+		parts = append(parts, signed...)
+	} else if text != "" {
 		parts = append(parts, map[string]any{"text": text})
 	}
 
@@ -369,9 +378,10 @@ func geminiChatResponse(body map[string]any, model string, usage Usage) (map[str
 	parts, _ := content["parts"].([]any)
 
 	var (
-		textParts []string
-		reasoning []string
-		toolCalls []any
+		textParts      []string
+		reasoning      []string
+		toolCalls      []any
+		textSignatures geminiTextSignatures
 	)
 	for index, item := range parts {
 		part, ok := item.(map[string]any)
@@ -400,15 +410,21 @@ func geminiChatResponse(body map[string]any, model string, usage Usage) (map[str
 			toolCalls = append(toolCalls, entry)
 			continue
 		}
-		text, _ := part["text"].(string)
-		if text == "" {
+		text, isText := part["text"].(string)
+		if !isText {
 			continue
 		}
 		if thought, _ := part["thought"].(bool); thought {
-			reasoning = append(reasoning, text)
+			if text != "" {
+				reasoning = append(reasoning, text)
+			}
 			continue
 		}
-		textParts = append(textParts, text)
+		signature, _ := part["thoughtSignature"].(string)
+		textSignatures.record(text, signature)
+		if text != "" {
+			textParts = append(textParts, text)
+		}
 	}
 
 	message := map[string]any{"role": "assistant"}
@@ -422,6 +438,8 @@ func geminiChatResponse(body map[string]any, model string, usage Usage) (map[str
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
+	} else if signature := textSignatures.encode(); signature != "" {
+		message["reasoning_signature"] = encodeProviderSignature(geminiTextSignatureProvider, signature)
 	}
 
 	finishReason, _ := candidate["finishReason"].(string)

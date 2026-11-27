@@ -5,6 +5,402 @@
   "display_name": "google",
   "models": [
     {
+      "id": "gemini-3.5-transcribe-live",
+      "name": "Gemini 3.5 Transcribe Live",
+      "display_name": "Gemini 3.5 Transcribe Live",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "release_date": "2026-08-26",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://aistudio.google.com/docs/models/gemini-3.5-transcribe",
+        "release_date": "2026-08-26",
+        "audio_limit_note": "Ten minutes per live session.",
+        "capability_update_date": "2026-11-17",
+        "voice_editing_source": "https://aistudio.google.com/docs/changelog#11-17-2026",
+        "pricing_source": "https://aistudio.google.com/docs/pricing#gemini-3.5-transcribe-live",
+        "reference_token_prices": "{\"audio_input\":3.5,\"text_output\":21}",
+        "pricing_note": "Paid USD per million audio input and text output tokens. Per-minute figures are estimates.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: the native live operation and its metering are not implemented.",
+        "endpoints": "live"
+      },
+      "endpoints": "live"
+    },
+    {
+      "id": "gemini-3.5-transcribe",
+      "name": "Gemini 3.5 Transcribe",
+      "display_name": "Gemini 3.5 Transcribe",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "audio",
+      "modalities": {
+        "input": [
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "release_date": "2026-08-26",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://aistudio.google.com/docs/models/gemini-3.5-transcribe",
+        "release_date": "2026-08-26",
+        "audio_limit_note": "Up to one hour, or 30 minutes with diarization or word timestamps.",
+        "capability_update_date": "2026-11-17",
+        "voice_editing_source": "https://aistudio.google.com/docs/changelog#11-17-2026",
+        "pricing_source": "https://aistudio.google.com/docs/pricing#gemini-3.5-transcribe",
+        "reference_token_prices": "{\"audio_input\":2,\"text_output\":12}",
+        "pricing_note": "Paid USD per million audio input and text output tokens. Per-minute figures are estimates.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: the native transcribe operation and its metering are not implemented.",
+        "endpoints": "transcribe"
+      },
+      "endpoints": "transcribe"
+    },
+    {
+      "id": "gemini-omni-1.2-flash",
+      "name": "Gemini Omni 1.2 Flash",
+      "display_name": "Gemini Omni 1.2 Flash",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "video",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "video",
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 131072,
+        "output": 65536
+      },
+      "release_date": "2026-11-05",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://aistudio.google.com/docs/models/gemini-omni-flash",
+        "release_date": "2026-11-05",
+        "max_output_tokens": "65536",
+        "max_input_tokens": "131072",
+        "max_video_output_seconds": "15",
+        "pricing_source": "https://aistudio.google.com/docs/pricing#gemini-omni-1.2-flash",
+        "pricing_note": "Listed standard video output price: USD 12 per million video tokens. Other modalities use their corresponding rates.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: the native interactions operation and its metering are not implemented.",
+        "endpoints": "interactions"
+      },
+      "endpoints": "interactions"
+    },
+    {
+      "id": "gemini-decision-1",
+      "name": "Gemini Decision 1",
+      "display_name": "Gemini Decision 1",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "decision",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "pdf"
+        ],
+        "output": [
+          "decision"
+        ]
+      },
+      "limit": {
+        "context": 262144,
+        "output": 0
+      },
+      "release_date": "2026-11-11",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://aistudio.google.com/docs/models/gemini-decision-1",
+        "release_date": "2026-11-11",
+        "max_output_tokens": "0",
+        "api_version": "v1beta",
+        "max_questions": "1000",
+        "pricing_source": "https://aistudio.google.com/docs/pricing#gemini-decision",
+        "reference_token_prices": "{\"input\":0.1}",
+        "pricing_note": "Standard USD per million input tokens. Shared input is counted once; question input is also billable. Output uses zero tokens.",
+        "call_support": "unsupported",
+        "call_support_scope": "catalog-only",
+        "support_note": "Catalog only: the native decisions operation and its metering are not implemented.",
+        "endpoints": "decisions"
+      },
+      "endpoints": "decisions"
+    },
+    {
+      "id": "gemini-4-neon",
+      "name": "Gemini 4 Neon",
+      "display_name": "Gemini 4 Neon",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "release_date": "2026-11-18",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [
+        "max_tokens",
+        "max_completion_tokens",
+        "tool_choice"
+      ],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://aistudio.google.com/docs/models/gemini-4-neon",
+        "release_date": "2026-11-18",
+        "max_output_tokens": "65536",
+        "pricing_source": "https://aistudio.google.com/docs/pricing#gemini-4-neon",
+        "reference_token_prices": "{\"input\":3,\"output\":15,\"cache_read\":0.15}",
+        "pricing_note": "Standard paid-tier USD per million tokens. Thinking tokens are billed as output. No free tier.",
+        "sampling_note": "Upstream ignores custom temperature, top_p and top_k.",
+        "protocols": "generateContent,interactions",
+        "native_endpoints": "generateContent,streamGenerateContent",
+        "context_note": "Input, thinking, tool calls and final output share 1048576 tokens.",
+        "output_limit_note": "A response segment is limited to 65536 tokens. Long decode requires native continuation.",
+        "max_output_tokens_non_streaming": "65536",
+        "upstream_input_modalities": "text,image,video,audio,pdf",
+        "input_modalities_note": "The chat adapter accepts text and inline base64 images.",
+        "output_limit_source": "https://aistudio.google.com/docs/long-decode",
+        "cache_note": "Implicit caching only.",
+        "reasoning_effort_options": "low,medium,high,xhigh",
+        "reasoning_effort_default": "high",
+        "reasoning_effort_parameter": "thinking_level",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "gemini"
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "temperature": false,
+      "tool_call": true,
+      "endpoints": "gemini"
+    },
+    {
+      "id": "gemini-4-hydrogen",
+      "name": "Gemini 4 Hydrogen",
+      "display_name": "Gemini 4 Hydrogen",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "release_date": "2026-11-12",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [
+        "max_tokens",
+        "max_completion_tokens",
+        "tool_choice"
+      ],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://aistudio.google.com/docs/models/gemini-4-hydrogen",
+        "release_date": "2026-11-12",
+        "max_output_tokens": "65536",
+        "pricing_source": "https://aistudio.google.com/docs/pricing#gemini-4-hydrogen",
+        "reference_token_prices": "{\"input\":1.5,\"output\":7.5,\"cache_read\":0.075}",
+        "pricing_note": "Standard paid-tier USD per million tokens. Thinking tokens are billed as output. The free tier has separate limits.",
+        "sampling_note": "Upstream ignores custom temperature, top_p and top_k.",
+        "protocols": "generateContent,interactions",
+        "native_endpoints": "generateContent,streamGenerateContent",
+        "context_note": "Input, thinking, tool calls and final output share 1048576 tokens.",
+        "output_limit_note": "A response segment is limited to 65536 tokens. Long decode requires native continuation.",
+        "max_output_tokens_non_streaming": "65536",
+        "upstream_input_modalities": "text,image,video,audio,pdf",
+        "input_modalities_note": "The chat adapter accepts text and inline base64 images.",
+        "output_limit_source": "https://aistudio.google.com/docs/long-decode",
+        "cache_note": "Implicit caching only.",
+        "reasoning_effort_options": "low,medium,high,xhigh",
+        "reasoning_effort_default": "high",
+        "reasoning_effort_parameter": "thinking_level",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "gemini"
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "temperature": false,
+      "tool_call": true,
+      "endpoints": "gemini"
+    },
+    {
+      "id": "gemini-4-carbon",
+      "name": "Gemini 4 Carbon",
+      "display_name": "Gemini 4 Carbon",
+      "family": "gemini",
+      "category": "gemini",
+      "type": "chat",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "limit": {
+        "context": 1048576,
+        "output": 65536
+      },
+      "release_date": "2026-11-10",
+      "last_updated": "2026-11-19",
+      "supported_parameters": [
+        "max_tokens",
+        "max_completion_tokens",
+        "tool_choice"
+      ],
+      "metadata": {
+        "availability": "active",
+        "lifecycle_status": "active",
+        "pricing_status": "unverified",
+        "verified_at": "2026-11-19",
+        "catalog_reviewed_at": "2026-11-19",
+        "upstream_source": "https://aistudio.google.com/docs/models/gemini-4-carbon",
+        "release_date": "2026-11-10",
+        "max_output_tokens": "65536",
+        "pricing_source": "https://aistudio.google.com/docs/pricing#gemini-4-carbon",
+        "reference_token_prices": "{\"input\":2,\"output\":10,\"cache_read\":0.1}",
+        "pricing_note": "Standard introductory USD per million tokens through 2026-11-30. Starting 2026-12-01 the rates double. No free tier.",
+        "pricing_effective_until": "2026-11-30",
+        "future_pricing": "{\"effective_from\":\"2026-12-01\",\"input\":4,\"output\":20,\"cache_read\":0.2}",
+        "sampling_note": "Upstream ignores custom temperature, top_p and top_k.",
+        "protocols": "generateContent,interactions",
+        "native_endpoints": "generateContent,streamGenerateContent",
+        "context_note": "Input, thinking, tool calls and final output share 1048576 tokens.",
+        "output_limit_note": "Single segment: 32768 tokens non-streaming or 65536 streaming. Long decode requires native continuation.",
+        "max_output_tokens_non_streaming": "32768",
+        "upstream_input_modalities": "text,image,video,audio,pdf",
+        "input_modalities_note": "The chat adapter accepts text and inline base64 images.",
+        "output_limit_source": "https://aistudio.google.com/docs/long-decode",
+        "cache_note": "Implicit caching only.",
+        "reasoning_effort_options": "low,medium,high",
+        "reasoning_effort_default": "medium",
+        "reasoning_effort_parameter": "thinking_level",
+        "reasoning_supported": "true",
+        "reasoning_default": "true",
+        "endpoints": "gemini"
+      },
+      "reasoning": {
+        "supported": true,
+        "default": true
+      },
+      "reasoning_options": [
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
+      "temperature": false,
+      "tool_call": true,
+      "endpoints": "gemini"
+    },
+    {
       "id": "gemini-embedding-2",
       "name": "Gemini Embedding 2",
       "display_name": "Gemini Embedding 2",
@@ -1962,10 +2358,7 @@
       "modalities": {
         "input": [
           "text",
-          "image",
-          "video",
-          "audio",
-          "pdf"
+          "image"
         ],
         "output": [
           "text"
@@ -1995,9 +2388,12 @@
         "future_pricing": "{\"effective_from\":\"2026-12-01\",\"input\":4,\"output\":20,\"cache_read\":0.2}",
         "context_note": "Unified input and output limit: 1048576 tokens.",
         "cache_note": "Implicit caching only; explicit caching is unsupported.",
-        "output_limit_note": "TokenHub synchronous adapter limit is 65536. Native long decode up to 1048576 requires background/continuation handling that is not implemented.",
+        "output_limit_note": "Single segment: 32768 tokens non-streaming or 65536 streaming. Long decode requires native continuation.",
         "adapter_verification": "Synthetic native GenerateContent contract only; account entitlement and live billing remain unverified.",
-        "native_endpoints": "generateContent,streamGenerateContent"
+        "native_endpoints": "generateContent,streamGenerateContent",
+        "max_output_tokens_non_streaming": "32768",
+        "upstream_input_modalities": "text,image,video,audio,pdf",
+        "input_modalities_note": "The chat adapter accepts text and inline base64 images."
       },
       "limit": {
         "context": 1048576,
@@ -2012,7 +2408,9 @@
       "category": "gemini",
       "last_updated": "2026-10-16",
       "supported_parameters": [
-        "max_tokens"
+        "max_tokens",
+        "max_completion_tokens",
+        "tool_choice"
       ],
       "endpoints": "gemini",
       "reasoning_options": [
