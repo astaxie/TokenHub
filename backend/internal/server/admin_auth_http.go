@@ -27,11 +27,23 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, NewHTTPError(400, "invalid_request", "identity and password are required"))
 		return
 	}
+	// Reserve before verifying so parallel attempts cannot all slip past the
+	// threshold, then settle the slot according to the outcome.
+	reservation, allowed := s.beginAdminLogin(w, r, req.Identity)
+	if !allowed {
+		return
+	}
 	user, session, err := s.store.AuthenticateAdminUser(req.Identity, req.Password, 12*time.Hour)
 	if err != nil {
+		if AsHTTPError(err).Status == http.StatusUnauthorized {
+			reservation.fail()
+		} else {
+			reservation.release()
+		}
 		writeError(w, r, err)
 		return
 	}
+	reservation.succeed()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      session.Token,
 		"expires_at": session.ExpiresAt,

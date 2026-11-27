@@ -569,14 +569,19 @@ func (s *GormStore) AuthenticateAdminUser(identity string, password string, ttl 
 	identity = strings.ToLower(strings.TrimSpace(identity))
 	var user AdminUser
 	if err := s.criticalReadDatabase().Where("LOWER(email) = ? OR LOWER(username) = ?", identity, identity).First(&user).Error; err != nil {
+		// Spend comparable bcrypt work so response time does not confirm
+		// whether the account exists.
+		consumePasswordVerification(password)
+		return AdminUser{}, AdminSession{}, NewHTTPError(401, "invalid_credentials", "Invalid username or password")
+	}
+	// Verify before checking status: a disabled account must not be
+	// distinguishable from an unknown one without the correct password.
+	validPassword, needsPasswordUpgrade := verifyAdminLoginPassword(user.PasswordHash, password)
+	if !validPassword {
 		return AdminUser{}, AdminSession{}, NewHTTPError(401, "invalid_credentials", "Invalid username or password")
 	}
 	if user.Status != StatusActive {
 		return AdminUser{}, AdminSession{}, NewHTTPError(403, "admin_user_disabled", "Admin user is disabled")
-	}
-	validPassword, needsPasswordUpgrade := verifyPassword(user.PasswordHash, password)
-	if !validPassword {
-		return AdminUser{}, AdminSession{}, NewHTTPError(401, "invalid_credentials", "Invalid username or password")
 	}
 	if needsPasswordUpgrade {
 		upgradedHash, err := hashPasswordForUpgrade(password)

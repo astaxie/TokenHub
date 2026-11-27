@@ -24,6 +24,7 @@ import (
 
 type Server struct {
 	monitoringObservations           monitoringObservationCache
+	adminLoginLimits                 adminLoginLimiter
 	overviewBackfillContext          context.Context
 	overviewBackfillCancel           context.CancelFunc
 	overviewSummaries                overviewSummaryCache
