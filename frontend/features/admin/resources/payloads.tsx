@@ -819,6 +819,8 @@ function localizedAdminErrorCode(code?: string) {
       return tx("请选择未停用的上游模型后再发布新线路。");
     case "provider_model_price_required":
       return tx("请先确认并保存上游模型成本，再发布新线路。");
+    case "provider_models_not_offered":
+      return tx("该 Provider 不提供模型目录接口。请保存 Provider 后手动添加模型。");
     case "provider_models_authentication_failed":
       return tx("上游拒绝了 Provider 凭据，请检查 API Key 或认证配置。");
     case "provider_models_rate_limited":

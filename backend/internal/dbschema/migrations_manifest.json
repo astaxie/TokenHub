@@ -94,6 +94,15 @@
       "checksum": "22670204472977364b5706f2c8f252cc624ff8f49339f7dfc0be3f72be4e057f",
       "lock_timeout_seconds": 30,
       "statement_budget": 10
+    },
+    {
+      "version": 13,
+      "name": "add-responses-turn-states",
+      "phase": "expand",
+      "dialect": "",
+      "checksum": "50359cd62beaa9c961f9918f328758ca28add9857a11467376314ec2c8f4e12a",
+      "lock_timeout_seconds": 30,
+      "statement_budget": 10
     }
   ]
 }

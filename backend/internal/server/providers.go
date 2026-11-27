@@ -29,6 +29,15 @@ type ResponsesInvoker interface {
 	Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error)
 }
 
+// ResponsesStatelessAdapter is implemented by adapters whose upstream keeps no
+// conversation state. The gateway stores finished turns for such adapters and
+// expands previous_response_id references before invoking them; adapters that
+// hold state upstream must not implement it, or their stored context would be
+// duplicated by the expanded request.
+type ResponsesStatelessAdapter interface {
+	StatelessResponsesTurns() bool
+}
+
 type ResponsesStreamOpener interface {
 	OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, incoming http.Header) (*http.Response, error)
 }
@@ -584,22 +593,33 @@ func (a AnthropicAdapter) ChatStream(ctx context.Context, provider Provider, pro
 	return streamAnthropicChatForProvider(resp.Body, encoder, provider)
 }
 
+func (a AnthropicAdapter) StatelessResponsesTurns() bool { return true }
+
 func (a AnthropicAdapter) Responses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest) (any, Usage, error) {
-	chatReq := ChatCompletionRequest{
-		Model:           req.Model,
-		Messages:        []ChatMessage{{Role: "user", Content: req.Input}},
-		MaxTokens:       req.MaxTokens,
-		ReasoningEffort: responsesReasoningEffort(req),
-	}
-	resp, usage, err := a.Chat(ctx, provider, providerModel, chatReq)
+	req.Model = providerModel
+	payload, err := buildAnthropicResponsesPayload(req)
 	if err != nil {
 		return nil, Usage{}, err
 	}
-	text := ""
-	if asMap, ok := resp.(map[string]any); ok {
-		text = choiceText(asMap)
+	var body map[string]any
+	if err := a.doJSON(ctx, provider, "/v1/messages", payload, &body); err != nil {
+		return nil, Usage{}, err
 	}
-	return responseObject(req.Model, text, usage), usage, nil
+	usage := anthropicUsage(body)
+	return anthropicResponseToResponsesObject(providerModel, body, usage), usage, nil
+}
+
+// OpenResponses starts the same conversation with stream enabled and hands the
+// Anthropic SSE body to the gateway, which converts it to Responses events
+// while relaying (see consumeRoutedResponsesStream).
+func (a AnthropicAdapter) OpenResponses(ctx context.Context, provider Provider, providerModel string, req ResponsesRequest, _ http.Header) (*http.Response, error) {
+	req.Model = providerModel
+	payload, err := buildAnthropicResponsesPayload(req)
+	if err != nil {
+		return nil, err
+	}
+	payload["stream"] = true
+	return a.doRaw(ctx, provider, "/v1/messages", payload, true)
 }
 
 func (a AnthropicAdapter) Embeddings(ctx context.Context, provider Provider, providerModel string, req EmbeddingsRequest) (any, Usage, error) {

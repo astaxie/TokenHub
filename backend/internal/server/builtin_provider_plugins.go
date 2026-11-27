@@ -228,7 +228,7 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 	if err := register("tokenhub.provider.anthropic", "Anthropic", builtinProviderAdapter{
 		providerType:                 ProviderAnthropic,
 		adapter:                      adapters[ProviderAnthropic],
-		routeProtocols:               []string{providerRouteProtocolAnthropic},
+		routeProtocols:               []string{providerRouteProtocolAnthropic, providerRouteProtocolChatCompletions, providerRouteProtocolResponses},
 		authModes:                    []string{anthropicAuthTypeAPIKey, anthropicAuthTypeBearer},
 		authModeLegacyOption:         anthropicAuthTypeOption,
 		authModeInvalidErrorCode:     "provider_anthropic_auth_type_invalid",
@@ -254,6 +254,8 @@ func registerBuiltinProviderAdapters(registry *AdapterRegistry, adapters map[str
 		capabilities: []AdapterCapability{
 			AdapterCapabilityChat,
 			AdapterCapabilityChatStream,
+			AdapterCapabilityResponses,
+			AdapterCapabilityResponseStream,
 			AdapterCapabilityProbe,
 		},
 	}); err != nil {

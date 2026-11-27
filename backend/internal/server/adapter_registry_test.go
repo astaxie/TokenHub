@@ -79,6 +79,7 @@ var builtinAdapterCapabilities = map[string][]AdapterCapability{
 	},
 	ProviderAnthropic: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream, AdapterCapabilityProbe,
+		AdapterCapabilityResponses, AdapterCapabilityResponseStream,
 	},
 	ProviderGemini: {
 		AdapterCapabilityChat, AdapterCapabilityChatStream,
@@ -209,7 +210,7 @@ func TestAdapterDescriptorsExposeProviderPolicy(t *testing.T) {
 	if !ok {
 		t.Fatal("Anthropic adapter descriptor is missing")
 	}
-	if !reflect.DeepEqual(anthropic.ProviderPolicy.RouteProtocols, []string{"anthropic"}) {
+	if !reflect.DeepEqual(anthropic.ProviderPolicy.RouteProtocols, []string{"anthropic", "chat/completions", "responses"}) {
 		t.Fatalf("Anthropic route protocols = %v", anthropic.ProviderPolicy.RouteProtocols)
 	}
 	if anthropic.ProviderPolicy.ErrorProfile != "" {

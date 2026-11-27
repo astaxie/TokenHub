@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -666,9 +667,26 @@ func (s *Server) serveAdminProviderTestConnection(w http.ResponseWriter, r *http
 	var err error
 	if adapter, ok := resolveProviderHealthProber(s.adapterRegistry, strings.TrimSpace(req.Type)); ok {
 		provider := Provider{Name: req.Name, Type: req.Type, BaseURL: req.BaseURL, APIKey: req.APIKey, Headers: req.Headers, SensitiveHeaders: req.SensitiveHeaders, Options: req.Options}
+		// The probe request carries the requested auth mode under the generic
+		// option key, so its requests use the same credential headers the
+		// catalog discovery will use.
+		if mode := requestedProviderAuthMode(req); mode != "" {
+			if provider.Options == nil {
+				provider.Options = map[string]string{}
+			}
+			if _, exists := provider.Options[providerAuthModeOption]; !exists {
+				provider.Options[providerAuthModeOption] = mode
+			}
+		}
 		health, err = adapter.ProbeProvider(ctx, provider)
 		if err == nil {
 			catalog, err = s.discoverProviderCatalogFromCreateRequest(ctx, user, req)
+			var notOffered *HTTPError
+			if errors.As(err, &notOffered) && notOffered.Code == "provider_models_not_offered" {
+				// A catalog-less upstream (DeepSeek-style) is still healthy; the
+				// operator adds its models by hand.
+				catalog, err = ProviderCatalogEntry{}, nil
+			}
 		}
 	} else if strings.TrimSpace(req.Type) == ProviderDify {
 		catalog, err = s.difyConnectionTestCatalog(ctx, req)

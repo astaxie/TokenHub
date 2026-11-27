@@ -766,56 +766,98 @@ func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client
 	if err := ValidateProviderUpstreamBaseURL(baseURL); err != nil {
 		return ProviderCatalogEntry{}, err
 	}
-	providerType := strings.ToLower(strings.TrimSpace(req.Type))
 	discovery := providerModelDiscoveryPolicy(descriptor)
-	modelsURL := providerModelDiscoveryURL(baseURL, discovery.Path)
+	primaryURL := providerModelDiscoveryURL(baseURL, discovery.Path)
+
+	// Path-suffixed base URLs (Anthropic-compatible gateways such as
+	// https://api.deepseek.com/anthropic) may expose no catalog endpoint on
+	// their own path while the same host serves one on the OpenAI side. Those
+	// same-origin fallbacks are tried only after the primary endpoint answers
+	// 404/405, with the same API key presented as a Bearer credential.
+	fallbackURLs := providerModelsDiscoveryFallbackCandidates(baseURL, discovery.Path)
+	client = ssrfGuardedProviderClient(client)
+	var primaryFailure *HTTPError
+	for index, modelsURL := range append([]string{primaryURL}, fallbackURLs...) {
+		entry, httpErr, fetchErr := fetchProviderModelsCatalog(ctx, client, req, descriptor, discovery, modelsURL, index > 0)
+		if fetchErr != nil {
+			return ProviderCatalogEntry{}, fetchErr
+		}
+		if httpErr == nil {
+			return entry, nil
+		}
+		// Authentication and other non-catalog failures surface immediately:
+		// retrying a different auth style cannot fix them, and the extra
+		// request would confuse upstreams that count attempts (Gemini's
+		// query_param keys, for example).
+		if httpErr.Code != "provider_models_not_offered" {
+			return ProviderCatalogEntry{}, httpErr
+		}
+		if index == len(fallbackURLs) {
+			// All candidates, including the fallbacks, answered not-found: the
+			// provider genuinely has no model catalog endpoint.
+			return ProviderCatalogEntry{}, httpErr
+		}
+		primaryFailure = httpErr
+	}
+	return ProviderCatalogEntry{}, primaryFailure
+}
+
+// fetchProviderModelsCatalog fetches one models endpoint. A nil entry with a
+// nil error is impossible; a 404/405 answer is reported through the returned
+// HTTPError so the caller can decide whether fallback candidates remain.
+func fetchProviderModelsCatalog(ctx context.Context, client *http.Client, req ProviderCreateRequest, descriptor AdapterDescriptor, discovery AdapterModelDiscoveryPolicy, modelsURL string, forceBearer bool) (ProviderCatalogEntry, *HTTPError, error) {
 	endpoint, err := url.Parse(modelsURL)
 	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid")
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadRequest, "provider_base_url_invalid", "Base URL is invalid"), nil
 	}
 	if err := validateProviderUpstreamURLSyntax(endpoint); err != nil {
-		return ProviderCatalogEntry{}, err
+		return ProviderCatalogEntry{}, AsHTTPError(err), nil
 	}
-	client = ssrfGuardedProviderClient(client)
+	if client == nil {
+		client = ssrfGuardedProviderClient(nil)
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to create upstream models request")
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_request_failed", "Failed to create upstream models request"), nil
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
-	if err := applyProviderModelDiscoveryAuth(httpReq, endpoint, req, descriptor, discovery); err != nil {
-		return ProviderCatalogEntry{}, err
+	if forceBearer && apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	} else if err := applyProviderModelDiscoveryAuth(httpReq, endpoint, req, descriptor, discovery); err != nil {
+		return ProviderCatalogEntry{}, nil, err
 	}
 	for name, value := range providerModelDiscoveryHeaders(req.Options, discovery.Headers) {
 		httpReq.Header.Set(name, value)
 	}
 	headers, err := normalizeProviderHeaders(req.Headers)
 	if err != nil {
-		return ProviderCatalogEntry{}, err
+		return ProviderCatalogEntry{}, nil, err
 	}
 	applyProviderHeaders(httpReq.Header, headers)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		if egressErr := providerEgressFailure(err); egressErr != nil {
-			return ProviderCatalogEntry{}, egressErr
+			return ProviderCatalogEntry{}, nil, egressErr
 		}
-		return ProviderCatalogEntry{}, providerCatalogConnectionError(err)
+		return ProviderCatalogEntry{}, nil, providerCatalogConnectionError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		if descriptor.ProviderPolicy.ErrorProfile != "" {
-			return ProviderCatalogEntry{}, checkProviderResponseForProviderPolicy(resp, Provider{
-				Type: providerType, APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
+			wrapped := checkProviderResponseForProviderPolicy(resp, Provider{
+				Type: strings.ToLower(strings.TrimSpace(req.Type)), APIKey: apiKey, Headers: headers, SensitiveHeaders: req.SensitiveHeaders,
 			}, descriptor.ProviderPolicy)
+			return ProviderCatalogEntry{}, AsHTTPError(wrapped), nil
 		}
-		return ProviderCatalogEntry{}, providerModelsUpstreamError(resp.StatusCode)
+		return ProviderCatalogEntry{}, providerModelsUpstreamError(resp.StatusCode), nil
 	}
 	var payload map[string]any
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 5<<20)).Decode(&payload); err != nil {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_invalid_response", "Upstream models response is invalid")
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_invalid_response", "Upstream models response is invalid"), nil
 	}
 	models := customProviderModelsFromPayloadWithDefinitions(payload, providerModelCategoryDefinitionsFromAdapter(descriptor.ProviderPolicy.ModelCategories))
 	if len(models) == 0 {
-		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_empty", "Upstream did not return any models")
+		return ProviderCatalogEntry{}, NewHTTPError(http.StatusBadGateway, "provider_models_empty", "Upstream did not return any models"), nil
 	}
 	categories, categoryCounts := catalogCategorySummary(models)
 	name := firstNonEmpty(strings.TrimSpace(req.Name), "自定义渠道商")
@@ -824,13 +866,38 @@ func CustomProviderCatalogFromUpstreamWithDescriptor(ctx context.Context, client
 		Name:           name,
 		DisplayName:    name,
 		Type:           firstNonEmpty(strings.TrimSpace(req.Type), strings.TrimSpace(descriptor.Type), defaultProviderCatalogProviderType()),
-		BaseURL:        baseURL,
+		BaseURL:        firstNonEmpty(strings.TrimRight(strings.TrimSpace(req.BaseURL), "/")),
 		Categories:     categories,
 		CategoryCounts: categoryCounts,
 		ModelsCount:    len(models),
 		Source:         "custom-upstream",
 		Models:         models,
-	}, nil
+	}, nil, nil
+}
+
+// providerModelsDiscoveryFallbackCandidates lists same-origin OpenAI-style
+// catalog endpoints for a path-suffixed base URL. A base URL without a path
+// (https://api.example.com) has no meaningful same-origin siblings, so no
+// candidates are returned.
+func providerModelsDiscoveryFallbackCandidates(baseURL string, primaryPath string) []string {
+	primary := providerModelDiscoveryURL(baseURL, primaryPath)
+	parsed, err := url.Parse(primary)
+	if err != nil || parsed.Host == "" {
+		return nil
+	}
+	path := strings.Trim(parsed.Path, "/")
+	if path == "" {
+		return nil
+	}
+	origin := parsed.Scheme + "://" + parsed.Host
+	candidates := []string{origin + "/v1/models", origin + "/models"}
+	filtered := candidates[:0]
+	for _, candidate := range candidates {
+		if candidate != primary {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
 }
 
 func providerModelDiscoveryPolicy(descriptor AdapterDescriptor) AdapterModelDiscoveryPolicy {
@@ -937,6 +1004,9 @@ func providerModelsUpstreamError(status int) *HTTPError {
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return NewHTTPError(statusForProvider(status), "provider_models_authentication_failed", "Upstream rejected the Provider credentials")
+	case http.StatusNotFound, http.StatusMethodNotAllowed:
+		return NewHTTPError(statusForProvider(status), "provider_models_not_offered",
+			"This provider does not offer a model catalog endpoint; save the Provider and add models manually")
 	case http.StatusTooManyRequests:
 		return NewHTTPError(statusForProvider(status), "provider_models_rate_limited", "Upstream model catalog request was rate limited")
 	default:

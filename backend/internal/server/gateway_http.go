@@ -453,6 +453,10 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	attempts = attemptsWithAttributedUsage(routed.Call, attempts, route, usage)
 	s.runGatewayCacheWriteHooks(r.Context(), routed.Call, route, req, resp, usage, providerRouteProtocolResponses)
 	s.finishSuccessfulRoutedCall(r, routed, route, usage, attempts, auditPayload, resp)
+	responseMap, _ := resp.(map[string]any)
+	if responseMap != nil {
+		s.recordResponsesTurn(r.Context(), routed.Call, &req, responseMap)
+	}
 	w.Header().Set("x-request-id", routed.Call.RequestID)
 	s.writeProviderResponseHeaders(w.Header(), route, usage.ResponseHeaders)
 	s.writeRouteHeaders(w, routed.Call, route, len(attempts))
