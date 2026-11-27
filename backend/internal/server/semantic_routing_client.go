@@ -9,10 +9,14 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 )
 
-const jevRoutingEndpoint = "https://api.typesafe.ai/v1/systemone"
+// defaultTypeSafeBaseURL is the TypeSafe decision API root used when the
+// operator does not point semantic routing at another System One compatible
+// classifier. The evaluator requests <base>/systemone.
+const defaultTypeSafeBaseURL = "https://api.typesafe.ai/v1"
 const semanticRoutingPromptVersion = "model-choice-v2"
 
 type semanticCandidate struct {
@@ -40,11 +44,12 @@ type semanticEvaluator interface {
 }
 
 type jevRoutingClient struct {
-	client  *http.Client
-	apiKey  string
-	model   string
-	timeout time.Duration
-	slots   chan struct{}
+	client   *http.Client
+	apiKey   string
+	model    string
+	endpoint string
+	timeout  time.Duration
+	slots    chan struct{}
 }
 
 func newJevRoutingClient(config Config) *jevRoutingClient {
@@ -58,8 +63,20 @@ func newJevRoutingClient(config Config) *jevRoutingClient {
 	}
 	return &jevRoutingClient{
 		client: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
-		apiKey: config.TypeSafeAPIKey, model: model, timeout: time.Duration(timeout) * time.Millisecond, slots: make(chan struct{}, 8),
+		apiKey: config.TypeSafeAPIKey, model: model, endpoint: typeSafeEvaluateEndpoint(config.TypeSafeBaseURL),
+		timeout: time.Duration(timeout) * time.Millisecond, slots: make(chan struct{}, 8),
 	}
+}
+
+// typeSafeEvaluateEndpoint resolves the decision API endpoint for a configured
+// base URL. An empty base keeps the published TypeSafe default, and a trailing
+// slash is tolerated so operators can copy the value from a browser.
+func typeSafeEvaluateEndpoint(baseURL string) string {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		base = defaultTypeSafeBaseURL
+	}
+	return base + "/systemone"
 }
 
 func (c *jevRoutingClient) Evaluate(ctx context.Context, text string, candidates []semanticCandidate, instructions string) (semanticDecision, error) {
@@ -90,7 +107,7 @@ func (c *jevRoutingClient) Evaluate(ctx context.Context, text string, candidates
 	if err != nil {
 		return semanticDecision{}, errors.New("invalid_request")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, jevRoutingEndpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return semanticDecision{}, errors.New("invalid_request")
 	}

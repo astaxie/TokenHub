@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -29,6 +30,19 @@ func (c Config) validateSemanticRouting() error {
 	}
 	if c.SemanticRoutingTimeoutMS < 0 || c.SemanticRoutingTimeoutMS > 10000 {
 		return fmt.Errorf("TOKENHUB_SEMANTIC_ROUTING_TIMEOUT_MS must be between 1 and 10000")
+	}
+	// The base URL is what lets a private deployment reach a self-hosted
+	// System One classifier. Plain HTTP is accepted because the common case is
+	// a loopback or intranet service; an operator who exposes the classifier
+	// beyond a trusted network is responsible for transport security.
+	if base := strings.TrimSpace(c.TypeSafeBaseURL); base != "" {
+		parsed, err := url.Parse(base)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("invalid TOKENHUB_TYPESAFE_BASE_URL: expected an absolute URL")
+		}
+		if !strings.EqualFold(parsed.Scheme, "https") && !strings.EqualFold(parsed.Scheme, "http") {
+			return fmt.Errorf("invalid TOKENHUB_TYPESAFE_BASE_URL: expected an HTTP or HTTPS URL")
+		}
 	}
 	return nil
 }

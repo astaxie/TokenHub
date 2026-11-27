@@ -45,7 +45,7 @@ func TestJevRoutingClientWireContract(t *testing.T) {
 	defer upstream.Close()
 	client := newJevRoutingClient(Config{TypeSafeAPIKey: "test-secret"})
 	client.client.Transport = semanticTestTransport(func(r *http.Request) (*http.Response, error) {
-		if r.URL.String() != jevRoutingEndpoint {
+		if r.URL.String() != defaultTypeSafeBaseURL+"/systemone" {
 			t.Errorf("unexpected destination %s", r.URL)
 		}
 		clone := r.Clone(r.Context())
@@ -146,5 +146,67 @@ func TestJevRoutingClientTimeoutCancellationConcurrencyAndRedirect(t *testing.T)
 	_, err = client.Evaluate(context.Background(), "test", semanticTestCandidates(), "")
 	if err == nil || calls.Load() != 1 {
 		t.Fatalf("redirect followed: calls=%d err=%v", calls.Load(), err)
+	}
+}
+
+func TestSemanticRoutingClientEndpointFromBaseURL(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		base string
+		want string
+	}{
+		{name: "empty keeps public default", base: "", want: "https://api.typesafe.ai/v1/systemone"},
+		{name: "blank keeps public default", base: "   ", want: "https://api.typesafe.ai/v1/systemone"},
+		{name: "private http base", base: "http://127.0.0.1:8090/v1", want: "http://127.0.0.1:8090/v1/systemone"},
+		{name: "trailing slash tolerated", base: "http://10.0.0.5:8090/v1/", want: "http://10.0.0.5:8090/v1/systemone"},
+		{name: "surrounding space tolerated", base: " https://classifier.internal/v1 ", want: "https://classifier.internal/v1/systemone"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newJevRoutingClient(Config{TypeSafeAPIKey: "test-secret", TypeSafeBaseURL: tc.base})
+			if client.endpoint != tc.want {
+				t.Fatalf("endpoint = %q, want %q", client.endpoint, tc.want)
+			}
+		})
+	}
+}
+
+func TestSemanticRoutingClientPostsToConfiguredBase(t *testing.T) {
+	var seen atomic.Value
+	client := newJevRoutingClient(Config{TypeSafeAPIKey: "self-hosted", TypeSafeBaseURL: "http://classifier.internal:8090/v1"})
+	client.client.Transport = semanticTestTransport(func(r *http.Request) (*http.Response, error) {
+		seen.Store(r.URL.String())
+		if r.Header.Get("Authorization") != "Bearer self-hosted" {
+			t.Errorf("unexpected authorization %q", r.Header.Get("Authorization"))
+		}
+		payload, _ := json.Marshal(semanticTestResponse())
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(payload))), Header: make(http.Header)}, nil
+	})
+	decision, err := client.Evaluate(context.Background(), "Route this", semanticTestCandidates(), "")
+	if err != nil || decision.Choice != "candidate_2" {
+		t.Fatalf("unexpected decision: %+v %v", decision, err)
+	}
+	if got := seen.Load(); got != "http://classifier.internal:8090/v1/systemone" {
+		t.Fatalf("requests went to %v", got)
+	}
+}
+
+func TestValidateSemanticRoutingBaseURL(t *testing.T) {
+	valid := Config{SemanticRoutingEnabled: true, TypeSafeAPIKey: "key", SemanticRoutingProjects: []string{"p1"}, SemanticRoutingTimeoutMS: 1000}
+	if err := valid.validateSemanticRouting(); err != nil {
+		t.Fatalf("default base must pass validation: %v", err)
+	}
+	for _, base := range []string{"http://127.0.0.1:8090/v1", "http://classifier.internal/v1", "https://classifier.internal/v1"} {
+		candidate := valid
+		candidate.TypeSafeBaseURL = base
+		if err := candidate.validateSemanticRouting(); err != nil {
+			t.Fatalf("base %q must pass validation: %v", base, err)
+		}
+	}
+	for _, base := range []string{"classifier.internal/v1", "://missing-scheme", "ftp://classifier.internal/v1"} {
+		candidate := valid
+		candidate.TypeSafeBaseURL = base
+		if err := candidate.validateSemanticRouting(); err == nil {
+			t.Fatalf("base %q must be rejected", base)
+		}
 	}
 }
