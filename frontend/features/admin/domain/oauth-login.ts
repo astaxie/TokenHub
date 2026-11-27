@@ -103,14 +103,16 @@ export function buildOAuthLoginStartURL(
   returnURL: string,
   codeChallenge?: string,
 ): string {
-  const target = new URL(`${baseURL.replace(/\/$/, "")}/api/admin/auth/oauth/start`);
-  target.searchParams.set("id", providerID);
-  target.searchParams.set("return_url", returnURL);
+  // Built as a string because the deployment may configure a relative API base;
+  // `new URL()` rejects those before it can be resolved against the page origin.
+  const params = new URLSearchParams();
+  params.set("id", providerID);
+  params.set("return_url", returnURL);
   if (codeChallenge) {
-    target.searchParams.set("code_challenge", codeChallenge);
-    target.searchParams.set("code_challenge_method", "S256");
+    params.set("code_challenge", codeChallenge);
+    params.set("code_challenge_method", "S256");
   }
-  return target.toString();
+  return `${baseURL.replace(/\/$/, "")}/api/admin/auth/oauth/start?${params}`;
 }
 
 function isOAuthCodeVerifier(value: string | undefined): value is string {

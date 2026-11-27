@@ -176,7 +176,7 @@ func (s *Server) handleAdminOAuthStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	setAdminOAuthBindingCookie(w, adminOAuthStateCookieName(state), browserNonce, adminOAuthStateCookiePath, cookieSecure, adminOAuthFlowTTL)
+	setAdminOAuthBindingCookie(w, adminOAuthStateCookieName(state), browserNonce, oauthBindingCookiePath(redirectURI), cookieSecure, adminOAuthFlowTTL)
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
@@ -196,7 +196,7 @@ func (s *Server) handleAdminOAuthCallback(w http.ResponseWriter, r *http.Request
 		writeError(w, r, NewHTTPError(400, "invalid_oauth_state", "OAuth state is invalid or expired"))
 		return
 	}
-	clearAdminOAuthBindingCookie(w, adminOAuthStateCookieName(state), adminOAuthStateCookiePath, flow.CookieSecure)
+	clearAdminOAuthBindingCookie(w, adminOAuthStateCookieName(state), oauthBindingCookiePath(flow.RedirectURI), flow.CookieSecure)
 	if providerError := strings.TrimSpace(r.URL.Query().Get("error")); providerError != "" {
 		http.Redirect(w, r, oauthRedirectWithError(flow.ReturnURL, "provider_error"), http.StatusFound)
 		return
@@ -444,11 +444,7 @@ func buildOAuthAuthorizeURL(authorizeURL string, clientID string, redirectURI st
 
 func (s *Server) oauthCallbackURL(r *http.Request) (string, error) {
 	if configured := strings.TrimSpace(s.config.PublicBaseURL); configured != "" {
-		origin, ok := normalizedOAuthOrigin(configured, false)
-		if !ok {
-			return "", NewHTTPError(500, "invalid_public_base_url", "Public base URL is invalid")
-		}
-		return validateOAuthCallbackURL(origin + "/api/admin/auth/oauth/callback")
+		return publicOAuthCallbackURL(configured)
 	}
 	scheme := "http"
 	if r.TLS != nil {

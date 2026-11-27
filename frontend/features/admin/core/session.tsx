@@ -320,9 +320,9 @@ export function isProviderAccountOAuthAuthorizationResponse() {
 export function forwardOAuthAuthorizationResponse(baseURL: string) {
   if (isProviderAccountOAuthAuthorizationResponse()) return false;
   if (typeof window === "undefined" || !isOAuthAuthorizationResponse()) return false;
-  const target = new URL(`${baseURL.replace(/\/$/, "")}/api/admin/auth/oauth/callback`);
-  target.search = window.location.search;
-  window.location.replace(target.toString());
+  // Relative API bases cannot go through `new URL()` without a base.
+  const target = `${baseURL.replace(/\/$/, "")}/api/admin/auth/oauth/callback${window.location.search}`;
+  window.location.replace(target);
   return true;
 }
 

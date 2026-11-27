@@ -383,7 +383,13 @@ func (s *Server) cors(next http.Handler) http.Handler {
 		// Determine allowed origins: use explicit config if set, otherwise derive from PublicBaseURL
 		allowedOrigins := s.config.CORSAllowedOrigins
 		if len(allowedOrigins) == 0 && s.config.PublicBaseURL != "" {
+			// The public base URL may carry the deployment path prefix, while a
+			// browser Origin never does. An unparsable value must stay in the
+			// list so the dev convenience branch cannot start authorizing it.
 			allowedOrigins = []string{s.config.PublicBaseURL}
+			if origin, ok := normalizedOAuthOrigin(s.config.PublicBaseURL, false); ok {
+				allowedOrigins = []string{origin}
+			}
 		}
 
 		// If request has Origin header and we have an allowed origins list, validate it

@@ -183,11 +183,24 @@ cp deploy/.env.example deploy/.env
 - `TOKENHUB_SECRET_KEY`：后端加密根密钥。PostgreSQL 和已有 SQLite 数据库必须配置至少 32 字节的稳定值。全新文件型 SQLite 部署可以保留占位值，TokenHub 会在数据库旁生成权限为 `0600` 的密钥文件。
 - `TOKENHUB_IMAGE_TAG`：托管 TokenHub 镜像标签，默认 `latest`。
 - `TOKENHUB_PUBLIC_BASE_URL`：展示给用户的后端访问地址。
+- `TOKENHUB_FRONTEND_BASE_PATH`：前端控制台的构建期 URL 前缀。该值会编译进 Next.js，修改后须重新构建前端镜像。
 - `TOKENHUB_API_BASE_URL`：浏览器管理后台访问后端的地址，由前端服务在运行时读取。旧变量 `NEXT_PUBLIC_API_BASE_URL` 保留一个兼容周期，作为回退配置。
 - `TOKENHUB_BACKEND_PORT`：后端宿主机端口，默认 `8080`。
 - `TOKENHUB_FRONTEND_PORT`：管理后台宿主机端口，默认 `3000`。
 - `TOKENHUB_BACKEND_REPLICAS`：远端 PostgreSQL Compose 的后端副本数，默认 `2`。
 - `TOKENHUB_FRONTEND_REPLICAS`：远端 PostgreSQL Compose 的前端副本数，默认 `2`。
+
+### 共享源下的控制台子路径
+
+反向代理可以把控制台和后端 API 放在同一主机名的不同前缀下。此时 `TOKENHUB_PUBLIC_BASE_URL`、`TOKENHUB_API_BASE_URL` 和 `TOKENHUB_CORS_ALLOWED_ORIGINS` 必须与该布局保持一致：
+
+- 构建前端镜像时设置 `TOKENHUB_FRONTEND_BASE_PATH=/gateway/tokenhub`。
+- 为前端运行时设置 `TOKENHUB_API_BASE_URL=/gateway/tokenhub-api`。使用相对值可让浏览器请求留在当前源。
+- 为后端设置 `TOKENHUB_PUBLIC_BASE_URL=https://console.example.com/gateway/tokenhub-api`，并设置 `TOKENHUB_CORS_ALLOWED_ORIGINS=https://console.example.com`。CORS 匹配的是不含路径的源。
+- 在身份提供商中注册 `https://console.example.com/gateway/tokenhub-api/api/admin/auth/oauth/callback`。
+- 将两个前缀分别路由到对应服务，但两条规则的处理方式不同。转发到后端前要剥离 `/gateway/tokenhub-api`。转发到 Next.js 时必须保留 `/gateway/tokenhub` 前缀，因为前端包是按该前缀构建的：剥离后控制台根路径会变成 `/`，它重定向回该前缀，形成循环；带前缀的静态资源也会对不上。例如使用 `proxy_pass http://frontend:3000;`（末尾不加斜杠）可让上游 URI 保留 `/gateway/tokenhub/`。不要重写 OAuth 回调的 cookie 路径，后端会根据配置的回调地址推导该路径。
+
+此布局意味着同一源上的其他应用共享浏览器安全边界：同一标签页中的同源应用脚本可以读取同源存储。如无法接受该信任关系，请使用独立主机名隔离。Compose 构建参数仅对本地构建生效，运行时的变量修改不会影响预构建镜像。使用 `./start.sh` 时，请在 Next.js 启动前导出该变量，或写入前端环境文件。
 
 后端会在 `/docs` 提供公开网关 API 参考，并在 `/openapi.json` 和 `/openapi.yaml` 提供机器可读的 OpenAPI 3.1 合约。文档中的 server URL 优先来自 `TOKENHUB_PUBLIC_BASE_URL`，未配置时使用当前请求 origin。服务位于反向代理后方时，请让 `TOKENHUB_PUBLIC_BASE_URL` 与浏览器可访问的后端 origin 保持一致。
 

@@ -11,7 +11,7 @@
     "check:lines": "node ../tools/check-source-lines.mjs",
     "lint": "eslint . --max-warnings=0",
     "test": "npm run test:domain && npm run test:components",
-    "test:domain": "node --test features/admin/domain/*.test.mjs",
+    "test:domain": "node --test features/admin/domain/*.test.mjs lib/*.test.mjs",
     "test:components": "vitest run",
     "test:e2e": "node e2e/run-playwright.mjs",
     "typecheck": "npm run check:lines && tsc --noEmit",

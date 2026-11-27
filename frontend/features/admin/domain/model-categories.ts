@@ -1,4 +1,5 @@
 import type { AdapterDescriptor, AdapterModelCategory, PluginDescriptor } from "../core/types";
+import { withBasePath } from "@/lib/base-path";
 
 export type ModelCategoryDefinition = {
   key: string;
@@ -113,7 +114,7 @@ export function modelCategoryLabelFromDefinitions(category: string, definitions?
 export function modelCategoryIconSourceFromDefinitions(category: string, definitions?: ModelCategoryDefinition[]) {
   const normalized = category.trim().toLowerCase();
   const definition = categoryDefinitionsOrFallback(definitions).find((item) => item.key === normalized);
-  return safeIconSource(definition?.icon_src);
+  return withBasePath(safeIconSource(definition?.icon_src));
 }
 
 export function inferModelCategoryTextWithDefinitions(value: string, definitions?: ModelCategoryDefinition[]) {

@@ -7,6 +7,7 @@ services:
       dockerfile: backend/Dockerfile
       args:
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        TOKENHUB_FRONTEND_BASE_PATH: ${TOKENHUB_FRONTEND_BASE_PATH:-}
     restart: unless-stopped
     mem_limit: ${TOKENHUB_CONTAINER_MEMORY_LIMIT:-4g}
     memswap_limit: ${TOKENHUB_CONTAINER_MEMORY_LIMIT:-4g}

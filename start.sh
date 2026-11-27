@@ -216,9 +216,11 @@ BACKEND_PID=$!
 log "Starting frontend: http://localhost:$FRONTEND_PORT"
 (
   cd "$FRONTEND_DIR"
-  exec env \
-    TOKENHUB_API_BASE_URL="$TOKENHUB_API_BASE_URL" \
-    "$NEXT_BIN" dev --hostname "$FRONTEND_HOST" --port "$FRONTEND_PORT"
+  frontend_env=(TOKENHUB_API_BASE_URL="$TOKENHUB_API_BASE_URL")
+  if [ "${TOKENHUB_FRONTEND_BASE_PATH+x}" = x ]; then
+    frontend_env+=(TOKENHUB_FRONTEND_BASE_PATH="$TOKENHUB_FRONTEND_BASE_PATH")
+  fi
+  exec env "${frontend_env[@]}" "$NEXT_BIN" dev --hostname "$FRONTEND_HOST" --port "$FRONTEND_PORT"
 ) &
 FRONTEND_PID=$!
 

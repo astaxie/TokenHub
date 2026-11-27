@@ -183,11 +183,24 @@ cp deploy/.env.example deploy/.env
 - `TOKENHUB_SECRET_KEY`: バックエンド暗号化ルートキー。PostgreSQL と既存の SQLite データベースでは、32 バイト以上の安定した値が必須です。新規のファイル型 SQLite デプロイでは、プレースホルダーのままにするとデータベースの隣に権限 `0600` のキーファイルを生成します。
 - `TOKENHUB_IMAGE_TAG`: 管理対象 TokenHub イメージのタグ。デフォルトは `latest`。
 - `TOKENHUB_PUBLIC_BASE_URL`: ユーザーに表示するバックエンド URL。
+- `TOKENHUB_FRONTEND_BASE_PATH`: コンソールのビルド時 URL プレフィックス。Next.js に組み込まれるため、変更後はフロントエンドイメージを再ビルドしてください。
 - `TOKENHUB_API_BASE_URL`: ブラウザの管理コンソールが使用するバックエンド URL。フロントエンドサーバーが実行時に読み取ります。非推奨の `NEXT_PUBLIC_API_BASE_URL` は、1 回の互換期間に限りフォールバックとして残します。
 - `TOKENHUB_BACKEND_PORT`: バックエンドのホスト側ポート。デフォルトは `8080`。
 - `TOKENHUB_FRONTEND_PORT`: 管理コンソールのホスト側ポート。デフォルトは `3000`。
 - `TOKENHUB_BACKEND_REPLICAS`: リモート PostgreSQL Compose のバックエンドレプリカ数。デフォルトは `2`。
 - `TOKENHUB_FRONTEND_REPLICAS`: リモート PostgreSQL Compose のフロントエンドレプリカ数。デフォルトは `2`。
+
+### 同一オリジンのサブパスでのコンソール
+
+リバースプロキシは、1 つのホスト名の別々のプレフィックスでコンソールとバックエンド API を公開できます。その場合、`TOKENHUB_PUBLIC_BASE_URL`、`TOKENHUB_API_BASE_URL`、`TOKENHUB_CORS_ALLOWED_ORIGINS` を同じ構成に揃えてください:
+
+- フロントエンドイメージを `TOKENHUB_FRONTEND_BASE_PATH=/gateway/tokenhub` でビルドします。
+- フロントエンド実行時の `TOKENHUB_API_BASE_URL=/gateway/tokenhub-api` を設定します。相対値にすると、ブラウザーのリクエストは現在のオリジンに留まります。
+- バックエンドの `TOKENHUB_PUBLIC_BASE_URL=https://console.example.com/gateway/tokenhub-api` と `TOKENHUB_CORS_ALLOWED_ORIGINS=https://console.example.com` を設定します。CORS はパスを含まないオリジンと照合します。
+- ID プロバイダーに `https://console.example.com/gateway/tokenhub-api/api/admin/auth/oauth/callback` を登録します。
+- 両方のプレフィックスをそれぞれのサービスへルーティングしますが、2 つのルールは扱いが異なります。バックエンドへ転送する前に `/gateway/tokenhub-api` を取り除きます。Next.js へ転送するときは `/gateway/tokenhub` を残してください。バンドルはこのプレフィックスでビルドされているため、取り除くとコンソールのルートが `/` になり、そのプレフィックスへ戻すリダイレクトがループします。プレフィックス付きのアセットも一致しなくなります。たとえば末尾にスラッシュを付けない `proxy_pass http://frontend:3000;` なら、上流 URI は `/gateway/tokenhub/` のままです。OAuth コールバックの cookie パスは書き換えないでください。バックエンドが設定されたリダイレクト URI から導出します。
+
+この構成では、同じオリジン上の他のアプリケーションがブラウザーのセキュリティ境界を共有します。同じタブ内の同オリジンのスクリプトは同一オリジンのストレージを読み取れます。この信頼が許容できない場合は、別のホスト名で分離してください。Compose のビルド引数はローカルビルドにのみ影響するため、実行時に変数を変えてもビルド済みイメージは変わりません。`./start.sh` を使う場合は、Next.js の起動前に変数をエクスポートするか、フロントエンドの環境ファイルへ記述してください。
 
 バックエンドは `/docs` で公開ゲートウェイ API リファレンスを提供し、`/openapi.json` と `/openapi.yaml` で機械可読の OpenAPI 3.1 契約を提供します。ドキュメント内の server URL は `TOKENHUB_PUBLIC_BASE_URL` が設定されていればそれを使用し、未設定の場合は現在のリクエスト origin を使用します。リバースプロキシ配下では、`TOKENHUB_PUBLIC_BASE_URL` をブラウザから到達できるバックエンド origin と一致させてください。
 

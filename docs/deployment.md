@@ -183,11 +183,24 @@ Review `deploy/.env` before starting:
 - `TOKENHUB_SECRET_KEY`: Backend encryption root key. PostgreSQL and existing SQLite databases require at least 32 stable bytes. A brand-new file-backed SQLite deployment can leave the placeholder so TokenHub generates a `0600` key file beside the database.
 - `TOKENHUB_IMAGE_TAG`: Managed TokenHub image tag. Default: `latest`.
 - `TOKENHUB_PUBLIC_BASE_URL`: Public backend URL shown to users.
+- `TOKENHUB_FRONTEND_BASE_PATH`: Build-time console URL prefix. Next.js compiles it into the bundle, so rebuild the frontend image after changing it.
 - `TOKENHUB_API_BASE_URL`: Backend URL used by the browser admin console. The frontend server reads it at runtime. The deprecated `NEXT_PUBLIC_API_BASE_URL` remains a fallback for one compatibility cycle.
 - `TOKENHUB_BACKEND_PORT`: Host port for the backend. Default: `8080`.
 - `TOKENHUB_FRONTEND_PORT`: Host port for the admin console. Default: `3000`.
 - `TOKENHUB_BACKEND_REPLICAS`: Backend replica count for remote PostgreSQL Compose. Default: `2`.
 - `TOKENHUB_FRONTEND_REPLICAS`: Frontend replica count for remote PostgreSQL Compose. Default: `2`.
+
+### Console under a shared-origin subpath
+
+A reverse proxy can expose the console and the backend API under prefixes of one hostname. `TOKENHUB_PUBLIC_BASE_URL`, `TOKENHUB_API_BASE_URL`, and `TOKENHUB_CORS_ALLOWED_ORIGINS` must agree on that layout:
+
+- Build the frontend image with `TOKENHUB_FRONTEND_BASE_PATH=/gateway/tokenhub`.
+- Set `TOKENHUB_API_BASE_URL=/gateway/tokenhub-api` for the frontend runtime. A relative value keeps browser requests on the current origin.
+- Set `TOKENHUB_PUBLIC_BASE_URL=https://console.example.com/gateway/tokenhub-api` for the backend and `TOKENHUB_CORS_ALLOWED_ORIGINS=https://console.example.com`. CORS matches origins, which never include a path.
+- Register `https://console.example.com/gateway/tokenhub-api/api/admin/auth/oauth/callback` with the identity provider.
+- Route both prefixes to their services, but treat the two rules differently. Strip `/gateway/tokenhub-api` before forwarding to the backend. Forward `/gateway/tokenhub` to Next.js with that prefix intact, because the bundle was built with it: stripping it turns the console root into `/`, whose redirect back to the base path loops, and prefixed assets no longer match. For example, `proxy_pass http://frontend:3000;` without a trailing slash keeps `/gateway/tokenhub/` as the upstream URI. Do not rewrite the OAuth callback cookie path; the backend derives it from the configured redirect URI.
+
+This layout means other applications on the same origin share the browser security boundary: a sibling application's script can read same-origin storage in the same tab. Use a separate hostname when that trust is not acceptable. Compose build arguments only affect local builds, so changing the variable at runtime cannot change a prebuilt image. With `./start.sh`, export the variable or put it in the frontend environment file before Next.js starts.
 
 The backend serves the public gateway API reference at `/docs` and the machine-readable OpenAPI 3.1 contract at `/openapi.json` and `/openapi.yaml`. The document server URL is derived from `TOKENHUB_PUBLIC_BASE_URL` when set, otherwise from the current request origin. Keep `TOKENHUB_PUBLIC_BASE_URL` aligned with the browser-facing backend origin when the service is behind a reverse proxy.
 

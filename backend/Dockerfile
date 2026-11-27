@@ -8,6 +8,10 @@ RUN npm ci
 
 FROM ${NODE_IMAGE} AS frontend-builder
 
+# Next.js resolves basePath at build time, so a sub-path deployment must bake it in.
+ARG TOKENHUB_FRONTEND_BASE_PATH=""
+ENV TOKENHUB_FRONTEND_BASE_PATH=$TOKENHUB_FRONTEND_BASE_PATH
+
 WORKDIR /src/frontend
 COPY --from=frontend-deps /src/frontend/node_modules ./node_modules
 COPY frontend/ ./

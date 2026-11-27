@@ -350,7 +350,7 @@ func TestOAuthCallbackURLUsesOnlyConfiguredOrTrustedOrigins(t *testing.T) {
 
 	configured := NewWithConfig(NewMemoryStore(), Config{PublicBaseURL: "https://public.tokenhub.example/base"})
 	got, err = configured.oauthCallbackURL(request)
-	if err != nil || got != "https://public.tokenhub.example/api/admin/auth/oauth/callback" {
+	if err != nil || got != "https://public.tokenhub.example/base/api/admin/auth/oauth/callback" {
 		t.Fatalf("public base callback = %q, err=%v", got, err)
 	}
 

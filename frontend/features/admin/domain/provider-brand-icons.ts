@@ -1,4 +1,5 @@
 import type { ProviderCatalogEntry } from "../core/types";
+import { withBasePath } from "@/lib/base-path";
 
 type ProviderIconRule = {
   asset: string;
@@ -79,7 +80,7 @@ const providerIconRules: ProviderIconRule[] = [
 export function providerBrandIconSource(entry: Pick<ProviderCatalogEntry, "id" | "name" | "display_name" | "type">) {
   const values = [entry.id, entry.name, entry.display_name, entry.type].map(normalizeProviderKey).filter(Boolean);
   const rule = values.map((value) => providerIconRules.find((candidate) => candidate.exact.includes(value) || candidate.prefixes?.some((prefix) => value.startsWith(prefix)))).find(Boolean);
-  return rule ? `/provider-icons/${rule.asset}` : "";
+  return rule ? withBasePath(`/provider-icons/${rule.asset}`) : "";
 }
 
 function normalizeProviderKey(value: string | undefined) {
