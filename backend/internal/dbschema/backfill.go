@@ -178,20 +178,7 @@ func NewBackfillExecutor(db *sql.DB, dialect Dialect, backfills []Backfill, opts
 // EnsureLedger creates the data_backfills table and seeds one pending row per
 // registered backfill; existing rows are never modified.
 func (e *BackfillExecutor) EnsureLedger(ctx context.Context) error {
-	intType := "INTEGER"
-	if e.dialect == DialectPostgres {
-		intType = "BIGINT"
-	}
-	// remaining starts at -1 (unknown) until the first batch reports progress.
-	if _, err := e.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS data_backfills (
-		id TEXT PRIMARY KEY,
-		mode TEXT NOT NULL,
-		state TEXT NOT NULL DEFAULT '`+BackfillStatePending+`',
-		remaining `+intType+` NOT NULL DEFAULT -1,
-		lease_owner TEXT NOT NULL DEFAULT '',
-		lease_expires_at TEXT NOT NULL DEFAULT '',
-		updated_at TEXT NOT NULL DEFAULT ''
-	)`); err != nil {
+	if _, err := e.db.ExecContext(ctx, backfillLedgerDDL(e.dialect)); err != nil {
 		return fmt.Errorf("dbschema: ensure data backfill ledger: %w", err)
 	}
 	for _, b := range e.backfills {
@@ -204,6 +191,23 @@ func (e *BackfillExecutor) EnsureLedger(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func backfillLedgerDDL(dialect Dialect) string {
+	intType := "INTEGER"
+	if dialect == DialectPostgres {
+		intType = "BIGINT"
+	}
+	// remaining starts at -1 (unknown) until the first batch reports progress.
+	return `CREATE TABLE IF NOT EXISTS data_backfills (
+		id TEXT PRIMARY KEY,
+		mode TEXT NOT NULL,
+		state TEXT NOT NULL DEFAULT '` + BackfillStatePending + `',
+		remaining ` + intType + ` NOT NULL DEFAULT -1,
+		lease_owner TEXT NOT NULL DEFAULT '',
+		lease_expires_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT ''
+	)`
 }
 
 // Status reports the ledger state of every registered backfill.
@@ -412,7 +416,13 @@ func (e *BackfillExecutor) renewLeaseDuringBatch(batchCtx context.Context, cance
 				lost <- false
 				return
 			case <-ticker.C:
-				claimed, err := e.claimLease(context.Background(), id)
+				renewCtx, cancelRenew := context.WithTimeout(batchCtx, e.leaseTTL/3)
+				claimed, err := e.claimLease(renewCtx, id)
+				cancelRenew()
+				if batchCtx.Err() != nil {
+					lost <- false
+					return
+				}
 				if err != nil || !claimed {
 					lost <- true
 					cancelBatch()
@@ -426,4 +436,12 @@ func (e *BackfillExecutor) renewLeaseDuringBatch(batchCtx context.Context, cance
 
 func (e *BackfillExecutor) nowText() string {
 	return e.now().UTC().Format(time.RFC3339)
+}
+
+// ReleaseOnlineLeases gives another instance immediate access after a graceful
+// stop. Only leases owned by this executor are released; committed progress stays.
+func (e *BackfillExecutor) ReleaseOnlineLeases(ctx context.Context) error {
+	marks := placeholderMarks(e.dialect, 2)
+	_, err := e.db.ExecContext(ctx, "UPDATE data_backfills SET lease_owner = '', lease_expires_at = '' WHERE mode = "+marks[0]+" AND lease_owner = "+marks[1], BackfillOnline, e.owner)
+	return err
 }

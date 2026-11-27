@@ -159,6 +159,8 @@ func (s *Server) compatibleChatRoutes(routed RoutedCall, req ChatCompletionReque
 			err = bridge.ChatCompatible(req)
 		} else if !ok && !s.routeSupportsAdapterCapabilityOrProviderCall(routed.Call, route, capability, providerRouteProtocolChatCompletions) {
 			err = NewHTTPError(http.StatusNotImplemented, "provider_capability_not_supported", "Provider does not support the requested Chat Completions mode")
+		} else if !ok {
+			err = s.geminiChatRouteCompatibility(routed.Call, route, req)
 		}
 		if err != nil {
 			if firstErr == nil {

@@ -16,6 +16,7 @@ TokenHub 文档现在按企业 Token Governance 里的三种角色组织。默�
 - [订阅与账户 Provider](subscription-providers.md)：32 个账户 Provider、12 个新增 API Key 预设、登录方式、部署要求与协议限制。
 - [数据库演进](database-evolution.md)：只前进迁移、采纳基线、维护命令与回退兼容性。
 - [PostgreSQL 设置指南](../postgresql-setup.md)：PostgreSQL 配置、运维和迁移。
+- [管理总览与历史告警](development/admin-overview.md)：有界总览响应、历史统计投影、告警分页、验证与升级要求。
 - [性能基准测试](performance-benchmarking.md)：可复现的网关对比、进程内分配基准和回退预算。
 
 - [TypeSafe / Jev 接入](typesafe.md)

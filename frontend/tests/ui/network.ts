@@ -29,6 +29,12 @@ export class MockAPI {
     this.handlers.delete(key);
     this.respond(method, pathname, json);
   }
+  replaceHandler(method: string, pathname: string, handler: Handler, validateQuery?: (query: URLSearchParams) => void) {
+    const key = `${method} ${pathname}`;
+    if (!this.handlers.has(key)) throw new Error(`Cannot replace undeclared UI fixture: ${key}`);
+    this.handlers.delete(key);
+    this.define(method, pathname, handler, validateQuery);
+  }
   assertClean() {
     if (this.violations.length) throw new Error(`UI network contract failed:\n${this.violations.join("\n")}`);
   }

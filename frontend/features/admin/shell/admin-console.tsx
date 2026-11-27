@@ -6,7 +6,7 @@ import { type LoadedData, loadPlanForView, mergeLoadedData } from "../core/data-
 import { allNavGroupTitles, canAccessView, defaultViewForRole, rememberRecentView, standaloneViewMeta } from "../core/navigation";
 import { clearOAuthAuthorizationResponse, clearOAuthLoginResult, clearPendingOAuthLogin, clearProviderAccountOAuthResultFromLocation, clearSavedSession, consumePasswordResetToken, forwardOAuthAuthorizationResponse, hasPendingProviderAccountOAuthResult, isOAuthAuthorizationResponse, isProviderAccountOAuthAuthorizationResponse, readOAuthLoginResult, readPendingOAuthLogin, readProviderAccountOAuthResultFromLocation, readSavedSession, savePendingProviderAccountOAuthResult, saveSession } from "../core/session";
 import { notificationChannelDefaultType, notificationChannelTypes, type AdminResource, type AdminUser, type APIKey, type AppData, authExpiredEventName, type ConfirmState, languageStorageKey, type LoginIdentityProvider, type ModalState, type Model, type ModelRoute, type ModelRoutePolicy, type Project, type Provider, type ReportExportHistoryItem, type ResourceAction, type ResourceConfig, type SettingsTabKey, type ToolbarAction, type ViewKey, viewRoutes } from "../core/types";
-import { emptyData, filterByModelCategory, filterRows } from "../domain/catalog";
+import { emptyData, emptyUsageBreakdown, filterByModelCategory, filterRows } from "../domain/catalog";
 import { filterAPIKeys } from "../domain/api-key-filter";
 import { auditRequestPagePath } from "../domain/audit-request-page";
 import { modelRouteDefaults, rowTitle } from "../domain/entities";
@@ -41,6 +41,7 @@ import { GatewayView } from "../views/gateway-view";
 import { ModelDirectoryView } from "../views/model-directory";
 import { RouteStrategyView } from "../views/model-catalog";
 import { modelRoutePolicyPayload } from "../views/model-routing-policy";
+import { AlertEventsView } from "../views/alert-events";
 import { OverviewView } from "../views/overview";
 import { PlaygroundPage } from "../views/playground";
 import { PluginPageView } from "../views/admin-ui-plugin-pages";
@@ -74,6 +75,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
     Object.fromEntries(allNavGroupTitles.map((title) => [title, true])),
   );
   const [activeView, setActiveView] = useState<ViewKey>(routeView);
+  const loadRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => { loadRequest.current?.abort(); }, [adminToken, baseURL, activeView]);
   const monitoringRequest = useRef<AbortController | null>(null);
   useEffect(() => () => { monitoringRequest.current?.abort(); }, [adminToken, baseURL, activeView]);
   const [activePluginPageKey, setActivePluginPageKey] = useState(() => pluginPageKeyFromLocation());
@@ -412,16 +415,47 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
   async function load(view: ViewKey = activeView) {
     if (!adminToken || !currentUser) return;
     if (!canAccessView(currentUser, view)) return;
+    loadRequest.current?.abort();
+    const controller = new AbortController();
+    loadRequest.current = controller;
     setLoading(true);
     setError("");
     try {
       const plan = loadPlanForView(currentUser, view);
       const requests: Array<{ name: string; request: Promise<Response>; optional?: boolean }> = [];
       const queue = (enabled: boolean, name: string, path: string) => {
-        if (enabled) requests.push({ name, request: adminFetch(api, path) });
+        if (enabled) requests.push({ name, request: adminFetch(api, path, { signal: controller.signal }) });
       };
 
+      function loadIndependent(enabled: boolean, name: string, path: string) {
+        if (!enabled) return;
+        void (async () => {
+          try {
+            const response = await adminFetch(api, path, { signal: controller.signal });
+            if (response.status === 503 && name === "breakdown") {
+              const payload = await response.clone().json().catch(() => null);
+              if (payload?.error?.code === "overview_preparing") {
+                if (!controller.signal.aborted) setData((current) => ({ ...current, breakdown: emptyUsageBreakdown(), breakdownStatus: "preparing" }));
+                return;
+              }
+            }
+            if (!response.ok) throw new Error(await readLoadError(response, name));
+            const loaded: LoadedData = {};
+            await applyViewPayload(loaded, name, response);
+            if (!controller.signal.aborted) setData((current) => mergeLoadedData(current, loaded));
+          } catch (reason) {
+            if (controller.signal.aborted || isAuthExpiredError(reason)) return;
+            if (name === "breakdown") setData((current) => ({ ...current, breakdown: emptyUsageBreakdown(), breakdownStatus: "error" }));
+            if (name === "timeseries") setData((current) => ({ ...current, timeseries: [] }));
+            setError(reason instanceof Error ? reason.message : tx("连接失败"));
+          }
+        })();
+      }
+      if (plan.projectQuotaEvents) setData((current) => ({ ...current, projectQuotaEvents: {} }));
+
       queue(plan.overview, "overview", "/api/admin/overview");
+      queue(plan.models, "models", "/api/admin/models");
+      loadIndependent(plan.projectQuotaEvents, "project-quota-events", "/api/admin/project-quota-events");
       queue(plan.providers, "providers", "/api/admin/providers");
       queue(plan.providerResources, "provider-resources", "/api/admin/provider-resources");
       queue(plan.providerModels, "provider-models", "/api/admin/provider-models");
@@ -434,8 +468,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
       queue(plan.approvals, "approvals", "/api/admin/approvals");
       queue(plan.sqliteBackups, "sqlite-backups", "/api/admin/sqlite/backups");
       queue(plan.dailyUsage, "daily-usage", "/api/admin/usage/daily");
-      queue(plan.breakdown, "breakdown", "/api/admin/usage/breakdown");
-      queue(plan.timeseries, "timeseries", "/api/admin/usage/timeseries");
+      loadIndependent(plan.breakdown, "breakdown", "/api/admin/usage/breakdown");
+      loadIndependent(plan.timeseries, "timeseries", "/api/admin/usage/timeseries");
       queue(plan.users, "users", "/api/admin/users");
       queue(plan.providerCatalog, "provider-catalog", "/api/admin/provider-catalog");
       queue(plan.providerAdapters, "provider-adapters", "/api/admin/provider-adapters");
@@ -469,36 +503,42 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 			queue(plan.reconciliationRules, "reconciliation-rules", "/api/admin/billing/reconciliation-rules");
 			queue(plan.reconciliationRuns, "reconciliation-runs", "/api/admin/billing/reconciliations");
       for (const kind of plan.resources) {
-        requests.push({ name: `resource:${kind}`, request: adminFetch(api, `/api/admin/resources/${kind}`), optional: true });
+        requests.push({ name: `resource:${kind}`, request: adminFetch(api, `/api/admin/resources/${kind}`, { signal: controller.signal }), optional: true });
       }
 
-      const responses = await Promise.all(requests.map((item) => item.request));
+      const responses = await Promise.allSettled(requests.map((item) => item.request));
+      if (controller.signal.aborted) return;
       const skippedResources: string[] = [];
-      for (let index = 0; index < responses.length; index += 1) {
-        const resp = responses[index];
-        if (!resp.ok) {
-          if (resp.status === 403 && requests[index].optional) {
-            skippedResources.push(loadRequestLabel(requests[index].name));
-            continue;
-          }
-          throw new Error(await readLoadError(resp, requests[index].name));
-        }
-      }
-
       const loaded: LoadedData = {};
+      const failures: string[] = [];
       for (let index = 0; index < responses.length; index += 1) {
-        await applyViewPayload(loaded, requests[index].name, responses[index]);
+        const result = responses[index];
+        if (result.status === "rejected") {
+          if (requests[index].name === "overview") loaded.summaryStatus = { state: "error" };
+          if (!isAuthExpiredError(result.reason)) failures.push(result.reason instanceof Error ? result.reason.message : tx("连接失败"));
+          continue;
+        }
+        const resp = result.value;
+        if (!resp.ok) {
+          if (requests[index].name === "overview") loaded.summaryStatus = { state: "error" };
+          if (resp.status === 403 && requests[index].optional) skippedResources.push(loadRequestLabel(requests[index].name));
+          else failures.push(await readLoadError(resp, requests[index].name));
+          continue;
+        }
+        await applyViewPayload(loaded, requests[index].name, resp);
       }
+      if (controller.signal.aborted) return;
+      if (failures.length > 0) setError(failures.join(" · "));
 
       setData((current) => mergeLoadedData(current, loaded));
       if (skippedResources.length > 0) {
         setNotice(permissionPartialLoadMessage(skippedResources));
       }
     } catch (err) {
-      if (isAuthExpiredError(err)) return;
+      if (controller.signal.aborted || isAuthExpiredError(err)) return;
       setError(err instanceof Error ? err.message : tx("连接失败"));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
 
@@ -867,6 +907,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
 
       <section className="workspace">
         <TopNav
+          api={api}
           activeView={activeView}
           data={data}
           user={currentUser}
@@ -894,7 +935,7 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
           {apiKeyUsageID ? (
             <APIKeyUsageView api={api} data={data} user={currentUser} keyID={apiKeyUsageID} onBack={() => selectView("api-keys")} />
           ) : activeView === "overview" ? (
-            <OverviewView data={data} user={currentUser} onSelectView={selectView} />
+            <OverviewView data={data} user={currentUser} onSelectView={selectView} onRefresh={() => load("overview")} />
           ) : activeView === "playground" ? (
             <PlaygroundPage api={api} data={data} canViewRoutes={canAccessView(currentUser, "routes")} />
           ) : activeView === "gateway" ? (
@@ -912,6 +953,8 @@ export function AdminConsole({ defaultBaseURL }: { defaultBaseURL: string }) {
             <UsageView api={api} data={data} user={currentUser} />
           ) : activeView === "billing" ? (
             <BillingView api={api} data={data} user={currentUser} loading={loading} onReload={() => load("billing")} />
+          ) : activeView === "alert-events" ? (
+            <AlertEventsView api={api} data={data} actionPending={loading} onAction={(action, item) => void runResourceAction(action, item, data)} />
           ) : activeView === "audit" ? (
             <AuditView api={api} data={data} user={currentUser} />
           ) : activeView === "database-status" ? (

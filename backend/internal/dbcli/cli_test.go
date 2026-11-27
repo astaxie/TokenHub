@@ -3,10 +3,13 @@ package dbcli
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"tokenhub/backend/internal/dbschema"
 	"tokenhub/backend/internal/server"
 )
 
@@ -22,6 +25,84 @@ func runCLI(t *testing.T, args ...string) (int, string) {
 	var stdout, stderr bytes.Buffer
 	code := Run(context.Background(), args, &stdout, &stderr)
 	return code, stdout.String() + stderr.String()
+}
+
+func prepareEarlierSQLite(t *testing.T, databaseURL string, version int64) *sql.DB {
+	t.Helper()
+	_, db, err := server.OpenRawDatabase(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	var registry []dbschema.Migration
+	for _, migration := range server.SchemaMigrationRegistry() {
+		if migration.Version <= version {
+			registry = append(registry, migration)
+		}
+	}
+	baseline, err := dbschema.SQLiteBaselineStatements()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := dbschema.NewRunner(db, dbschema.DialectSQLite, registry, dbschema.WithFreshBaseline(baseline))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Adopt(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+func TestOverviewBackfillsRegisteredByPrepareAndMigrate(t *testing.T) {
+	for _, command := range []string{"prepare", "migrate"} {
+		t.Run(command, func(t *testing.T) {
+			url := cliTestEnv(t)
+			db := prepareEarlierSQLite(t, url, 11)
+			if _, err := db.Exec("INSERT INTO usage_records (id, input_tokens) VALUES ('history', 7)"); err != nil {
+				t.Fatal(err)
+			}
+			if code, output := runCLI(t, command); code != 0 {
+				t.Fatalf("%s: %s", command, output)
+			}
+			s, err := openSession(url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.close()
+			if err := requireBackfillsComplete(t.Context(), s); err == nil || !strings.Contains(err.Error(), "overview-v1-usage_records") {
+				t.Fatalf("contract preflight: %v", err)
+			}
+			var state string
+			if err := db.QueryRow("SELECT state FROM data_backfills WHERE id = 'overview-v1-request_logs'").Scan(&state); err != nil || state != "complete" {
+				t.Fatalf("empty source state=%s err=%v", state, err)
+			}
+		})
+	}
+}
+
+func TestOverviewUpgradeDetectsPreviouslyReplacedSQLiteRows(t *testing.T) {
+	url := cliTestEnv(t)
+	db := prepareEarlierSQLite(t, url, 18)
+	for _, statement := range []string{
+		"PRAGMA recursive_triggers=OFF",
+		"INSERT INTO usage_records (id, input_tokens) VALUES ('existing', 5)",
+		"REPLACE INTO usage_records (id, input_tokens) VALUES ('existing', 8)",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := server.OpenStoreForMaintenance(url, server.Config{Environment: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	global := server.UsageSummaryScope{Global: true}
+	summary, progress, err := store.QueryOverviewSummary(t.Context(), server.UsageSummaryQuery{UsageRecords: global, RequestLogs: global})
+	if err != nil || !progress.Ready || summary.UsageRecordCount != 1 || summary.InputTokens != 8 {
+		t.Fatalf("summary=%+v progress=%+v err=%v", summary, progress, err)
+	}
 }
 
 func TestUnknownCommandExitsTwo(t *testing.T) {
@@ -100,7 +181,7 @@ func TestCommandsOnAdoptedDatabase(t *testing.T) {
 	}
 
 	code, output := runCLI(t, "status")
-	if code != 0 || !strings.Contains(output, "baseline recorded:   true") || !strings.Contains(output, "current version:     11") {
+	if code != 0 || !strings.Contains(output, "baseline recorded:   true") || !strings.Contains(output, fmt.Sprintf("current version:     %d", latestSQLiteMigrationVersion())) {
 		t.Fatalf("status on adopted database: code=%d output=%q", code, output)
 	}
 	code, output = runCLI(t, "verify")
@@ -187,4 +268,14 @@ func TestSQLiteContractBackupStoreDoesNotPublishHeartbeat(t *testing.T) {
 	if err := requireNoLiveInstances(context.Background(), s); err != nil {
 		t.Fatalf("maintenance backup store must not block contract: %v", err)
 	}
+}
+
+func latestSQLiteMigrationVersion() int64 {
+	var version int64 = 1
+	for _, migration := range server.SchemaMigrationRegistry() {
+		if migration.Dialect == "" || migration.Dialect == "sqlite" {
+			version = max(version, migration.Version)
+		}
+	}
+	return version
 }

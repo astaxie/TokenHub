@@ -11,6 +11,8 @@ const breakdown = { projects: [], models: [], members: [], providers: [], provid
 export function shellResponses(): Map<string, unknown> {
   return new Map<string, unknown>([
     ["GET /api/admin/overview", { summary, projects: [project], models: [model], providers: [], provider_resources: [], alerts: [] }],
+    ["GET /api/admin/models", { data: [model] }],
+    ["GET /api/admin/project-quota-events", { data: {} }],
     ["GET /api/admin/projects", { data: [project] }],
     ["GET /api/admin/provider-models", { data: [] }],
     ["GET /api/admin/usage/breakdown", breakdown],

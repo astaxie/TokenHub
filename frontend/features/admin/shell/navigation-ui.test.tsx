@@ -4,7 +4,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { emptyData } from "../domain/catalog";
 import { adminConsoleSIMSelectionPreference, adminConsoleShellState, adminConsoleSIMSelectionStorageKey, readAdminConsoleSIMSelectionPreference, saveAdminConsoleSIMSelectionPreference } from "./admin-console";
-import { PageHeader, pageHeaderCrumbs, pageRecordCount, Sidebar } from "./navigation-ui";
+import { PageHeader, pageHeaderChips, pageHeaderCrumbs, pageRecordCount, Sidebar } from "./navigation-ui";
+import { loadPlanForView } from "../core/data-loading";
 
 describe("Sidebar", () => {
   it("keeps plugin nav section contributions out of the sidebar", () => {
@@ -301,3 +302,25 @@ function templateStyles() {
 function responsiveStyles() {
   return readFileSync(resolve("app/styles/redesign/responsive.css"), "utf8");
 }
+it("loads model choices for audit and gateway consumers without fetching the directory on overview", () => {
+  for (const role of ["security_admin", "team_leader", "user"]) {
+    const user = { id: role, role, username: role, email: "", name: role, status: "active" };
+    expect(loadPlanForView(user, "audit").models).toBe(true);
+    expect(loadPlanForView(user, "gateway").models).toBe(true);
+    expect(loadPlanForView(user, "overview").models).toBe(false);
+    if (role === "team_leader") {
+      expect(loadPlanForView(user, "models").models).toBe(true);
+      expect(loadPlanForView(user, "billing").overview).toBe(true);
+    }
+  }
+});
+
+it("hides unconfirmed lifetime numbers in billing and audit headers", () => {
+  const user = { id: "admin", role: "admin", username: "admin", email: "", name: "", status: "active" };
+  for (const state of ["error", "preparing", "stale"] as const) {
+    const data = { ...emptyData(), summaryStatus: { state } };
+    for (const view of ["billing", "audit"] as const) {
+      expect(pageHeaderChips(view, data, user).map(chip => chip.value)).toEqual(["—", "—"]);
+    }
+  }
+});
