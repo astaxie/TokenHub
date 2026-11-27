@@ -35,42 +35,7 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	providers := []Provider{}
-	providerResources := []ProviderResource{}
-	alerts := []AlertEvent{}
-	if s.canViewGlobalOperations(user) {
-		providers = s.store.ListProviders()
-		providerResources = s.store.ListProviderResources()
-		alerts = s.store.ListAlerts()
-	}
-	models := s.accessibleModelsForAdminUser(user)
-	routes := []ModelRoute{}
-	if s.canViewGlobalOperations(user) {
-		routes = s.store.ListRoutes()
-	}
-	activeRoutes := 0
-	for _, route := range routes {
-		if route.Status == StatusActive {
-			activeRoutes++
-		}
-	}
-	summary, err := s.usageSummaryForUser(r.Context(), user)
-	if err != nil {
-		writeError(w, r, err)
-		return
-	}
-	summary["api_key_count"] = len(s.filterAPIKeysForUser(user, s.store.ListAPIKeys()))
-	summary["route_count"] = len(routes)
-	summary["active_route_count"] = activeRoutes
-	summary["user_count"] = len(s.filterAdminUsersForUser(user, s.store.ListAdminUsers()))
-	writeJSON(w, http.StatusOK, map[string]any{
-		"summary":            summary,
-		"projects":           s.filterProjectsForUser(user, s.store.ListProjects()),
-		"providers":          providers,
-		"provider_resources": providerResources,
-		"models":             modelPricingViews(models),
-		"alerts":             alerts,
-	})
+	s.serveAdminOverview(w, r, user)
 }
 
 func (s *Server) handleAdminProjectsGet(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -38,6 +39,17 @@ func (s *GormStore) StreamUsageGroups(ctx context.Context, scope UsageSummarySco
 	read := func(tx *gorm.DB) error {
 		snapshot := *s
 		snapshot.analyticsDB = tx
+		if s.dbDriver == "sqlite" && scope.CreatedAtFrom.IsZero() && scope.CreatedAtBefore.IsZero() {
+			progress, err := snapshot.overviewProgress(ctx)
+			if err != nil {
+				return err
+			}
+			if progress.useRaw {
+				if _, err := snapshot.querySQLiteOverviewRawSummary(ctx, UsageSummaryQuery{UsageRecords: scope}); err != nil {
+					return err
+				}
+			}
+		}
 		for _, dimension := range dimensions {
 			query, err := snapshot.usageGroupQuery(ctx, scope, dimension)
 			if err != nil {
@@ -66,11 +78,33 @@ func (s *GormStore) usageGroupQuery(ctx context.Context, scope UsageSummaryScope
 	if dimension == "members" {
 		selection = column
 	}
-	query, err := applyUsageSummaryScope(s.analyticsDB.WithContext(ctx).Model(&UsageRecord{}), s.dbDriver, scope)
+	base := s.analyticsDB.WithContext(ctx).Model(&UsageRecord{})
+	metrics := usageGroupMetrics
+	projected := false
+	if scope.CreatedAtFrom.IsZero() && scope.CreatedAtBefore.IsZero() {
+		progress, err := s.overviewProgress(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !progress.Ready {
+			return nil, NewHTTPError(503, "overview_preparing", "Historical statistics are preparing")
+		}
+		if !progress.useRaw || s.dbDriver != "sqlite" {
+			projected = true
+			base = s.analyticsDB.WithContext(ctx).Table("overview_totals").Where("scope = ? AND source = ?", "tuple", "usage_records")
+			metrics = strings.ReplaceAll(usageGroupMetrics, "COUNT(*)", "SUM(usage_record_count)")
+			metrics = strings.ReplaceAll(metrics, "SUM(cost_usd)", "SUM(estimated_cost_usd + cost_compensation)")
+		}
+	}
+	query, err := applyUsageSummaryScope(base, s.dbDriver, scope)
 	if err != nil {
 		return nil, err
 	}
-	return query.Select(selection + ", " + usageGroupMetrics).Group(column), nil
+	query = query.Select(selection + ", " + metrics).Group(column)
+	if projected {
+		query = query.Having("SUM(usage_record_count) > 0")
+	}
+	return query, nil
 }
 
 func (s *GormStore) streamUsageGroupRows(ctx context.Context, query *gorm.DB, visit func(UsageGroup)) (resultErr error) {

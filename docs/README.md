@@ -16,6 +16,7 @@ TokenHub documentation is organized around the three roles used in enterprise To
 - [Subscription and Account Providers](subscription-providers.md): the 32 account providers, 12 additional API-key presets, login, deployment requirements, and protocol limits.
 - [Database Evolution](database-evolution.md): forward-only migrations, adoption baseline, maintenance commands, and rollback compatibility.
 - [PostgreSQL Setup Guide](postgresql-setup.md): PostgreSQL configuration, operations, and migration.
+- [Admin Overview and Alert History](development/admin-overview.md): bounded overview responses, historical projections, alert pagination, verification, and rollout requirements.
 - [Performance Benchmarking](performance-benchmarking.md): reproducible gateway comparisons, internal allocation benchmarks, and regression budgets.
 
 - [TypeSafe / Jev integration](typesafe.md)
